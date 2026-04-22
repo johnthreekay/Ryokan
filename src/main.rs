@@ -88,6 +88,7 @@ use services::{
         handlers::settings::custom_formats::settings_custom_formats_install_defaults,
         handlers::settings::custom_formats::settings_custom_formats_reset_defaults,
         handlers::settings::custom_formats::settings_custom_formats_export,
+        handlers::settings::custom_formats::settings_custom_formats_test,
         handlers::system::api_logs_poll,
         handlers::system::api_logs_clear,
         handlers::system::api_logs_client,
@@ -135,6 +136,7 @@ use services::{
         handlers::settings::QbitTestForm,
         handlers::settings::JellyfinTestForm,
         handlers::settings::custom_formats::CustomFormatUpsertForm,
+        handlers::settings::custom_formats::CfTestRequest,
         handlers::settings::custom_formats::CustomFormatDeleteForm,
         handlers::settings::custom_formats::CustomFormatMinScoreForm,
         handlers::settings::custom_formats::CustomFormatImportForm,
@@ -617,6 +619,10 @@ async fn main() {
         .route(
             "/settings/custom-formats/export",
             get(handlers::settings::custom_formats::settings_custom_formats_export),
+        )
+        .route(
+            "/api/custom-formats/test",
+            post(handlers::settings::custom_formats::settings_custom_formats_test),
         )
         .route("/api/qbit/test", post(handlers::settings::qbit_test))
         .route(

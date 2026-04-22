@@ -37,7 +37,7 @@ use super::source::{ClassificationResult, Resolution, Source, WebKind};
 mod evaluator;
 mod parser;
 
-pub use evaluator::total_cf_score_with_breakdown;
+pub use evaluator::{evaluate, total_cf_score_with_breakdown};
 pub use parser::compile_from_json;
 
 // ───────────────────────────────────────────────────────────────────────────

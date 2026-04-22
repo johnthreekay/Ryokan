@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 
 use askama::Template;
 use axum::{
-    Form,
+    Form, Json,
     extract::{Query, State},
     response::{Html, IntoResponse, Redirect, Response},
 };
@@ -1174,6 +1174,161 @@ fn cf_redirect(edit_id: Option<i64>, msg: Option<&str>, err: Option<&str>) -> St
         url.push_str(&format!("&err={}", urlencoding::encode(e)));
     }
     url
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CF test box (#18) — paste a release title, see which CFs match + score
+// ─────────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct CfTestRequest {
+    pub release_title: String,
+}
+
+/// Test a release title against the current Custom Format set. Returns a
+/// per-CF verdict (matched / not-matched) plus the summed score of
+/// matching CFs.
+///
+/// **Scope limitation:** evaluates `ReleaseTitle` / `ReleaseGroup` /
+/// `Resolution` / `Source` specs only, using what `classify_filename`
+/// extracts from the title string. `Size` and `SeaDexBest` specs are
+/// not testable from a title alone (no torrent size, no SeaDex lookup
+/// without an AniList ID) — CFs that depend on them will always report
+/// not-matched under this endpoint. The UI note on the test box calls
+/// this out so users don't chase a phantom mismatch.
+#[utoipa::path(
+    post,
+    path = "/api/custom-formats/test",
+    tag = "Custom Formats",
+    summary = "Test a release title against loaded CFs",
+    description = "Returns per-CF match/not-match plus summed score. Title-based specs only; Size and SeaDex specs are not evaluated.",
+    request_body = CfTestRequest,
+    responses(
+        (status = 200, description = "Per-CF verdicts", body = serde_json::Value),
+    ),
+)]
+pub async fn settings_custom_formats_test(
+    State(state): State<AppState>,
+    Json(req): Json<CfTestRequest>,
+) -> Json<serde_json::Value> {
+    use crate::services::custom_formats::{EvalContext, evaluate};
+    use crate::services::nyaa::SearchResult;
+    use crate::services::source::{ClassificationResult, DecisionRule, Resolution, Source, WebKind};
+    use crate::services::source_filename::classify_filename;
+
+    let title = req.release_title.trim().to_string();
+    if title.is_empty() {
+        return Json(serde_json::json!({
+            "ok": false,
+            "error": "release_title is empty",
+            "matched": [],
+            "not_matched": [],
+            "total_score": 0,
+        }));
+    }
+
+    // Parse the title via the existing filename layer to extract as much
+    // classification as a title alone can yield. Source is derived by
+    // running the filename evidence through the aggregator — same path
+    // production classification uses at layer 1.
+    let fc = classify_filename(&title);
+    let classification = ClassificationResult {
+        source: {
+            let agg = crate::services::source::aggregate(&fc.evidence);
+            // aggregate() doesn't carry resolution/is_remux/is_bdmv/web_kind
+            // forward — they come from `fc`.
+            if agg.source == Source::Unknown && !fc.evidence.is_empty() {
+                // Fall back to the strongest single piece of evidence on
+                // the rare case aggregate ties everything to Unknown.
+                fc.evidence
+                    .iter()
+                    .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(std::cmp::Ordering::Equal))
+                    .map(|e| e.source)
+                    .unwrap_or(Source::Unknown)
+            } else {
+                agg.source
+            }
+        },
+        resolution: fc.resolution,
+        is_remux: fc.is_remux,
+        is_bdmv: fc.is_bdmv,
+        web_kind: fc.web_kind,
+        confidence: 1.0,
+        needs_review: false,
+        evidence: fc.evidence.clone(),
+        decision_rule: DecisionRule::Empty,
+    };
+
+    let group = fc.release_group.clone().unwrap_or_default();
+    let release = SearchResult {
+        title: title.clone(),
+        link: String::new(),
+        magnet: String::new(),
+        torrent: String::new(),
+        size: String::new(),
+        size_bytes: 0,
+        seeders: 0,
+        leechers: 0,
+        downloads: 0,
+        group: group.clone(),
+        resolution: match fc.resolution {
+            Resolution::Unknown => String::new(),
+            r => r.as_str().to_string(),
+        },
+        quality_label: String::new(),
+        source: String::new(),
+        web_kind: match fc.web_kind {
+            WebKind::Unknown => String::new(),
+            w => w.as_str().to_string(),
+        },
+        is_remux: fc.is_remux,
+        is_bdmv: fc.is_bdmv,
+        is_batch: false,
+        is_trusted: false,
+        score: 0,
+        info_hash: String::new(),
+    };
+    let seadex: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let ctx = EvalContext {
+        result: &release,
+        classification: &classification,
+        seadex_hashes: &seadex,
+    };
+
+    let cfs = state.custom_formats.read().await.clone();
+    let mut matched: Vec<serde_json::Value> = Vec::new();
+    let mut not_matched: Vec<serde_json::Value> = Vec::new();
+    let mut total = 0_i64;
+    for cf in cfs.iter() {
+        let is_match = evaluate(cf, &ctx);
+        let row = serde_json::json!({
+            "id": cf.id,
+            "name": cf.name,
+            "score": cf.score,
+        });
+        if is_match {
+            total += cf.score as i64;
+            matched.push(row);
+        } else {
+            not_matched.push(row);
+        }
+    }
+
+    Json(serde_json::json!({
+        "ok": true,
+        "release_title": title,
+        "parsed": {
+            "source": classification.source.as_str(),
+            "resolution": classification.resolution.as_str(),
+            "is_remux": classification.is_remux,
+            "is_bdmv": classification.is_bdmv,
+            "web_kind": classification.web_kind.as_str(),
+            "group": group,
+        },
+        "matched": matched,
+        "not_matched": not_matched,
+        "total_score": total,
+    }))
 }
 
 #[cfg(test)]

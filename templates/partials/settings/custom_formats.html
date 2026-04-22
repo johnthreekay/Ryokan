@@ -2,6 +2,29 @@
         Sonarr v4-compatible Custom Formats. Every matching spec contributes its score to the release total during auto-search. Paste JSON exports from Sonarr or <a href="https://trash-guides.info" target="_blank" rel="noopener">Trash Guides</a>, or build your own from scratch.
     </p>
 
+    {# ── Test box (#18) ─────────────────────────────────────────────
+       Paste a release filename, see which CFs match and what score
+       the release would get. Title-based specs only; Size and SeaDex
+       specs aren't testable from a title alone. #}
+    {% if !custom_formats.is_empty() %}
+    <div class="cf-section">
+        <div class="cf-section-header">
+            <h3>Test a release title</h3>
+        </div>
+        <p class="cf-section-desc">
+            Paste a release filename to see which Custom Formats match it and what score it would receive. Useful when authoring or tuning a CF. <strong>Title-based specs only</strong> — <code>Size</code> and <code>SeaDexBest</code> specs require a torrent size or an AniList ID, so CFs that depend on them will report as not matched here.
+        </p>
+        <div class="form-group" style="max-width: 820px;">
+            <input type="text" id="cf-test-input" placeholder="[SubsPlease] Frieren - Beyond Journey's End - 01 (1080p) [ABCD1234].mkv" autocomplete="off">
+        </div>
+        <div class="settings-inline-actions">
+            <button type="button" class="btn btn-secondary" onclick="runCfTest()">Test</button>
+            <button type="button" class="btn btn-ghost" onclick="clearCfTest()">Clear</button>
+        </div>
+        <div id="cf-test-results" style="margin-top:12px;display:none"></div>
+    </div>
+    {% endif %}
+
     {# ── Card grid (#11.1, Sonarr-style) ─────────────────────────────
        Sonarr renders CFs as a full-width flex-wrap grid of ~300px cards,
        not a table. Each card shows the name, the score (Ryokan

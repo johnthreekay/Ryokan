@@ -236,6 +236,67 @@ async function cfExportClipboard(btn) {
     }
 }
 
+// CF test box (#18). Posts the pasted release title to
+// /api/custom-formats/test and renders matched/not-matched CFs with
+// the summed score. Title-based specs only — Size and SeaDex specs
+// always miss here, and the section copy on the page says so.
+async function runCfTest() {
+    const input = document.getElementById('cf-test-input');
+    const out = document.getElementById('cf-test-results');
+    if (!input || !out) return;
+    const title = (input.value || '').trim();
+    if (!title) {
+        out.style.display = 'none';
+        return;
+    }
+    out.style.display = 'block';
+    out.innerHTML = '<p class="form-hint">Testing…</p>';
+    try {
+        const r = await fetch('/api/custom-formats/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({release_title: title}),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) {
+            out.innerHTML = '<p class="form-hint">Test failed: ' + (data.error || r.status) + '</p>';
+            return;
+        }
+        const parsed = data.parsed || {};
+        const rows = [];
+        rows.push('<p class="form-hint" style="margin-bottom:8px">Parsed: source=<code>' + (parsed.source || 'Unknown') + '</code>, resolution=<code>' + (parsed.resolution || 'Unknown') + '</code>, group=<code>' + (parsed.group || '(none)') + '</code>' + (parsed.is_remux ? ', <code>remux</code>' : '') + (parsed.is_bdmv ? ', <code>BDMV</code>' : '') + '</p>');
+        rows.push('<p><strong>Total score: ' + data.total_score + '</strong> — <span class="form-hint">' + data.matched.length + ' matched, ' + data.not_matched.length + ' not matched</span></p>');
+        if (data.matched.length > 0) {
+            rows.push('<div class="settings-subheading">Matched</div>');
+            rows.push('<ul style="list-style:none;padding:0;margin:0 0 12px 0">');
+            data.matched.forEach(cf => {
+                const sign = cf.score > 0 ? '+' : '';
+                const cls = cf.score > 0 ? 'cf-score-positive' : (cf.score < 0 ? 'cf-score-negative' : 'cf-score-zero');
+                rows.push('<li style="padding:4px 0;display:flex;gap:10px;align-items:baseline"><span class="cf-score ' + cls + '" style="min-width:48px;text-align:right">' + sign + cf.score + '</span><span>' + cf.name + '</span></li>');
+            });
+            rows.push('</ul>');
+        }
+        if (data.not_matched.length > 0) {
+            rows.push('<details><summary class="form-hint">' + data.not_matched.length + ' CFs did not match</summary>');
+            rows.push('<ul style="list-style:none;padding:0;margin:4px 0 0 0">');
+            data.not_matched.forEach(cf => {
+                rows.push('<li style="padding:2px 0;color:var(--text-dim);font-size:13px">' + cf.name + ' <span class="form-hint">(score ' + cf.score + ')</span></li>');
+            });
+            rows.push('</ul></details>');
+        }
+        out.innerHTML = rows.join('');
+    } catch (e) {
+        out.innerHTML = '<p class="form-hint">Test failed: ' + (e && e.message ? e.message : e) + '</p>';
+    }
+}
+
+function clearCfTest() {
+    const input = document.getElementById('cf-test-input');
+    const out = document.getElementById('cf-test-results');
+    if (input) input.value = '';
+    if (out) { out.innerHTML = ''; out.style.display = 'none'; }
+}
+
 function generateApiKey() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     const buf = new Uint8Array(32);
