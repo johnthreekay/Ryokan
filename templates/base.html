@@ -30,6 +30,7 @@
         <a href="/" class="nav-brand">旅館 Ryokan</a>
         <div class="nav-links">
             <a href="/" class="{% if page == "library" %}active{% endif %}">Library</a>
+            <a href="/library/review" id="nav-needs-review" class="nav-needs-review" hidden>Needs Review <span class="nav-needs-review-count" id="nav-needs-review-count">0</span></a>
             <a href="/search" class="{% if page == "search" %}active{% endif %}">Search</a>
             <a href="/downloads" class="{% if page == "downloads" %}active{% endif %}">Downloads</a>
             <a href="/settings" class="{% if page == "settings" %}active{% endif %}">Settings</a>
@@ -151,5 +152,25 @@
     <div class="ryokan-toast-stack" id="ryokan-toast-stack" aria-live="polite" aria-atomic="false"></div>
 
     <script src="/static/js/base.js" defer></script>
+    <script>
+    // Topbar "Needs Review" badge. Fetched on every page load so users
+    // don't have to be on the library index to know there's
+    // classification work pending. Hidden when count is 0.
+    (function () {
+        const link = document.getElementById('nav-needs-review');
+        const num = document.getElementById('nav-needs-review-count');
+        if (!link || !num) return;
+        fetch('/api/library/needs-review-count', {credentials: 'same-origin'})
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                const n = data && typeof data.count === 'number' ? data.count : 0;
+                if (n > 0) {
+                    num.textContent = String(n);
+                    link.hidden = false;
+                }
+            })
+            .catch(() => {});
+    })();
+    </script>
 </body>
 </html>

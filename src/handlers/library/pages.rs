@@ -59,6 +59,26 @@ pub async fn index(State(state): State<AppState>) -> Html<String> {
     Html(template.render().unwrap_or_default())
 }
 
+/// Count of episodes currently flagged `needs_review`. Fed to the
+/// topbar badge from every page via an inline fetch in base.html so
+/// users don't need to be on the library index to know there's
+/// classification work pending.
+#[utoipa::path(
+    get,
+    path = "/api/library/needs-review-count",
+    tag = "Library",
+    summary = "Count episodes flagged needs_review",
+    responses(
+        (status = 200, description = "Count", body = serde_json::Value),
+    ),
+)]
+pub async fn needs_review_count(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
+    let count = episode_tags::count_needs_review(&state.db)
+        .await
+        .unwrap_or(0);
+    axum::Json(serde_json::json!({ "count": count }))
+}
+
 /// Phase 4 cross-library "needs review" page. Lists every episode the
 /// classifier couldn't land a confident verdict on, with a deep link back
 /// to the series detail page so the user can open the override modal.

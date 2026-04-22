@@ -46,6 +46,32 @@
 
 .nav-logout { color: var(--text-dim) !important; }
 
+.nav-needs-review {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    color: var(--text) !important;
+    background: rgba(249, 176, 124, 0.12);
+    border: 1px solid rgba(249, 176, 124, 0.35);
+}
+.nav-needs-review:hover {
+    background: rgba(249, 176, 124, 0.2) !important;
+}
+.nav-needs-review-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
 @media (max-width: 640px) {
     .nav-links {
         display: none;
