@@ -381,10 +381,16 @@ const SOURCE_FALLBACK_TOKENS: &[(&str, Source)] = &[
     ("bdremux", Source::BluRay),
     ("bluray", Source::BluRay),
     ("blu-ray", Source::BluRay),
-    // Web variants
+    // Web variants — the bare "web" entry catches space-separated
+    // forms like "(WEB 1080p AV1 EAC-3)" that anitomy sometimes
+    // misses as an ElementCategory::Source and that the hyphenated
+    // variants don't cover. The dedup on line ~183 prevents double-
+    // counting when both the specific (web-dl) and the bare (web)
+    // token are present in the same title.
     ("web-dl", Source::Web),
     ("webrip", Source::Web),
     ("webdl", Source::Web),
+    ("web", Source::Web),
     // DVD variants
     ("dvdrip", Source::Dvd),
     // HDTV
@@ -535,6 +541,21 @@ mod tests {
     #[test]
     fn explicit_web_dl_classifies_as_web() {
         let (src, res, _) = classify("Sousou.no.Frieren.S01E01.1080p.WEB-DL.DDP5.1.H.264-NTb.mkv");
+        assert_eq!(src, Source::Web);
+        assert_eq!(res, Resolution::R1080p);
+    }
+
+    #[test]
+    fn bare_web_in_parens_classifies_as_web() {
+        // Regression: "[miniKaizoku] Jujutsu Kaisen Season 3 (WEB 1080p
+        // AV1 EAC-3) | The Culling Game Part 1" used to classify as
+        // Unknown source because SOURCE_FALLBACK_TOKENS didn't include
+        // bare "web" (only the hyphenated web-dl / webrip forms). The
+        // title's space-separated WEB token inside parens now matches
+        // the fallback and fires Source::Web evidence.
+        let (src, res, _) = classify(
+            "[miniKaizoku] Jujutsu Kaisen Season 3 (WEB 1080p AV1 EAC-3) | The Culling Game Part 1",
+        );
         assert_eq!(src, Source::Web);
         assert_eq!(res, Resolution::R1080p);
     }
