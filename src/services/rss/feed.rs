@@ -47,16 +47,16 @@ static RE_BATCH: LazyLock<Regex> = LazyLock::new(|| {
 /// releases have a different anchor (episode token or dash) between
 /// the season marker and the bracket, so this regex doesn't fire.
 ///
-/// Covers the common season-marker phrasings: `Season N`, `S\d+`
-/// (standalone — the `\s*[(\[]` tail ensures no `E\d` / other digit
-/// sits between the `S\d` and the bracket, which regex-lite's lack
-/// of lookaround would otherwise need to express), `\d(st|nd|rd|th)
-/// Season`, `Part N`, `Cour N`.
+/// The season-token vocabulary comes from `super::SEASON_TOKEN_
+/// FRAGMENTS` so a new phrasing (e.g. "Chapter N") only needs to be
+/// added in one place and both this regex and the masking pass in
+/// `parse_release` pick it up. The `\s*[(\[]` tail ensures no `E\d`
+/// or other digit sits between the season marker and the bracket,
+/// which regex-lite's lack of lookaround would otherwise need to
+/// express.
 static RE_BATCH_SEASON_BRACKET: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)\b(?:season\s*\d{1,2}|s\d{1,2}|\d{1,2}(?:st|nd|rd|th)\s+season|part\s*\d{1,2}|cour\s*\d{1,2})\s*[(\[]",
-    )
-    .unwrap()
+    let alternation = super::SEASON_TOKEN_FRAGMENTS.join("|");
+    Regex::new(&format!(r"(?i)\b(?:{})\s*[(\[]", alternation)).unwrap()
 });
 
 pub(super) fn build_item_key(item: &RssItem) -> String {

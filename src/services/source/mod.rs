@@ -841,11 +841,15 @@ pub fn parse_cutoff_source(s: &str) -> (Source, bool, bool) {
 ///    Rationale: BDMV file sizes are roughly 10× Remux, playback
 ///    through the disc menu structure is worse on every frontend
 ///    (Jellyfin, Plex, etc.), and most users treat Remux as the de-
-///    facto ceiling. Users who specifically want BDMV grab it
-///    explicitly via manual search or by setting their quality cutoff
-///    to `bluray_bdmv` — both of which bypass this helper. Fresh
-///    grabs of BDMV (no existing row on disk) are unaffected because
-///    they go through the missing-episode path, not the upgrade path.
+///    facto ceiling. Manual search is the only escape hatch — it
+///    bypasses this helper entirely because the user is grabbing
+///    intentionally. Note that a user's quality cutoff being
+///    `bluray_bdmv` does **not** relax this rule; the cutoff gate
+///    runs upstream of this helper and only controls *whether* the
+///    episode is eligible for upgrade at all, not *which* upgrades
+///    are allowed. Fresh grabs of BDMV (no existing row on disk) are
+///    unaffected because they route through the missing-episode
+///    path, not the upgrade path.
 ///
 /// Used by both RSS's per-item gate (`episode_is_upgradeable`) and the
 /// `upgrade_search` background task's candidate verification. Keeping
