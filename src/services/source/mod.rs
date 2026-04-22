@@ -828,6 +828,113 @@ pub fn parse_cutoff_source(s: &str) -> (Source, bool, bool) {
     }
 }
 
+/// Policy gate for quality upgrades. Returns `true` when `incoming`
+/// is an allowed replacement for `existing`.
+///
+/// Rules:
+/// 1. `incoming.rank() > existing.rank()` — strict tuple comparison
+///    on `(resolution, source, bluray_tier, web_kind)`. Sidegrades and
+///    downgrades are never upgrades.
+/// 2. **No non-BDMV → BDMV crossings.** A plain BluRay or Remux row
+///    on disk does not get auto-upgraded to a BDMV (disc-structure)
+///    release even though the rank tuple ranks BDMV above Remux.
+///    Rationale: BDMV file sizes are roughly 10× Remux, playback
+///    through the disc menu structure is worse on every frontend
+///    (Jellyfin, Plex, etc.), and most users treat Remux as the de-
+///    facto ceiling. Users who specifically want BDMV grab it
+///    explicitly via manual search or by setting their quality cutoff
+///    to `bluray_bdmv` — both of which bypass this helper. Fresh
+///    grabs of BDMV (no existing row on disk) are unaffected because
+///    they go through the missing-episode path, not the upgrade path.
+///
+/// Used by both RSS's per-item gate (`episode_is_upgradeable`) and the
+/// `upgrade_search` background task's candidate verification. Keeping
+/// the rule in one place ensures the two paths stay consistent.
+pub fn is_valid_upgrade(existing: &ClassificationResult, incoming: &ClassificationResult) -> bool {
+    if incoming.rank() <= existing.rank() {
+        return false;
+    }
+    if !existing.is_bdmv && incoming.is_bdmv {
+        return false;
+    }
+    true
+}
+
+#[cfg(test)]
+mod upgrade_policy_tests {
+    use super::*;
+
+    fn c(source: Source, res: Resolution, is_remux: bool, is_bdmv: bool) -> ClassificationResult {
+        ClassificationResult {
+            source,
+            resolution: res,
+            is_remux,
+            web_kind: WebKind::Unknown,
+            is_bdmv,
+            confidence: 1.0,
+            needs_review: false,
+            evidence: Vec::new(),
+            decision_rule: DecisionRule::Empty,
+        }
+    }
+
+    #[test]
+    fn upgrade_web_to_bluray_same_resolution_is_allowed() {
+        let existing = c(Source::Web, Resolution::R1080p, false, false);
+        let incoming = c(Source::BluRay, Resolution::R1080p, false, false);
+        assert!(is_valid_upgrade(&existing, &incoming));
+    }
+
+    #[test]
+    fn upgrade_plain_bluray_to_remux_is_allowed() {
+        let existing = c(Source::BluRay, Resolution::R1080p, false, false);
+        let incoming = c(Source::BluRay, Resolution::R1080p, true, false);
+        assert!(is_valid_upgrade(&existing, &incoming));
+    }
+
+    #[test]
+    fn upgrade_resolution_bump_is_allowed() {
+        let existing = c(Source::BluRay, Resolution::R720p, false, false);
+        let incoming = c(Source::Web, Resolution::R1080p, false, false);
+        assert!(is_valid_upgrade(&existing, &incoming));
+    }
+
+    #[test]
+    fn upgrade_remux_to_bdmv_is_blocked() {
+        let existing = c(Source::BluRay, Resolution::R1080p, true, false);
+        let incoming = c(Source::BluRay, Resolution::R1080p, false, true);
+        assert!(!is_valid_upgrade(&existing, &incoming));
+    }
+
+    #[test]
+    fn upgrade_plain_bluray_to_bdmv_is_blocked() {
+        let existing = c(Source::BluRay, Resolution::R1080p, false, false);
+        let incoming = c(Source::BluRay, Resolution::R1080p, false, true);
+        assert!(!is_valid_upgrade(&existing, &incoming));
+    }
+
+    #[test]
+    fn upgrade_bdmv_to_better_bdmv_is_allowed() {
+        let existing = c(Source::BluRay, Resolution::R1080p, false, true);
+        let incoming = c(Source::BluRay, Resolution::R2160p, false, true);
+        assert!(is_valid_upgrade(&existing, &incoming));
+    }
+
+    #[test]
+    fn sidegrade_is_blocked() {
+        let existing = c(Source::BluRay, Resolution::R1080p, true, false);
+        let incoming = c(Source::BluRay, Resolution::R1080p, true, false);
+        assert!(!is_valid_upgrade(&existing, &incoming));
+    }
+
+    #[test]
+    fn downgrade_is_blocked() {
+        let existing = c(Source::BluRay, Resolution::R1080p, true, false);
+        let incoming = c(Source::Web, Resolution::R1080p, false, false);
+        assert!(!is_valid_upgrade(&existing, &incoming));
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Finished-series filters
 // ───────────────────────────────────────────────────────────────────────────

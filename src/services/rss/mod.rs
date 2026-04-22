@@ -1076,8 +1076,11 @@ fn episode_is_upgradeable(
     }
     let incoming_classification =
         source::classify_release_sync(&incoming.title, Some(&incoming.resolution));
-    // Incoming must be strictly better than what's on disk.
-    incoming_classification.rank() > existing_classification.rank()
+    // Incoming must pass the shared upgrade policy: strictly better on
+    // the rank tuple AND not a non-BDMV → BDMV crossing. See
+    // `source::is_valid_upgrade` for the rationale on the BDMV carve-
+    // out.
+    source::is_valid_upgrade(&existing_classification, &incoming_classification)
 }
 
 fn is_finished_status(status: &str) -> bool {

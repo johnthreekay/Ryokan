@@ -199,11 +199,14 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             )
             .await;
 
-            // Verify this is actually an upgrade.
+            // Verify this is actually an upgrade via the shared policy
+            // gate (strict rank improvement AND not a non-BDMV → BDMV
+            // crossing — see source::is_valid_upgrade for the BDMV
+            // rationale). Keeps RSS and upgrade_search consistent.
             if let auto_search::SearchTarget::Episode(ep_num) = &target
                 && let Some(existing_classification) = upgrade_classifications.get(ep_num)
             {
-                if incoming_classification.rank() <= existing_classification.rank() {
+                if !source::is_valid_upgrade(existing_classification, &incoming_classification) {
                     continue;
                 }
                 logger::info(
