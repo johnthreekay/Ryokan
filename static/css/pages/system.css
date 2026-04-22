@@ -326,3 +326,24 @@
     gap: 6px;
 }
 
+.debug-action-row > .btn {
+    min-width: 260px;
+    text-align: center;
+    justify-content: center;
+}
+
+/* Scheduled-tasks: wrap the long Detail column so the "Run now" column
+   doesn't get pushed off-screen, and keep the button on a single line.
+   Mobile may still need horizontal scroll — accept that over squeezing
+   the table further. */
+.task-detail-cell {
+    max-width: 360px;
+}
+.task-detail-text {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.task-run-btn {
+    white-space: nowrap;
+}
+

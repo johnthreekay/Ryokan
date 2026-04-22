@@ -500,6 +500,8 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
 
 .system-tab:hover { color: var(--text); }
 
+.system-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
 @media (max-width: 640px) {
     .system-tabs {
         flex-wrap: nowrap;

@@ -127,6 +127,7 @@ struct SettingsTemplate {
     custom_format_import_review: Option<ImportReviewView>,
     message: Option<String>,
     error: Option<String>,
+    version: &'static str,
 }
 
 fn min_score_display(score: i32) -> String {
@@ -134,6 +135,66 @@ fn min_score_display(score: i32) -> String {
         String::new()
     } else {
         score.to_string()
+    }
+}
+
+/// Canonicalize the rtorrent URL at save time so callers don't have to
+/// remember the `/RPC2` suffix that every realistic deployment uses.
+/// Matches the convenience Deluge and Transmission already have via
+/// client-side path appending. Case-insensitive match on the suffix to
+/// tolerate `/rpc2` pasted from docs.
+fn canonicalize_rtorrent_url(raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.ends_with("/rpc2") {
+        return trimmed.to_string();
+    }
+    format!("{}/RPC2", trimmed)
+}
+
+#[cfg(test)]
+mod canonicalize_tests {
+    use super::canonicalize_rtorrent_url;
+
+    #[test]
+    fn appends_rpc2_when_missing() {
+        assert_eq!(
+            canonicalize_rtorrent_url("http://host:8081"),
+            "http://host:8081/RPC2"
+        );
+    }
+
+    #[test]
+    fn strips_trailing_slash_then_appends() {
+        assert_eq!(
+            canonicalize_rtorrent_url("http://host:8081/"),
+            "http://host:8081/RPC2"
+        );
+    }
+
+    #[test]
+    fn preserves_existing_rpc2_suffix() {
+        assert_eq!(
+            canonicalize_rtorrent_url("http://host:8081/RPC2"),
+            "http://host:8081/RPC2"
+        );
+    }
+
+    #[test]
+    fn tolerates_lowercase_rpc2() {
+        assert_eq!(
+            canonicalize_rtorrent_url("http://host:8081/rpc2"),
+            "http://host:8081/rpc2"
+        );
+    }
+
+    #[test]
+    fn empty_stays_empty() {
+        assert_eq!(canonicalize_rtorrent_url(""), "");
+        assert_eq!(canonicalize_rtorrent_url("   "), "");
     }
 }
 
@@ -397,6 +458,7 @@ async fn build_settings_template(
         custom_format_import_review: import_review,
         message: msg,
         error: err,
+        version: env!("CARGO_PKG_VERSION"),
     }
 }
 
@@ -479,7 +541,7 @@ pub async fn settings_submit(
             .trim()
             .trim_end_matches('/')
             .to_string(),
-        rtorrent_url: form.rtorrent_url.trim().trim_end_matches('/').to_string(),
+        rtorrent_url: canonicalize_rtorrent_url(&form.rtorrent_url),
         rtorrent_user: form.rtorrent_user.trim().to_string(),
         rtorrent_password: form.rtorrent_password,
         rtorrent_label: sanitize_label(&form.rtorrent_label),
@@ -642,6 +704,7 @@ pub async fn settings_submit(
             custom_format_import_review: None,
             message: None,
             error: Some(format!("Failed to save: {}", e)),
+            version: env!("CARGO_PKG_VERSION"),
         };
         return Html(template.render().unwrap_or_default());
     }
@@ -955,6 +1018,7 @@ pub async fn settings_submit(
         // the user changes integration settings).
         message: Some(notices.join(" ")),
         error: None,
+        version: env!("CARGO_PKG_VERSION"),
     };
     Html(template.render().unwrap_or_default())
 }

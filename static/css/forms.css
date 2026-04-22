@@ -290,7 +290,8 @@
 }
 
 .checkbox-label input[type="checkbox"],
-.checkbox-row input[type="checkbox"] {
+.checkbox-row input[type="checkbox"],
+.cf-export-check input[type="checkbox"] {
     width: 16px;
     height: 16px;
     accent-color: var(--accent);
@@ -307,17 +308,20 @@
     flex-shrink: 0;
     vertical-align: middle;
     margin: 0;
+    padding: 0;
     transition: background 0.15s, border-color 0.15s;
 }
 
 .checkbox-label input[type="checkbox"]:checked,
-.checkbox-row input[type="checkbox"]:checked {
+.checkbox-row input[type="checkbox"]:checked,
+.cf-export-check input[type="checkbox"]:checked {
     background: var(--accent);
     border-color: var(--accent);
 }
 
 .checkbox-label input[type="checkbox"]:checked::after,
-.checkbox-row input[type="checkbox"]:checked::after {
+.checkbox-row input[type="checkbox"]:checked::after,
+.cf-export-check input[type="checkbox"]:checked::after {
     content: '';
     position: absolute;
     left: 50%;

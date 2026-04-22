@@ -26,8 +26,6 @@ fieldset legend {
     padding: 0 8px;
 }
 
-.system-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-
 .settings-tabs {
     margin-bottom: 24px;
 }
@@ -42,6 +40,13 @@ fieldset legend {
 
 .settings-tabs {
     margin-bottom: 24px;
+}
+
+.settings-version {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 0.3px;
 }
 
 .settings-subheading {

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block page_css %}<link rel="stylesheet" href="/static/css/pages/series.css">{% endblock %}
 
-{% block title %} - {% if !detail.title_english.is_empty() %}{{ detail.title_english }}{% else if !detail.title_romaji.is_empty() %}{{ detail.title_romaji }}{% else %}{{ detail.title_native }}{% endif %}{% endblock %}
+{% block title %} - {% if title_language == "romaji" %}{% if !detail.title_romaji.is_empty() %}{{ detail.title_romaji }}{% else if !detail.title_english.is_empty() %}{{ detail.title_english }}{% else %}{{ detail.title_native }}{% endif %}{% else if title_language == "native" %}{% if !detail.title_native.is_empty() %}{{ detail.title_native }}{% else if !detail.title_romaji.is_empty() %}{{ detail.title_romaji }}{% else %}{{ detail.title_english }}{% endif %}{% else %}{% if !detail.title_english.is_empty() %}{{ detail.title_english }}{% else if !detail.title_romaji.is_empty() %}{{ detail.title_romaji }}{% else %}{{ detail.title_native }}{% endif %}{% endif %}{% endblock %}
 
 {% block content %}
 <!-- Banner -->
@@ -58,8 +58,14 @@
             {% else %}
             <button class="btn btn-secondary" id="btn-track" onclick="addSeries()">+ Add to Library</button>
             {% endif %}
-            {% if !external_url.is_empty() %}<a href="{{ external_url }}" target="_blank" rel="noopener" class="btn btn-ghost">{{ external_label }}</a>{% endif %}
+            {% if !anilist_url.is_empty() %}<a href="{{ anilist_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost">AniList</a>{% endif %}
+            {% if !mal_url.is_empty() %}<a href="{{ mal_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost">MyAnimeList</a>{% endif %}
         </div>
+        {% if !metadata_refreshed_at.is_empty() %}
+        <div class="detail-meta-refresh">
+            <span class="form-hint">Metadata last refreshed <span data-ts="{{ metadata_refreshed_at }}">{{ metadata_refreshed_at }}</span></span>
+        </div>
+        {% endif %}
 
         {% if !detail.description.is_empty() %}
         <details class="detail-synopsis">

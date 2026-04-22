@@ -246,6 +246,11 @@
     margin-bottom: 16px;
 }
 
+.detail-meta-refresh {
+    margin-bottom: 16px;
+    margin-top: -8px;
+}
+
 .detail-synopsis {
     font-size: 14px;
     line-height: 1.7;

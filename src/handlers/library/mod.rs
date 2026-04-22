@@ -50,8 +50,18 @@ struct SeriesTemplate {
     size_display: String,
     title_language: String,
     relation_groups: Vec<RelationGroup>,
-    external_url: String,
-    external_label: String,
+    /// Link to anilist.co for this series when a real (positive) AL ID
+    /// is known. Empty for Jikan-fallback series with a synthetic
+    /// negative id (those have no real AniList entry to link to).
+    anilist_url: String,
+    /// Link to myanimelist.net for this series when a MAL id is known
+    /// (via `detail.id_mal` for AL-sourced series, or derived from the
+    /// negative sentinel for Jikan-fallback series).
+    mal_url: String,
+    /// Last refresh timestamp from `provider_metadata_cache.cached_at`.
+    /// Empty when we've never cached metadata (shouldn't normally
+    /// happen for a series reaching this page — be defensive).
+    metadata_refreshed_at: String,
     monitor_mode: String,
     monitor_mode_label: String,
     monitored_count: i32,

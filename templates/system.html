@@ -203,10 +203,10 @@
                         <td>{{ task.schedule_label }}</td>
                         <td>{% if task.enabled %}<span class="log-badge log-badge-info">enabled</span>{% else %}<span class="log-badge log-badge-warn">disabled</span>{% endif %}</td>
                         <td>{% if task.last_status == "ok" %}<span class="log-badge log-badge-info">ok</span>{% else if task.last_status == "warn" %}<span class="log-badge log-badge-warn">warn</span>{% else if task.last_status == "error" %}<span class="log-badge log-badge-error">error</span>{% else if task.last_status == "running" %}<span class="log-badge log-badge-debug">running</span>{% else %}<span class="log-badge">{{ task.last_status }}</span>{% endif %}</td>
-                        <td>{% if let Some(started) = task.last_started_at %}{{ started }}{% else %}—{% endif %}</td>
-                        <td>{% if let Some(finished) = task.last_finished_at %}{{ finished }}{% else %}—{% endif %}</td>
-                        <td class="rss-reason-cell"><div class="rss-reason-text">{{ task.last_detail }}</div></td>
-                        <td><button type="button" class="btn btn-secondary btn-sm" onclick="forceRunTask(this, '{{ task.task_key }}')">Run now</button></td>
+                        <td>{% if let Some(started) = task.last_started_at %}<span data-ts="{{ started }}">{{ started }}</span>{% else %}—{% endif %}</td>
+                        <td>{% if let Some(finished) = task.last_finished_at %}<span data-ts="{{ finished }}">{{ finished }}</span>{% else %}—{% endif %}</td>
+                        <td class="task-detail-cell"><div class="task-detail-text">{{ task.last_detail }}</div></td>
+                        <td><button type="button" class="btn btn-secondary btn-sm task-run-btn" onclick="forceRunTask(this, '{{ task.task_key }}')">Run now</button></td>
                     </tr>
                     {% endfor %}
                 </tbody>

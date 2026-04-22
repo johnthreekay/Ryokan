@@ -438,8 +438,10 @@ function refreshJellyfin(btn) {
     fetch('/api/health')
         .then(r => r.json())
         .then(data => {
+            let activeType = null;
             if (data.download_client) {
                 const dc = data.download_client;
+                activeType = dc.type;
                 const target = badges[dc.type];
                 if (target) {
                     if (dc.ok) {
@@ -449,6 +451,17 @@ function refreshJellyfin(btn) {
                     }
                 }
             }
+            // Fill non-active client badges with a neutral "Not active"
+            // so the badge slot reads consistently across all four
+            // fieldsets when a user toggles the dropdown to view
+            // credentials for a client they haven't activated.
+            Object.keys(badges).forEach(function (key) {
+                const el = badges[key];
+                if (!el) return;
+                if (key === activeType) return;
+                if (el.innerHTML.trim() !== '') return;
+                el.innerHTML = '<span class="log-badge">Not active</span>';
+            });
             if (jellyfinHealth && data.jellyfin) {
                 if (data.jellyfin.ok) {
                     jellyfinHealth.innerHTML = '<span class="log-badge log-badge-info">' + data.jellyfin.message + '</span>';
@@ -458,4 +471,23 @@ function refreshJellyfin(btn) {
             }
         })
         .catch(() => {});
+})();
+
+// Dirty-state guard on the Settings form. Flips a flag on any input
+// change, prompts the user on nav-away (topbar click, browser back, tab
+// close). Clears the flag on submit so the save itself doesn't trigger
+// the prompt.
+(function () {
+    const form = document.querySelector('form.settings-form[action="/settings"]');
+    if (!form) return;
+    let dirty = false;
+    const markDirty = () => { dirty = true; };
+    form.addEventListener('input', markDirty);
+    form.addEventListener('change', markDirty);
+    form.addEventListener('submit', () => { dirty = false; });
+    window.addEventListener('beforeunload', (ev) => {
+        if (!dirty) return;
+        ev.preventDefault();
+        ev.returnValue = '';
+    });
 })();

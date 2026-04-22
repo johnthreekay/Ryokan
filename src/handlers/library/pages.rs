@@ -251,20 +251,27 @@ pub async fn series_detail(
         .unwrap_or_else(|| "english".to_string());
 
     let ep_total = detail.effective_episode_count();
-    let (external_url, external_label) = if detail.id < 0 {
-        (
-            detail
-                .id_mal
-                .map(|id| format!("https://myanimelist.net/anime/{}", id))
-                .unwrap_or_default(),
-            "MyAnimeList".to_string(),
-        )
+    // #15a — render AL and MAL links independently. AL link is hidden
+    // for the Jikan-fallback sentinel case (detail.id < 0); MAL link is
+    // hidden only when no MAL id is known.
+    let anilist_url = if detail.id > 0 {
+        format!("https://anilist.co/anime/{}", detail.id)
     } else {
-        (
-            format!("https://anilist.co/anime/{}", detail.id),
-            "AniList".to_string(),
-        )
+        String::new()
     };
+    let mal_url = detail
+        .id_mal
+        .filter(|id| *id > 0)
+        .map(|id| format!("https://myanimelist.net/anime/{}", id))
+        .unwrap_or_default();
+
+    // #15b — last metadata refresh. Look up by provider_id so both
+    // AL-sourced and Jikan-fallback series route to the right cache row.
+    let metadata_refreshed_at =
+        match crate::models::metadata_cache::get_by_provider_id(&state.db, provider_id).await {
+            Ok(Some(row)) => row.cached_at,
+            _ => String::new(),
+        };
 
     let all_monitored = ep_total > 0 && monitored_count >= ep_total;
     let allow_upgrades = db_series.as_ref().map(|s| s.allow_upgrades).unwrap_or(true);
@@ -303,8 +310,9 @@ pub async fn series_detail(
         size_display,
         title_language,
         relation_groups,
-        external_url,
-        external_label,
+        anilist_url,
+        mal_url,
+        metadata_refreshed_at,
         monitor_mode,
         monitor_mode_label,
         monitored_count,
