@@ -479,13 +479,15 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             quality_tags_cache.entry(found.series.id).or_insert(tags)
         };
         let decision = evaluate_candidate(
+            &state.db,
             &found.series,
             &item,
             disk_files,
             &actionable_eps,
             &cutoff,
             qtags,
-        );
+        )
+        .await;
         if let Some(reason) = decision.reject_reason {
             skipped += 1;
             let reason = format!("{} | {}", reason, build_match_diag(&item, Some(&found), 0));
@@ -930,7 +932,8 @@ fn resolution_rank(value: &str) -> i32 {
     }
 }
 
-fn evaluate_candidate(
+async fn evaluate_candidate(
+    db: &sqlx::SqlitePool,
     found: &series::Series,
     item: &RssItem,
     disk_files: &[media::EpisodeFile],
@@ -939,6 +942,33 @@ fn evaluate_candidate(
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
 ) -> CandidateDecision {
     let existing_ep_numbers: HashSet<i32> = disk_files.iter().map(|f| f.episode_number).collect();
+    // Classify the incoming release once per item using the full pre-
+    // disk pipeline (filename + group-map + temporal + description).
+    // Description-body fetching is already gated inside
+    // `classify_release`: it fires only when L1+L3+L4 couldn't produce
+    // a confident verdict, or when only the filename layer backs the
+    // winner while other layers disagreed. Happy-path clean classifies
+    // skip the HTTP entirely. Ambiguous items that do fetch cache the
+    // result via `nyaa_description_cache`, so the downstream scoring
+    // path and post-grab classification reuse the same value.
+    let series_ctx = source::SeriesContext {
+        status: &found.status,
+        season_year: found.season_year,
+        end_year: found.end_year,
+    };
+    let nyaa_ctx = source::NyaaContext {
+        info_hash: &item.info_hash,
+        view_url: &item.link,
+        is_batch: item.is_batch,
+    };
+    let incoming_classification = source::classify_release(
+        db,
+        &item.title,
+        Some(&item.resolution),
+        Some(nyaa_ctx),
+        Some(series_ctx),
+    )
+    .await;
 
     if item.is_batch {
         if !parsed_eps.is_empty() {
@@ -964,7 +994,13 @@ fn evaluate_candidate(
                 .iter()
                 .filter(|ep| {
                     existing_ep_numbers.contains(ep)
-                        && episode_is_upgradeable(ep, disk_files, item, cutoff, quality_tags)
+                        && episode_is_upgradeable(
+                            ep,
+                            disk_files,
+                            &incoming_classification,
+                            cutoff,
+                            quality_tags,
+                        )
                 })
                 .count() as i32;
             let actionable = new_count + upgrade_count;
@@ -1028,7 +1064,13 @@ fn evaluate_candidate(
         .iter()
         .filter(|ep| {
             existing_ep_numbers.contains(ep)
-                && episode_is_upgradeable(ep, disk_files, item, cutoff, quality_tags)
+                && episode_is_upgradeable(
+                    ep,
+                    disk_files,
+                    &incoming_classification,
+                    cutoff,
+                    quality_tags,
+                )
         })
         .count() as i32;
     let actionable = new_count + upgrade_count;
@@ -1048,14 +1090,19 @@ fn evaluate_candidate(
     }
 }
 
-/// Check if an episode on disk is below the quality cutoff and the incoming
-/// release would be an upgrade. Classifies both sides via the classification
-/// pipeline (stored columns / release title / filename fallback for existing;
-/// filename-only for incoming) and compares by rank tuple.
+/// Check if an episode on disk is below the quality cutoff and the
+/// already-classified incoming release would be an upgrade.
+///
+/// Caller is responsible for running the incoming classification once
+/// per item (it's expensive enough — group-map DB lookup + potentially
+/// a description fetch — that re-doing it per covered episode in a
+/// batch would be wasteful). Existing side still classifies
+/// per-episode because each row on disk can have its own
+/// `episode_quality_tags` verdict.
 fn episode_is_upgradeable(
     ep: &i32,
     disk_files: &[media::EpisodeFile],
-    incoming: &RssItem,
+    incoming: &ClassificationResult,
     cutoff: &ClassificationResult,
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
 ) -> bool {
@@ -1074,13 +1121,9 @@ fn episode_is_upgradeable(
     if existing_classification.rank() >= cutoff.rank() {
         return false;
     }
-    let incoming_classification =
-        source::classify_release_sync(&incoming.title, Some(&incoming.resolution));
-    // Incoming must pass the shared upgrade policy: strictly better on
-    // the rank tuple AND not a non-BDMV → BDMV crossing. See
-    // `source::is_valid_upgrade` for the rationale on the BDMV carve-
-    // out.
-    source::is_valid_upgrade(&existing_classification, &incoming_classification)
+    // Shared upgrade policy: strictly better on the rank tuple AND
+    // not a non-BDMV → BDMV crossing. See `source::is_valid_upgrade`.
+    source::is_valid_upgrade(&existing_classification, incoming)
 }
 
 fn is_finished_status(status: &str) -> bool {
