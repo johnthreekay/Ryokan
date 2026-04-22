@@ -193,7 +193,14 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
                 format!("{} + {} → DVD override", token, result.resolution.as_str()),
             )
         } else {
-            (*mapped_src, 0.95, format!("keyword: {}", token))
+            // Bare "web" is a weaker signal than "web-dl"/"webrip": the
+            // latter two pin WebKind explicitly, bare "web" leaves
+            // WebKind::Unknown. Drop its confidence to 0.85 so the
+            // aggregator leaves room for post-download layers (ffprobe,
+            // group-map) to overrule when they disagree. Every other
+            // explicit source keyword stays at 0.95.
+            let conf = if *token == "web" { 0.85 } else { 0.95 };
+            (*mapped_src, conf, format!("keyword: {}", token))
         };
         result
             .evidence
@@ -384,9 +391,12 @@ const SOURCE_FALLBACK_TOKENS: &[(&str, Source)] = &[
     // Web variants — the bare "web" entry catches space-separated
     // forms like "(WEB 1080p AV1 EAC-3)" that anitomy sometimes
     // misses as an ElementCategory::Source and that the hyphenated
-    // variants don't cover. The dedup on line ~183 prevents double-
-    // counting when both the specific (web-dl) and the bare (web)
-    // token are present in the same title.
+    // variants don't cover. The dedup check inside `classify_filename`'s
+    // fallback loop (`.any(|e| e.source == *mapped_src)`) prevents
+    // double-counting when both the specific (web-dl) and the bare
+    // (web) token are present in the same title. Bare "web" also gets
+    // a lower confidence (0.85 vs 0.95 for the hyphenated variants) —
+    // see the comment in that loop for the rationale.
     ("web-dl", Source::Web),
     ("webrip", Source::Web),
     ("webdl", Source::Web),
