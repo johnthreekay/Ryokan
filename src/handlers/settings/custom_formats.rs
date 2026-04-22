@@ -1196,6 +1196,17 @@ pub struct CfTestRequest {
 /// without an AniList ID) — CFs that depend on them will always report
 /// not-matched under this endpoint. The UI note on the test box calls
 /// this out so users don't chase a phantom mismatch.
+///
+/// **Classification divergence:** the Source verdict comes solely from
+/// the filename layer (`classify_filename` + `source::aggregate` over
+/// its evidence). The real scoring path also consults the description-
+/// body, temporal, group-map, directory, and ffprobe layers — so for a
+/// given title this test may land on a slightly different Source than
+/// production classification does. Deliberate: filename-only keeps the
+/// test box fast and local, and the layers that diverge most often
+/// (ffprobe, directory) aren't available without the downloaded files
+/// anyway. Users comparing test-box output to a real grab should treat
+/// the CF match set as authoritative and the Source field as advisory.
 #[utoipa::path(
     post,
     path = "/api/custom-formats/test",

@@ -54,9 +54,11 @@ struct SeriesTemplate {
     /// is known. Empty for Jikan-fallback series with a synthetic
     /// negative id (those have no real AniList entry to link to).
     anilist_url: String,
-    /// Link to myanimelist.net for this series when a MAL id is known
-    /// (via `detail.id_mal` for AL-sourced series, or derived from the
-    /// negative sentinel for Jikan-fallback series).
+    /// Link to myanimelist.net for this series when a MAL id is known.
+    /// Populated from `detail.id_mal` regardless of source — AL returns
+    /// it directly, and the Jikan fallback path populates the same
+    /// field on the detail struct. The synthetic-negative sentinel
+    /// stored on `series.anilist_id` is never read here.
     mal_url: String,
     /// Last refresh timestamp from `provider_metadata_cache.cached_at`.
     /// Empty when we've never cached metadata (shouldn't normally

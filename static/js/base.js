@@ -477,6 +477,23 @@ window.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+// HTML-escape a string for safe concatenation into an `innerHTML`
+// sink. Use this wherever a user-controlled value (release title, CF
+// name, fetched error message, etc.) flows into a template literal
+// that's assigned to `.innerHTML`. Prefer DOM APIs (textContent,
+// createElement) for new code where feasible; this helper exists for
+// the "I'm building an HTML string with 5 interpolations and only
+// two of them are user-controlled" case.
+window.ryokanEscapeHtml = function (value) {
+    if (value == null) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 // Generic copy-to-clipboard helper. `text` is the string to copy;
 // `btn` is the optional button to flash a confirmation on. Falls back
 // to a toast when the clipboard API is unavailable (HTTP contexts

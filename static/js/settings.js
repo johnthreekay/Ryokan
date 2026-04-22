@@ -249,6 +249,12 @@ async function runCfTest() {
         out.style.display = 'none';
         return;
     }
+    // All user-controlled strings flowing into the rendered HTML below
+    // (CF names, parsed fields derived from the title the user pasted,
+    // error bodies from the server) must be HTML-escaped — CF names
+    // persist across requests, so a malicious CF name would otherwise
+    // self-execute for any admin who ran a test.
+    const esc = window.ryokanEscapeHtml;
     out.style.display = 'block';
     out.innerHTML = '<p class="form-hint">Testing…</p>';
     try {
@@ -259,34 +265,35 @@ async function runCfTest() {
         });
         const data = await r.json();
         if (!r.ok || !data.ok) {
-            out.innerHTML = '<p class="form-hint">Test failed: ' + (data.error || r.status) + '</p>';
+            out.innerHTML = '<p class="form-hint">Test failed: ' + esc(data.error || r.status) + '</p>';
             return;
         }
         const parsed = data.parsed || {};
         const rows = [];
-        rows.push('<p class="form-hint" style="margin-bottom:8px">Parsed: source=<code>' + (parsed.source || 'Unknown') + '</code>, resolution=<code>' + (parsed.resolution || 'Unknown') + '</code>, group=<code>' + (parsed.group || '(none)') + '</code>' + (parsed.is_remux ? ', <code>remux</code>' : '') + (parsed.is_bdmv ? ', <code>BDMV</code>' : '') + '</p>');
-        rows.push('<p><strong>Total score: ' + data.total_score + '</strong> — <span class="form-hint">' + data.matched.length + ' matched, ' + data.not_matched.length + ' not matched</span></p>');
+        rows.push('<p class="form-hint" style="margin-bottom:8px">Parsed: source=<code>' + esc(parsed.source || 'Unknown') + '</code>, resolution=<code>' + esc(parsed.resolution || 'Unknown') + '</code>, group=<code>' + esc(parsed.group || '(none)') + '</code>' + (parsed.is_remux ? ', <code>remux</code>' : '') + (parsed.is_bdmv ? ', <code>BDMV</code>' : '') + '</p>');
+        rows.push('<p><strong>Total score: ' + Number(data.total_score) + '</strong> — <span class="form-hint">' + Number(data.matched.length) + ' matched, ' + Number(data.not_matched.length) + ' not matched</span></p>');
         if (data.matched.length > 0) {
             rows.push('<div class="settings-subheading">Matched</div>');
             rows.push('<ul style="list-style:none;padding:0;margin:0 0 12px 0">');
             data.matched.forEach(cf => {
-                const sign = cf.score > 0 ? '+' : '';
-                const cls = cf.score > 0 ? 'cf-score-positive' : (cf.score < 0 ? 'cf-score-negative' : 'cf-score-zero');
-                rows.push('<li style="padding:4px 0;display:flex;gap:10px;align-items:baseline"><span class="cf-score ' + cls + '" style="min-width:48px;text-align:right">' + sign + cf.score + '</span><span>' + cf.name + '</span></li>');
+                const score = Number(cf.score);
+                const sign = score > 0 ? '+' : '';
+                const cls = score > 0 ? 'cf-score-positive' : (score < 0 ? 'cf-score-negative' : 'cf-score-zero');
+                rows.push('<li style="padding:4px 0;display:flex;gap:10px;align-items:baseline"><span class="cf-score ' + cls + '" style="min-width:48px;text-align:right">' + sign + score + '</span><span>' + esc(cf.name) + '</span></li>');
             });
             rows.push('</ul>');
         }
         if (data.not_matched.length > 0) {
-            rows.push('<details><summary class="form-hint">' + data.not_matched.length + ' CFs did not match</summary>');
+            rows.push('<details><summary class="form-hint">' + Number(data.not_matched.length) + ' CFs did not match</summary>');
             rows.push('<ul style="list-style:none;padding:0;margin:4px 0 0 0">');
             data.not_matched.forEach(cf => {
-                rows.push('<li style="padding:2px 0;color:var(--text-dim);font-size:13px">' + cf.name + ' <span class="form-hint">(score ' + cf.score + ')</span></li>');
+                rows.push('<li style="padding:2px 0;color:var(--text-dim);font-size:13px">' + esc(cf.name) + ' <span class="form-hint">(score ' + Number(cf.score) + ')</span></li>');
             });
             rows.push('</ul></details>');
         }
         out.innerHTML = rows.join('');
     } catch (e) {
-        out.innerHTML = '<p class="form-hint">Test failed: ' + (e && e.message ? e.message : e) + '</p>';
+        out.innerHTML = '<p class="form-hint">Test failed: ' + esc(e && e.message ? e.message : e) + '</p>';
     }
 }
 
@@ -506,8 +513,10 @@ function refreshJellyfin(btn) {
                 const target = badges[dc.type];
                 if (target) {
                     if (dc.ok) {
-                        target.innerHTML = '<span class="log-badge log-badge-info">' + dc.message + '</span>';
-                    } else if (dc.message !== 'Not configured') {
+                        target.innerHTML = '<span class="log-badge log-badge-info">' + window.ryokanEscapeHtml(dc.message) + '</span>';
+                    } else if (dc.message === 'Not configured') {
+                        target.innerHTML = '<span class="log-badge log-badge-warn">Not configured</span>';
+                    } else {
                         target.innerHTML = '<span class="log-badge log-badge-error">Disconnected</span>';
                     }
                 }
@@ -525,7 +534,7 @@ function refreshJellyfin(btn) {
             });
             if (jellyfinHealth && data.jellyfin) {
                 if (data.jellyfin.ok) {
-                    jellyfinHealth.innerHTML = '<span class="log-badge log-badge-info">' + data.jellyfin.message + '</span>';
+                    jellyfinHealth.innerHTML = '<span class="log-badge log-badge-info">' + window.ryokanEscapeHtml(data.jellyfin.message) + '</span>';
                 } else if (data.jellyfin.message !== 'Not configured') {
                     jellyfinHealth.innerHTML = '<span class="log-badge log-badge-error">Disconnected</span>';
                 }

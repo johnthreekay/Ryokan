@@ -807,17 +807,36 @@ pub async fn bulk_manual_override(
         }
     }
 
-    logger::info(
-        &state.db,
-        LogCategory::Library,
-        &format!(
-            "Bulk manual override: {} of {} applied",
-            applied,
-            form.items.len()
-        ),
-        "",
-    )
-    .await;
+    if failed.is_empty() {
+        logger::info(
+            &state.db,
+            LogCategory::Library,
+            &format!(
+                "Bulk manual override: {} of {} applied",
+                applied,
+                form.items.len()
+            ),
+            "",
+        )
+        .await;
+    } else {
+        // Surface the per-item errors through the logs table so a
+        // partial failure is observable on System → Logs, not only
+        // through the HTTP response body.
+        let detail = serde_json::to_string(&failed).unwrap_or_default();
+        logger::warn(
+            &state.db,
+            LogCategory::Library,
+            &format!(
+                "Bulk manual override: {} of {} applied, {} failed",
+                applied,
+                form.items.len(),
+                failed.len()
+            ),
+            &detail,
+        )
+        .await;
+    }
 
     Ok(Json(serde_json::json!({
         "ok": failed.is_empty(),

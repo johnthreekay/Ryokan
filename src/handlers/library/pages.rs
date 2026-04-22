@@ -232,12 +232,28 @@ pub async fn series_detail(
         }
     };
 
-    let (cfg, relation_groups, episodes_out, cover_url, banner_url) = tokio::join!(
+    // #15b — last metadata refresh, folded into the existing concurrent
+    // fan-out so it doesn't add a sequential round-trip on top. Cheap
+    // (indexed provider_id lookup, WAL-cached) but the pattern of the
+    // surrounding handler is "every independent read goes in the join!"
+    // so stick with that.
+    let db_for_refresh = state.db.clone();
+    let refresh_fut = async move {
+        crate::models::metadata_cache::get_by_provider_id(&db_for_refresh, provider_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|row| row.cached_at)
+            .unwrap_or_default()
+    };
+
+    let (cfg, relation_groups, episodes_out, cover_url, banner_url, metadata_refreshed_at) = tokio::join!(
         cfg_fut,
         relation_groups_fut,
         episodes_fut,
         cover_fut,
         banner_fut,
+        refresh_fut,
     );
     let cfg = cfg.ok().flatten();
     let ((episodes, on_disk_count, downloaded_count, size_display, monitored_count), media_root) =
@@ -264,14 +280,6 @@ pub async fn series_detail(
         .filter(|id| *id > 0)
         .map(|id| format!("https://myanimelist.net/anime/{}", id))
         .unwrap_or_default();
-
-    // #15b — last metadata refresh. Look up by provider_id so both
-    // AL-sourced and Jikan-fallback series route to the right cache row.
-    let metadata_refreshed_at =
-        match crate::models::metadata_cache::get_by_provider_id(&state.db, provider_id).await {
-            Ok(Some(row)) => row.cached_at,
-            _ => String::new(),
-        };
 
     let all_monitored = ep_total > 0 && monitored_count >= ep_total;
     let allow_upgrades = db_series.as_ref().map(|s| s.allow_upgrades).unwrap_or(true);
