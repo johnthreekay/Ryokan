@@ -1213,7 +1213,9 @@ pub async fn settings_custom_formats_test(
 ) -> Json<serde_json::Value> {
     use crate::services::custom_formats::{EvalContext, evaluate};
     use crate::services::nyaa::SearchResult;
-    use crate::services::source::{ClassificationResult, DecisionRule, Resolution, Source, WebKind};
+    use crate::services::source::{
+        ClassificationResult, DecisionRule, Resolution, Source, WebKind,
+    };
     use crate::services::source_filename::classify_filename;
 
     let title = req.release_title.trim().to_string();
@@ -1242,7 +1244,11 @@ pub async fn settings_custom_formats_test(
                 // the rare case aggregate ties everything to Unknown.
                 fc.evidence
                     .iter()
-                    .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(std::cmp::Ordering::Equal))
+                    .max_by(|a, b| {
+                        a.confidence
+                            .partial_cmp(&b.confidence)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
                     .map(|e| e.source)
                     .unwrap_or(Source::Unknown)
             } else {
