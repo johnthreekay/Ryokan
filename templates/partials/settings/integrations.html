@@ -59,6 +59,7 @@
                 <div style="display: flex; gap: 8px; align-items: center;">
                     <input type="password" name="deluge_password" id="deluge_password" value="{{ config.deluge_password }}" style="flex:1">
                     <button type="button" class="btn btn-secondary" onclick="toggleApiKeyVisibility('deluge_password', this)" style="white-space:nowrap">Show</button>
+                    <button type="button" class="btn btn-secondary" onclick="copyApiKey('deluge_password', this)" style="white-space:nowrap">Copy</button>
                 </div>
                 <span class="form-hint">The Web UI password (not the daemon/localclient password). Default on fresh installs is <code>deluge</code>.</span>
             </div>
@@ -91,6 +92,7 @@
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <input type="password" name="transmission_password" id="transmission_password" value="{{ config.transmission_password }}" style="flex:1">
                         <button type="button" class="btn btn-secondary" onclick="toggleApiKeyVisibility('transmission_password', this)" style="white-space:nowrap">Show</button>
+                        <button type="button" class="btn btn-secondary" onclick="copyApiKey('transmission_password', this)" style="white-space:nowrap">Copy</button>
                     </div>
                 </div>
             </div>
@@ -111,7 +113,7 @@
             <div class="form-group">
                 <label for="rtorrent_url">XML-RPC URL</label>
                 <input type="text" name="rtorrent_url" id="rtorrent_url" value="{{ config.rtorrent_url }}" placeholder="">
-                <span class="form-hint">Full XML-RPC endpoint URL. Common shapes: <code>http://host:8081/RPC2</code> for a local ruTorrent container, <code>https://seedbox.example.com/rutorrent/RPC2</code> or <code>https://seedbox.example.com/RPC2</code> for a seedbox. Ryokan does not append a default path — use the exact URL the daemon accepts.</span>
+                <span class="form-hint">XML-RPC endpoint URL. Ryokan appends <code>/RPC2</code> automatically if the URL doesn't already end in it, matching Deluge/Transmission path handling. Common shapes: <code>http://host:8081</code> for a local ruTorrent container, <code>https://seedbox.example.com/rutorrent</code> or <code>https://seedbox.example.com</code> for a seedbox.</span>
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -123,6 +125,7 @@
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <input type="password" name="rtorrent_password" id="rtorrent_password" value="{{ config.rtorrent_password }}" style="flex:1">
                         <button type="button" class="btn btn-secondary" onclick="toggleApiKeyVisibility('rtorrent_password', this)" style="white-space:nowrap">Show</button>
+                        <button type="button" class="btn btn-secondary" onclick="copyApiKey('rtorrent_password', this)" style="white-space:nowrap">Copy</button>
                     </div>
                     <span class="form-hint">HTTP Basic auth. Leave blank if the endpoint is unauthenticated (e.g. a same-host container on an internal network).</span>
                 </div>

@@ -477,6 +477,49 @@ window.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+// Generic copy-to-clipboard helper. `text` is the string to copy;
+// `btn` is the optional button to flash a confirmation on. Falls back
+// to a toast when the clipboard API is unavailable (HTTP contexts
+// without a secure origin don't expose navigator.clipboard).
+window.ryokanCopy = function (text, btn) {
+    if (text == null || text === '') return Promise.resolve();
+    const flash = function (label, ms) {
+        if (!btn) return;
+        const original = btn.textContent;
+        btn.textContent = label;
+        setTimeout(function () { btn.textContent = original; }, ms || 1500);
+    };
+    const success = function () {
+        flash('Copied!', 1500);
+        window.ryokanToast({kind: 'success', title: 'Copied to clipboard', body: '', log: false, duration: 1500});
+    };
+    const failure = function (err) {
+        flash('Failed', 2000);
+        window.ryokanToast({kind: 'error', title: 'Copy failed', body: (err && err.message) || 'Browser denied clipboard access', log: false});
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(String(text)).then(success).catch(failure);
+    }
+    // Fallback for non-secure contexts: execCommand path.
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = String(text);
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) { success(); return Promise.resolve(); }
+        failure(new Error('execCommand rejected'));
+        return Promise.reject();
+    } catch (e) {
+        failure(e);
+        return Promise.reject(e);
+    }
+};
+
 // Relative timestamp rendering. Any element with a `data-ts` attribute
 // gets its textContent replaced by a humanized delta ("3m ago",
 // "2h ago", "in 58s") and its `title` set to an absolute UTC string.

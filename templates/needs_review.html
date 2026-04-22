@@ -2,6 +2,30 @@
 
 {% block title %} - Needs Review{% endblock %}
 
+{% block page_css %}
+<style>
+    .review-bulk-bar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 14px;
+        margin-bottom: 12px;
+        background: var(--panel);
+        border: 1px solid var(--accent);
+        border-radius: var(--radius);
+    }
+    .review-bulk-count {
+        font-weight: 600;
+        color: var(--accent);
+        margin-right: 6px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <div class="page-header-row">
@@ -29,10 +53,37 @@
     </p>
 </div>
 {% else %}
+<div id="review-bulk-bar" class="review-bulk-bar" hidden>
+    <span class="review-bulk-count"><span id="review-bulk-count-n">0</span> selected</span>
+    <select id="review-bulk-source" class="folder-select">
+        <option value="bluray_bdmv">BD-RAW</option>
+        <option value="bluray_remux">BD-Remux</option>
+        <option value="bluray" selected>BD</option>
+        <option value="web">WEB</option>
+        <option value="webrip">WEBRIP</option>
+        <option value="dvd">DVD</option>
+        <option value="hdtv">HDTV</option>
+        <option value="tv">TV</option>
+    </select>
+    <select id="review-bulk-resolution" class="folder-select">
+        <option value="2160p">2160p</option>
+        <option value="1080p" selected>1080p</option>
+        <option value="720p">720p</option>
+        <option value="576p">576p</option>
+        <option value="480p">480p</option>
+    </select>
+    <button type="button" class="btn btn-primary" id="review-bulk-apply">Apply to selected</button>
+    <button type="button" class="btn btn-secondary" id="review-bulk-clear">Clear selection</button>
+</div>
 <div class="review-list">
     <table class="review-table" style="width:100%;border-collapse:collapse">
         <thead>
             <tr>
+                <th style="text-align:center;padding:8px 4px;border-bottom:1px solid var(--border);width:36px">
+                    <label class="checkbox-row" style="margin:0;display:inline-flex">
+                        <input type="checkbox" id="review-select-all" aria-label="Select all">
+                    </label>
+                </th>
                 <th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border)">Series</th>
                 <th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border)">Episode</th>
                 <th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border)">Current tag</th>
@@ -47,6 +98,11 @@
                 data-current-source="{{ entry.source }}" data-current-resolution="{{ entry.resolution }}"
                 data-current-is-remux="{{ entry.is_remux }}" data-current-is-bdmv="{{ entry.is_bdmv }}"
                 data-current-web-kind="{{ entry.web_kind }}">
+                <td style="text-align:center;padding:8px 4px;border-bottom:1px solid var(--border)">
+                    <label class="checkbox-row" style="margin:0;display:inline-flex">
+                        <input type="checkbox" class="review-row-check" aria-label="Select row">
+                    </label>
+                </td>
                 <td style="padding:8px 12px;border-bottom:1px solid var(--border)">
                     <a href="/series/{{ entry.series_id }}" class="review-series-link" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
                         {% if !entry.cover_url.is_empty() %}

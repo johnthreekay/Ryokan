@@ -33,6 +33,20 @@ impl LogLevel {
             _ => LogLevel::Info,
         }
     }
+
+    /// Ordinal severity (0–4) for comparison. Higher = more severe.
+    /// Used by the write-side min-level filter on the `logs` table so
+    /// a LogLevel::Debug emission is dropped when the configured floor
+    /// is Info or above.
+    pub fn severity(&self) -> u8 {
+        match self {
+            LogLevel::Trace => 0,
+            LogLevel::Debug => 1,
+            LogLevel::Info => 2,
+            LogLevel::Warn => 3,
+            LogLevel::Error => 4,
+        }
+    }
 }
 
 /// Categories for log entries, matching the major subsystems.

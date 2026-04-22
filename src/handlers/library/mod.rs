@@ -258,6 +258,15 @@ pub struct ReclassifyEpisodeForm {
     pub episode_number: i32,
 }
 
+/// Batch-apply manual overrides — used by the bulk-actions UI on
+/// `/library/review` so a user can tag a selection of rows with the
+/// same (or per-row) override in one transaction instead of N
+/// round trips.
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct BulkManualOverrideForm {
+    pub items: Vec<SetManualOverrideForm>,
+}
+
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct MarkEpisodeFailedForm {
     history_id: i64,

@@ -124,6 +124,7 @@ use services::{
         handlers::library::SetEpisodeMonitoringForm,
         handlers::library::SetAllowUpgradesForm,
         handlers::library::SetManualOverrideForm,
+        handlers::library::BulkManualOverrideForm,
         handlers::library::ReclassifyEpisodeForm,
         handlers::library::MarkEpisodeFailedForm,
         handlers::library::episodes::EpisodeProgress,
@@ -262,6 +263,17 @@ async fn main() {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // #3b — write-side floor for the DB-backed `logs` table. Separate
+    // from RUST_LOG (which controls what reaches the console). Default
+    // Info keeps existing behavior; raise to `warn` or `error` to
+    // shrink the System → Logs table; lower to `debug`/`trace` when
+    // diagnosing. Read once at startup; no runtime toggle.
+    if let Ok(raw) = std::env::var("RYOKAN_DB_LOG_LEVEL") {
+        let level = models::log::LogLevel::from_str(raw.trim());
+        services::logger::set_min_db_log_level(level);
+        tracing::info!(min_db_log_level = level.as_str(), "DB log floor set");
+    }
 
     // Database setup.
     // For local `cargo run`, default to a project-local ./data directory. Docker can
@@ -470,6 +482,10 @@ async fn main() {
         .route(
             "/api/library/manual-override",
             post(handlers::library::crud::set_manual_override),
+        )
+        .route(
+            "/api/library/bulk-manual-override",
+            post(handlers::library::crud::bulk_manual_override),
         )
         .route(
             "/api/library/reclassify-episode",

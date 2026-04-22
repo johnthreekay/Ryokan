@@ -106,6 +106,14 @@ body {
     color: var(--text-dim);
 }
 
+.empty-state-actions {
+    display: inline-flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 16px;
+}
+
 .page-header-row {
     display: flex;
     align-items: flex-start;

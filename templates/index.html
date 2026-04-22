@@ -19,8 +19,12 @@
 
 {% if library.is_empty() %}
 <div class="empty-state">
-    <p>No series tracked yet.</p>
-    <button class="btn btn-primary" onclick="openAddModal()">Search AniList to add anime</button>
+    <p>Your library is empty.</p>
+    <p class="form-hint">Add your first series to get Ryokan watching for new episodes. You can also browse releases directly on Nyaa via the Search tab.</p>
+    <div class="empty-state-actions">
+        <button class="btn btn-primary" onclick="openAddModal()">Search AniList to add anime</button>
+        <a class="btn btn-secondary" href="/search">Browse Nyaa</a>
+    </div>
 </div>
 {% else %}
 <div class="library-grid" id="library-grid">

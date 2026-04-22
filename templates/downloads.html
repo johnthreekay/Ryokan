@@ -29,7 +29,10 @@
         {% if !queue_error.is_empty() %}
         <div class="logs-empty">{{ queue_error }}</div>
         {% else if queue.is_empty() %}
-        <div class="logs-empty">No active downloads.</div>
+        <div class="logs-empty">
+            <p>No active downloads.</p>
+            <p class="form-hint">New grabs land here automatically — via RSS, auto-search, or a manual grab from the Search tab.</p>
+        </div>
         {% else %}
         <div class="rss-table-wrap"><table class="rss-table"><thead><tr>
             <th>Name</th><th>Size</th><th>Progress</th><th>Speed</th><th>ETA</th><th>Status</th><th>Actions</th>
@@ -48,6 +51,7 @@
                 {% else %}
                 <button class="btn btn-ghost btn-sm" onclick="pauseTorrent('{{ t.hash }}')" title="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
                 {% endif %}
+                <button class="btn btn-ghost btn-sm" onclick="ryokanCopy('{{ t.hash }}', this)" title="Copy infohash"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
                 <button class="btn btn-ghost btn-sm" onclick="deleteTorrent('{{ t.hash }}')" title="Remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
             </td>
         </tr>
@@ -86,7 +90,7 @@
             <tbody>
                 {% for entry in history %}
                 <tr data-state="{{ entry.state }}" data-text="{{ entry.series_title }} {{ entry.torrent_name }}">
-                    <td>{{ entry.grabbed_at }}</td>
+                    <td><span data-ts="{{ entry.grabbed_at }}">{{ entry.grabbed_at }}</span></td>
                     <td>{% if entry.anilist_id > 0 %}<a href="/series/{{ entry.anilist_id }}">{{ entry.series_title }}</a>{% else %}{{ entry.series_title }}{% endif %}</td>
                     <td><div class="dl-torrent-name">{{ entry.torrent_name }}</div></td>
                     <td>{% for ep in entry.episode_numbers %}{% if !loop.first %}, {% endif %}{{ ep }}{% endfor %}</td>
@@ -130,7 +134,7 @@
             <tbody>
                 {% for entry in blocklist %}
                 <tr id="blocklist-row-{{ entry.id }}">
-                    <td>{{ entry.grabbed_at }}</td>
+                    <td><span data-ts="{{ entry.grabbed_at }}">{{ entry.grabbed_at }}</span></td>
                     <td>{% if entry.anilist_id > 0 %}<a href="/series/{{ entry.anilist_id }}">{{ entry.series_title }}</a>{% else %}{{ entry.series_title }}{% endif %}</td>
                     <td><div class="dl-torrent-name">{{ entry.torrent_name }}</div></td>
                     <td>{% for ep in entry.episode_numbers %}{% if !loop.first %}, {% endif %}{{ ep }}{% endfor %}</td>

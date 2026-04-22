@@ -17,9 +17,9 @@ use crate::services::{logger, media, metadata_sync, monitoring as monitoring_ser
 use super::reconcile::reconcile_all_fallback_entries;
 use super::search::{AutoSearchQuery, auto_search_series};
 use super::{
-    AddSeriesForm, ReclassifyEpisodeForm, RemoveSeriesForm, SetAllowUpgradesForm,
-    SetEpisodeMonitoringForm, SetFolderForm, SetManualOverrideForm, SetMonitoringForm,
-    SetSearchOverridesForm,
+    AddSeriesForm, BulkManualOverrideForm, ReclassifyEpisodeForm, RemoveSeriesForm,
+    SetAllowUpgradesForm, SetEpisodeMonitoringForm, SetFolderForm, SetManualOverrideForm,
+    SetMonitoringForm, SetSearchOverridesForm,
 };
 
 #[utoipa::path(
@@ -722,6 +722,108 @@ pub async fn set_manual_override(
         "source": source_str,
         "resolution": resolution_str,
         "is_remux": form.is_remux,
+    })))
+}
+
+/// Batch apply manual overrides. The bulk-actions UI on `/library/review`
+/// posts an array of the same shape `set_manual_override` accepts, lets
+/// each row succeed or fail independently, and returns a per-item result
+/// summary so the caller can toast "N of M applied" accurately.
+///
+/// Validation errors on any one item return `ok: false` for that item
+/// without aborting the batch — partial success is the desired semantic
+/// here. For a rollback-on-any-failure semantic, the caller should
+/// check `failed.is_empty()` before treating it as fully applied.
+#[utoipa::path(
+    post,
+    path = "/api/library/bulk-manual-override",
+    tag = "Library",
+    summary = "Batch-apply manual source overrides",
+    description = "Apply (or clear) manual overrides for multiple episodes in one call. Each item is validated independently — per-item failures are reported in `failed[]` without aborting the batch.",
+    request_body = BulkManualOverrideForm,
+    responses(
+        (status = 200, description = "Batch processed (see per-item results)", body = serde_json::Value),
+        (status = 500, description = "Database error"),
+    ),
+)]
+pub async fn bulk_manual_override(
+    State(state): State<AppState>,
+    Json(form): Json<BulkManualOverrideForm>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+    use crate::services::source::{Resolution, Source, WebKind};
+
+    let mut applied = 0_usize;
+    let mut failed: Vec<serde_json::Value> = Vec::new();
+
+    for item in &form.items {
+        let (source_str, resolution_str, web_kind_str) = if item.source.is_empty() {
+            (String::new(), String::new(), String::new())
+        } else {
+            let parsed_source = Source::from_str(&item.source);
+            if parsed_source == Source::Unknown {
+                failed.push(serde_json::json!({
+                    "series_id": item.series_id,
+                    "episode_number": item.episode_number,
+                    "error": format!("invalid source: {:?}", item.source),
+                }));
+                continue;
+            }
+            let parsed_resolution = Resolution::from_str(&item.resolution);
+            if parsed_resolution == Resolution::Unknown {
+                failed.push(serde_json::json!({
+                    "series_id": item.series_id,
+                    "episode_number": item.episode_number,
+                    "error": format!("invalid resolution: {:?}", item.resolution),
+                }));
+                continue;
+            }
+            let parsed_web_kind = WebKind::from_str(&item.web_kind);
+            (
+                parsed_source.as_str().to_string(),
+                parsed_resolution.as_str().to_string(),
+                parsed_web_kind.as_str().to_string(),
+            )
+        };
+
+        let write_result = episode_tags::set_manual_override(
+            &state.db,
+            item.series_id,
+            item.episode_number,
+            &source_str,
+            &resolution_str,
+            item.is_remux,
+            item.is_bdmv,
+            &web_kind_str,
+        )
+        .await;
+
+        match write_result {
+            Ok(_) => applied += 1,
+            Err(e) => failed.push(serde_json::json!({
+                "series_id": item.series_id,
+                "episode_number": item.episode_number,
+                "error": e.to_string(),
+            })),
+        }
+    }
+
+    logger::info(
+        &state.db,
+        LogCategory::Library,
+        &format!(
+            "Bulk manual override: {} of {} applied",
+            applied,
+            form.items.len()
+        ),
+        "",
+    )
+    .await;
+
+    Ok(Json(serde_json::json!({
+        "ok": failed.is_empty(),
+        "applied": applied,
+        "requested": form.items.len(),
+        "failed": failed,
     })))
 }
 

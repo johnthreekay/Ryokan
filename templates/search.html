@@ -27,7 +27,8 @@
 <div class="results-container">
     {% if results.is_empty() %}
         <div class="empty-state">
-            <p>No results found for "{{ query }}".</p>
+            <p>No results for &ldquo;{{ query }}&rdquo;.</p>
+            <p class="form-hint">Try a shorter query, drop the "Trusted only" filter, or switch the category to Anime&nbsp;All to include raws. Nyaa tokenizes loosely, so exact punctuation rarely helps.</p>
         </div>
     {% else %}
         <p class="results-count" id="results-count">{{ results.len() }} results</p>
