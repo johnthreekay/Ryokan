@@ -711,10 +711,20 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                 .await;
                 for ep_num in &ep_list {
                     // RSS items don't carry size info in the feed — the
-                    // grab history row starts at 0 and gets filled in
-                    // with the actual imported file size by
-                    // post-processing. RSS feeds only surface individual
-                    // episode releases, so `is_batch=false` by definition.
+                    // grab history row starts at 0 and post-processing
+                    // fills it in with the actual imported file size at
+                    // import time. For batches, every per-episode row
+                    // of the pack carries the same pack-total zero here
+                    // until post-processing refines to per-file size.
+                    //
+                    // `is_batch` is threaded through from the RSS item
+                    // so episode_grab_history.is_batch correctly flags
+                    // rows that came from a pack. Older comments here
+                    // asserted RSS feeds only surface single-episode
+                    // releases — that's no longer true: RSS now handles
+                    // batches (see the evaluate_candidate batch branch)
+                    // and the flag feeds the Needs Review UI and the
+                    // post-processing sibling-routing safety net.
                     let _ = episode_tags::record_grab(
                         &state.db,
                         cand.found.series.id,
@@ -723,7 +733,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                         &cand.item.title,
                         &cand.item.group,
                         0,
-                        false,
+                        cand.item.is_batch,
                     )
                     .await;
                 }
