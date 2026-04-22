@@ -61,11 +61,34 @@ use super::{
 /// than waiting a minute once.
 const METADATA_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Normalize a user-entered base URL into a full XML-RPC endpoint.
+/// Trims trailing slashes and appends `/RPC2` when the path doesn't
+/// already end in it (case-insensitive so `/rpc2` pasted from docs is
+/// treated as already-canonical). Empty in → empty out so an
+/// unconfigured client builds without a dangling `/RPC2`.
+///
+/// The append happens here rather than at config-save time so the
+/// stored URL matches what the user typed — same convention Deluge
+/// and Transmission use for their own path suffixes (`/json` and
+/// `/transmission/rpc` respectively).
+fn canonicalize_endpoint(raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.to_ascii_lowercase().ends_with("/rpc2") {
+        return trimmed.to_string();
+    }
+    format!("{}/RPC2", trimmed)
+}
+
 pub struct RtorrentClient {
     /// Full URL of the XML-RPC endpoint (e.g. `http://host:8081/RPC2`).
-    /// User-entered URL is taken verbatim — deployment shape varies
-    /// too much (raw rtorrent-xmlrpc-bin, ruTorrent bundled nginx,
-    /// seedbox reverse-proxy) to infer a default path.
+    /// Constructed in [`RtorrentClient::new`] from the user-entered
+    /// base URL by appending `/RPC2` when it isn't already there — same
+    /// invisible-to-the-user convention Deluge (`/json`) and
+    /// Transmission (`/transmission/rpc`) use so the stored config
+    /// value stays as the user typed it.
     endpoint: String,
     user: String,
     password: String,
@@ -74,14 +97,14 @@ pub struct RtorrentClient {
 }
 
 impl RtorrentClient {
-    pub fn new(endpoint: &str, user: &str, password: &str, label: &str) -> Self {
+    pub fn new(base_url: &str, user: &str, password: &str, label: &str) -> Self {
         let http = Client::builder()
             .timeout(Duration::from_secs(15))
             .build()
             .expect("Failed to build HTTP client");
 
         Self {
-            endpoint: endpoint.trim().trim_end_matches('/').to_string(),
+            endpoint: canonicalize_endpoint(base_url),
             user: user.to_string(),
             password: password.to_string(),
             label: if label.is_empty() {
@@ -1076,6 +1099,44 @@ mod tests {
     fn empty_label_defaults_to_ryokan() {
         let c = RtorrentClient::new("http://localhost:8081/RPC2", "", "", "");
         assert_eq!(c.label, "ryokan");
+    }
+
+    #[test]
+    fn endpoint_appends_rpc2_when_missing() {
+        let c = RtorrentClient::new("http://host:8081", "", "", "ryokan");
+        assert_eq!(c.endpoint, "http://host:8081/RPC2");
+    }
+
+    #[test]
+    fn endpoint_strips_trailing_slash_then_appends() {
+        let c = RtorrentClient::new("http://host:8081/", "", "", "ryokan");
+        assert_eq!(c.endpoint, "http://host:8081/RPC2");
+    }
+
+    #[test]
+    fn endpoint_preserves_existing_rpc2_suffix() {
+        let c = RtorrentClient::new("http://host:8081/RPC2", "", "", "ryokan");
+        assert_eq!(c.endpoint, "http://host:8081/RPC2");
+    }
+
+    #[test]
+    fn endpoint_tolerates_lowercase_rpc2() {
+        let c = RtorrentClient::new("http://host:8081/rpc2", "", "", "ryokan");
+        assert_eq!(c.endpoint, "http://host:8081/rpc2");
+    }
+
+    #[test]
+    fn endpoint_empty_in_empty_out() {
+        let c = RtorrentClient::new("", "", "", "ryokan");
+        assert_eq!(c.endpoint, "");
+        let c = RtorrentClient::new("   ", "", "", "ryokan");
+        assert_eq!(c.endpoint, "");
+    }
+
+    #[test]
+    fn endpoint_handles_seedbox_path_prefix() {
+        let c = RtorrentClient::new("https://seedbox.example.com/rutorrent", "", "", "ryokan");
+        assert_eq!(c.endpoint, "https://seedbox.example.com/rutorrent/RPC2");
     }
 
     #[test]

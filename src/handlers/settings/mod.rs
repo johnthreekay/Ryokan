@@ -138,66 +138,6 @@ fn min_score_display(score: i32) -> String {
     }
 }
 
-/// Canonicalize the rtorrent URL at save time so callers don't have to
-/// remember the `/RPC2` suffix that every realistic deployment uses.
-/// Matches the convenience Deluge and Transmission already have via
-/// client-side path appending. Case-insensitive match on the suffix to
-/// tolerate `/rpc2` pasted from docs.
-fn canonicalize_rtorrent_url(raw: &str) -> String {
-    let trimmed = raw.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    let lower = trimmed.to_ascii_lowercase();
-    if lower.ends_with("/rpc2") {
-        return trimmed.to_string();
-    }
-    format!("{}/RPC2", trimmed)
-}
-
-#[cfg(test)]
-mod canonicalize_tests {
-    use super::canonicalize_rtorrent_url;
-
-    #[test]
-    fn appends_rpc2_when_missing() {
-        assert_eq!(
-            canonicalize_rtorrent_url("http://host:8081"),
-            "http://host:8081/RPC2"
-        );
-    }
-
-    #[test]
-    fn strips_trailing_slash_then_appends() {
-        assert_eq!(
-            canonicalize_rtorrent_url("http://host:8081/"),
-            "http://host:8081/RPC2"
-        );
-    }
-
-    #[test]
-    fn preserves_existing_rpc2_suffix() {
-        assert_eq!(
-            canonicalize_rtorrent_url("http://host:8081/RPC2"),
-            "http://host:8081/RPC2"
-        );
-    }
-
-    #[test]
-    fn tolerates_lowercase_rpc2() {
-        assert_eq!(
-            canonicalize_rtorrent_url("http://host:8081/rpc2"),
-            "http://host:8081/rpc2"
-        );
-    }
-
-    #[test]
-    fn empty_stays_empty() {
-        assert_eq!(canonicalize_rtorrent_url(""), "");
-        assert_eq!(canonicalize_rtorrent_url("   "), "");
-    }
-}
-
 #[derive(Deserialize)]
 pub struct SettingsQuery {
     tab: Option<String>,
@@ -541,7 +481,7 @@ pub async fn settings_submit(
             .trim()
             .trim_end_matches('/')
             .to_string(),
-        rtorrent_url: canonicalize_rtorrent_url(&form.rtorrent_url),
+        rtorrent_url: form.rtorrent_url.trim().trim_end_matches('/').to_string(),
         rtorrent_user: form.rtorrent_user.trim().to_string(),
         rtorrent_password: form.rtorrent_password,
         rtorrent_label: sanitize_label(&form.rtorrent_label),
