@@ -302,7 +302,18 @@ pub(super) fn extract_resolution(title: &str) -> String {
 
 pub(super) fn detect_batch(title: &str) -> bool {
     let lower = title.to_lowercase();
-    RE_BATCH.is_match(&lower)
+    // Mask season markers before running RE_BATCH's `\d+-\d+` range
+    // regex — otherwise titles like "Season 3 - 05" match as a spurious
+    // range "3 - 05". Same trick `parse_release` uses before RE_ABSOLUTE.
+    // Keep the original `lower` for the other predicates: RE_BATCH_
+    // SEASON_BRACKET needs the season markers intact (it's literally
+    // matching them), and the " batch" / " complete" / etc. substrings
+    // don't overlap with season markers anyway.
+    let mut masked = lower.clone();
+    for re in super::RE_SEASON_MARKER_MASK.iter() {
+        masked = re.replace_all(&masked, " ").to_string();
+    }
+    RE_BATCH.is_match(&masked)
         || RE_BATCH_SEASON_BRACKET.is_match(&lower)
         || lower.contains(" batch")
         || lower.contains(" complete")
@@ -334,13 +345,29 @@ mod detect_batch_tests {
         // Standard weekly release has no season-bracket anchor and no
         // range token. `RE_BATCH_SEASON_BRACKET` doesn't fire because
         // there's no season marker.
-        //
-        // NOTE: "Season 3 - 05" style titles currently trigger a
-        // separate pre-existing false positive in `RE_BATCH` (the
-        // "\d - \d" range regex matches "3 - 05"). Not introduced by
-        // this commit; worth a follow-up to mask season markers before
-        // running RE_BATCH too.
         assert!(!detect_batch("[Group] Cool Anime - 05 (1080p)"));
+    }
+
+    #[test]
+    fn season_dash_episode_not_mistaken_for_range() {
+        // "Season 3 - 05" is a single episode of season 3, not a
+        // "3 - 05" batch range. RE_BATCH's \d-\d pattern would
+        // otherwise catch the season digit + episode as a range; the
+        // season-marker mask applied before RE_BATCH runs prevents it.
+        assert!(!detect_batch("[Group] Cool Anime Season 3 - 05 (1080p)"));
+    }
+
+    #[test]
+    fn part_dash_episode_not_mistaken_for_range() {
+        // Same false-positive risk for "Part N - NN" — mask covers it.
+        assert!(!detect_batch("[Group] Cool Anime Part 2 - 05 (1080p)"));
+    }
+
+    #[test]
+    fn real_range_still_batch_after_mask() {
+        // Sanity: an actual episode range "01-12" survives the mask
+        // because it contains no season marker to strip.
+        assert!(detect_batch("[Group] Cool Anime - 01-12 (1080p)"));
     }
 
     #[test]

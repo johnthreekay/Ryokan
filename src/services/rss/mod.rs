@@ -86,7 +86,7 @@ static RE_RANGE: LazyLock<Regex> =
 // and either captured or returned early. If we reach the absolute-
 // episode loop, no season+episode combined pattern matched, so the
 // season digit has no episode counterpart to anchor to.
-static RE_SEASON_MARKER_MASK: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+pub(super) static RE_SEASON_MARKER_MASK: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     vec![
         Regex::new(r"(?i)\bseason\s*\d{1,2}\b").unwrap(),
         Regex::new(r"(?i)\b\d{1,2}(?:st|nd|rd|th)\s+season\b").unwrap(),
