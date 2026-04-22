@@ -942,7 +942,20 @@ fn evaluate_candidate(
 
     if item.is_batch {
         if !parsed_eps.is_empty() {
-            // For batches, count episodes that are either missing or upgradeable.
+            // Pack-level decision: accept only when every episode in
+            // the pack's *covered* range is either missing from disk
+            // or a genuine upgrade over what's on disk. This matches
+            // the behavior we'd want Sonarr-style — per-episode upgrade
+            // evaluation — without the complication of selective-file
+            // download in RSS, because `do_file_op` in post-processing
+            // imports *every* file from the torrent folder and
+            // `fs::rename`/`fs::copy`/`fs::hard_link` silently overwrite
+            // on conflict. Grabbing a pack where even one covered
+            // episode would be a sidegrade or downgrade means that
+            // episode gets clobbered at import time — possibly with a
+            // worse-quality version from a different group. So the
+            // conservative rule is "every covered episode in the pack
+            // must be actionable" (missing or upgradeable).
             let new_count = parsed_eps
                 .iter()
                 .filter(|ep| !existing_ep_numbers.contains(ep))
@@ -955,11 +968,24 @@ fn evaluate_candidate(
                 })
                 .count() as i32;
             let actionable = new_count + upgrade_count;
+            let covered = parsed_eps.len() as i32;
+
             if actionable == 0 {
                 return CandidateDecision {
                     reject_reason: Some(
                         "Batch episodes are already on disk at or above cutoff".to_string(),
                     ),
+                    new_episode_count: 0,
+                    is_upgrade: false,
+                };
+            }
+            if actionable < covered {
+                let not_actionable = covered - actionable;
+                return CandidateDecision {
+                    reject_reason: Some(format!(
+                        "Batch would overwrite {} non-upgradeable episode(s) on disk (pack covers {} total, only {} are missing-or-upgradeable). Grab intentionally via manual search if you want the pack.",
+                        not_actionable, covered, actionable
+                    )),
                     new_episode_count: 0,
                     is_upgrade: false,
                 };
