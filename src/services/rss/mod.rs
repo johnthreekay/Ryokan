@@ -71,6 +71,31 @@ static RE_SEASON_DASH: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 static RE_RANGE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\b(\d{1,3})\s*[-~]\s*(\d{1,3})(?:v\d+)?\b").unwrap());
 
+// Season-marker patterns that `parse_release` strips before running
+// RE_RANGE and RE_ABSOLUTE against the title. Otherwise the digit in
+// "Season 3" / "Part 1" / "S3" / "3rd Season" / "Cour 2" gets a
+// second life as an absolute episode number when followed by `(` or
+// `[` — e.g. "Season 3 (WEB 1080p ...)" yields episode 3 from the
+// lone "3 (" substring even though that 3 is the season. Sonarr's
+// parser avoids this by requiring specific anchor tokens (`- N (`,
+// `E\d+`, etc.) for absolute-episode extraction; we achieve the same
+// effect by masking the season tokens out of the search window.
+//
+// Masking is safe at this point because the season+episode combined
+// patterns (RE_SEASON_EP_RANGE / _SINGLE / _DASH) have already run
+// and either captured or returned early. If we reach the absolute-
+// episode loop, no season+episode combined pattern matched, so the
+// season digit has no episode counterpart to anchor to.
+static RE_SEASON_MARKER_MASK: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        Regex::new(r"(?i)\bseason\s*\d{1,2}\b").unwrap(),
+        Regex::new(r"(?i)\b\d{1,2}(?:st|nd|rd|th)\s+season\b").unwrap(),
+        Regex::new(r"(?i)\bpart\s*\d{1,2}\b").unwrap(),
+        Regex::new(r"(?i)\bcour\s*\d{1,2}\b").unwrap(),
+        Regex::new(r"(?i)\bs\d{1,2}\b").unwrap(),
+    ]
+});
+
 // Absolute episode patterns (tried in order)
 static RE_ABSOLUTE: LazyLock<Vec<(&str, Regex)>> = LazyLock::new(|| {
     vec![
@@ -1579,8 +1604,15 @@ fn parse_release(item: &RssItem) -> ParsedRelease {
         }
     }
 
+    // Mask season markers out of the search window for the absolute-
+    // episode and plain-range passes. See RE_SEASON_MARKER_MASK.
+    let mut masked = lower.clone();
+    for re in RE_SEASON_MARKER_MASK.iter() {
+        masked = re.replace_all(&masked, " ").to_string();
+    }
+
     // Plain range (no season prefix)
-    if let Some(caps) = RE_RANGE.captures(&lower) {
+    if let Some(caps) = RE_RANGE.captures(&masked) {
         let start = caps
             .get(1)
             .and_then(|m| m.as_str().parse::<i32>().ok())
@@ -1597,10 +1629,12 @@ fn parse_release(item: &RssItem) -> ParsedRelease {
         }
     }
 
-    // Absolute episode patterns
+    // Absolute episode patterns (run against the season-masked title
+    // so e.g. the "3" in "Season 3 (web ..." doesn't get picked up as
+    // absolute episode 3 via the digit-before-paren pattern).
     if absolute_eps.is_empty() {
         for (mode, re) in RE_ABSOLUTE.iter() {
-            for caps in re.captures_iter(&lower) {
+            for caps in re.captures_iter(&masked) {
                 if let Some(value) = caps.get(1).and_then(|m| m.as_str().parse::<i32>().ok()) {
                     absolute_eps.insert(value);
                 }
@@ -1786,4 +1820,88 @@ fn group_matches_blacklist(group: &str, blacklist: &[String]) -> bool {
     blacklist
         .iter()
         .any(|blocked| blocked.eq_ignore_ascii_case(group.trim()))
+}
+
+#[cfg(test)]
+mod parse_release_tests {
+    use super::*;
+
+    fn item(title: &str) -> RssItem {
+        RssItem {
+            title: title.to_string(),
+            link: String::new(),
+            guid: String::new(),
+            torrent: String::new(),
+            magnet: String::new(),
+            info_hash: String::new(),
+            group: extract_group(title),
+            resolution: extract_resolution(title),
+            is_batch: detect_batch(title),
+        }
+    }
+
+    #[test]
+    fn season_digit_is_not_parsed_as_absolute_episode() {
+        // Regression: "[Kaizoku] Jujutsu Kaisen Season 3 (WEB 1080p HEVC
+        // EAC-3) | The Culling Game Part 1" used to extract absolute
+        // episode 3 from "season 3 (" via RE_ABSOLUTE's digit-before-
+        // paren pattern. After the season-marker masking pass, "season
+        // 3" and "part 1" are stripped from the absolute search window
+        // so no spurious episode number survives.
+        let parsed = parse_release(&item(
+            "[Kaizoku] Jujutsu Kaisen Season 3 (WEB 1080p HEVC EAC-3) | The Culling Game Part 1",
+        ));
+        assert_eq!(parsed.season_hint, Some(3), "season_hint should be 3");
+        assert!(
+            parsed.absolute_eps.is_empty(),
+            "absolute_eps should be empty, got {:?}",
+            parsed.absolute_eps
+        );
+        assert!(
+            parsed.season_relative_eps.is_empty(),
+            "season_relative_eps should be empty, got {:?}",
+            parsed.season_relative_eps
+        );
+    }
+
+    #[test]
+    fn hyphen_space_episode_still_parses_after_mask() {
+        // Sanity: the standard "[Group] Series - 01 (1080p)" shape
+        // should still resolve to absolute episode 1 after the mask
+        // pass. The mask strips optional season tokens; there are none
+        // here so the title passes through unchanged.
+        let parsed = parse_release(&item("[SubsPlease] Frieren - 01 (1080p) [ABCD1234].mkv"));
+        assert!(parsed.absolute_eps.contains(&1));
+    }
+
+    #[test]
+    fn s3_prefix_does_not_leak_season_digit_to_episode() {
+        // "[Group] Series S3 - 05 (1080p)" should extract season 3,
+        // episode 5 — not both-3-and-5. Belongs to the season-dash
+        // patterns, resolved before the absolute fallback runs, but
+        // verify nothing regresses.
+        let parsed = parse_release(&item("[Group] Cool Anime S3 - 05 (1080p)"));
+        assert_eq!(parsed.season_hint, Some(3));
+        assert!(
+            parsed.season_relative_eps.contains(&5) || parsed.absolute_eps.contains(&5),
+            "episode 5 should be resolved; got rel={:?} abs={:?}",
+            parsed.season_relative_eps,
+            parsed.absolute_eps
+        );
+    }
+
+    #[test]
+    fn nrd_season_marker_masked() {
+        // "3rd Season" should not leak its "3" as an absolute episode.
+        let parsed = parse_release(&item("[Group] Series 3rd Season (WEB 1080p)"));
+        assert_eq!(parsed.season_hint, Some(3));
+        assert!(parsed.absolute_eps.is_empty());
+    }
+
+    #[test]
+    fn cour_marker_masked() {
+        // "Cour 2" should not leak "2" to the absolute pass.
+        let parsed = parse_release(&item("[Group] Series Cour 2 (WEB 1080p)"));
+        assert!(parsed.absolute_eps.is_empty());
+    }
 }
