@@ -347,3 +347,26 @@
     white-space: nowrap;
 }
 
+/* Needs Review tab — bulk action bar that appears when ≥1 row is
+   selected. Sticky so scrolling a long review list keeps the Apply
+   button reachable. */
+.review-bulk-bar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+}
+.review-bulk-count {
+    font-weight: 600;
+    color: var(--accent);
+    margin-right: 6px;
+}
+

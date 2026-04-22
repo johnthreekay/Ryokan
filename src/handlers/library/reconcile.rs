@@ -505,7 +505,7 @@ pub(super) async fn reconcile_all_fallback_entries(db: &SqlitePool) -> Reconcile
 /// `artwork::cached_or_source_url` per series, which on a 200-series
 /// library was 200 sequential SQLite queries before the topbar even
 /// rendered.
-pub(super) async fn populate_series_cover_urls<T, S, M>(
+pub(crate) async fn populate_series_cover_urls<T, S, M>(
     db: &sqlx::SqlitePool,
     items: &mut [T],
     series_id_of: S,

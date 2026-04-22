@@ -1,7 +1,7 @@
 use askama::Template;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{episode_tags, series};
+use crate::models::series;
 use crate::services::anilist;
 
 pub mod crud;
@@ -16,13 +16,6 @@ struct IndexTemplate {
     page: String,
     library: Vec<series::Series>,
     title_language: String,
-}
-
-#[derive(Template)]
-#[template(path = "needs_review.html")]
-struct NeedsReviewTemplate {
-    page: String,
-    entries: Vec<episode_tags::NeedsReviewEntry>,
 }
 
 #[derive(Template)]

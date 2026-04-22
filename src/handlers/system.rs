@@ -11,8 +11,9 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::AppState;
+use crate::handlers::library::reconcile::populate_series_cover_urls;
 use crate::models::{
-    config,
+    config, episode_tags,
     log::{self, LogCategory, LogLevel},
     rss, scheduled_tasks,
 };
@@ -40,6 +41,10 @@ struct SystemTemplate {
     rss_last_run: Option<rss::RssRun>,
     rss_recent: Vec<rss::RssDecision>,
     scheduled_tasks: Vec<scheduled_tasks::ScheduledTaskStatus>,
+    /// Cross-library episodes currently flagged `needs_review`. Only
+    /// populated when `tab == "review"`; empty on every other tab so
+    /// the serial fan-out stays cheap.
+    review_entries: Vec<episode_tags::NeedsReviewEntry>,
 }
 
 #[derive(Deserialize)]
@@ -67,6 +72,7 @@ fn normalize_system_tab(tab: Option<String>) -> String {
         Some("debug") => "debug".to_string(),
         Some("rss") => "rss".to_string(),
         Some("tasks") => "tasks".to_string(),
+        Some("review") => "review".to_string(),
         _ => "logs".to_string(),
     }
 }
@@ -127,14 +133,40 @@ pub async fn system_page(
             Vec::new()
         }
     };
+    let review_entries_fut = async {
+        if tab == "review" {
+            let mut entries = episode_tags::get_needs_review(&state.db)
+                .await
+                .unwrap_or_default();
+            populate_series_cover_urls(
+                &state.db,
+                &mut entries,
+                |e| e.series_id,
+                |entry, url| entry.cover_url = url,
+            )
+            .await;
+            entries
+        } else {
+            Vec::new()
+        }
+    };
 
-    let (logs, cfg_res, rss_last_run_res, rss_recent, scheduled_tasks, log_count_res) = tokio::join!(
+    let (
+        logs,
+        cfg_res,
+        rss_last_run_res,
+        rss_recent,
+        scheduled_tasks,
+        log_count_res,
+        review_entries,
+    ) = tokio::join!(
         logs_fut,
         config::get_config(&state.db),
         rss::latest_run(&state.db),
         rss_recent_fut,
         scheduled_tasks_fut,
         log::count(&state.db),
+        review_entries_fut,
     );
     let cfg = cfg_res.ok().flatten();
     let rss_last_run = rss_last_run_res.unwrap_or(None);
@@ -196,6 +228,7 @@ pub async fn system_page(
         rss_last_run,
         rss_recent,
         scheduled_tasks,
+        review_entries,
     };
     Html(template.render().unwrap_or_default())
 }
@@ -301,6 +334,7 @@ pub async fn debug_settings_submit(
         rss_last_run: rss::latest_run(&state.db).await.unwrap_or(None),
         rss_recent: Vec::new(),
         scheduled_tasks: scheduled_tasks::list(&state.db).await.unwrap_or_default(),
+        review_entries: Vec::new(),
     };
     Html(template.render().unwrap_or_default())
 }

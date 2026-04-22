@@ -434,10 +434,6 @@ async fn main() {
             get(handlers::library::pages::needs_review_page),
         )
         .route(
-            "/api/library/needs-review-count",
-            get(handlers::library::pages::needs_review_count),
-        )
-        .route(
             "/series/{anilist_id}",
             get(handlers::library::pages::series_detail),
         )

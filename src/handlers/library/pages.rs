@@ -26,10 +26,7 @@ use crate::services::{
 use super::reconcile::{
     force_kitsu_fallback_enabled, populate_series_cover_urls, resolve_series_context,
 };
-use super::{
-    Episode, ErrorTemplate, IndexTemplate, NeedsReviewTemplate, RelationCard, RelationGroup,
-    SeriesTemplate,
-};
+use super::{Episode, ErrorTemplate, IndexTemplate, RelationCard, RelationGroup, SeriesTemplate};
 
 pub async fn index(State(state): State<AppState>) -> Html<String> {
     // Fetch the library list and config concurrently — they're independent
@@ -59,47 +56,11 @@ pub async fn index(State(state): State<AppState>) -> Html<String> {
     Html(template.render().unwrap_or_default())
 }
 
-/// Count of episodes currently flagged `needs_review`. Fed to the
-/// topbar badge from every page via an inline fetch in base.html so
-/// users don't need to be on the library index to know there's
-/// classification work pending.
-#[utoipa::path(
-    get,
-    path = "/api/library/needs-review-count",
-    tag = "Library",
-    summary = "Count episodes flagged needs_review",
-    responses(
-        (status = 200, description = "Count", body = serde_json::Value),
-    ),
-)]
-pub async fn needs_review_count(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
-    let count = episode_tags::count_needs_review(&state.db)
-        .await
-        .unwrap_or(0);
-    axum::Json(serde_json::json!({ "count": count }))
-}
-
-/// Phase 4 cross-library "needs review" page. Lists every episode the
-/// classifier couldn't land a confident verdict on, with a deep link back
-/// to the series detail page so the user can open the override modal.
-pub async fn needs_review_page(State(state): State<AppState>) -> Html<String> {
-    let mut entries = episode_tags::get_needs_review(&state.db)
-        .await
-        .unwrap_or_default();
-
-    populate_series_cover_urls(
-        &state.db,
-        &mut entries,
-        |e| e.series_id,
-        |entry, url| entry.cover_url = url,
-    )
-    .await;
-
-    let template = NeedsReviewTemplate {
-        page: "library".to_string(),
-        entries,
-    };
-    Html(template.render().unwrap_or_default())
+/// `/library/review` used to render its own page. It's now a System
+/// tab (`/system?tab=review`) — keep this as a 308 redirect so
+/// anything bookmarked, linked, or cached still resolves.
+pub async fn needs_review_page() -> axum::response::Redirect {
+    axum::response::Redirect::permanent("/system?tab=review")
 }
 
 pub async fn series_detail(

@@ -38,19 +38,6 @@ pub struct NeedsReviewEntry {
     pub classification_evidence: String,
 }
 
-/// Count-only version of [`get_needs_review`]. Cheap index scan — used
-/// by the topbar badge so every page can show "N flagged" without
-/// materializing the full list.
-pub async fn count_needs_review(db: &SqlitePool) -> Result<i64, sqlx::Error> {
-    let (count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM episode_quality_tags \
-         WHERE needs_review = 1 AND COALESCE(manual_override, 0) = 0",
-    )
-    .fetch_one(db)
-    .await?;
-    Ok(count)
-}
-
 /// Return every episode currently flagged `needs_review = true` across the
 /// entire library, joined with its series info. Used by the Phase 4
 /// "Needs review" list view. Excludes rows the user has already manually
