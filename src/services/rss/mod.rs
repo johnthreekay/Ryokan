@@ -1143,6 +1143,25 @@ async fn evaluate_candidate(
         }
 
         if is_finished_status(&found.status) {
+            // Finished-series batch with no parsed range. The convenience
+            // path is: user adds an old series, a BD batch shows up,
+            // grab it. But we can only grab blindly when nothing is on
+            // disk — otherwise `do_file_op` in post-processing would
+            // silently overwrite existing episodes with whatever the
+            // batch contains, with no per-episode upgrade check
+            // possible (the pack's episode range is unknown). Safer to
+            // reject and let the user grab intentionally via manual
+            // search when they have existing episodes.
+            if !existing_ep_numbers.is_empty() {
+                return CandidateDecision {
+                    reject_reason: Some(format!(
+                        "Finished-series batch rejected: series has {} episode(s) on disk and the pack's episode range is unknown — can't verify whether the batch would overwrite them with worse quality. Grab via manual search if intentional.",
+                        existing_ep_numbers.len()
+                    )),
+                    new_episode_count: 0,
+                    is_upgrade: false,
+                };
+            }
             return CandidateDecision {
                 reject_reason: None,
                 new_episode_count: 0,

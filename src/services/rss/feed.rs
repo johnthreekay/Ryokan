@@ -39,6 +39,26 @@ static RE_BATCH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(?:e?\d{1,4}|s\d{1,2}e\d{1,4})\s*[-~]\s*(?:e?\d{1,4}|\d{1,4})\b").unwrap()
 });
 
+/// Season-marker-immediately-followed-by-bracket pattern. Catches the
+/// Kaizoku-style convention where a pack is named `[Group] Series
+/// Season N (Descriptor)` with no episode number between the season
+/// token and the metadata parens — the opening bracket is the anchor
+/// for a metadata block, not an episode number. Single-episode
+/// releases have a different anchor (episode token or dash) between
+/// the season marker and the bracket, so this regex doesn't fire.
+///
+/// Covers the common season-marker phrasings: `Season N`, `S\d+`
+/// (standalone — the `\s*[(\[]` tail ensures no `E\d` / other digit
+/// sits between the `S\d` and the bracket, which regex-lite's lack
+/// of lookaround would otherwise need to express), `\d(st|nd|rd|th)
+/// Season`, `Part N`, `Cour N`.
+static RE_BATCH_SEASON_BRACKET: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\b(?:season\s*\d{1,2}|s\d{1,2}|\d{1,2}(?:st|nd|rd|th)\s+season|part\s*\d{1,2}|cour\s*\d{1,2})\s*[(\[]",
+    )
+    .unwrap()
+});
+
 pub(super) fn build_item_key(item: &RssItem) -> String {
     if !item.info_hash.is_empty() {
         return format!("hash:{}", item.info_hash.to_lowercase());
@@ -283,9 +303,76 @@ pub(super) fn extract_resolution(title: &str) -> String {
 pub(super) fn detect_batch(title: &str) -> bool {
     let lower = title.to_lowercase();
     RE_BATCH.is_match(&lower)
+        || RE_BATCH_SEASON_BRACKET.is_match(&lower)
         || lower.contains(" batch")
         || lower.contains(" complete")
         || lower.contains(" mini batch")
         || lower.contains(" full season")
         || lower.contains("全集")
+}
+
+#[cfg(test)]
+mod detect_batch_tests {
+    use super::detect_batch;
+
+    #[test]
+    fn kaizoku_season_parens_detected_as_batch() {
+        assert!(detect_batch(
+            "[Kaizoku] Jujutsu Kaisen Season 3 (WEB 1080p HEVC EAC-3) | The Culling Game Part 1"
+        ));
+    }
+
+    #[test]
+    fn subsplease_weekly_not_batch() {
+        assert!(!detect_batch(
+            "[SubsPlease] Frieren - 01 (1080p) [ABCD1234].mkv"
+        ));
+    }
+
+    #[test]
+    fn single_episode_not_batch() {
+        // Standard weekly release has no season-bracket anchor and no
+        // range token. `RE_BATCH_SEASON_BRACKET` doesn't fire because
+        // there's no season marker.
+        //
+        // NOTE: "Season 3 - 05" style titles currently trigger a
+        // separate pre-existing false positive in `RE_BATCH` (the
+        // "\d - \d" range regex matches "3 - 05"). Not introduced by
+        // this commit; worth a follow-up to mask season markers before
+        // running RE_BATCH too.
+        assert!(!detect_batch("[Group] Cool Anime - 05 (1080p)"));
+    }
+
+    #[test]
+    fn s3e05_not_batch() {
+        // "S3E05" — the S\d immediately follows with E\d, so the
+        // `\s*[(\[]` tail on RE_BATCH_SEASON_BRACKET can't match
+        // (the next char after "s3" is "e", not whitespace/bracket).
+        assert!(!detect_batch("[Group] Cool Anime S3E05 (1080p)"));
+    }
+
+    #[test]
+    fn explicit_range_still_batch() {
+        assert!(detect_batch("[Group] Cool Anime 01-12 (1080p)"));
+    }
+
+    #[test]
+    fn explicit_batch_token_still_batch() {
+        assert!(detect_batch("[Group] Cool Anime Complete Batch"));
+    }
+
+    #[test]
+    fn nrd_season_parens_detected_as_batch() {
+        assert!(detect_batch("[Group] Series 3rd Season (1080p BD)"));
+    }
+
+    #[test]
+    fn cour_parens_detected_as_batch() {
+        assert!(detect_batch("[Group] Series Cour 2 (1080p)"));
+    }
+
+    #[test]
+    fn part_parens_detected_as_batch() {
+        assert!(detect_batch("[Group] Series Part 2 (1080p)"));
+    }
 }
