@@ -683,7 +683,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                 .await;
                 // Record for post-processing.
                 let ep_list: Vec<i32> = cand.found.resolved_eps.iter().copied().collect();
-                let _ = crate::models::grabbed_torrents::record_grab(
+                let grab_id = crate::models::grabbed_torrents::record_grab(
                     &state.db,
                     &cand.item.info_hash,
                     &cand.item.title,
@@ -691,7 +691,9 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                     &ep_list,
                     cand.item.is_batch,
                 )
-                .await;
+                .await
+                .ok()
+                .flatten();
                 // Record quality tag + classification for episode status display.
                 let classification = crate::services::source::classify_release(
                     &state.db,
@@ -736,6 +738,78 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                         cand.item.is_batch,
                     )
                     .await;
+                }
+
+                // Grab-time sibling detection for batch grabs — without
+                // this, a Monogatari-batch that actually contains
+                // Owarimonogatari files has its per-sibling grab_history
+                // rows transiently attributed to the parent series until
+                // post-processing's import-time safety net re-routes
+                // them. Files end up in the right folder either way,
+                // but the series page reads grab history for progress
+                // display so the UI looked wrong in the meantime.
+                //
+                // Only runs on batch grabs with a positive provider_id
+                // (AniList-sourced series). Jikan-fallback series with
+                // synthetic negative ids can't walk AL relations to
+                // discover siblings, so auto_expand isn't useful there.
+                // The `tokio::spawn` is fire-and-forget with a 180s
+                // metadata wait inside — the RSS sync cycle finishes
+                // long before this completes.
+                if cand.item.is_batch
+                    && let Some(grab_id) = grab_id
+                    && cand.found.series.anilist_id > 0
+                {
+                    let db_task = state.db.clone();
+                    let client_arc = client.clone();
+                    let info_hash_task = cand.item.info_hash.clone();
+                    let provider_id = cand.found.series.anilist_id;
+                    let parent_series_id = cand.found.series.id;
+                    let ep_list_task = ep_list.clone();
+                    let title_task = cand.item.title.clone();
+                    let grab_ctx_task = crate::services::auto_expand::AutoExpandGrabContext {
+                        classification: classification.clone(),
+                        release_group: cand.item.group.clone(),
+                        size_bytes: 0,
+                    };
+                    tokio::spawn(async move {
+                        // Cache-only detail lookup: if metadata hasn't
+                        // been cached yet (unusual for a series the
+                        // user has added) we fall back to letting
+                        // post-processing handle sibling routing at
+                        // import time.
+                        let detail = match crate::models::metadata_cache::get_by_provider_id(
+                            &db_task,
+                            provider_id,
+                        )
+                        .await
+                        {
+                            Ok(Some(row)) => row.detail,
+                            _ => return,
+                        };
+                        let files = match crate::services::download_client::wait_for_files(
+                            &*client_arc,
+                            &info_hash_task,
+                            std::time::Duration::from_secs(180),
+                        )
+                        .await
+                        {
+                            Ok(files) => files,
+                            Err(_) => return,
+                        };
+                        let filenames: Vec<String> = files.into_iter().map(|f| f.name).collect();
+                        crate::services::auto_expand::expand_from_files(
+                            &db_task,
+                            &filenames,
+                            &detail,
+                            parent_series_id,
+                            &ep_list_task,
+                            grab_id,
+                            &title_task,
+                            &grab_ctx_task,
+                        )
+                        .await;
+                    });
                 }
             }
             Err(err) => {
