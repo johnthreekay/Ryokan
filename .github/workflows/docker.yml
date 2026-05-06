@@ -148,7 +148,7 @@ jobs:
         # download-artifact exists but there's no v8 of upload-artifact
         # yet, and v7↔v8 mixing has produced ambiguous archives in the
         # past (compression-default change between majors).
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
           pattern: digests-*
