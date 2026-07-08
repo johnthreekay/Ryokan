@@ -237,7 +237,7 @@ subtle = "2"
 # acceleration dependency — runs identically on a Raspberry Pi and an
 # x86_64 server, and the performance difference doesn't matter for
 # encrypting a handful of tokens per sync tick.
-chacha20poly1305 = "0.10"
+chacha20poly1305 = "0.11"
 # Base64 encoding. Originally added as a dev-only dep for the
 # download-client smokes; promoted to a prod dep in #62 because
 # the `RYOKAN_ENCRYPTION_KEY` env var is base64-encoded and
