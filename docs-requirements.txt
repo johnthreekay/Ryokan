@@ -5,4 +5,4 @@
 #
 # Zensical is pre-1.0 (0.0.x) and ships on a fast cadence; the < 0.1
 # pin will need a re-evaluation when 1.0 drops.
-zensical>=0.0.40,<0.1
+zensical>=0.0.57,<0.1
