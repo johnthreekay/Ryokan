@@ -1,7 +1,7 @@
 // ── Logs tab ────────────────────────────────────────────────────────────
 
 // Per-page JS files are re-executed by hx-boost on every nav-back to a
-// previously-visited page (htmx 2.x evaluates inserted `<script src>`
+// previously-visited page (htmx evaluates inserted `<script src>`
 // tags). Without a one-shot guard around `addEventListener` calls,
 // every visit attaches another copy of the listener — by the Nth visit,
 // every event fires N callbacks. Surfaced as the "Episode 10 deleted ×7"
@@ -495,7 +495,7 @@ function openNotificationAddModal() {
     );
 }
 // Kind-flip + clear-secret + in-modal Send-test wiring. Called on
-// every htmx:afterSettle into `#notif-modal-body` so the freshly-
+// every htmx:after:settle into `#notif-modal-body` so the freshly-
 // rendered form picks up behavior without per-template inline JS.
 function bindNotifModalForm(form) {
     if (!form || form.dataset.ryokanNotifFormBound === '1') return;
@@ -561,7 +561,7 @@ async function notifTestClickHandler() {
 // of system.js don't accumulate listener copies on every nav-back.
 if (!window.__ryokanSystemNotifModule) {
     window.__ryokanSystemNotifModule = true;
-    document.body.addEventListener('htmx:afterSettle', function(ev) {
+    document.body.addEventListener('htmx:after:settle', function(ev) {
         if (ev.target && ev.target.id === 'notif-modal-body') {
             var form = ev.target.querySelector('form');
             if (form) bindNotifModalForm(form);
@@ -572,8 +572,8 @@ if (!window.__ryokanSystemNotifModule) {
     // Re-bind backdrop-click after every section-partial swap. The
     // modal element is replaced when #notif-section re-renders, so
     // a one-shot listener attached at boot would lose its target.
-    document.body.addEventListener('htmx:afterSwap', function(ev) {
-        if (ev.target && ev.target.id === 'notif-section') {
+    document.body.addEventListener('htmx:after:swap', function(ev) {
+        if (window.ryokanSwapTargetId(ev) === 'notif-section') {
             bindNotificationModalDismiss();
         }
     });

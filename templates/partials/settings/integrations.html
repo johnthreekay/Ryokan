@@ -61,12 +61,12 @@
                         hx-include="closest form"
                         hx-target="#jellyfin-test-result"
                         hx-swap="innerHTML"
-                        hx-disabled-elt="this">Test</button>
+                        hx-disable="this">Test</button>
                 <button type="button" class="btn btn-secondary"
                         hx-post="/api/jellyfin/refresh"
                         hx-target="#jellyfin-test-result"
                         hx-swap="innerHTML"
-                        hx-disabled-elt="this">Refresh Library</button>
+                        hx-disable="this">Refresh Library</button>
                 <span id="jellyfin-test-result" class="form-hint" aria-live="polite"></span>
             </div>
         </fieldset>

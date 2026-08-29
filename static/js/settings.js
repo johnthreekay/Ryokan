@@ -160,7 +160,7 @@ function closeCfEditorModal() {
 // the server's section-partial response to replace the entire
 // section, including the modal, at display:none with the Add form
 // back in body — closing + resetting in one shot. No manual
-// `hx-on::after-request="closeModal()"` needed (and removed because
+// `hx-on::after:request="closeModal()"` needed (and removed because
 // `<button>` containing block content was getting auto-closed by
 // the parser, breaking the inline JS hooks anyway — the click
 // handlers live on `<div role="button">` now).
@@ -175,7 +175,7 @@ function openDownloadClientModal(title) {
     // Focus the first text/url input in the body for keyboard
     // ergonomics. The body may be empty here (we clear it on click
     // so the previous form doesn't flash through while the fetch
-    // is in flight); the htmx:afterSettle listener below picks up
+    // is in flight); the htmx:after:settle listener below picks up
     // the focus once the form lands. querySelector matches in DOM
     // order so the Name field wins on both Add and Edit forms.
     const firstInput = modal.querySelector('input[type="text"], input[type="url"]');
@@ -223,7 +223,7 @@ function openDcAddModal() {
 // One-shot guard wraps every `addEventListener` at module scope in this
 // file. hx-boost re-runs the script on each nav-back, so an unguarded
 // `addEventListener` accumulates a copy per visit (Nth visit fires N
-// callbacks). Same pattern applied to the 2 `htmx:afterSettle` and 1
+// callbacks). Same pattern applied to the 2 `htmx:after:settle` and 1
 // `DOMContentLoaded` listeners further down the file.
 if (!window.__ryokanSettingsTriggerListeners) {
     window.__ryokanSettingsTriggerListeners = true;
@@ -254,8 +254,8 @@ if (!window.__ryokanSettingsTriggerListeners) {
         });
     });
 }
-// Companion to the modal-footer Test button. htmx's `hx-disabled-elt`
-// re-enables the button on htmx:afterRequest automatically, but we
+// Companion to the modal-footer Test button. htmx's `hx-disable`
+// re-enables the button on htmx:after:request automatically, but we
 // also want the button text to flash "Testing…" while the request is
 // in flight so the user has visual feedback. No-op when called
 // outside an htmx context.
@@ -264,16 +264,16 @@ window.ryokanWaitForIndexerTest = function (btn) {
     const original = btn.textContent;
     btn.textContent = 'Testing…';
     const restore = function () { btn.textContent = original; };
-    // htmx:afterRequest fires once per request. Use a one-shot
+    // htmx:after:request fires once per request. Use a one-shot
     // listener scoped to this btn so concurrent Test clicks elsewhere
     // don't restore each other prematurely.
     const handler = function (ev) {
         if (ev.target === btn) {
             restore();
-            btn.removeEventListener('htmx:afterRequest', handler);
+            btn.removeEventListener('htmx:after:request', handler);
         }
     };
-    btn.addEventListener('htmx:afterRequest', handler);
+    btn.addEventListener('htmx:after:request', handler);
     // Safety net: if htmx swallows the event for some reason (e.g. the
     // request errors out before sending), the disabled-elt timer
     // restores the button after 6s.
@@ -283,8 +283,10 @@ window.ryokanWaitForIndexerTest = function (btn) {
 };
 // Backdrop-click + Escape dismissal. Re-bound on every section swap
 // because the modal element is replaced when #dc-section re-renders;
-// htmx fires `htmx:afterSwap` on the swap target, so we listen there
-// once at module scope and re-attach the per-modal listeners.
+// htmx 4 fires `htmx:after:swap` on the request's source element (or
+// `document` once that element was swapped out), so we listen on body
+// once at module scope, match the swapped region via
+// `ryokanSwapTargetId`, and re-attach the per-modal listeners.
 (function() {
     function bindDownloadClientModal() {
         const modal = document.getElementById('dc-modal');
@@ -298,8 +300,8 @@ window.ryokanWaitForIndexerTest = function (btn) {
     bindDownloadClientModal();
     if (window.__ryokanDcModalGlobalListeners) return;
     window.__ryokanDcModalGlobalListeners = true;
-    document.body.addEventListener('htmx:afterSwap', function(ev) {
-        if (ev.target && ev.target.id === 'dc-section') {
+    document.body.addEventListener('htmx:after:swap', function(ev) {
+        if (window.ryokanSwapTargetId(ev) === 'dc-section') {
             bindDownloadClientModal();
         }
     });
@@ -325,7 +327,7 @@ window.ryokanWaitForIndexerTest = function (btn) {
 //
 // Wired off `data-dc-*` markers so it works for both add_form_body
 // and edit_form_body without per-form duplication. Re-runs on:
-//   1. modal open (htmx:afterSwap into #dc-modal-body) — sets the
+//   1. modal open (htmx:after:swap into #dc-modal-body) — sets the
 //      initial state for an Edit form whose kind is already
 //      pre-selected.
 //   2. kind dropdown change — handles the user flipping kinds while
@@ -494,7 +496,7 @@ if (!window.__ryokanSettingsDcModalListeners) {
     // htmx swaps the modal-body when an Edit/Add modal opens. Run the
     // relabel pass on every fresh body so the initial state matches the
     // pre-selected kind (Edit) or the qBittorrent default (Add).
-    document.body.addEventListener('htmx:afterSettle', function(ev) {
+    document.body.addEventListener('htmx:after:settle', function(ev) {
         if (ev.target && ev.target.id === 'dc-modal-body') {
             const form = ev.target.querySelector('form');
             if (form) bindDcKindCopyToForm(form);
@@ -549,7 +551,7 @@ function openIndexerModal(title) {
     // Focus the first text/url input in the body for keyboard
     // ergonomics. The body may be empty here (we clear it on click
     // so the previous form doesn't flash through while the fetch is
-    // in flight); the htmx:afterSettle listener below picks up the
+    // in flight); the htmx:after:settle listener below picks up the
     // focus once the form lands.
     const firstInput = modal.querySelector('input[type="text"], input[type="url"]');
     if (firstInput) firstInput.focus();
@@ -609,8 +611,8 @@ function openIndexerAddModal(slug, name) {
     bindIndexerModal();
     if (window.__ryokanIndexerModalGlobalListeners) return;
     window.__ryokanIndexerModalGlobalListeners = true;
-    document.body.addEventListener('htmx:afterSwap', function(ev) {
-        if (ev.target && ev.target.id === 'indexer-section') {
+    document.body.addEventListener('htmx:after:swap', function(ev) {
+        if (window.ryokanSwapTargetId(ev) === 'indexer-section') {
             bindIndexerModal();
         }
     });
@@ -663,7 +665,7 @@ function bindIndexerKindCopyToForm(form) {
 // One-shot guard — see top of file for rationale.
 if (!window.__ryokanSettingsIndexerModalListener) {
     window.__ryokanSettingsIndexerModalListener = true;
-    document.body.addEventListener('htmx:afterSettle', function(ev) {
+    document.body.addEventListener('htmx:after:settle', function(ev) {
         if (ev.target && ev.target.id === 'indexer-modal-body') {
             const form = ev.target.querySelector('form');
             if (form) bindIndexerKindCopyToForm(form);
@@ -947,9 +949,9 @@ function buildCfImportResolvePayload(form) {
 // `hx-post` + `hx-include="closest form"` + `hx-target="next .dc-test-result"`
 // (or `#jellyfin-test-result` for the singletons). The server returns
 // the rendered partial at `templates/partials/settings/connection_test_result.html`,
-// always 200 so HTMX swaps in both success and failure (htmx 2.x's
+// always 200 so HTMX swaps in both success and failure (the `noSwap`
 // default error policy skips the swap on 4xx/5xx). Loading state via
-// `hx-disabled-elt="this"` (htmx adds `disabled` for the duration of
+// `hx-disable="this"` (htmx adds `disabled` for the duration of
 // the request and removes it on response).
 
 // Auto-check connection health on integrations tab load.
@@ -1182,7 +1184,7 @@ if (typeof window.ryokanRegisterPageInit === 'function') {
 // afterSwap handlers in this file.
 if (!window.__ryokanNamingPreviewSwapListener) {
     window.__ryokanNamingPreviewSwapListener = true;
-    document.body.addEventListener('htmx:afterSwap', function () {
+    document.body.addEventListener('htmx:after:swap', function () {
         bindNamingPreview();
     });
 }

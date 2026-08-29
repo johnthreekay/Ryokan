@@ -217,10 +217,10 @@
                    server takes form data (series_id, allow) and acks
                    with an empty 200 for the HTMX branch. `hx-swap=none`
                    keeps the rendered checkbox as the source of truth
-                   for the visual state; the `hx-on::response-error`
+                   for the visual state; the `hx-on::response:error`
                    handler reverts the click + toasts when the server
-                   rejects (4xx/5xx). `htmx.config.responseHandling`
-                   already skips the swap on error, so the visual
+                   rejects (4xx/5xx). The `noSwap` config in base.html
+                   keeps error bodies out of the page, so the visual
                    revert is the only client work needed. #}
                 <label class="checkbox-label">
                     <input type="checkbox" id="allow-upgrades"
@@ -228,7 +228,7 @@
                         hx-post="/api/library/allow-upgrades"
                         hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
                         hx-swap="none"
-                        hx-on::response-error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'Upgrades toggle failed', body: 'Failed to update upgrades toggle', log: true})">
+                        hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'Upgrades toggle failed', body: 'Failed to update upgrades toggle', log: true})">
                     Allow automatic upgrades when a higher-quality release is found
                 </label>
                 {# Issue #28 — PT upgrade opt-in. Indented under the
@@ -240,7 +240,7 @@
                         hx-post="/api/library/allow-pt-upgrades"
                         hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
                         hx-swap="none"
-                        hx-on::response-error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'PT-upgrades toggle failed', body: 'Failed to update PT-upgrades toggle', log: true})">
+                        hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'PT-upgrades toggle failed', body: 'Failed to update PT-upgrades toggle', log: true})">
                     Allow upgrades from private trackers
                 </label>
             </div>
@@ -566,14 +566,14 @@
                attrs route through the htmx:confirm bridge in `base.js`,
                and the empty 200 + `HX-Trigger: ryokan-episode-deleted`
                from the handler drives the toast + row update via the
-               listener in `series.js`. The `hx-on::after-request` handler
-               closes the modal on success. #}
+               listener in `series_episode_modal.js`. The `hx-on::after:request`
+               handler closes the modal on success. #}
             <button class="btn-delete-file" id="btn-delete-file" style="display:none"
                 hx-swap="none"
                 data-ryokan-confirm-title="Delete episode file"
                 data-ryokan-confirm-yes="Delete"
                 data-ryokan-confirm-danger="1"
-                hx-on::after-request="if (event.detail.successful) document.getElementById('ep-detail-modal').style.display='none'">
+                hx-on::after:request="if (event.detail.ctx.response.status < 400) document.getElementById('ep-detail-modal').style.display='none'">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
                 Delete File
             </button>
@@ -653,7 +653,7 @@
         <div class="modal-footer" style="padding:12px 24px;border-top:1px solid var(--border);gap:8px;display:flex;justify-content:flex-end;flex-wrap:wrap">
             {# Issue #166 — Re-classify renders the verdict pill into
                `#override-status` and schedules a 600ms delayed reload
-               via `hx-on::after-request` so the user can read the new
+               via `hx-on::after:request` so the user can read the new
                tag before the page refreshes. `hx-vals='js:'` reads the
                current episode from the module-scope tracker that
                openManualOverride sets. #}
@@ -662,7 +662,7 @@
                 hx-vals='js:{...manualOverrideReclassifyVals()}'
                 hx-target="#override-status"
                 hx-swap="innerHTML"
-                hx-on::after-request="if (event.detail.successful) setTimeout(function(){ window.location.reload(); }, 600)"
+                hx-on::after:request="if (event.detail.ctx.response.status < 400) setTimeout(function(){ window.location.reload(); }, 600)"
                 title="Re-run the full-pipeline classifier against this episode's on-disk file. Useful after editing Release Groups or Custom Formats; skips the 6-hour sweep. Pinned rows are rejected; clear the override first.">Re-classify</button>
             {# Clear + Apply both POST to manual-override; the server
                returns `HX-Refresh: true` so htmx triggers a full page

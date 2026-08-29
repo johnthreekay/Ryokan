@@ -254,7 +254,7 @@ function markEpisodeFailed(historyId, epNum, btn) {
 // Per-episode delete is wired declaratively: the `#btn-delete-file`
 // in the modal footer carries `hx-post` (URL set per-modal-open in
 // `showEpisodeDetail`), `data-ryokan-confirm-*` (routed through the
-// htmx:confirm bridge in `base.js`), `hx-on::after-request` (closes
+// htmx:confirm bridge in `base.js`), `hx-on::after:request` (closes
 // the modal on success), and `hx-swap="none"` (the empty 200 response
 // from the handler has no body to swap — the row update happens via
 // the `ryokan-episode-deleted` listener below). The handler emits an

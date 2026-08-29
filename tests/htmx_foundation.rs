@@ -3,24 +3,29 @@
 //! Pins the load-bearing scaffolding the rest of the HTMX surface
 //! depends on:
 //!
-//!   1. Vendored htmx core + extensions exist on disk at the expected
-//!      paths with the expected versions. If anyone renames / moves /
-//!      accidentally deletes a vendored asset, this fails before a
-//!      user hits a missing-script 404 in production.
-//!   2. `templates/base.html` references all three script tags in the
-//!      correct order — htmx core must load before `base.js` so any
-//!      custom JS that references the `htmx.*` global sees it on first
+//!   1. The vendored htmx 4 core exists on disk at the expected path
+//!      with the expected shape. If anyone renames / moves /
+//!      accidentally deletes it, this fails before a user hits a
+//!      missing-script 404 in production. There are no extensions:
+//!      the progress toast streams over native `EventSource`, and the
+//!      `<head>` is static across boosted navs (all CSS bundled in
+//!      base.html), so neither the SSE nor the head-support extension
+//!      of the htmx 2 days is needed.
+//!   2. `templates/base.html` references the core before `base.js`
+//!      so custom JS that reads the `htmx.*` global sees it on first
 //!      paint.
-//!   3. Body-wide `hx-boost="true"` + `hx-ext="head-support"` are set
-//!      on `<body>`. Both are load-bearing per `templates/CLAUDE.md`:
-//!      boost opts every plain `<a>` and `<form>` into htmx swap-based
-//!      nav; head-support is the prerequisite that diff-merges `<head>`
-//!      so per-page `{% block page_css %}` swaps cleanly between pages.
-//!      Without head-support, boost would swap body content and leave
-//!      the head's per-page CSS stale (pages render unstyled across nav).
-//!   4. The `htmx-config` meta tag pins `historyEnableCache:false` so
-//!      browser back/forward refetches dynamic pages instead of
-//!      restoring stale snapshots (Downloads queue, System logs).
+//!   3. `<body hx-boost:inherited="true">`. htmx 4 inherits attributes
+//!      only with the `:inherited` suffix; a bare `hx-boost="true"`
+//!      would boost nothing below it and every nav would become a
+//!      full document load.
+//!   4. The `htmx-config` meta keeps two htmx 2 behaviors Ryokan was
+//!      built against: `noSwap` covering 4xx/5xx (handlers return
+//!      plain-text errors on those statuses and rely on the HX-Trigger
+//!      toast) and no request timeout (interactive search can run
+//!      past htmx 4's 60s default).
+//!   5. Nothing in templates / JS still speaks htmx 2: the removed
+//!      attributes, the old event names, and `htmx.ajax`'s `pushUrl`
+//!      option all silently stop working under 4 rather than erroring.
 //!
 //! Per-handler `HxRequest` branching, fragment-vs-page response shape,
 //! and DOM-state assertions live alongside their handlers
@@ -33,14 +38,12 @@
 //! strictly more robust — it catches a missing file regardless of
 //! what the router happens to mount.
 
-const HTMX_CORE_PATH: &str = "static/vendor/htmx-2.0.9.min.js";
-const HTMX_SSE_PATH: &str = "static/vendor/htmx-ext-sse-2.2.4.min.js";
-const HTMX_HEAD_SUPPORT_PATH: &str = "static/vendor/htmx-ext-head-support-2.0.5.min.js";
+use std::path::Path;
 
-/// Vendored htmx core exists and looks like htmx (not, e.g., a 404
-/// page captured from a bad fetch). `var htmx=` is htmx 2.x's minified
-/// output prefix; if upstream changes the prefix in a future minor we
-/// update the assertion here too.
+const HTMX_CORE_PATH: &str = "static/vendor/htmx-4.0.0.min.js";
+
+/// Vendored htmx core exists and looks like htmx 4 (not, e.g., a 404
+/// page captured from a bad fetch, and not the 2.x bundle).
 #[test]
 fn htmx_core_vendored_with_expected_shape() {
     let body = std::fs::read_to_string(HTMX_CORE_PATH)
@@ -50,78 +53,48 @@ fn htmx_core_vendored_with_expected_shape() {
         "asset at {HTMX_CORE_PATH} doesn't look like htmx (first 32 chars: {:?})",
         &body[..body.len().min(32)]
     );
-    // Sanity check size is in the 40-80KB range we expect for 2.0.x
-    // minified. Catches an accidental download of the unminified
-    // (~170KB) variant or a partial-fetch truncation.
+    assert!(
+        body.contains("version=\"4.0.0\"") || body.contains("version='4.0.0'"),
+        "asset at {HTMX_CORE_PATH} does not report version 4.0.0"
+    );
+    // The 4.0.0 minified bundle is ~37KB; the unminified one is ~100KB.
     let len = body.len();
     assert!(
-        (40_000..=80_000).contains(&len),
-        "vendored htmx core size {len} bytes is outside the expected 40-80KB minified range — \
-         possibly the unminified (~170KB) variant or a truncated fetch"
+        (25_000..=60_000).contains(&len),
+        "vendored htmx core size {len} bytes is outside the expected 25-60KB minified range — \
+         possibly the unminified variant or a truncated fetch"
     );
 }
 
-/// Vendored SSE extension exists. Smaller file — the size sanity
-/// range reflects the minified `sse.min.js` size for htmx-ext-sse 2.x.
+/// No htmx 2 assets linger in `static/vendor/`: a stale bundle next
+/// to the live one invites a template to reference the wrong file.
 #[test]
-fn htmx_sse_vendored_with_expected_shape() {
-    let body = std::fs::read_to_string(HTMX_SSE_PATH)
-        .unwrap_or_else(|e| panic!("vendored htmx SSE extension missing at {HTMX_SSE_PATH}: {e}"));
-    // The SSE extension's minified output starts with the IIFE wrapper
-    // calling htmx.defineExtension. Check for the substring rather than
-    // a strict prefix to tolerate minifier variation.
+fn no_htmx_2_assets_remain_vendored() {
+    let stale: Vec<String> = std::fs::read_dir("static/vendor")
+        .expect("static/vendor exists")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("htmx-2") || n.starts_with("htmx-ext-"))
+        .collect();
     assert!(
-        body.contains(r#"htmx.defineExtension("sse""#),
-        "asset at {HTMX_SSE_PATH} doesn't register an 'sse' extension"
-    );
-    let len = body.len();
-    assert!(
-        (1_500..=10_000).contains(&len),
-        "vendored htmx SSE extension size {len} bytes is outside the expected 1.5-10KB \
-         minified range — possibly the unminified variant or a truncated fetch"
+        stale.is_empty(),
+        "htmx 2 era assets still vendored: {stale:?}"
     );
 }
 
-/// Vendored head-support extension exists. The head-support extension
-/// is the prerequisite that lets `hx-boost` swap pages with different
-/// `<head>` blocks cleanly — without it, boost leaves per-page CSS stale.
-#[test]
-fn htmx_head_support_vendored_with_expected_shape() {
-    let body = std::fs::read_to_string(HTMX_HEAD_SUPPORT_PATH).unwrap_or_else(|e| {
-        panic!("vendored htmx head-support missing at {HTMX_HEAD_SUPPORT_PATH}: {e}")
-    });
-    assert!(
-        body.contains(r#"htmx.defineExtension("head-support""#),
-        "asset at {HTMX_HEAD_SUPPORT_PATH} doesn't register a 'head-support' extension"
-    );
-    let len = body.len();
-    assert!(
-        (1_000..=8_000).contains(&len),
-        "vendored htmx head-support extension size {len} bytes is outside the expected 1-8KB \
-         minified range — possibly the unminified variant or a truncated fetch"
-    );
-}
-
-/// `templates/base.html` declares all three vendored script tags in
-/// the correct order (htmx before `base.js` so the global is available
-/// to any custom JS that runs on DOMContentLoaded).
+/// `templates/base.html` loads the vendored core before `base.js` and
+/// loads no htmx extension scripts.
 #[test]
 fn base_template_wires_htmx_correctly() {
     let body =
         std::fs::read_to_string("templates/base.html").expect("templates/base.html must exist");
 
-    for path in [HTMX_CORE_PATH, HTMX_SSE_PATH, HTMX_HEAD_SUPPORT_PATH] {
-        assert!(
-            body.contains(&format!("/{path}")),
-            "base.html must include the vendored script tag for /{path}"
-        );
-    }
-
-    // Script tag order matters: htmx must load before base.js so
-    // custom JS can reference the `htmx.*` global. Verify by finding
-    // both positions and asserting the htmx one comes first.
+    assert!(
+        body.contains(&format!("/{HTMX_CORE_PATH}")),
+        "base.html must include the vendored script tag for /{HTMX_CORE_PATH}"
+    );
     let htmx_pos = body
-        .find("htmx-2.0.9.min.js")
+        .find("htmx-4.0.0.min.js")
         .expect("htmx core tag present");
     let base_js_pos = body
         .find("/static/js/base.js")
@@ -131,19 +104,19 @@ fn base_template_wires_htmx_correctly() {
         "htmx script tag must appear before base.js so the htmx global is available \
          to any custom JS"
     );
+    assert!(
+        !body.contains("htmx-ext-"),
+        "base.html must not load htmx extension scripts; none are needed under htmx 4"
+    );
 }
 
-/// Body declares `hx-boost="true"` + `hx-ext="head-support"`. Both are
-/// load-bearing per `templates/CLAUDE.md`. Pinned so a stray edit (e.g.
-/// removing one to "simplify" the body tag) fails the suite before
-/// hitting a user — boost without head-support leaves per-page CSS
-/// stale across nav; head-support without boost is just dead code.
+/// `<body hx-boost:inherited="true">`, and nothing else htmx-related on
+/// the tag: `hx-ext` was removed in 4 and would be dead text.
 #[test]
-fn base_body_declares_boost_and_head_support() {
+fn base_body_declares_inherited_boost() {
     let body =
         std::fs::read_to_string("templates/base.html").expect("templates/base.html must exist");
 
-    // Find the `<body` open tag and check the attributes are inside it.
     let open = body.find("<body").expect("base.html has a <body> tag");
     let close = body[open..]
         .find('>')
@@ -152,36 +125,131 @@ fn base_body_declares_boost_and_head_support() {
     let body_tag = &body[open..=close];
 
     assert!(
-        body_tag.contains(r#"hx-boost="true""#),
-        "<body> must declare hx-boost=\"true\" (got: {body_tag:?})"
+        body_tag.contains(r#"hx-boost:inherited="true""#),
+        "<body> must declare hx-boost:inherited=\"true\"; a bare hx-boost does not reach \
+         descendants under htmx 4's explicit inheritance (got: {body_tag:?})"
     );
     assert!(
-        body_tag.contains(r#"hx-ext="head-support""#),
-        "<body> must declare hx-ext=\"head-support\" — required for hx-boost to swap pages \
-         with different <head> blocks (got: {body_tag:?})"
+        !body_tag.contains("hx-ext"),
+        "<body> must not carry hx-ext (removed in htmx 4) (got: {body_tag:?})"
     );
 }
 
-/// `htmx-config` meta tag pins `historyEnableCache:false` so browser
-/// back/forward refetches dynamic pages (Downloads queue, System logs)
-/// instead of restoring stale snapshots. htmx 2.x reads this meta tag
-/// during init.
+/// The `htmx-config` meta keeps the two htmx 2 behaviors Ryokan relies
+/// on: error bodies never swap, and requests never time out.
 #[test]
-fn base_pins_history_cache_off_via_meta() {
+fn base_pins_htmx_2_compatible_config_via_meta() {
     let body =
         std::fs::read_to_string("templates/base.html").expect("templates/base.html must exist");
+    // The Askama comment above the tag quotes the tag's name; anchor
+    // on the attribute pair so the comment can't match first.
+    let start = body
+        .find(r#"<meta name="htmx-config" content='"#)
+        .expect("base.html must declare a <meta name=\"htmx-config\" content='...'> tag");
+    let tag_end = body[start..]
+        .find('>')
+        .map(|i| start + i)
+        .unwrap_or(body.len());
+    let tag = &body[start..tag_end];
+    let content = tag
+        .split("content='")
+        .nth(1)
+        .and_then(|rest| rest.split('\'').next())
+        .expect("htmx-config meta carries a single-quoted content attribute");
+    let config: serde_json::Value =
+        serde_json::from_str(content).expect("htmx-config content is valid JSON");
 
-    // Look for the meta tag with the htmx-config name and the
-    // historyEnableCache:false setting. JSON formatting tolerates both
-    // single and double quotes around the content attribute, so
-    // substring-match the inner JSON.
-    assert!(
-        body.contains(r#"name="htmx-config""#),
-        "base.html must declare a <meta name=\"htmx-config\"> tag for htmx init-time config"
+    let no_swap = config["noSwap"]
+        .as_array()
+        .expect("noSwap must be an array");
+    for code in ["4xx", "5xx"] {
+        assert!(
+            no_swap.iter().any(|v| v == code),
+            "noSwap must include {code:?} so error bodies never land in the page (got {no_swap:?})"
+        );
+    }
+    assert_eq!(
+        config["defaultTimeout"], 0,
+        "defaultTimeout must be 0: htmx 4 aborts at 60s by default and interactive search can run longer"
     );
     assert!(
-        body.contains(r#""historyEnableCache":false"#),
-        "htmx-config meta must set historyEnableCache:false so back/forward refetches \
-         dynamic pages instead of restoring stale snapshots"
+        config.get("historyEnableCache").is_none(),
+        "historyEnableCache is an htmx 2 key; htmx 4 refetches on history navigation by default"
     );
+}
+
+/// htmx 2 vocabulary that htmx 4 silently ignores must not creep back
+/// into templates or JS. Each entry is (needle, why it is wrong now).
+#[test]
+fn no_htmx_2_vocabulary_in_templates_or_js() {
+    const BANNED: &[(&str, &str)] = &[
+        ("hx-disabled-elt", "renamed to hx-disable"),
+        ("hx-disinherit", "removed; inheritance is explicit"),
+        ("hx-ext=", "removed; extension scripts load directly"),
+        (
+            "hx-on::response-error",
+            "event names are colon-separated: hx-on::response:error",
+        ),
+        (
+            "hx-on::after-request",
+            "event names are colon-separated: hx-on::after:request",
+        ),
+        (
+            "hx-on::after-swap",
+            "event names are colon-separated: hx-on::after:swap",
+        ),
+        ("htmx:afterSwap", "renamed to htmx:after:swap"),
+        ("htmx:afterSettle", "renamed to htmx:after:settle"),
+        ("htmx:afterRequest", "renamed to htmx:after:request"),
+        ("htmx:beforeRequest", "renamed to htmx:before:request"),
+        ("htmx:responseError", "renamed to htmx:response:error"),
+        ("htmx:configRequest", "renamed to htmx:config:request"),
+        ("htmx:load'", "renamed to htmx:after:init"),
+        ("pushUrl:", "htmx.ajax option renamed to push"),
+        (
+            "detail.successful",
+            "htmx 4 has no detail.successful; check detail.ctx.response.status",
+        ),
+        (
+            "historyEnableCache",
+            "htmx 2 config key; htmx 4 has no history cache",
+        ),
+    ];
+    let mut hits = Vec::new();
+    for dir in ["templates", "static/js"] {
+        visit(Path::new(dir), &mut |path, text| {
+            for (line_no, line) in text.lines().enumerate() {
+                for (needle, why) in BANNED {
+                    if line.contains(needle) {
+                        hits.push(format!(
+                            "{}:{}: `{needle}` ({why})",
+                            path.display(),
+                            line_no + 1
+                        ));
+                    }
+                }
+            }
+        });
+    }
+    assert!(
+        hits.is_empty(),
+        "htmx 2 vocabulary found (each silently does nothing under htmx 4):\n{}",
+        hits.join("\n")
+    );
+}
+
+fn visit(dir: &Path, f: &mut dyn FnMut(&Path, &str)) {
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if path.file_name().is_some_and(|n| n == "vendor") {
+                continue;
+            }
+            visit(&path, f);
+        } else if path.extension().is_some_and(|e| e == "html" || e == "js")
+            && let Ok(text) = std::fs::read_to_string(&path)
+        {
+            f(&path, &text);
+        }
+    }
 }

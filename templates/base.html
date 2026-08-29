@@ -13,15 +13,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {# Phase D — htmx 2.x reads <meta name="htmx-config"> during init,
-       before any of its own setup runs. This is the canonical way to
-       seed `htmx.config` and replaces the earlier inline-script dance
-       that tried to set the flag inside an `htmx:load` once-listener.
-       The flag matters: without it, browser-back on a dynamic page
-       (Downloads queue / System logs) restores the body snapshot
-       captured at first visit instead of refetching, leaving the
-       page showing stale content. #}
-    <meta name="htmx-config" content='{"historyEnableCache":false}'>
+    {# htmx reads <meta name="htmx-config"> during init. Two settings
+       keep the 2.x behavior Ryokan was built against (issue #130):
+       - noSwap: htmx 4 swaps 4xx/5xx bodies by default; the handlers
+         return plain-text errors on those statuses and rely on the
+         HX-Trigger toast, so they must not land in the page.
+       - defaultTimeout: htmx 4 aborts requests after 60s by default;
+         interactive search and the import wizard's confirm can run
+         longer than that on a slow indexer.
+       History needs no flag anymore: htmx 4 refetches on back /
+       forward (no localStorage snapshot), which is what the htmx 2
+       history-cache-off flag used to ask for. #}
+    <meta name="htmx-config" content='{"noSwap":[204,304,"4xx","5xx"],"defaultTimeout":0}'>
     {# Tells the browser to use dark variants for the default UA chrome
        (scrollbars, form controls, focus rings) before any of our CSS
        loads. Without this hint, the user briefly sees white scrollbars
@@ -49,7 +52,7 @@
     <link rel="stylesheet" href="/static/css/badges.css">
     <link rel="stylesheet" href="/static/css/modals.css">
     {# Per-page CSS bundled here instead of `{% block page_css %}` per
-       template. Reason: htmx-ext-head-support diff-merges <head> on
+       template. Reason: a head-merge (the htmx 2 head-support extension) diffed <head> on
        every boost nav. With per-template CSS links, navigating
        Page A → Page B removes pages/A.css and adds pages/B.css —
        and the *body* of Page B renders with only the shared CSS
@@ -57,7 +60,7 @@
        flash of unstyled content + UI elements (e.g. CF page cards,
        dropdown chevrons) styled exclusively by per-page rules
        briefly disappear during the gap.
-       Loading all per-page sheets in `<head>` once means head-support
+       Loading all per-page sheets in `<head>` once means a head-merge
        sees the same <link> list on every page and has nothing to
        swap. Total raw size ~100 KB; gzipped ~25 KB; HTTP/2-multiplexed
        on prod, parallel-fetched on localhost. After the first cold
@@ -79,28 +82,22 @@
     <link rel="stylesheet" href="/static/css/pages/settings.css">
     <link rel="stylesheet" href="/static/css/pages/system.css">
 </head>
-<body hx-ext="head-support" hx-boost="true">
-    {# Phase D of the hx-boost rollout plan:
-       `hx-boost="true"` on `<body>` opts every plain `<a>` and
-       `<form>` in the document into htmx swap-based navigation. No
-       full-page reload between Library / Search / Downloads /
-       Settings / System; head + body diff in place via
-       `htmx-ext-head-support`.
+<body hx-boost:inherited="true">
+    {# `hx-boost:inherited="true"` on `<body>` opts every plain `<a>`
+       and `<form>` in the document into htmx swap-based navigation.
+       No full-page reload between Library / Search / Downloads /
+       Settings / System. htmx 4 inherits attributes only when told
+       to (the `:inherited` suffix); a bare `hx-boost="true"` here
+       would boost nothing below it.
 
-       `hx-ext="head-support"` is the prerequisite — without
-       head-merging, the prior page's `<script>` tags would stick
-       around in the head across boost-navs. The extension diffs the
-       response's `<head>` against the current document's head: adds
-       new `<link>` / `<script>` tags from the new page, removes ones
-       the new page doesn't reference, leaves shared tags in place.
-       Per-page CSS used to live in `{% block page_css %}` per
-       template; head-support's diff would swap the per-page CSS file
-       on every nav, leaving the page's body content rendered with
-       only shared CSS applied during the gap (a visible flash of
-       unstyled content + temporarily-broken UI like dropdown
-       chevrons that lived only in the per-page sheet). All per-page
-       CSS now bundles into base.html so head-support sees the same
-       <link> list every time and has nothing to swap.
+       The `<head>` never changes across a boosted nav: every page's
+       CSS is bundled into this file (per-page sheets used to live in
+       `{% block page_css %}`, which flashed unstyled content while a
+       head-merge swapped them), and per-page scripts sit at the end
+       of `<body>` in `{% block page_js %}`, so they arrive with the
+       swapped body. htmx 4 core carries the `<title>` over on its
+       own, which is all that is left for the head. The htmx 2
+       head-support extension this used to need is gone.
 
        Per-element `hx-boost="false"` opt-outs in this file:
          - `<a href="/logout">` (below). `/logout` is a GET handler;
@@ -112,7 +109,7 @@
 
        Opt-outs to add IF you ever introduce them (none currently
        present; documented here so the convention is greppable):
-         - `target="_blank"` external links — htmx 2.x respects the
+         - `target="_blank"` external links — htmx respects the
            target attr natively but a defensive opt-out doesn't hurt.
          - In-page anchor links (`href="#section"`) — boost may try
            to fetch the same URL in some htmx versions; cheaper to
@@ -317,24 +314,20 @@
          window.ryokanToast({kind, title, body, duration}). -->
     <div class="ryokan-toast-stack" id="ryokan-toast-stack" aria-live="polite" aria-atomic="false"></div>
 
-    {# HTMX vendored assets — htmx 2.0.9 core, SSE extension (used by
-       a small set of long-running progress endpoints), head-support
-       extension (the head-merge prerequisite for hx-boost), and the
-       page_lifecycle helper (mount/unmount per-page polling on every
-       boosted swap). All `defer`'d so they evaluate after the body
-       parses but in source order — load chain: htmx core → SSE +
-       head-support extensions → page_lifecycle → base.js. base.js
-       references `window.htmx` from its `[data-ts]` refresh hook
-       and from the `htmx:confirm` bridge for hx-* form-confirm
-       interception, so it must load last.
+    {# Vendored htmx 4.0.0 core (no extensions: the progress toast
+       streams over native EventSource, and the head needs no merge)
+       plus the page_lifecycle helper (mount/unmount per-page polling
+       on every boosted swap). All `defer`'d so they evaluate after
+       the body parses but in source order — load chain: htmx core →
+       page_lifecycle → base.js. base.js references `window.htmx` from
+       its `[data-ts]` refresh hook and from the `htmx:confirm` bridge
+       for form-confirm interception, so it must load last.
 
-       Body-wide `hx-boost="true"` (Phase D of the rollout, see
-       `<body>` above) means every plain `<a>` and `<form>` runs
-       through htmx by default. Per-page `hx-boost="false"` opt-outs
-       are documented at each opt-out site. #}
-    <script src="/static/vendor/htmx-2.0.9.min.js" defer></script>
-    <script src="/static/vendor/htmx-ext-sse-2.2.4.min.js" defer></script>
-    <script src="/static/vendor/htmx-ext-head-support-2.0.5.min.js" defer></script>
+       Body-wide `hx-boost:inherited="true"` (see `<body>` above)
+       means every plain `<a>` and `<form>` runs through htmx by
+       default. Per-page `hx-boost="false"` opt-outs are documented at
+       each opt-out site. #}
+    <script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
     <script src="/static/js/page_lifecycle.js" defer></script>
     <script src="/static/js/base.js" defer></script>
     {# Per-page scripts must load AFTER `page_lifecycle.js` + `base.js`

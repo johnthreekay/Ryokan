@@ -9,7 +9,7 @@
 //
 //   2. "Monitored only" toggle uses htmx.ajax() to fetch the
 //      same partial with the new query string, keeping the URL
-//      bar honest via hx-push-url semantics.
+//      bar honest via the `push` option (hx-push-url semantics).
 //
 //   3. iCal subscribe modal opens on the page-header button and
 //      composes the subscription URL by fetching the picked
@@ -67,11 +67,11 @@
         monToggle.addEventListener('change', function () {
             syncRangeTabHrefs();
             // htmx.ajax with target+swap mirrors what hx-get would
-            // do declaratively, plus pushUrl for back/forward.
+            // do declaratively, plus push for back/forward.
             window.htmx.ajax('GET', calendarUrl(), {
                 target: '#calendar-list',
                 swap: 'innerHTML',
-                pushUrl: true,
+                push: true,
             });
         });
     }
@@ -255,7 +255,7 @@
     // scope to swaps that actually replaced our region.
     var listEl = document.getElementById('calendar-list');
     if (listEl) {
-        listEl.addEventListener('htmx:afterSwap', function (ev) {
+        listEl.addEventListener('htmx:after:swap', function (ev) {
             if (!ev || !ev.target) return;
             // The target on a swap settle is the swapped element
             // itself. Re-run the hydrators against the current
