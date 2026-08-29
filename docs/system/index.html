@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.53">
+      <meta name="generator" content="zensical-0.0.57">
     
     
       
@@ -34,12 +34,12 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.20815dad.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.5da3a30f.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.dfe2e883.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.812a03bb.min.css">
       
       
 
@@ -801,6 +801,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#needs-review" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -879,6 +890,33 @@
     
   
   Calendar
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../manual-import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Importing an existing library
 
     
   </span>
@@ -1078,6 +1116,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#needs-review" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1180,6 +1229,18 @@
 <li>After updating Ryokan, to confirm tasks resumed cleanly on the new image.</li>
 <li>A specific recurring action (watch-list sync, upgrade search) hasn't happened recently and you want to confirm timing.</li>
 </ul>
+<h2 id="backup">Backup<a class="headerlink" href="#backup" title="Anchor link">&para;</a></h2>
+<p>Download a backup, keep scheduled ones in a folder, and restore from one.</p>
+<p>A backup is a <code>.tar.gz</code> holding a consistent snapshot of the database (<code>ryokan.db</code>), the encryption key (<code>.ryokan-key</code>) that protects linked AniList and MyAnimeList tokens, a <code>manifest.json</code> with the Ryokan version and schema level, and, when you tick the option, the cached artwork. The snapshot is taken with SQLite's <code>VACUUM INTO</code>, so it is complete even while Ryokan is busy; copying <code>ryokan.db</code> by hand while Ryokan runs is not, because recent writes live in <code>ryokan.db-wal</code> until a checkpoint.</p>
+<p><strong>A backup is a password export.</strong> It contains the key, the encrypted account tokens, every download client password, and the activity log. Keep it where you keep secrets. For sharing with support, tick <strong>Sanitize</strong> instead: passwords, API keys, and tokens are blanked, the log is trimmed to its last 1000 lines, and the key and hostname stay out.</p>
+<ul>
+<li><strong>Download backup</strong> builds the archive and sends it to the browser.</li>
+<li><strong>Save to backup folder</strong> writes one to the folder from Settings → General, the same as a scheduled run, and prunes older ones past the retention count. The folder's contents are listed below the buttons with per-file Download and Delete.</li>
+<li><strong>Scheduled backups</strong> (off by default) run daily or weekly from the same folder settings. They show up in <a href="#scheduled-tasks">Scheduled Tasks</a> as <code>backup</code> with a Run now button.</li>
+</ul>
+<p><strong>Restore</strong> is two steps. Upload a backup: Ryokan checks that it is a Ryokan archive from this or an older version, saves a backup of the current state to the folder first (<code>auto-pre-restore-&lt;time&gt;.tar.gz</code>, never pruned), and stages the files. Then restart Ryokan. The staged files are swapped in before the database opens, the previous database stays next to the restored one as <code>ryokan.db.pre-restore-&lt;time&gt;</code> for a manual rollback, and everyone is signed out. Until the restart, the tab shows the staged backup with a <strong>Cancel restore</strong> button. A backup made by a newer Ryokan is refused. A sanitized backup restores but needs passwords and account links entered again.</p>
+<p>The <code>ryokan.db.pre-restore-&lt;time&gt;</code> file (and <code>.ryokan-key.pre-restore-&lt;time&gt;</code> / <code>artwork.pre-restore-&lt;time&gt;</code> when those were replaced) is never cleaned up automatically. Delete it yourself once you are sure the restore is what you wanted. A sanitized download is named <code>ryokan-backup-&lt;time&gt;-sanitized.tar.gz</code> so it cannot be mistaken for the key-bearing kind.</p>
+<p>Ryokan does not restart itself. In Docker, <code>docker compose restart ryokan</code>. Backups land under <code>/data/backups</code> by default there, on the same volume as the database, so point the folder at another disk or a mounted share if the goal is surviving that volume.</p>
 <h2 id="needs-review">Needs Review<a class="headerlink" href="#needs-review" title="Anchor link">&para;</a></h2>
 <p>Episodes the source classifier flagged as low-confidence, where the heuristics couldn't confidently decide BD vs. WEB or what release group it came from. Each row gives you the chance to manually accept the classifier's verdict, override it, or re-classify.</p>
 <p>When to come here:</p>
@@ -1280,7 +1341,7 @@
       <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.69c251d7.min.js"></script>
+      <script src="../assets/javascripts/bundle.49251538.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       
