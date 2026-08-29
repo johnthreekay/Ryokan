@@ -69,8 +69,12 @@ async fn click_top_nav(
 /// catches per-direction asymmetries.
 #[tokio::test]
 async fn boost_navigates_pentagon_via_body_level_opt_in() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -142,6 +146,8 @@ async fn boost_navigates_pentagon_via_body_level_opt_in() {
             );
         }
     }
+    // Release the single geckodriver session for the next test.
+    let _ = client.close().await;
 }
 
 /// **logout-opt-out** — `<a href="/logout" hx-boost="false">` must do
@@ -152,8 +158,12 @@ async fn boost_navigates_pentagon_via_body_level_opt_in() {
 /// real nav wipes it.
 #[tokio::test]
 async fn logout_link_opt_out_does_real_document_nav() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -216,8 +226,12 @@ async fn logout_link_opt_out_does_real_document_nav() {
 /// into the prior page's body (nesting).
 #[tokio::test]
 async fn boosted_nav_to_protected_page_with_invalidated_session_lands_on_login() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -295,23 +309,28 @@ async fn boosted_nav_to_protected_page_with_invalidated_session_lands_on_login()
          triggering a real window.location. Phase C's \
          `htmx_aware_redirect_from_req` may have regressed."
     );
+    let _ = client.close().await;
 }
 
-/// **history-cache-disabled** — `htmx.config.historyEnableCache`
-/// should be `false` after the inline config script in base.html
-/// runs. This pins the back/forward refresh-on-nav behavior:
-/// without it, browser-back on a stale Downloads queue restores a
-/// snapshot from the prior visit instead of refetching.
+/// **history-refetches** — browser-back must refetch the page, never
+/// restore a stale snapshot (a Downloads queue captured on the prior
+/// visit). htmx 2 needed `historyEnableCache: false` for that; htmx 4
+/// has no snapshot cache and refetches whenever `config.history` is
+/// truthy (the default), unless someone loads the `hx-history-cache`
+/// extension or sets `history: false`.
 ///
 /// We can't easily drive a back/forward in fantoccini and prove the
 /// fetch happened (would need network instrumentation that
-/// geckodriver doesn't expose cleanly). Instead pin the config flag
-/// — if a future template edit drops the `historyEnableCache=false`
-/// line, this test catches it.
+/// geckodriver doesn't expose cleanly). Instead pin the config: if a
+/// future edit disables history or re-adds a cache, this catches it.
 #[tokio::test]
 async fn history_cache_is_disabled() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -326,18 +345,21 @@ async fn history_cache_is_disabled() {
         .await
         .expect("open library");
 
-    // Wait for htmx to load AND for the config flag to take effect.
-    // The `htmx:load` once-listener in base.html sets the flag on
-    // the first htmx event; poll for it.
+    // Wait for htmx to load, then pin the history config: managed
+    // history on (so back / forward refetch through htmx) and no
+    // history-cache extension registered.
     wait_for_js_truthy(
         &client,
-        "window.htmx && window.htmx.config && window.htmx.config.historyEnableCache === false",
+        "window.htmx && window.htmx.config && window.htmx.config.history === true \
+         && typeof window.htmx.config.historyEnableCache === 'undefined' \
+         && !document.querySelector('script[src*=\"hx-history-cache\"]')",
         Duration::from_secs(5),
     )
     .await
     .expect(
-        "htmx.config.historyEnableCache must be false (set by the inline \
-         <script> in base.html). Got: htmx loaded but the flag is still \
-         the htmx default (true) — Phase D's config block didn't fire.",
+        "htmx.config.history must stay true with no history-cache extension \
+         loaded (htmx 4 refetches on back / forward by default). Got: htmx \
+         loaded but the config was changed or a cache extension is present.",
     );
+    let _ = client.close().await;
 }

@@ -59,8 +59,12 @@ async fn seed_indexer(db: &SqlitePool, name: &str) -> i64 {
 /// partial doesn't silently nullify the populated values.
 #[tokio::test]
 async fn indexer_edit_modal_loads_populated_form() {
-    let Ok(client) = try_connect_browser().await else {
-        return; // WebDriver unreachable — skip.
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -124,8 +128,12 @@ async fn indexer_edit_modal_loads_populated_form() {
 ///      break the test deterministically.
 #[tokio::test]
 async fn indexer_edit_modal_stale_id_renders_error_partial() {
-    let Ok(client) = try_connect_browser().await else {
-        return; // WebDriver unreachable — skip.
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;

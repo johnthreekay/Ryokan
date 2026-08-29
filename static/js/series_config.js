@@ -155,7 +155,7 @@ function manualOverrideReclassifyVals() {
 // on the inputs/form in `templates/series.html`. The checkbox toggles
 // post against `/api/library/allow-upgrades` and
 // `/api/library/allow-pt-upgrades` with `hx-swap="none"`; an
-// `hx-on::response-error` handler reverts the checkbox and fires a
+// `hx-on::response:error` handler reverts the checkbox and fires a
 // toast on 4xx/5xx. The search-overrides form posts to
 // `/api/library/search-overrides` and swaps the rendered
 // `partials/series/save_status_pill.html` into

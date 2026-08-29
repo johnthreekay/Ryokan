@@ -158,7 +158,7 @@
        a hard refresh would land it on a URL where the IIFE could
        see `edit_id`. Letting the server own the open/closed initial
        state cuts JS out of the timing-sensitive path entirely. #}
-    <div class="modal-backdrop" id="cf-editor-modal" style="display:{% if let Some(_) = custom_format_edit %}flex{% else %}none{% endif %}" hx-disable>
+    <div class="modal-backdrop" id="cf-editor-modal" style="display:{% if let Some(_) = custom_format_edit %}flex{% else %}none{% endif %}" hx-ignore>
         <div class="modal cf-editor-modal" style="max-width:780px"
              role="dialog" aria-modal="true" aria-labelledby="cf-editor-modal-title">
             <div class="modal-header">

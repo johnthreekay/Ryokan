@@ -10,6 +10,10 @@
     const yesBtn = document.getElementById('ryokan-confirm-yes');
     const noBtn = document.getElementById('ryokan-confirm-no');
     const closeBtn = document.getElementById('ryokan-confirm-close');
+    // base.html always ships the modal; a page that doesn't (test
+    // fixtures, an error page) must not take the rest of this file
+    // down with it.
+    if (!modal || !titleEl || !bodyEl || !extrasEl || !yesBtn || !noBtn || !closeBtn) return;
 
     function collectExtras() {
         const out = {};
@@ -87,6 +91,7 @@
     const bodyEl = document.getElementById('ryokan-alert-body');
     const okBtn = document.getElementById('ryokan-alert-ok');
     const closeBtn = document.getElementById('ryokan-alert-close');
+    if (!modal || !titleEl || !bodyEl || !okBtn || !closeBtn) return;
 
     function close() {
         if (!current) return;
@@ -133,6 +138,7 @@
     const okBtn = document.getElementById('ryokan-prompt-ok');
     const cancelBtn = document.getElementById('ryokan-prompt-cancel');
     const closeBtn = document.getElementById('ryokan-prompt-close');
+    if (!modal || !titleEl || !bodyEl || !labelEl || !inputEl || !errorEl || !okBtn || !cancelBtn || !closeBtn) return;
 
     function close(result) {
         if (!current) return;
@@ -672,24 +678,30 @@ function ryokanConfirmFromAttrs(elt) {
     });
 }
 
-// HTMX migration (issue #129) — forms split into two paths:
+// Forms split into two paths:
 //
-//   1. Native form-POST forms (no hx-* attrs) — submit listener
-//      intercepts, shows modal, calls `form.submit()` on confirm.
-//      Same as the original pre-HTMX behavior.
+//   1. Forms htmx drives — any hx-* verb, or boosted by the body-wide
+//      `hx-boost:inherited` (every plain form except the
+//      `hx-boost="false"` opt-outs) — are gated through the
+//      `htmx:confirm` bridge below. Not via the submit listener:
+//      htmx's own submit handler runs first, so the request would
+//      already be in flight by the time we prevented anything.
+//   2. Forms htmx leaves alone (`hx-boost="false"`) — the submit
+//      listener intercepts, shows the modal, and calls
+//      `form.submit()` on confirm.
 //
-//   2. HTMX-driven forms (any hx-* attr) — handled below via the
-//      `htmx:confirm` event. NOT via the submit listener, because
-//      htmx's own submit listener fires before this one (registration
-//      order: htmx loads first), so by the time we'd `preventDefault`
-//      the AJAX request is already in flight. `htmx:confirm` is
-//      htmx's first-class hook for gating the request itself.
+// Which path applies is decided at submit time: htmx marks the
+// elements it boosted on `elt._htmx.boosted`, which is not set yet
+// when this DOMContentLoaded handler runs.
+function ryokanFormIsHtmxDriven(form) {
+    if (form._htmx && form._htmx.boosted) return true;
+    return form.matches('[hx-get], [hx-post], [hx-put], [hx-patch], [hx-delete]');
+}
+
 window.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('form[data-ryokan-confirm-title]').forEach(function (form) {
-        if (form.matches('[hx-get], [hx-post], [hx-put], [hx-patch], [hx-delete]')) {
-            return; // handled by htmx:confirm bridge
-        }
         form.addEventListener('submit', function (ev) {
+            if (ryokanFormIsHtmxDriven(form)) return; // htmx:confirm bridge owns it
             ev.preventDefault();
             ryokanConfirmFromAttrs(form).then(function (result) {
                 if (!result || !result.ok) return;
@@ -702,28 +714,53 @@ window.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-// HTMX migration (issue #129) — bridge `data-ryokan-confirm-*` into
-// htmx's request-confirmation hook. Fires for EVERY htmx request, so
-// we filter on the opt-in attr. `evt.preventDefault()` stops the
-// request from going out; on user-confirm we call
-// `evt.detail.issueRequest(true)` to proceed (the `true` argument
-// skips this hook on the re-issue so we don't re-prompt).
+// Bridge `data-ryokan-confirm-*` into htmx's request-confirmation hook.
 //
-// Listener attached to <body> rather than per-form because htmx
-// processes elements added by swaps automatically; per-form
-// registration would miss any element added to the DOM after
-// initial load (e.g., a row added by a future upsert response).
+// htmx 4 fires `htmx:confirm` only for a request whose context carries
+// a confirm (`ctx.confirm`, normally from `hx-confirm`). Rather than
+// sprinkle `hx-confirm` over every opt-in element, `htmx:config:request`
+// (which fires before the confirm check) stamps a marker onto the
+// context for any source element that opted in. The marker is never
+// shown: the `htmx:confirm` listener always `preventDefault()`s for
+// those elements, which tells htmx to wait for `issueRequest()` /
+// `dropRequest()` instead of falling through to `window.confirm`.
+// Elements without the opt-in never get a confirm and htmx never
+// fires the event for them.
+//
+// Both listeners sit on <body> rather than per element because htmx
+// processes swapped-in content automatically; per-element registration
+// would miss anything added to the DOM after initial load.
+document.body.addEventListener('htmx:config:request', function (ev) {
+    var ctx = ev.detail && ev.detail.ctx;
+    var elt = ctx && ctx.sourceElement;
+    if (elt && elt.hasAttribute && elt.hasAttribute('data-ryokan-confirm-title')) {
+        ctx.confirm = 'ryokan';
+    }
+});
 document.body.addEventListener('htmx:confirm', function (ev) {
-    var elt = ev.detail && ev.detail.elt;
-    if (!elt || !elt.hasAttribute('data-ryokan-confirm-title')) return;
+    var detail = ev.detail || {};
+    var elt = detail.ctx && detail.ctx.sourceElement;
+    if (!elt || !elt.hasAttribute || !elt.hasAttribute('data-ryokan-confirm-title')) return;
     ev.preventDefault();
     ryokanConfirmFromAttrs(elt).then(function (result) {
         if (result && result.ok) {
-            ev.detail.issueRequest(true);
+            detail.issueRequest();
+        } else {
+            detail.dropRequest();
         }
-        // Cancel: request stays prevented; row stays put. Nothing to do.
     });
 });
+
+// The element an `htmx:after:swap` event swapped. htmx 4 dispatches
+// that event on the request's *source* element (which may already be
+// detached by an outerHTML swap of its own section, in which case the
+// event lands on `document`), so `ev.target` no longer identifies the
+// swapped region. Section re-bind listeners compare this instead.
+window.ryokanSwapTargetId = function (ev) {
+    var ctx = ev && ev.detail && ev.detail.ctx;
+    var target = ctx && ctx.target;
+    return (target && target.id) || '';
+};
 
 // HTML-escape a string for safe concatenation into an `innerHTML`
 // sink. Use this wherever a user-controlled value (release title, CF

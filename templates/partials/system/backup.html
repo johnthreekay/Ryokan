@@ -32,7 +32,7 @@
         </div>
         <div class="backup-actions">
             {# hx-boost="false": a boosted anchor would AJAX the archive and swap
-               its bytes into the page. htmx 2 has no download-attribute exemption. #}
+               its bytes into the page. htmx has no download-attribute exemption. #}
             <a class="btn btn-primary" id="backup-download" href="/api/backup/download" hx-boost="false">Download backup</a>
             <form method="post" action="/system/backup/run" class="inline-form">
                 <button type="submit" class="btn btn-secondary">Save to backup folder</button>

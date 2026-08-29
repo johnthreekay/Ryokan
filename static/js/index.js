@@ -231,7 +231,7 @@ function selectMonitorMode(btn) {
 // payload from `confirmMonitoringVals()` via `hx-vals='js:'`, and the
 // server returns `HX-Refresh: true` so htmx reloads the page on
 // success. The pre-migration fallback `if (!_pendingSeriesId)
-// location.reload()` is preserved by `hx-on::response-error="window.
+// location.reload()` is preserved by `hx-on::response:error="window.
 // location.reload()"` plus the 400 the handler issues on missing id.
 function confirmMonitoringVals() {
     return {
