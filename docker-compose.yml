@@ -63,8 +63,10 @@ services:
       #    and rewrites these headers on ingress.
       # - RYOKAN_TRUSTED_PROXY=1
       #
-      # 2. Mark the session cookie Secure so it never travels over
-      #    cleartext. Required for any HTTPS-fronted deployment.
+      # 2. Force the session cookie's Secure flag. Usually unnecessary:
+      #    with RYOKAN_TRUSTED_PROXY=1 the flag follows the proxy's
+      #    X-Forwarded-Proto. Only for an HTTPS proxy that doesn't
+      #    send that header. Never on plain HTTP (login would loop).
       # - RYOKAN_COOKIE_SECURE=1
 
     healthcheck:

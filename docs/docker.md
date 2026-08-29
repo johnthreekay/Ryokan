@@ -13,7 +13,7 @@ Most users only need `PUID`, `PGID`, and `TZ`. The rest are for fine-tuning.
 | `TZ` | unset (UTC) | Container timezone. Determines what timestamps look like in the UI and logs. Standard tzdata names like `America/Chicago` or `Europe/London`. |
 | `RUST_LOG` | `ryokan=info` (image) | Console log filter. Set to `ryokan=debug` for verbose output while debugging. |
 | `RYOKAN_TRUSTED_PROXY` | unset (off) | Trust `X-Forwarded-For` and `X-Real-IP` for client IP. Off by default. Flip on only behind a reverse proxy that overwrites these headers on ingress; otherwise an attacker can spoof a fresh IP per attempt and bypass the per-IP login throttle. |
-| `RYOKAN_COOKIE_SECURE` | unset (off) | Append `Secure` to the session cookie. Off by default so HTTP localhost works; flip on for HTTPS. |
+| `RYOKAN_COOKIE_SECURE` | unset (off) | Force the `Secure` flag onto the login cookie. Usually unnecessary: with `RYOKAN_TRUSTED_PROXY=1`, Ryokan sets the flag on its own whenever the proxy reports HTTPS. Set this only for an HTTPS proxy that doesn't send `X-Forwarded-Proto`. Leave it off for plain HTTP or you won't be able to stay logged in. |
 | `RYOKAN_RESET_AUTH` | unset | Set to `1` *and* create a `data/.reset-auth` sentinel file to wipe users and sessions on next boot. Both required so a stuck-on env var can't silently wipe auth on every boot. See [Reset auth](#reset-auth). |
 | `RYOKAN_DB_LOG_LEVEL` | `info` | Write-side floor for the DB-backed logs table (separate from `RUST_LOG`). One of `trace`, `debug`, `info`, `warn`, `error`. Read-side filtering on the System → Logs page is independent. |
 | `RYOKAN_ENCRYPTION_KEY` | unset (file fallback) | Base64-encoded 32-byte AEAD key for encrypting OAuth tokens. Loading priority: env var, then key file, then auto-generated on first run. **Key rotation isn't supported**; changing it invalidates all stored OAuth tokens and you'll need to re-link external accounts. |
@@ -74,7 +74,7 @@ OAuth tokens, library state, scoring history, and Custom Formats are preserved. 
 
 If you put Ryokan behind nginx, Caddy, Traefik, or similar, set `RYOKAN_TRUSTED_PROXY=1` so the per-IP login throttle reads `X-Forwarded-For` from the proxy instead of the proxy's own IP. The proxy must overwrite these headers on ingress (don't pass through whatever the client sent), or you've just added a header-spoofing bypass.
 
-Also set `RYOKAN_COOKIE_SECURE=1` if the proxy serves Ryokan over HTTPS, so the session cookie carries the `Secure` flag.
+With that set, the login cookie is marked `Secure` automatically whenever the proxy reports HTTPS (`X-Forwarded-Proto: https`), the same way Sonarr does it. `RYOKAN_COOKIE_SECURE=1` forces the flag for a proxy that doesn't send that header.
 
 The [Stack builder](stack-builder.md) generates Caddy / Traefik / nginx config with the right header rewrites and env-var combinations.
 

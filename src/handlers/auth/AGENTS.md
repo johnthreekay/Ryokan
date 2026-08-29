@@ -8,7 +8,7 @@ Cookie-based sessions for the web UI. `require_auth` middleware on protected rou
 
 - 7-day TTL, `HttpOnly` (not JS-readable).
 - `SameSite=Lax` deliberately, **not `Strict`** — `Strict` blocks the cookie on top-level form POSTs from external referrers, which breaks Seerr-style "click link to sign in" flows.
-- `Secure` is appended only when `RYOKAN_COOKIE_SECURE` is on. Default off so `cargo run` on HTTP localhost works.
+- `Secure` is decided per request by `cookie_secure_for`: forced by `RYOKAN_COOKIE_SECURE`, else inferred from `X-Forwarded-Proto: https` (leftmost hop) **only while `RYOKAN_TRUSTED_PROXY` is on**. Same rule as Sonarr's cookie auth (`CookieSecurePolicy.SameAsRequest` behind its Trusted Networks). Never inferred without proxy trust: any client can send the header, and a `Secure` cookie handed out over plain HTTP is never sent back, which locks the user out. Default off so `cargo run` on HTTP localhost works.
 - The logout `Set-Cookie` uses `Max-Age=0` and **echoes the same `Secure` attribute as the set path** — some browsers refuse to clear a `Secure` cookie from a non-`Secure` response; the reverse is safe.
 - Session tokens are hex-encoded random bytes from `rand`, **stored verbatim in the `sessions` table** (no additional hashing — the cookie value *is* the DB lookup key, so a DB dump is already a session-hijack vector and re-hashing wouldn't change that threat model).
 

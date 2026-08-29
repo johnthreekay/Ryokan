@@ -201,11 +201,13 @@ pub(crate) fn sanitize_for_log_capped(s: &str, max_len: usize) -> String {
         .collect()
 }
 
-/// Whether to append `Secure` to the session cookie. Read once at startup
-/// from `RYOKAN_COOKIE_SECURE` (values `1`, `true`, `yes`, `on` enable it,
-/// case-insensitive). Default off so `cargo run` on localhost keeps working
-/// over HTTP; flip on for any HTTPS-fronted deployment so a stolen session
-/// cookie can't leak over cleartext.
+/// Whether to force `Secure` onto the session cookie regardless of how the
+/// request arrived. Read once at startup from `RYOKAN_COOKIE_SECURE`
+/// (values `1`, `true`, `yes`, `on` enable it, case-insensitive). Default
+/// off so `cargo run` on localhost keeps working over HTTP. Most HTTPS
+/// deployments never need it: behind a trusted proxy the flag is inferred
+/// per request from `X-Forwarded-Proto` (see [`cookie_secure_for`]), so
+/// this is the escape hatch for a proxy that doesn't send that header.
 static COOKIE_SECURE: LazyLock<bool> = LazyLock::new(|| {
     std::env::var("RYOKAN_COOKIE_SECURE")
         .map(|v| {
@@ -261,8 +263,37 @@ fn get_session_token(req: &Request<Body>) -> Option<String> {
     None
 }
 
-fn set_session_cookie(token: &str) -> String {
-    set_session_cookie_with_secure(token, *COOKIE_SECURE)
+/// Whether the session cookie should carry `Secure` for this request.
+/// Mirrors Sonarr's cookie auth, which marks the cookie `Secure` only when
+/// the request itself came over HTTPS: Ryokan never terminates TLS, so
+/// "came over HTTPS" means a trusted reverse proxy said so via
+/// `X-Forwarded-Proto: https`. Without `RYOKAN_TRUSTED_PROXY` the header
+/// is ignored (any client could send it, and a `Secure` cookie handed out
+/// over plain HTTP is never sent back, which locks the user out).
+/// `RYOKAN_COOKIE_SECURE` forces it on for proxies that omit the header.
+fn cookie_secure_for(headers: &HeaderMap) -> bool {
+    cookie_secure_for_with(headers, *COOKIE_SECURE, *TRUST_PROXY_HEADERS)
+}
+
+pub(crate) fn cookie_secure_for_with(headers: &HeaderMap, forced: bool, trust_proxy: bool) -> bool {
+    if forced {
+        return true;
+    }
+    if !trust_proxy {
+        return false;
+    }
+    // Chained proxies append: the leftmost entry is the scheme the
+    // client used, same convention as `X-Forwarded-For`.
+    headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|first| first.trim().eq_ignore_ascii_case("https"))
+        .unwrap_or(false)
+}
+
+fn set_session_cookie(token: &str, headers: &HeaderMap) -> String {
+    set_session_cookie_with_secure(token, cookie_secure_for(headers))
 }
 
 pub(crate) fn set_session_cookie_with_secure(token: &str, secure: bool) -> String {
@@ -273,8 +304,8 @@ pub(crate) fn set_session_cookie_with_secure(token: &str, secure: bool) -> Strin
     )
 }
 
-fn clear_session_cookie() -> String {
-    clear_session_cookie_with_secure(*COOKIE_SECURE)
+fn clear_session_cookie(headers: &HeaderMap) -> String {
+    clear_session_cookie_with_secure(cookie_secure_for(headers))
 }
 
 pub(crate) fn clear_session_cookie_with_secure(secure: bool) -> String {
@@ -515,6 +546,7 @@ pub async fn setup_page(State(state): State<AppState>) -> impl IntoResponse {
 
 pub async fn setup_submit(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Form(form): Form<SetupForm>,
 ) -> impl IntoResponse {
     // Fail closed on a transient has_users error: an Ok(true) -> redirect
@@ -588,7 +620,7 @@ pub async fn setup_submit(
             Response::builder()
                 .status(StatusCode::SEE_OTHER)
                 .header(header::LOCATION, "/")
-                .header(header::SET_COOKIE, set_session_cookie(&token))
+                .header(header::SET_COOKIE, set_session_cookie(&token, &headers))
                 .body(Body::empty())
                 .expect("setup-redirect response uses only static headers, should always build")
                 .into_response()
@@ -723,7 +755,7 @@ pub async fn login_submit(
             Response::builder()
                 .status(StatusCode::SEE_OTHER)
                 .header(header::LOCATION, "/")
-                .header(header::SET_COOKIE, set_session_cookie(&token))
+                .header(header::SET_COOKIE, set_session_cookie(&token, &headers))
                 .body(Body::empty())
                 .expect("login-redirect response uses only static headers, should always build")
                 .into_response()
@@ -756,7 +788,7 @@ pub async fn logout(State(state): State<AppState>, req: Request<Body>) -> impl I
     Response::builder()
         .status(StatusCode::SEE_OTHER)
         .header(header::LOCATION, "/login")
-        .header(header::SET_COOKIE, clear_session_cookie())
+        .header(header::SET_COOKIE, clear_session_cookie(req.headers()))
         .body(Body::empty())
         .expect("logout-redirect response uses only static headers, should always build")
         .into_response()
