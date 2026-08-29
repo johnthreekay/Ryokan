@@ -55,12 +55,13 @@ Originally scoped to the issue #129 HTMX migration; kept as **general-purpose br
 
 ```bash
 sudo pacman -S geckodriver       # Arch
-geckodriver --port=4444 &
-cargo test --features test-support,browser-e2e --test htmx_browser_e2e
+scripts/browser-e2e.sh           # the whole suite, or: scripts/browser-e2e.sh htmx_browser_e2e_phase1
 # Override URL via RYOKAN_WEBDRIVER_URL=...
 ```
 
-Tests gracefully skip when the driver is unreachable. The `fantoccini` dep sits in `[dependencies]` as `optional = true` (Cargo doesn't allow optional dev-deps) and the e2e fixture handler + router builder live behind `#[cfg(feature = "browser-e2e")]` in `test_support.rs`.
+**Use the script, not a bare `cargo test`.** geckodriver holds exactly one WebDriver session: tests within a binary run in parallel by default and a test that bails before `client.close()` leaks its session, after which every later test prints `[skip] … Session is already started` and passes with an `ok` verdict in 0.01s. That is how five rotted tests went unnoticed for months. The script runs one binary at a time with `--test-threads=1`, restarts the driver between binaries, and reports skips as a separate count so a run that never drove a browser cannot look green. Every test must end with `let _ = client.close().await;` on its happy path, and `try_connect_browser` retries briefly on the session-teardown race.
+
+Tests skip (loudly, with `[skip]`) when the driver is unreachable. The `fantoccini` dep sits in `[dependencies]` as `optional = true` (Cargo doesn't allow optional dev-deps) and the e2e fixture handler + router builder live behind `#[cfg(feature = "browser-e2e")]` in `test_support.rs`.
 
 ### Shared harness
 
