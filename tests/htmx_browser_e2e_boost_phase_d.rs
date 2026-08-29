@@ -210,6 +210,7 @@ async fn logout_link_opt_out_does_real_document_nav() {
          (real document nav). Got typeof={typeof_str:?} — boost may have \
          intercepted the click despite the hx-boost=\"false\" opt-out"
     );
+    let _ = client.close().await;
 }
 
 /// **session-expiry** — the `require_auth` middleware redirect to

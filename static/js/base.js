@@ -752,10 +752,11 @@ document.body.addEventListener('htmx:confirm', function (ev) {
 });
 
 // The element an `htmx:after:swap` event swapped. htmx 4 dispatches
-// that event on the request's *source* element (which may already be
-// detached by an outerHTML swap of its own section, in which case the
-// event lands on `document`), so `ev.target` no longer identifies the
-// swapped region. Section re-bind listeners compare this instead.
+// that event on the request's *source* element (re-pointed at the
+// target when the source was detached by an outerHTML swap of its own
+// section, and at `document` only if both are gone), so `ev.target`
+// no longer identifies the swapped region. Section re-bind listeners
+// compare this instead.
 window.ryokanSwapTargetId = function (ev) {
     var ctx = ev && ev.detail && ev.detail.ctx;
     var target = ctx && ctx.target;
