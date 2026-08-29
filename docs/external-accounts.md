@@ -8,14 +8,15 @@ Both accounts are set up under **Settings → Connections**.
 
 1. In Ryokan, go to **Settings → Connections** and click **Link AniList**.
 2. AniList opens in a new tab. Sign in if you need to, then click **Approve**.
-3. AniList sends you to a page that shows your token. Copy it.
-4. Back in Ryokan, paste the token into the box that opened and confirm.
+3. Come back to Ryokan. The account links itself; you can close the other tab.
+
+If your browser blocked the new tab, allow pop-ups for Ryokan and click **Link AniList** again. If the tab opened but the link never completed, the page AniList sent you to shows the token and state; paste them into the box that is still open in Ryokan.
 
 The link lasts about a year; after that Ryokan asks you to link again. Your AniList score format (10-point, 100-point, and so on) is picked up automatically, so changing it on AniList needs no re-link.
 
 ## Linking MyAnimeList
 
-Same steps: click **Link MyAnimeList**, approve on MyAnimeList, copy the token from the page it sends you to, and paste it into Ryokan.
+Same steps: click **Link MyAnimeList**, approve on MyAnimeList, and come back to Ryokan. The same fallback applies if the tab was blocked.
 
 MyAnimeList links renew themselves in the background. You only need to link again if you remove Ryokan from your MyAnimeList apps or change your MyAnimeList password.
 
