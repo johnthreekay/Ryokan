@@ -65,7 +65,7 @@ Each row shows the file, its episode, the quality Ryokan reads from the filename
 - **Already on disk**: a different file already sits at the destination name and Ryokan has no tag for it (a file dropped in by hand, or a folder scanned twice); it is left alone rather than overwritten, since an overwrite would skip the recycle bin.
 - **Duplicate name**: another file in the same series lands on the same destination name; only the first is written.
 
-Files land at `<media root>/<series folder>/<season folder>/<original filename>`. Filenames are kept as they are; renaming into Ryokan's own naming scheme is a separate feature. For a new series the folder name comes from the series folder template in Settings → General → File naming, rendered from the AniList title (the destination column shows it), and if a folder of that name already exists under the media root without a series owning it, the import uses a suffixed name (`Show (2)`) instead. Titles everywhere in the wizard, the progress messages, and the report follow your **Settings → General → Title language**.
+Files land at `<media root>/<series folder>/<season folder>/<original filename>`. Filenames are kept as they are; renaming into Ryokan's own naming scheme is a separate feature. For a new series the folder name comes from the series folder template in Settings → General → File naming, rendered from the AniList title (the destination column shows it), and if a folder of that name already exists under the media root without a series owning it, the import uses a suffixed name (`Show (2)`) instead. Titles everywhere in the wizard, the progress messages, and the report follow your **Settings → General → Preferred Title Language**.
 
 ### Badges worth a look
 

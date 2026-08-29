@@ -2,7 +2,7 @@
 
 The **System** page is Ryokan's operational view: logs, background-task health, recent RSS activity, episodes flagged for review, notification destinations, scoring reference, and debug toggles. Settings (the things that change behavior) live under **Settings**; System is where you go to see what Ryokan has been doing or to flip a runtime toggle.
 
-The page has 8 tabs across the top. Each gets its own section below.
+The page has a left sidebar with ten entries (it collapses to a strip on narrow screens). Each gets its own section below.
 
 ## Logs
 
@@ -25,19 +25,23 @@ When to come here:
 - A feed silently broke (host moved, auth changed) and the configured indexer isn't reporting errors elsewhere.
 - You want to see how often a feed actually surfaces new items before committing to it.
 
-The RSS poll cadence is set in **Settings → General → RSS Sync Interval**. Manual "Sync now" buttons live on each indexer / direct-feed row in **Settings → Indexers**.
+The RSS poll cadence is set in **Settings → General → RSS Sync Interval**. Manual sync is the **Sync RSS Now** button on this tab, or **Run now** on the `rss_sync` row under Scheduled Tasks.
 
 ## Scheduled Tasks
 
 Status of Ryokan's background tasks: external_sync (watch-list sync), post_processing (move imported files into the library), grab_sweep (reconcile pending grabs against the download client's state), upgrade_search (look for better releases of already-grabbed episodes), library_classify, metadata_refresh, airing_refresh (refreshes the air times that show up on the [Calendar](calendar.md)), and a handful more.
 
-Each row shows last-run time, status (ok / warn / error / running), restart count if the task crashed and got restarted, and current backoff if it's in a failure cycle.
+Each row shows the schedule, whether the task is enabled, the last run's status and detail, when it last started and finished, and a **Run now** button.
 
 When to come here:
 
 - A feature feels "stuck" and you want to see if its background task is alive (running the loop) or wedged (crash-looping with restarts).
 - After updating Ryokan, to confirm tasks resumed cleanly on the new image.
 - A specific recurring action (watch-list sync, upgrade search) hasn't happened recently and you want to confirm timing.
+
+## Import Library
+
+A one-time wizard for anime you already have on disk: it walks a folder, matches each series on AniList, previews what would happen to every file, then imports. It has its own page: [Manual import](manual-import.md).
 
 ## Backup
 
@@ -67,7 +71,7 @@ When to come here:
 - After importing files from outside Ryokan (e.g. legacy library scan).
 - Periodically, to keep your library's quality_tag accurate so upgrade-search behaves predictably.
 
-This list is opt-in noise: each "needs review" entry is also written to the `Quality` log category, and notifications can fire on each one (default off in **Settings → Notifications** because reclassify sweeps can produce hundreds of entries at once).
+This list is opt-in noise: each "needs review" entry is also written to the `Quality` log category, and notifications can fire on each one (off by default for a new provider, toggled per provider on **System → Notifications**, because reclassify sweeps can produce hundreds of entries at once).
 
 ## Notifications
 
@@ -76,7 +80,7 @@ CRUD UI for outbound notification destinations. Two provider kinds:
 - **Webhook**: posts JSON to any HTTPS endpoint you configure (ntfy, Apprise, n8n, custom). Optional HMAC secret signs the body so receivers can verify it came from your Ryokan.
 - **Discord**: posts an embed to a Discord webhook URL you provide.
 
-Per-event opt-in matrix per provider: Grabbed, Imported, Import failed, Classifier needs review, Indexer down, Download client unreachable, External-sync re-link required, Health (synthetic test event).
+Per-event opt-in matrix per provider: Grabbed, Imported, Import failed, Classifier needs review, Indexer down, Download client unreachable, Re-link required, Health (test).
 
 When to come here:
 
@@ -84,7 +88,7 @@ When to come here:
 - Tweaking which events fire to which destination (you might want imports going to Discord but classifier-needs-review only going to a quiet ntfy channel).
 - Sending a test event to confirm the destination is wired up correctly (the **Send test** button on each provider's modal).
 
-The receiving side of `/api/webhook/autobrr` is *inbound*; that's a separate concept from these *outbound* notifications. The autobrr inbound webhook lives in **Settings → Connections**.
+The receiving side of `/api/webhook/autobrr` is *inbound*; that's a separate concept from these *outbound* notifications. The autobrr inbound webhook lives in **Settings → Indexers**.
 
 ## Scoring
 
@@ -102,13 +106,13 @@ The full third-party license texts are bundled into the binary at compile time a
 
 Runtime toggles and diagnostic actions that don't fit cleanly under Settings.
 
-- **Allow non-English releases**: when off, Nyaa search restricts to category `1_2` (English-translated). When on, Ryokan also pulls from category `1_0` (Anime All; includes untranslated and multi-sub releases). Music releases always search categories `1_1` + `2_0` regardless. Lives here rather than under Settings because flipping it changes how in-flight searches resolve, not stored configuration.
-- **Force MAL fallback**: temporarily skip AniList and go straight to the MAL provider (Tenrai; any Jikan-v4-compatible API via `JIKAN_API_BASE`) for metadata fetches. Useful when AniList is rate-limited or returning stale data; flip back off after the issue clears.
+- **Allow non-English releases**: when off, Nyaa search restricts to category `1_2` (English-translated). When on, Ryokan also pulls from category `1_0` (Anime All; includes untranslated and multi-sub releases). Music releases always search categories `1_1` + `2_0` regardless.
+- **Force MAL/Tenrai fallback for search and tracked fallback entries**: temporarily skip AniList and go straight to the MAL provider (Tenrai; any Jikan-v4-compatible API via `JIKAN_API_BASE`) for metadata fetches. Useful when AniList is rate-limited or returning stale data; flip back off after the issue clears.
 - **Force Kitsu fallback**: same idea, for the Kitsu provider further down the metadata chain.
-- **Auto-grab on add**: when on, adding a series to the library kicks off an immediate auto-search for the first episode (and existing episodes if the series is partially-aired). When off, you have to manually trigger the search per episode.
+- **Auto-grab monitored episodes when adding a new series**: when on, Ryokan searches for and grabs every monitored episode right after you add a series. When off, you trigger searches yourself.
 
-Toast feedback appears on this tab when a debug action succeeds or fails. Most other tabs don't have feedback toasts because they're read-only.
+Toast feedback appears on this tab when a debug action succeeds or fails. Backup and Notifications toast too; the read-only tabs don't.
 
 ---
 
-*Last updated: 2026-05-07.*
+*Last updated: 2026-08-29.*

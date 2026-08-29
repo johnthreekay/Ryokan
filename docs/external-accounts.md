@@ -30,7 +30,7 @@ The watch-list sync runs as a background task every `external_sync_interval_minu
 2. Filters by your import preferences (Watching, Planning, Paused, Dropped, Completed).
 3. Pre-fetches AniList metadata for new ids in one batch so the import is fast.
 4. Adds new series to your library, updates monitor mode (Watching → All / Future / Cutoff) on existing ones based on the linked-side status.
-5. On every Nth tick (currently every 6th), does a full re-fetch instead of an incremental delta to catch removals; AniList and MAL don't expose a "this entry was deleted" signal, so the only way to detect a removal is to re-list the whole thing and notice the missing id.
+5. Once the last full re-fetch is more than 7 days old, does a full re-fetch instead of an incremental delta to catch removals; AniList and MAL don't expose a "this entry was deleted" signal, so the only way to detect a removal is to re-list the whole thing and notice the missing id.
 
 The "Sync now" button on the External Accounts card forces an immediate tick instead of waiting for the next scheduled one.
 
@@ -46,4 +46,4 @@ Ryokan's Sonarr/Radarr-compatible API (anibridge) does AniList lookups first, MA
 
 ---
 
-*Last updated: 2026-05-07.*
+*Last updated: 2026-08-29.*

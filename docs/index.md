@@ -16,6 +16,9 @@ If you've used Sonarr for TV, the shape is the same. Ryokan is just the anime-tu
 - **See what's airing this week.** A built-in [Calendar](calendar.md) shows upcoming episodes for the shows in your library, as a list or a month grid. You can also subscribe to it from your phone or laptop's calendar app.
 - **Use the download client you already have.** qBittorrent, Deluge, Transmission, rTorrent, or SABnzbd. Run more than one at once and Ryokan routes per-grab.
 - **Land files in your library automatically.** Hardlink (default; keeps the torrent seeding), copy, or move.
+- **Import the anime you already have.** Point the [import wizard](manual-import.md) at a folder; it matches each series on AniList and lands the files in place.
+- **Undo a deletion.** With a recycle bin configured, deleted episodes and series folders wait there until you restore or purge them.
+- **Back up and restore from the UI.** Snapshot the database and encryption key from System → Backup, on a schedule if you like, and restore by uploading the archive.
 - **Plug into Seerr.** Ryokan exposes a Sonarr/Radarr-compatible API so Seerr requests anime the same way it asks Sonarr for TV.
 
 ## Get started
@@ -40,4 +43,4 @@ If you'd rather build the stack yourself, work through these in order:
 
 ---
 
-*Last updated: 2026-05-09.*
+*Last updated: 2026-08-29.*
