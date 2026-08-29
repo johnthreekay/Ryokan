@@ -30,7 +30,9 @@ use std::time::Duration;
 
 #[path = "common/browser_e2e.rs"]
 mod browser_e2e;
-use browser_e2e::{open_with_session, seed_user_session, spawn_app, try_connect_browser};
+use browser_e2e::{
+    fixture_errors, open_with_session, seed_user_session, spawn_app, try_connect_browser,
+};
 
 /// SSE happy path: 3 events buffered → toast walks through all three
 /// → terminal triggers finalize. Pinning the *visible* terminal title
@@ -41,8 +43,12 @@ use browser_e2e::{open_with_session, seed_user_session, spawn_app, try_connect_b
 /// toast actually finished updating.
 #[tokio::test]
 async fn progress_toast_streams_buffered_events_and_finalizes_on_terminal() {
-    let Ok(client) = try_connect_browser().await else {
-        return; // WebDriver unreachable — skip.
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -72,6 +78,8 @@ async fn progress_toast_streams_buffered_events_and_finalizes_on_terminal() {
     let resp = reqwest::Client::new()
         .post(&pre_seed_url)
         .header("Cookie", format!("session={}", session))
+        // POSTs without Origin / Referer are rejected by the same-origin CSRF check.
+        .header("Origin", format!("http://{addr}"))
         .send()
         .await
         .expect("pre-seed events");
@@ -106,9 +114,10 @@ async fn progress_toast_streams_buffered_events_and_finalizes_on_terminal() {
         }
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
+    let errors = fixture_errors(&client).await;
     assert!(
         saw_terminal,
-        "SSE toast must surface the terminal event title; toast stack never showed 'All done' — indicates EventSource didn't open, message listener didn't fire, or finalize() didn't run"
+        "SSE toast must surface the terminal event title; toast stack never showed 'All done' — indicates EventSource didn't open, message listener didn't fire, or finalize() didn't run; fixture script errors: {errors:?}"
     );
 
     let _ = client.close().await;
@@ -127,8 +136,12 @@ async fn progress_toast_streams_buffered_events_and_finalizes_on_terminal() {
 /// "old toast stays gone after a fresh page load" property.
 #[tokio::test]
 async fn progress_toast_does_not_orphan_event_source_across_navigations() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -151,6 +164,8 @@ async fn progress_toast_does_not_orphan_event_source_across_navigations() {
             progress_id
         ))
         .header("Cookie", format!("session={}", session))
+        // POSTs without Origin / Referer are rejected by the same-origin CSRF check.
+        .header("Origin", format!("http://{addr}"))
         .send()
         .await
         .expect("pre-seed");

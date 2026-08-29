@@ -119,7 +119,7 @@ async fn indexers_delete_confirm_removes_row() {
     // (e.g. `closest div` swapping the whole table) passes silently.
     let db = in_memory_pool().await;
     let _doomed = seed_indexer(&db, "Phase1Test-IndexerA").await;
-    let _survivor = seed_indexer(&db, "Phase1Test-IndexerSurvivor").await;
+    let survivor = seed_indexer(&db, "Phase1Test-IndexerSurvivor").await;
     let token = seed_user_session(&db).await;
     let state = build_test_app_state(db.clone(), None);
     let addr = spawn_app(state).await;
@@ -134,8 +134,9 @@ async fn indexers_delete_confirm_removes_row() {
 
     let result = async {
         open_settings(&client, addr, &token, "indexers").await?;
+        // The card grid renders the delete control as `.btn-icon-danger`.
         client
-            .find(Locator::Css("button[type=\"submit\"].btn-danger"))
+            .find(Locator::Css("button[type=\"submit\"].btn-icon-danger"))
             .await?;
         click_delete_for(&client, "Phase1Test-IndexerA").await?;
         wait_for_confirm_modal(&client, Duration::from_secs(2)).await?;
@@ -157,6 +158,48 @@ async fn indexers_delete_confirm_removes_row() {
         assert_dom_contains(&client, "Phase1Test-IndexerSurvivor").await?;
         assert_htmx_handled_in_place(&client, &format!("http://{addr}/settings?tab=indexers"))
             .await?;
+
+        // The delete swapped `#indexer-section` (modal included) by
+        // outerHTML. settings.js re-binds the fresh modal's
+        // backdrop-click-closes listener from `htmx:after:swap`, which
+        // htmx 4 dispatches on the request's source element (already
+        // detached here), so the listener has to identify the swapped
+        // region through `ryokanSwapTargetId`, not `ev.target`. Open
+        // the survivor's edit modal, click the backdrop, expect it to
+        // close.
+        client
+            .find(Locator::Css(&format!("[data-indexer-id=\"{survivor}\"]")))
+            .await?
+            .click()
+            .await?;
+        client
+            .wait()
+            .at_most(Duration::from_secs(5))
+            .for_element(Locator::Css("#indexer-modal-body input[name=\"name\"]"))
+            .await?;
+        client
+            .execute("document.getElementById('indexer-modal').click();", vec![])
+            .await?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let display = client
+                .execute(
+                    "return document.getElementById('indexer-modal').style.display;",
+                    vec![],
+                )
+                .await?;
+            if display.as_str() == Some("none") {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                return Err(
+                    "backdrop click did not close the re-rendered indexer modal; \
+                            the htmx:after:swap rebind for #indexer-section did not run"
+                        .into(),
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
         Ok::<(), Box<dyn std::error::Error>>(())
     }
     .await;
@@ -214,8 +257,8 @@ async fn indexers_delete_cancel_keeps_row() {
         let still_present: bool = client
             .execute(
                 r#"
-                return Array.from(document.querySelectorAll('tr'))
-                    .some(tr => tr.textContent.includes('Phase1Test-IndexerB'));
+                return Array.from(document.querySelectorAll('tr, article'))
+                    .some(el => el.textContent.includes('Phase1Test-IndexerB'));
                 "#,
                 vec![],
             )

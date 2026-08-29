@@ -63,8 +63,12 @@ async fn set_desktop_viewport(client: &fantoccini::Client) -> Result<(), String>
 /// when the rule isn't loaded — clear signal.
 #[tokio::test]
 async fn boost_swaps_head_when_navigating_library_to_settings() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -139,8 +143,12 @@ async fn boost_swaps_head_when_navigating_library_to_settings() {
 /// fallback.
 #[tokio::test]
 async fn boost_reapplies_origin_css_when_navigating_back() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -214,8 +222,12 @@ async fn boost_reapplies_origin_css_when_navigating_back() {
 /// assertion lines flows through the rename.
 #[tokio::test]
 async fn desktop_nav_is_boosted_under_body_wide_opt_in() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -304,8 +316,12 @@ async fn desktop_nav_is_boosted_under_body_wide_opt_in() {
 /// once after a boosted swap.
 #[tokio::test]
 async fn boosted_swap_does_not_duplicate_shared_css_links() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
