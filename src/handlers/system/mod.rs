@@ -83,8 +83,6 @@ struct SystemTemplate {
     tab: String,
     force_mal_fallback: bool,
     force_kitsu_fallback: bool,
-    auto_grab_on_add: bool,
-    allow_non_english: bool,
     debug_message: Option<String>,
     debug_error: Option<String>,
     logs: Vec<log::LogEntry>,
@@ -158,8 +156,6 @@ pub struct SystemQuery {
 pub struct DebugSettingsForm {
     force_mal_fallback: Option<String>,
     force_kitsu_fallback: Option<String>,
-    auto_grab_on_add: Option<String>,
-    allow_non_english: Option<String>,
 }
 
 fn normalize_system_tab(tab: Option<String>) -> String {
@@ -355,11 +351,6 @@ pub async fn system_page(
         .as_ref()
         .map(|cfg| cfg.force_kitsu_fallback)
         .unwrap_or(false);
-    let auto_grab_on_add = cfg.as_ref().map(|cfg| cfg.auto_grab_on_add).unwrap_or(true);
-    let allow_non_english = cfg
-        .as_ref()
-        .map(|cfg| cfg.allow_non_english)
-        .unwrap_or(false);
     let rss_enabled = cfg.as_ref().map(|cfg| cfg.rss_enabled).unwrap_or(false);
     let rss_interval_minutes = cfg
         .as_ref()
@@ -410,8 +401,6 @@ pub async fn system_page(
         tab,
         force_mal_fallback,
         force_kitsu_fallback,
-        auto_grab_on_add,
-        allow_non_english,
         recycle_unwritable,
         backup: backup_view,
         debug_message: params.message,
@@ -452,8 +441,6 @@ pub async fn debug_settings_submit(
 
     cfg.force_mal_fallback = form.force_mal_fallback.is_some();
     cfg.force_kitsu_fallback = form.force_kitsu_fallback.is_some();
-    cfg.allow_non_english = form.allow_non_english.is_some();
-    cfg.auto_grab_on_add = form.auto_grab_on_add.is_some();
 
     let result = config::save_config(&state.db, &cfg).await;
     let (message, error) = match result {
@@ -512,8 +499,6 @@ pub async fn debug_settings_submit(
         tab: "debug".to_string(),
         force_mal_fallback: cfg.force_mal_fallback,
         force_kitsu_fallback: cfg.force_kitsu_fallback,
-        auto_grab_on_add: cfg.auto_grab_on_add,
-        allow_non_english: cfg.allow_non_english,
         recycle_unwritable,
         backup: None,
         debug_message: message,

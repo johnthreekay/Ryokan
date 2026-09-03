@@ -64,15 +64,15 @@ fn extract_trash_description_returns_none_for_missing_or_invalid() {
 }
 
 #[test]
-fn resolve_grab_preview_mode_integrations_tab_accepts_form_value() {
-    // On the Integrations tab, the form value is the source of
+fn resolve_grab_preview_mode_general_tab_accepts_form_value() {
+    // On the General tab, the form value is the source of
     // truth. "never" and "batches_only" both persist.
     assert_eq!(
-        resolve_grab_preview_mode(Some("never"), Some("integrations"), Some("batches_only")),
+        resolve_grab_preview_mode(Some("never"), Some("general"), Some("batches_only")),
         "never"
     );
     assert_eq!(
-        resolve_grab_preview_mode(Some("batches_only"), Some("integrations"), Some("never")),
+        resolve_grab_preview_mode(Some("batches_only"), Some("general"), Some("never")),
         "batches_only"
     );
 }
@@ -83,15 +83,15 @@ fn resolve_grab_preview_mode_unknown_form_value_coerces_to_default() {
     // option from the plan doc, etc.) coerces to "batches_only"
     // so the config can't end up in an unenumerated state.
     assert_eq!(
-        resolve_grab_preview_mode(Some(""), Some("integrations"), Some("never")),
+        resolve_grab_preview_mode(Some(""), Some("general"), Some("never")),
         "batches_only"
     );
     assert_eq!(
-        resolve_grab_preview_mode(Some("always"), Some("integrations"), Some("never")),
+        resolve_grab_preview_mode(Some("always"), Some("general"), Some("never")),
         "batches_only"
     );
     assert_eq!(
-        resolve_grab_preview_mode(None, Some("integrations"), Some("never")),
+        resolve_grab_preview_mode(None, Some("general"), Some("never")),
         "batches_only"
     );
 }
@@ -101,7 +101,7 @@ fn resolve_grab_preview_mode_other_tabs_preserve_existing() {
     // A save from the Quality tab (or anywhere else) must not
     // reset the picker. Critical — the same form shape is
     // submitted from every tab and the picker field is simply
-    // omitted outside Integrations.
+    // omitted outside General.
     assert_eq!(
         resolve_grab_preview_mode(None, Some("quality"), Some("never")),
         "never"
@@ -110,7 +110,7 @@ fn resolve_grab_preview_mode_other_tabs_preserve_existing() {
         resolve_grab_preview_mode(None, Some("groups"), Some("batches_only")),
         "batches_only"
     );
-    // A stray form value from a non-Integrations tab is ignored —
+    // A stray form value from a non-General tab is ignored —
     // only the existing value matters there.
     assert_eq!(
         resolve_grab_preview_mode(Some("never"), Some("library"), Some("batches_only")),
@@ -121,7 +121,7 @@ fn resolve_grab_preview_mode_other_tabs_preserve_existing() {
 #[test]
 fn resolve_grab_preview_mode_missing_tab_uses_form_value() {
     // No tab on the form = the no-tab POST shape; treat like
-    // Integrations so the field round-trips on a "save all" flow.
+    // General so the field round-trips on a "save all" flow.
     assert_eq!(
         resolve_grab_preview_mode(Some("never"), None, Some("batches_only")),
         "never"
@@ -721,6 +721,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None, // submit→false, seed=true
                 misgrab_auto_remove: None,
+                grab_preview_mode: None,
+                auto_grab_on_add: None,
+                allow_non_english: None,
                 recycle_bin_path: "/submit/recycle/".to_string(), // seed=/seed/recycle; trailing slash trimmed
                 recycle_bin_age_days: 45,                         // seed=7
                 series_folder_format: String::new(),
@@ -862,8 +865,7 @@ mod non_htmx_path {
                 sonarr_api_key: Some("sonarr-submit-key".to_string()),
                 radarr_enabled: None, // seed=true → submit→false
                 radarr_api_key: Some("radarr-submit-key".to_string()),
-                grab_preview_mode: Some("batches_only".to_string()), // seed=never
-                external_sync_interval_minutes: Some(120),           // seed=60
+                external_sync_interval_minutes: Some(120), // seed=60
             }),
         )
         .await
@@ -904,7 +906,8 @@ mod non_htmx_path {
         assert_eq!(saved.sonarr_api_key, "sonarr-submit-key");
         assert!(!saved.radarr_enabled);
         assert_eq!(saved.radarr_api_key, "radarr-submit-key");
-        assert_eq!(saved.grab_preview_mode, "batches_only");
+        // The picker lives on General now; an Integrations save preserves it.
+        assert_eq!(saved.grab_preview_mode, "never");
         assert_eq!(saved.external_sync_interval_minutes, 120);
         // Cross-tab fields stay at seed values.
         assert_eq!(saved.media_root, "/seed/media");
@@ -941,6 +944,9 @@ mod non_htmx_path {
             search_on_monitoring_change: None,
             manual_search_auto_add: None,
             misgrab_auto_remove: checked.then(String::new),
+            grab_preview_mode: None,
+            auto_grab_on_add: None,
+            allow_non_english: None,
             recycle_bin_path: String::new(),
             recycle_bin_age_days: 30,
             series_folder_format: String::new(),
@@ -987,6 +993,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                grab_preview_mode: None,
+                auto_grab_on_add: None,
+                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1031,6 +1040,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                grab_preview_mode: None,
+                auto_grab_on_add: None,
+                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1078,6 +1090,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                grab_preview_mode: None,
+                auto_grab_on_add: None,
+                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1135,6 +1150,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                grab_preview_mode: None,
+                auto_grab_on_add: None,
+                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1174,6 +1192,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                grab_preview_mode: None,
+                auto_grab_on_add: None,
+                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1261,7 +1282,6 @@ mod non_htmx_path {
                 sonarr_api_key: None,
                 radarr_enabled: None,
                 radarr_api_key: None,
-                grab_preview_mode: None,
                 external_sync_interval_minutes: None,
             }),
         )
@@ -1387,7 +1407,6 @@ mod non_htmx_path {
                 sonarr_api_key: None,
                 radarr_enabled: None,
                 radarr_api_key: None,
-                grab_preview_mode: None,
                 external_sync_interval_minutes: None,
             }),
         )
@@ -1435,7 +1454,6 @@ mod non_htmx_path {
                 sonarr_api_key: None,
                 radarr_enabled: None,
                 radarr_api_key: None,
-                grab_preview_mode: None,
                 external_sync_interval_minutes: None,
             }),
         )
@@ -1497,7 +1515,6 @@ mod non_htmx_path {
                 sonarr_api_key: None,
                 radarr_enabled: None,
                 radarr_api_key: None,
-                grab_preview_mode: None,
                 external_sync_interval_minutes: None,
             }),
         )
@@ -1551,7 +1568,6 @@ mod non_htmx_path {
                 sonarr_api_key: None,
                 radarr_enabled: None,
                 radarr_api_key: None,
-                grab_preview_mode: None,
                 external_sync_interval_minutes: None,
             }),
         )
@@ -1603,6 +1619,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                grab_preview_mode: None,
+                auto_grab_on_add: None,
+                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1668,6 +1687,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                grab_preview_mode: None,
+                auto_grab_on_add: None,
+                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1724,6 +1746,9 @@ mod naming_templates {
             search_on_monitoring_change: None,
             manual_search_auto_add: None,
             misgrab_auto_remove: None,
+            grab_preview_mode: None,
+            auto_grab_on_add: None,
+            allow_non_english: None,
             recycle_bin_path: String::new(),
             recycle_bin_age_days: 14,
             series_folder_format: series.to_string(),

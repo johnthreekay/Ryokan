@@ -234,11 +234,7 @@
            and there's nothing else in the section header to anchor.
            Section gets a one-liner hint instead so the page has a
            reason to start where it does. #}
-        <p class="form-hint" style="margin:0 0 12px">
-            Background jobs Ryokan schedules. Cadence + last run state for each.
-            Use <strong>Run now</strong> to trigger a job out-of-band — useful for
-            picking up new metadata or RSS items immediately after a settings change.
-        </p>
+        <p class="form-hint" style="margin:0 0 12px">Background jobs and when they last ran. Run now starts one right away.</p>
         {% if scheduled_tasks.is_empty() %}
         <div class="logs-empty">No scheduled task definitions registered yet.</div>
         {% else %}
@@ -294,7 +290,7 @@
            the source of truth for the copy. #}
         <div class="logs-empty" id="review-empty-state" {% if !review_entries.is_empty() %}hidden{% endif %}>
             <p>No episodes currently flagged for review.</p>
-            <p class="form-hint">This view fills up when the classifier lands on a low-confidence verdict: either no single layer was strong enough, or two strong layers disagreed. Manual overrides and post-download ffprobe checks usually keep it empty.</p>
+            <p class="form-hint">Episodes land here when Ryokan is unsure of a file's source or resolution. Pick the right tag and apply it.</p>
         </div>
         {% if !review_entries.is_empty() %}
         {# Bulk bar always visible — rows are pre-selected by default,
@@ -395,7 +391,7 @@
 {%~ include "partials/system/backup.html" ~%}
 {% else if tab == "debug" %}
 <div class="debug-panel">
-    {# The form wraps just the two checkbox cards. Maintenance and RSS
+    {# The form wraps just the provider-fallback card. Maintenance and RSS
        cards live outside the form since each of their buttons posts to
        its own endpoint. The Save button at the bottom uses the HTML5
        `form="debug-settings-form"` attribute to submit the form from
@@ -405,62 +401,42 @@
             <div class="cf-section-header">
                 <h3>Provider fallback</h3>
             </div>
-            <p class="cf-section-desc">Force specific metadata providers for testing the fallback chain.</p>
+            <p class="cf-section-desc">Skip AniList and use a fallback provider. For testing only.</p>
             <div class="form-check">
                 <label class="checkbox-row">
                     <input type="checkbox" name="force_mal_fallback" id="force_mal_fallback" {% if force_mal_fallback %}checked{% endif %}>
                     <span>Force MAL/Tenrai fallback for search and tracked fallback entries</span>
                 </label>
-                <span class="form-hint">Debug option for testing the fallback path after AniList comes back. AniList-only entries without a MAL ID cannot be forced into fallback mode.</span>
+                <span class="form-hint">Entries without a MAL id stay on AniList.</span>
             </div>
             <div class="form-check">
                 <label class="checkbox-row">
                     <input type="checkbox" name="force_kitsu_fallback" id="force_kitsu_fallback" {% if force_kitsu_fallback %}checked{% endif %}>
                     <span>Force Kitsu fallback for episode titles and air dates</span>
                 </label>
-                <span class="form-hint">Debug option for testing Kitsu episode metadata even when Tenrai (MAL) returns titles. This only affects series episode metadata on the detail page.</span>
+                <span class="form-hint">Only affects episode titles and air dates on series pages.</span>
             </div>
         </div>
 
-        <div class="cf-section">
-            <div class="cf-section-header">
-                <h3>Grab behavior</h3>
-            </div>
-            <p class="cf-section-desc">Control when and how Ryokan auto-grabs releases.</p>
-            <div class="form-check">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="auto_grab_on_add" id="auto_grab_on_add" {% if auto_grab_on_add %}checked{% endif %}>
-                    <span>Auto-grab monitored episodes when adding a new series</span>
-                </label>
-                <span class="form-hint">When enabled (default), Ryokan automatically searches for and grabs all monitored episodes after you add a series to the library. Disable to add series without triggering an immediate download.</span>
-            </div>
-            <div class="form-check">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="allow_non_english" id="allow_non_english" {% if allow_non_english %}checked{% endif %}>
-                    <span>Allow non-English releases in auto grabs</span>
-                </label>
-                <span class="form-hint">When disabled (default), auto-search and RSS use Nyaa's English-translated category. Enable to search all anime categories instead. Interactive search always searches all categories.</span>
-            </div>
-        </div>
     </form>
 
     <div class="cf-section">
         <div class="cf-section-header">
             <h3>Maintenance actions</h3>
         </div>
-        <p class="cf-section-desc">One-shot operations against the library and metadata cache. Each runs immediately, independent of the Save button below.</p>
+        <p class="cf-section-desc">Each action runs right away.</p>
         <div class="debug-actions-group">
             <div class="debug-action-row">
                 <button type="button" class="btn btn-secondary" onclick="rebuildAniListCache(this)">Rebuild metadata cache</button>
-                <span class="form-hint">Re-fetch AniList (and MAL/Kitsu fallback) metadata for every tracked series. Use when you've noticed stale titles, wrong episode counts, or missing relations after a provider outage or schema change.</span>
+                <span class="form-hint">Fetch fresh metadata for every series.</span>
             </div>
             <div class="debug-action-row">
                 <button type="button" class="btn btn-secondary" onclick="reconcileFallbacks(this)">Reconcile fallback entries</button>
-                <span class="form-hint">Look at every series that was added under a MAL or Kitsu fallback ID and try to upgrade it to its AniList entry. Safe to click repeatedly; only upgrades entries that now resolve on AniList.</span>
+                <span class="form-hint">Move series added under a MAL or Kitsu id to their AniList entry when one exists.</span>
             </div>
             <div class="debug-action-row">
                 <button type="button" class="btn btn-secondary" onclick="classifyLibrary(this)">Classify imported files</button>
-                <span class="form-hint">Walk every tracked series folder and run the source/resolution classifier on files that don't yet have a structured tag. Useful after migrating from another PVR or dropping files in manually.</span>
+                <span class="form-hint">Tag files that have no source and resolution tag yet. Useful after copying a library in by hand.</span>
             </div>
         </div>
     </div>
@@ -469,14 +445,14 @@
         <div class="cf-section-header">
             <h3>RSS grab history</h3>
         </div>
-        <p class="cf-section-desc">Clear the RSS grab history so previously grabbed episodes can be re-evaluated on the next sync. Use this if you deleted a file from disk and want Ryokan to re-grab it.</p>
+        <p class="cf-section-desc">Forget which episodes the RSS poller already grabbed so it can grab them again.</p>
         <div class="debug-action-row">
             <button type="button" class="btn btn-secondary" onclick="clearRssHistory(this)">Clear grab history</button>
         </div>
     </div>
 
     <div class="settings-inline-actions" style="margin-top:16px">
-        <button type="submit" form="debug-settings-form" class="btn btn-primary">Save Debug Settings</button>
+        <button type="submit" form="debug-settings-form" class="btn btn-primary">Save</button>
     </div>
 </div>
 

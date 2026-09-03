@@ -419,10 +419,16 @@ pub struct SettingsForm {
     default_restrict_to_uploader: Option<String>,
     /// Issue #83 — interactive file-picker trigger policy. `batches_only`
     /// (default) opens the modal for multi-file torrents; `never`
-    /// preserves 1.3.0 one-click behavior. Omitted from forms before
-    /// Falls back to the existing config value (or default).
+    /// preserves 1.3.0 one-click behavior. Lives on the General tab
+    /// (Grabbing) since the frontend cleanup; other tabs' saves fall
+    /// back to the existing config value (or default).
     #[serde(default)]
     grab_preview_mode: Option<String>,
+    /// General tab, Grabbing. Both used to sit on System → Debug.
+    #[serde(default)]
+    auto_grab_on_add: Option<String>,
+    #[serde(default)]
+    allow_non_english: Option<String>,
     /// Issue #62 — watch-list sync cadence in minutes. Clamped
     /// to 15..=10080 (15 minutes .. 7 days) on save per decision #5.
     /// `None` means "field absent from this form submission" and
@@ -520,9 +526,6 @@ pub struct IntegrationsForm {
     radarr_enabled: Option<String>,
     #[serde(default)]
     radarr_api_key: Option<String>,
-    /// #83 — Interactive file-picker trigger policy.
-    #[serde(default)]
-    grab_preview_mode: Option<String>,
     /// #62 — watch-list sync cadence in minutes. `None` means
     /// the field was absent from this submission (e.g. no account
     /// linked, so the input wasn't rendered) and the existing
@@ -606,6 +609,14 @@ pub struct GeneralForm {
     manual_search_auto_add: Option<String>,
     #[serde(default)]
     misgrab_auto_remove: Option<String>,
+    /// Grabbing section: the interactive file picker (#83) and the two
+    /// switches that used to live on System → Debug.
+    #[serde(default)]
+    grab_preview_mode: Option<String>,
+    #[serde(default)]
+    auto_grab_on_add: Option<String>,
+    #[serde(default)]
+    allow_non_english: Option<String>,
     /// Recycle bin (#123). Empty disables recycle.
     #[serde(default)]
     recycle_bin_path: String,
@@ -681,18 +692,18 @@ impl ConnectionTestResultPartial {
 
 /// Resolve the `grab_preview_mode` value to persist on save.
 ///
-/// The picker dropdown lives on the Integrations tab, so Integrations
-/// saves (and the rare no-tab POST) honor the form value, while saves
-/// from other tabs (Quality, Library, etc.) pass through the existing
-/// config value so they can't accidentally reset the picker. Unknown
-/// form values coerce to `batches_only` — the safe default that
-/// matches a fresh install.
+/// The picker dropdown lives on the General tab (Grabbing section),
+/// so General saves (and the rare no-tab POST) honor the form value,
+/// while saves from other tabs (Quality, Integrations, etc.) pass
+/// through the existing config value so they can't accidentally reset
+/// the picker. Unknown form values coerce to `batches_only` — the safe
+/// default that matches a fresh install.
 pub(crate) fn resolve_grab_preview_mode(
     form_value: Option<&str>,
     tab: Option<&str>,
     existing: Option<&str>,
 ) -> String {
-    if tab == Some("integrations") || tab.is_none() {
+    if tab == Some("general") || tab.is_none() {
         match form_value.unwrap_or("") {
             "never" => "never".to_string(),
             _ => "batches_only".to_string(),
@@ -1268,10 +1279,14 @@ pub async fn settings_submit(
                 .map(|c| c.post_processing_mode.clone())
                 .unwrap_or_else(|| "hardlink".to_string())
         },
-        auto_grab_on_add: existing_cfg
-            .as_ref()
-            .map(|c| c.auto_grab_on_add)
-            .unwrap_or(true),
+        auto_grab_on_add: if form.tab.as_deref() == Some("general") {
+            form.auto_grab_on_add.is_some()
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.auto_grab_on_add)
+                .unwrap_or(true)
+        },
         search_on_monitoring_change: if form.tab.as_deref() == Some("general") {
             form.search_on_monitoring_change.is_some()
         } else {
@@ -1285,10 +1300,14 @@ pub async fn settings_submit(
         } else {
             existing_cfg.as_ref().map(|c| c.prefer_subs).unwrap_or(true)
         },
-        allow_non_english: existing_cfg
-            .as_ref()
-            .map(|c| c.allow_non_english)
-            .unwrap_or(false),
+        allow_non_english: if form.tab.as_deref() == Some("general") {
+            form.allow_non_english.is_some()
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.allow_non_english)
+                .unwrap_or(false)
+        },
         sonarr_enabled: if form.tab.as_deref() == Some("integrations") || form.tab.is_none() {
             form.sonarr_enabled.is_some()
         } else {
@@ -1378,9 +1397,9 @@ pub async fn settings_submit(
                 .map(|c| c.default_restrict_to_uploader.clone())
                 .unwrap_or_default()
         },
-        // #83 — Interactive file-picker lives on the Integrations tab
-        // alongside the other download-client knobs. Preserve on
-        // other-tab saves. Unknown values coerce to `batches_only`.
+        // #83 — Interactive file-picker lives on the General tab
+        // (Grabbing). Preserve on other-tab saves. Unknown values
+        // coerce to `batches_only`.
         grab_preview_mode: resolve_grab_preview_mode(
             form.grab_preview_mode.as_deref(),
             form.tab.as_deref(),
@@ -1718,6 +1737,13 @@ pub async fn settings_general_submit(
         search_on_monitoring_change: form.search_on_monitoring_change.is_some(),
         manual_search_auto_add: form.manual_search_auto_add.is_some(),
         misgrab_auto_remove: form.misgrab_auto_remove.is_some(),
+        grab_preview_mode: resolve_grab_preview_mode(
+            form.grab_preview_mode.as_deref(),
+            Some("general"),
+            Some(existing_cfg.grab_preview_mode.as_str()),
+        ),
+        auto_grab_on_add: form.auto_grab_on_add.is_some(),
+        allow_non_english: form.allow_non_english.is_some(),
         recycle_bin_path: form
             .recycle_bin_path
             .trim()
@@ -2250,11 +2276,9 @@ pub async fn settings_integrations_submit(
         sonarr_api_key: form.sonarr_api_key.unwrap_or_default().trim().to_string(),
         radarr_enabled: form.radarr_enabled.is_some(),
         radarr_api_key: form.radarr_api_key.unwrap_or_default().trim().to_string(),
-        grab_preview_mode: resolve_grab_preview_mode(
-            form.grab_preview_mode.as_deref(),
-            Some("integrations"),
-            Some(existing_cfg.grab_preview_mode.as_str()),
-        ),
+        // The picker moved to General → Grabbing; an Integrations save
+        // never touches it.
+        grab_preview_mode: existing_cfg.grab_preview_mode.clone(),
         external_sync_interval_minutes: resolve_external_sync_interval_minutes(
             form.external_sync_interval_minutes,
             Some("integrations"),

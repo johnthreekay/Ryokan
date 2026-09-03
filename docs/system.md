@@ -117,12 +117,10 @@ The full third-party license texts are bundled into the binary at compile time a
 
 ## Debug
 
-Runtime toggles and diagnostic actions that don't fit cleanly under Settings.
+Diagnostic switches and one-shot actions. The grabbing switches that used to live here (non-English releases, searching when a series is added) are under Settings, General, Grabbing.
 
-- **Allow non-English releases**: when off, Nyaa search restricts to category `1_2` (English-translated). When on, Ryokan also pulls from category `1_0` (Anime All; includes untranslated and multi-sub releases). Music releases always search categories `1_1` + `2_0` regardless.
 - **Force MAL/Tenrai fallback for search and tracked fallback entries**: temporarily skip AniList and go straight to the MAL provider (Tenrai; any Jikan-v4-compatible API via `JIKAN_API_BASE`) for metadata fetches. Useful when AniList is rate-limited or returning stale data; flip back off after the issue clears.
 - **Force Kitsu fallback**: same idea, for the Kitsu provider further down the metadata chain.
-- **Auto-grab monitored episodes when adding a new series**: when on, Ryokan searches for and grabs every monitored episode right after you add a series. When off, you trigger searches yourself.
 
 Toast feedback appears on this tab when a debug action succeeds or fails. Backup and Notifications toast too; the read-only tabs don't.
 
