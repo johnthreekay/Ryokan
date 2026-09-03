@@ -13,7 +13,7 @@
     justify-content: space-between;
     padding: 0 24px;
     height: 56px;
-    background: rgba(var(--bg-rgb),, 0.92);
+    background: rgba(var(--bg-rgb), 0.92);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
 }
@@ -87,7 +87,7 @@
 
 .nav-links a:hover { color: var(--text); background: var(--bg-elevated); }
 
-.nav-links a.active { color: var(--accent); background: rgba(var(--accent-rgb),, 0.08); }
+.nav-links a.active { color: var(--accent); background: rgba(var(--accent-rgb), 0.08); }
 
 .nav-logout { color: var(--text-dim) !important; }
 

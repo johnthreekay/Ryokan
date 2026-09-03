@@ -263,13 +263,13 @@
 
 .import-kind-new {
     color: var(--green);
-    border-color: rgba(var(--green-rgb),, 0.4);
+    border-color: rgba(var(--green-rgb), 0.4);
     background: var(--green-bg);
 }
 
 .import-kind-merge {
     color: var(--blue);
-    border-color: rgba(var(--blue-rgb),, 0.4);
+    border-color: rgba(var(--blue-rgb), 0.4);
     background: var(--blue-bg);
 }
 
@@ -352,7 +352,7 @@
 
 .import-tag-warn {
     color: var(--yellow);
-    background: rgba(var(--yellow-rgb),, 0.12);
+    background: rgba(var(--yellow-rgb), 0.12);
     text-transform: none;
     letter-spacing: 0;
     font-family: var(--font-body);

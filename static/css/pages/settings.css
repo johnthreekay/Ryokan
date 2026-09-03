@@ -148,7 +148,7 @@ fieldset legend {
 
 .tabbed-side-tab.active {
     color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
 }
 
 .tabbed-side-tab:focus-visible {
@@ -292,7 +292,7 @@ fieldset legend {
 
 .group-source-table td {
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(var(--border-rgb),, 0.4);
+    border-bottom: 1px solid rgba(var(--border-rgb), 0.4);
     vertical-align: middle;
     color: var(--text);
 }
@@ -302,7 +302,7 @@ fieldset legend {
 }
 
 .group-source-table tbody tr:hover {
-    background: rgba(var(--accent-rgb),, 0.05);
+    background: rgba(var(--accent-rgb), 0.05);
 }
 
 .group-source-table td:last-child {
@@ -508,21 +508,21 @@ fieldset legend {
 }
 
 .cf-import-status-badge.cf-import-status-new {
-    background: rgba(var(--green-rgb),, 0.12);
+    background: rgba(var(--green-rgb), 0.12);
     color: var(--green);
-    border-color: rgba(var(--green-rgb),, 0.3);
+    border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .cf-import-status-badge.cf-import-status-collision {
-    background: rgba(var(--yellow-rgb),, 0.14);
+    background: rgba(var(--yellow-rgb), 0.14);
     color: var(--yellow);
-    border-color: rgba(var(--yellow-rgb),, 0.35);
+    border-color: rgba(var(--yellow-rgb), 0.35);
 }
 
 .cf-import-status-badge.cf-import-status-invalid {
-    background: rgba(var(--red-rgb),, 0.12);
+    background: rgba(var(--red-rgb), 0.12);
     color: var(--red);
-    border-color: rgba(var(--red-rgb),, 0.3);
+    border-color: rgba(var(--red-rgb), 0.3);
 }
 
 .cf-import-name {
@@ -546,7 +546,7 @@ fieldset legend {
     color: var(--red);
     font-family: var(--font-mono);
     word-break: break-word;
-    background: rgba(var(--red-rgb),, 0.06);
+    background: rgba(var(--red-rgb), 0.06);
     padding: 4px 8px;
     border-radius: var(--radius-sm);
     margin-top: 4px;
@@ -586,7 +586,7 @@ fieldset legend {
 
 .cf-card-selected {
     border-color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.06);
+    background: rgba(var(--accent-rgb), 0.06);
 }
 
 .cf-card-body {
@@ -662,21 +662,21 @@ fieldset legend {
 }
 
 .cf-pill-required {
-    background: rgba(var(--green-rgb),, 0.12);
+    background: rgba(var(--green-rgb), 0.12);
     color: var(--green);
-    border-color: rgba(var(--green-rgb),, 0.3);
+    border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .cf-pill-negate {
-    background: rgba(var(--red-rgb),, 0.12);
+    background: rgba(var(--red-rgb), 0.12);
     color: var(--red);
-    border-color: rgba(var(--red-rgb),, 0.3);
+    border-color: rgba(var(--red-rgb), 0.3);
 }
 
 .cf-pill-error {
-    background: rgba(var(--red-rgb),, 0.2);
+    background: rgba(var(--red-rgb), 0.2);
     color: var(--red);
-    border-color: rgba(var(--red-rgb),, 0.4);
+    border-color: rgba(var(--red-rgb), 0.4);
 }
 
 .cf-pill-muted {
@@ -723,7 +723,7 @@ fieldset legend {
 .cf-card-add:hover {
     color: var(--accent);
     border-color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.04);
+    background: rgba(var(--accent-rgb), 0.04);
 }
 
 .cf-card-add-icon {
@@ -866,8 +866,8 @@ fieldset legend {
 }
 
 .ext-alert-error {
-    background: rgba(var(--red-rgb),, 0.10);
-    border: 1px solid rgba(var(--red-rgb),, 0.32);
+    background: rgba(var(--red-rgb), 0.10);
+    border: 1px solid rgba(var(--red-rgb), 0.32);
 }
 
 .ext-alert-error strong {
@@ -875,8 +875,8 @@ fieldset legend {
 }
 
 .ext-alert-warn {
-    background: rgba(var(--orange-rgb),, 0.10);
-    border: 1px solid rgba(var(--orange-rgb),, 0.30);
+    background: rgba(var(--orange-rgb), 0.10);
+    border: 1px solid rgba(var(--orange-rgb), 0.30);
 }
 
 .ext-alert-warn strong {
@@ -983,12 +983,12 @@ fieldset legend {
 }
 
 .indexer-catalog-card-pill-private {
-    background: rgba(var(--red-rgb),, 0.16);
+    background: rgba(var(--red-rgb), 0.16);
     color: var(--red);
 }
 
 .indexer-catalog-card-pill-public {
-    background: rgba(var(--green-rgb),, 0.16);
+    background: rgba(var(--green-rgb), 0.16);
     color: var(--green);
 }
 
@@ -1024,7 +1024,7 @@ fieldset legend {
 .indexer-seed-notes {
     margin: 12px 0 16px;
     padding: 12px 14px;
-    background: rgba(var(--accent-rgb),, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
     border-left: 3px solid var(--accent);
     border-radius: var(--radius-sm);
     font-size: 13px;
@@ -1130,7 +1130,7 @@ fieldset legend {
     text-transform: uppercase;
     padding: 2px 7px;
     border-radius: var(--radius-pill);
-    background: rgba(var(--green-rgb),, 0.18);
+    background: rgba(var(--green-rgb), 0.18);
     color: var(--green);
     flex-shrink: 0;
 }
@@ -1151,10 +1151,10 @@ fieldset legend {
     line-height: 1.4;
 }
 
-.dc-status-pill-loading  { background: rgba(var(--text-dim-rgb),, 0.16); color: var(--text-dim); }
-.dc-status-pill-ok       { background: rgba(var(--green-rgb),, 0.18); color: var(--green); }
-.dc-status-pill-err      { background: rgba(var(--red-rgb),, 0.18); color: var(--red); cursor: help; }
-.dc-status-pill-disabled { background: rgba(var(--text-dim-rgb),, 0.18); color: var(--text-dim); }
+.dc-status-pill-loading  { background: rgba(var(--text-dim-rgb), 0.16); color: var(--text-dim); }
+.dc-status-pill-ok       { background: rgba(var(--green-rgb), 0.18); color: var(--green); }
+.dc-status-pill-err      { background: rgba(var(--red-rgb), 0.18); color: var(--red); cursor: help; }
+.dc-status-pill-disabled { background: rgba(var(--text-dim-rgb), 0.18); color: var(--text-dim); }
 
 .dc-card-meta {
     display: flex;
@@ -1236,7 +1236,7 @@ fieldset legend {
 .dc-card-add:hover {
     color: var(--accent);
     border-color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.04);
+    background: rgba(var(--accent-rgb), 0.04);
 }
 
 .dc-card-add-icon {
@@ -1300,22 +1300,22 @@ fieldset legend {
 }
 
 .rss-pill-off {
-    background: rgba(var(--text-dim-rgb),, 0.18);
+    background: rgba(var(--text-dim-rgb), 0.18);
     color: var(--text-dim);
 }
 
 .rss-pill-idle {
-    background: rgba(var(--blue-rgb),, 0.16);
+    background: rgba(var(--blue-rgb), 0.16);
     color: var(--blue);
 }
 
 .rss-pill-ok {
-    background: rgba(var(--green-rgb),, 0.16);
+    background: rgba(var(--green-rgb), 0.16);
     color: var(--green);
 }
 
 .rss-pill-error {
-    background: rgba(var(--red-rgb),, 0.16);
+    background: rgba(var(--red-rgb), 0.16);
     color: var(--red);
 }
 
@@ -1418,12 +1418,12 @@ fieldset legend {
    a 0.18-alpha tint, with the dim variant for disabled. */
 .api-key-status-pill-on {
     color: var(--green);
-    background: rgba(var(--green-rgb),, 0.18);
+    background: rgba(var(--green-rgb), 0.18);
 }
 
 .api-key-status-pill-off {
     color: var(--text-dim);
-    background: rgba(var(--text-dim-rgb),, 0.18);
+    background: rgba(var(--text-dim-rgb), 0.18);
 }
 
 .api-key-card-scopes {
@@ -1438,8 +1438,8 @@ fieldset legend {
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.1);
-    border: 1px solid rgba(var(--accent-rgb),, 0.2);
+    background: rgba(var(--accent-rgb), 0.1);
+    border: 1px solid rgba(var(--accent-rgb), 0.2);
 }
 
 .api-key-card-meta {
@@ -1573,7 +1573,7 @@ fieldset legend {
 }
 
 .api-key-switch input:checked + .api-key-switch-track {
-    background: rgba(var(--accent-rgb),, 0.2);
+    background: rgba(var(--accent-rgb), 0.2);
     border-color: var(--accent);
 }
 
@@ -1618,7 +1618,7 @@ fieldset legend {
 .api-key-card-add:hover {
     color: var(--accent);
     border-color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.04);
+    background: rgba(var(--accent-rgb), 0.04);
 }
 
 .api-key-card-add-icon {
@@ -1739,8 +1739,8 @@ fieldset legend {
     gap: 8px;
     margin: 0 24px 12px;
     padding: 10px 12px;
-    background: rgba(var(--red-rgb),, 0.08);
-    border: 1px solid rgba(var(--red-rgb),, 0.3);
+    background: rgba(var(--red-rgb), 0.08);
+    border: 1px solid rgba(var(--red-rgb), 0.3);
     border-left-width: 3px;
     border-radius: var(--radius);
     color: var(--red);
@@ -1774,7 +1774,7 @@ fieldset legend {
 
 .api-keys-scope-tile:hover {
     border-color: var(--border-accent, var(--accent));
-    background: rgba(var(--accent-rgb),, 0.04);
+    background: rgba(var(--accent-rgb), 0.04);
 }
 
 /* When admin is checked, the other scope tiles render disabled
@@ -1812,7 +1812,7 @@ fieldset legend {
 
 .api-keys-scope-tile:has(input:checked) {
     border-color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
 }
 
 .api-keys-scope-tile-body {
@@ -1861,14 +1861,14 @@ fieldset legend {
 
 .api-keys-scope-tile-tag-live {
     color: var(--green);
-    background: rgba(var(--green-rgb),, 0.1);
-    border-color: rgba(var(--green-rgb),, 0.3);
+    background: rgba(var(--green-rgb), 0.1);
+    border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .api-keys-scope-tile-tag-warn {
     color: var(--yellow);
-    background: rgba(var(--yellow-rgb),, 0.1);
-    border-color: rgba(var(--yellow-rgb),, 0.3);
+    background: rgba(var(--yellow-rgb), 0.1);
+    border-color: rgba(var(--yellow-rgb), 0.3);
 }
 
 .api-keys-scope-tile-desc {
@@ -1888,8 +1888,8 @@ fieldset legend {
     gap: 10px;
     padding: 12px 14px;
     margin-bottom: 16px;
-    background: rgba(var(--yellow-rgb),, 0.08);
-    border: 1px solid rgba(var(--yellow-rgb),, 0.3);
+    background: rgba(var(--yellow-rgb), 0.08);
+    border: 1px solid rgba(var(--yellow-rgb), 0.3);
     border-left-width: 3px;
     border-radius: var(--radius);
     color: var(--text);

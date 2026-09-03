@@ -283,12 +283,12 @@
 
 .calendar-episode-badge-monitored {
     color: var(--green);
-    background: rgba(var(--green-rgb),, 0.18);
+    background: rgba(var(--green-rgb), 0.18);
 }
 
 .calendar-episode-badge-unmon {
     color: var(--text-dim);
-    background: rgba(var(--text-dim-rgb),, 0.18);
+    background: rgba(var(--text-dim-rgb), 0.18);
 }
 
 /* "Premiere" — first episode of a Ryokan series. Each anime
@@ -298,7 +298,7 @@
    are common. */
 .calendar-episode-badge-premiere {
     color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.16);
+    background: rgba(var(--accent-rgb), 0.16);
 }
 
 .calendar-empty {

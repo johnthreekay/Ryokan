@@ -54,7 +54,7 @@
 }
 
 .results-table tbody tr.is-trusted:not(.is-batch):hover {
-    background: rgba(var(--green-rgb),, 0.15);
+    background: rgba(var(--green-rgb), 0.15);
 }
 
 .results-table tbody tr.is-batch:not(.is-trusted) {
@@ -63,7 +63,7 @@
 }
 
 .results-table tbody tr.is-batch:not(.is-trusted):hover {
-    background: rgba(var(--blue-rgb),, 0.15);
+    background: rgba(var(--blue-rgb), 0.15);
 }
 
 .results-table tbody tr.is-batch.is-trusted {
@@ -72,7 +72,7 @@
 }
 
 .results-table tbody tr.is-batch.is-trusted:hover {
-    background: rgba(var(--accent-rgb),, 0.15);
+    background: rgba(var(--accent-rgb), 0.15);
 }
 
 .col-seed, .col-leech, .col-dl { width: 50px; text-align: right; }
@@ -176,7 +176,7 @@
 
 .result-tags { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
 
-.tag-group { background: rgba(var(--accent-rgb),, 0.1); color: var(--accent); }
+.tag-group { background: rgba(var(--accent-rgb), 0.1); color: var(--accent); }
 
 .dl-count { color: var(--text-dim); font-family: var(--font-mono); }
 

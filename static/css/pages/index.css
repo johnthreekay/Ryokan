@@ -111,8 +111,8 @@
 
 .library-chip.active {
     color: var(--accent);
-    border-color: rgba(var(--accent-rgb),, 0.45);
-    background: rgba(var(--accent-rgb),, 0.08);
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.08);
 }
 
 .library-chip-count {
@@ -299,7 +299,7 @@
     /* Mauve-tinted shadow ring on hover — matches the accent palette
      * so the lift registers as more than a generic shadow. */
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35),
-                0 0 0 1px rgba(var(--accent-rgb),, 0.18);
+                0 0 0 1px rgba(var(--accent-rgb), 0.18);
 }
 
 .series-card:hover .series-title { color: var(--accent); }
@@ -353,7 +353,7 @@
    "something is in flight" matters more than the exact fraction here
    (the tooltip and the series page carry the numbers). */
 .card-progress-downloading {
-    background: rgba(var(--signal-accent-rgb),, 0.35);
+    background: rgba(var(--signal-accent-rgb), 0.35);
 }
 
 .card-progress-downloading .card-progress-fill {
@@ -386,7 +386,7 @@
    bar's red so the two surfaces read as one signal. */
 .tag-progress-missing {
     color: var(--red);
-    background: rgba(var(--red-rgb),, 0.12);
+    background: rgba(var(--red-rgb), 0.12);
 }
 
 /* Hover vignette — bottom band only. One linear gradient fading up
@@ -399,7 +399,7 @@
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.25s ease-out;
-    background: linear-gradient(to top, rgba(var(--bg-rgb),, 0.55) 0%, transparent 30%);
+    background: linear-gradient(to top, rgba(var(--bg-rgb), 0.55) 0%, transparent 30%);
 }
 
 .series-card:hover .series-cover::after { opacity: 1; }
@@ -601,7 +601,7 @@
 
 .monitor-option-btn.active {
     border-color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
     box-shadow: inset 3px 0 0 var(--accent);
     padding-left: 17px;
 }
@@ -655,10 +655,10 @@
        of cover-art brightness. backdrop-filter blurs the bit of cover
        behind the indicator, giving it a frosted-glass quality that
        matches the rest of the dark UI. */
-    background: rgba(var(--bg-rgb),, 0.55);
+    background: rgba(var(--bg-rgb), 0.55);
     backdrop-filter: blur(8px) saturate(120%);
     -webkit-backdrop-filter: blur(8px) saturate(120%);
-    border: 1.5px solid rgba(var(--text-bright-rgb),, 0.35);
+    border: 1.5px solid rgba(var(--text-bright-rgb), 0.35);
     border-radius: var(--radius);
 
     transition:
@@ -699,14 +699,14 @@
    `:not(:checked)` is kept too as belt-and-suspenders for paths
    where `:checked` latches but `.selected` somehow didn't. */
 .library-grid.selecting .series-card:not(.selected):hover .series-card-select:not(:checked) {
-    border-color: rgba(var(--text-bright-rgb),, 0.75);
-    background: rgba(var(--bg-rgb),, 0.75);
+    border-color: rgba(var(--text-bright-rgb), 0.75);
+    background: rgba(var(--bg-rgb), 0.75);
 }
 
 .series-card-select:focus-visible {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(var(--accent-rgb),, 0.35);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35);
 }
 
 /* Checked visual. Driven by BOTH `:checked` (the form-element state)
@@ -722,8 +722,8 @@
     background: var(--accent);
     border-color: var(--accent);
     box-shadow:
-        0 0 0 2px rgba(var(--bg-rgb),, 0.6),
-        0 2px 8px rgba(var(--accent-rgb),, 0.4);
+        0 0 0 2px rgba(var(--bg-rgb), 0.6),
+        0 2px 8px rgba(var(--accent-rgb), 0.4);
     /* Inline SVG check mark — using #0f0f13 (page bg) as the stroke
        color so the check reads as "carved out" rather than "drawn on
        top of." */
@@ -750,8 +750,8 @@
     border-color: var(--accent);
     box-shadow:
         0 0 0 1px var(--accent),
-        0 8px 24px -4px rgba(var(--accent-rgb),, 0.35),
-        0 2px 8px rgba(var(--accent-rgb),, 0.18);
+        0 8px 24px -4px rgba(var(--accent-rgb), 0.35),
+        0 2px 8px rgba(var(--accent-rgb), 0.18);
     transform: translateY(-2px);
 }
 .series-card.selected:hover {
@@ -855,16 +855,16 @@
     bottom: 24px;
     left: 50%;
     transform: translateX(-50%) translateY(140%);
-    background: rgba(var(--bg-card-rgb),, 0.92);
+    background: rgba(var(--bg-card-rgb), 0.92);
     backdrop-filter: blur(16px) saturate(140%);
     -webkit-backdrop-filter: blur(16px) saturate(140%);
-    border: 1px solid rgba(var(--accent-rgb),, 0.3);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
     border-radius: var(--radius-lg);
     padding: 8px 12px;
     box-shadow:
         0 12px 32px -8px rgba(0, 0, 0, 0.6),
-        0 0 0 1px rgba(var(--accent-rgb),, 0.12),
-        0 0 24px -4px rgba(var(--accent-rgb),, 0.25);
+        0 0 0 1px rgba(var(--accent-rgb), 0.12),
+        0 0 24px -4px rgba(var(--accent-rgb), 0.25);
     z-index: 50;
     transition:
         transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -945,12 +945,12 @@
     background: var(--bg-card);
 }
 .bulk-action-btn-danger {
-    background: rgba(var(--red-rgb),, 0.15);
+    background: rgba(var(--red-rgb), 0.15);
     color: var(--red);
-    border-color: rgba(var(--red-rgb),, 0.3);
+    border-color: rgba(var(--red-rgb), 0.3);
 }
 .bulk-action-btn-danger:hover {
-    background: rgba(var(--red-rgb),, 0.25);
+    background: rgba(var(--red-rgb), 0.25);
     border-color: var(--red);
 }
 .bulk-action-btn:disabled {
@@ -986,7 +986,7 @@
         right: 0;
         max-width: none;
         transform: translateY(100%);
-        background: rgba(var(--bg-rgb),, 0.96);
+        background: rgba(var(--bg-rgb), 0.96);
         backdrop-filter: blur(12px) saturate(140%);
         -webkit-backdrop-filter: blur(12px) saturate(140%);
         border: none;
@@ -1079,7 +1079,7 @@
         color: var(--text-bright);
     }
     .bulk-action-btn-danger:hover {
-        background: rgba(var(--red-rgb),, 0.12);
+        background: rgba(var(--red-rgb), 0.12);
         color: var(--red);
     }
     .bulk-action-btn:active {
@@ -1113,7 +1113,7 @@
     width: 14px;
     height: 14px;
     margin-top: -7px;
-    border: 2px solid rgba(var(--accent-rgb),, 0.25);
+    border: 2px solid rgba(var(--accent-rgb), 0.25);
     border-top-color: var(--accent);
     border-radius: 50%;
     opacity: 0;

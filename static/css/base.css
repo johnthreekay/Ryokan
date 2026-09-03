@@ -898,12 +898,12 @@ input[type="file"]::file-selector-button:hover {
     border-radius: var(--radius-pill);
     font-size: 11px;
     font-weight: 600;
-    background: rgba(var(--red-rgb),, 0.12);
+    background: rgba(var(--red-rgb), 0.12);
     color: var(--red);
 }
 
 @keyframes log-flash {
-    0%   { background: rgba(var(--accent-rgb),, 0.12); }
+    0%   { background: rgba(var(--accent-rgb), 0.12); }
     100% { background: transparent; }
 }
 

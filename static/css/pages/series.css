@@ -37,12 +37,12 @@
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: rgba(var(--red-rgb),, 0.12);
+    background: rgba(var(--red-rgb), 0.12);
     color: var(--red);
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(var(--red-rgb),, 0.3);
+    border: 1px solid rgba(var(--red-rgb), 0.3);
 }
 
 .remove-series-heading-text {
@@ -123,8 +123,8 @@
 .remove-series-final-warning {
     margin: 0;
     padding: 10px 12px;
-    background: rgba(var(--red-rgb),, 0.08);
-    border: 1px solid rgba(var(--red-rgb),, 0.25);
+    background: rgba(var(--red-rgb), 0.08);
+    border: 1px solid rgba(var(--red-rgb), 0.25);
     border-radius: var(--radius);
     color: var(--red);
     font-weight: 600;
@@ -171,7 +171,7 @@
 .detail-banner-gradient {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom, rgba(var(--bg-rgb),,0.3) 0%, var(--bg) 100%);
+    background: linear-gradient(to bottom, rgba(var(--bg-rgb),0.3) 0%, var(--bg) 100%);
 }
 
 .detail-header {
@@ -416,17 +416,17 @@
 }
 
 .season-badge-complete {
-    background: rgba(var(--green-rgb),, 0.2);
+    background: rgba(var(--green-rgb), 0.2);
     color: var(--green);
 }
 
 .season-badge-partial {
-    background: rgba(var(--orange-rgb),, 0.15);
+    background: rgba(var(--orange-rgb), 0.15);
     color: var(--orange);
 }
 
 .season-badge-missing {
-    background: rgba(var(--red-rgb),, 0.12);
+    background: rgba(var(--red-rgb), 0.12);
     color: var(--red);
 }
 
@@ -713,13 +713,13 @@
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.25s ease-out;
-    background: linear-gradient(to top, rgba(var(--bg-rgb),, 0.55) 0%, transparent 30%);
+    background: linear-gradient(to top, rgba(var(--bg-rgb), 0.55) 0%, transparent 30%);
 }
 
 .relation-card:hover .relation-card-cover {
     border-color: var(--accent);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35),
-                0 0 0 1px rgba(var(--accent-rgb),, 0.18);
+                0 0 0 1px rgba(var(--accent-rgb), 0.18);
 }
 
 .relation-card:hover .relation-card-cover::after { opacity: 1; }
@@ -853,14 +853,14 @@
 }
 
 .icon-btn.is-success {
-    border-color: rgba(var(--green-rgb),, 0.45);
-    background: rgba(var(--green-rgb),, 0.12);
+    border-color: rgba(var(--green-rgb), 0.45);
+    background: rgba(var(--green-rgb), 0.12);
     color: var(--green);
 }
 
 .icon-btn.is-error {
-    border-color: rgba(var(--red-rgb),, 0.45);
-    background: rgba(var(--red-rgb),, 0.12);
+    border-color: rgba(var(--red-rgb), 0.45);
+    background: rgba(var(--red-rgb), 0.12);
     color: var(--red);
 }
 
@@ -873,14 +873,14 @@
  * here" — replaces the prior 📌 emoji on the quality tag, which
  * was easy to miss in dense episode lists. */
 .icon-btn.is-manual-override {
-    border-color: rgba(var(--red-rgb),, 0.55);
-    background: rgba(var(--red-rgb),, 0.16);
+    border-color: rgba(var(--red-rgb), 0.55);
+    background: rgba(var(--red-rgb), 0.16);
     color: var(--red);
 }
 
 .icon-btn.is-manual-override:hover:not(:disabled) {
     border-color: var(--red);
-    background: rgba(var(--red-rgb),, 0.22);
+    background: rgba(var(--red-rgb), 0.22);
     transform: translateY(-1px);
 }
 
@@ -906,9 +906,9 @@
 }
 
 .ep-mon-btn.ep-mon-yes {
-    border-color: rgba(var(--green-rgb),, 0.35);
+    border-color: rgba(var(--green-rgb), 0.35);
     color: var(--green);
-    background: rgba(var(--green-rgb),, 0.08);
+    background: rgba(var(--green-rgb), 0.08);
 }
 
 .ep-mon-btn.ep-mon-no {
@@ -950,7 +950,7 @@
     display: inline-block;
     width: 12px;
     height: 12px;
-    border: 2px solid rgba(var(--accent-rgb),, 0.25);
+    border: 2px solid rgba(var(--accent-rgb), 0.25);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin-ring 0.7s linear infinite;
@@ -1033,7 +1033,7 @@
 
 .monitor-all-btn.is-active {
     border-color: var(--accent);
-    background: rgba(var(--accent-rgb),, 0.15);
+    background: rgba(var(--accent-rgb), 0.15);
     color: var(--accent);
 }
 
@@ -1093,7 +1093,7 @@
 
 .grab-history-table td {
     padding: 6px 8px;
-    border-bottom: 1px solid rgba(var(--border-rgb),, 0.3);
+    border-bottom: 1px solid rgba(var(--border-rgb), 0.3);
     vertical-align: middle;
 }
 
@@ -1121,15 +1121,15 @@
 .btn-mark-failed {
     font-size: 11px;
     padding: 3px 8px;
-    background: rgba(var(--red-rgb),, 0.1);
+    background: rgba(var(--red-rgb), 0.1);
     color: var(--red);
-    border: 1px solid rgba(var(--red-rgb),, 0.3);
+    border: 1px solid rgba(var(--red-rgb), 0.3);
     border-radius: var(--radius);
     cursor: pointer;
     transition: background 0.15s;
 }
 
-.btn-mark-failed:hover { background: rgba(var(--red-rgb),, 0.2); }
+.btn-mark-failed:hover { background: rgba(var(--red-rgb), 0.2); }
 
 .btn-mark-failed:disabled { opacity: 0.5; cursor: default; }
 
@@ -1151,7 +1151,7 @@
 .isearch-loading-spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid rgba(var(--accent-rgb),, 0.25);
+    border: 3px solid rgba(var(--accent-rgb), 0.25);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin-ring 0.7s linear infinite;
@@ -1191,13 +1191,13 @@
 }
 
 .save-status-pill-ok {
-    background: rgba(var(--green-rgb),, 0.15);
+    background: rgba(var(--green-rgb), 0.15);
     color: var(--green);
     animation: save-status-pill-fade 2.5s linear forwards;
 }
 
 .save-status-pill-err {
-    background: rgba(var(--red-rgb),, 0.15);
+    background: rgba(var(--red-rgb), 0.15);
     color: var(--red);
 }
 
@@ -1229,7 +1229,7 @@
 
 .interactive-search-table td {
     padding: 8px 10px;
-    border-bottom: 1px solid rgba(var(--border-rgb),, 0.35);
+    border-bottom: 1px solid rgba(var(--border-rgb), 0.35);
     vertical-align: middle;
 }
 
@@ -1289,9 +1289,9 @@
 }
 
 .btn-delete-file {
-    background: rgba(var(--red-rgb),, 0.1);
+    background: rgba(var(--red-rgb), 0.1);
     color: var(--red);
-    border: 1px solid rgba(var(--red-rgb),, 0.3);
+    border: 1px solid rgba(var(--red-rgb), 0.3);
     padding: 7px 14px;
     font-size: 13px;
     border-radius: var(--radius);
@@ -1300,7 +1300,7 @@
     transition: background 0.15s;
 }
 
-.btn-delete-file:hover { background: rgba(var(--red-rgb),, 0.22); }
+.btn-delete-file:hover { background: rgba(var(--red-rgb), 0.22); }
 
 .btn-delete-file:disabled { opacity: 0.5; cursor: default; }
 
