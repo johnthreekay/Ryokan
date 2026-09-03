@@ -894,6 +894,7 @@ async fn list_misgrabs_hides_reviewed_rows_and_parses_files_sample() {
             "Grisaia - 01.mkv".to_string(),
             "Grisaia - 02.mkv".to_string(),
         ],
+        file_count: 2,
         matched: None,
         reason: "no file matched".to_string(),
         notes: vec!["season mismatch".to_string()],

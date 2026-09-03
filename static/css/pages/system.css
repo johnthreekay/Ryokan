@@ -848,3 +848,60 @@
 #restore-file {
     max-width: 100%;
 }
+
+/* System → Misgrabs. Same `.rss-table` shell as Downloads → Blocklist,
+   with a fixed column layout (the template's colgroup) so an expanded
+   file list or a long release name wraps inside its column instead of
+   pushing the status and actions past the card edge. */
+.misgrab-table {
+    table-layout: fixed;
+}
+/* Below the sidebar-plus-content breakpoint the card is too narrow for
+   six fixed shares; fall back to natural widths and let the wrap scroll
+   sideways, as the Backup and Blocklist tables do. */
+@media (max-width: 1200px) {
+    .misgrab-table {
+        table-layout: auto;
+        min-width: 760px;
+    }
+    .misgrab-table .dl-torrent-name {
+        max-width: 320px;
+    }
+}
+.misgrab-table th,
+.misgrab-when {
+    white-space: nowrap;
+}
+.misgrab-table .dl-torrent-name {
+    max-width: none;
+}
+.misgrab-files summary {
+    cursor: pointer;
+    color: var(--accent);
+    user-select: none;
+}
+.misgrab-files summary:hover {
+    color: var(--accent-hover);
+}
+.misgrab-files ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    color: var(--text-dim);
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.misgrab-files li + li {
+    margin-top: 4px;
+}
+/* Buttons sit side by side and fall onto a second line when the column
+   is too narrow. The confirm-bridge forms wrap single buttons; `contents`
+   lets the buttons be the flex items (same trick as the Backup rows). */
+.misgrab-actions-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.misgrab-actions .inline-form {
+    display: contents;
+}

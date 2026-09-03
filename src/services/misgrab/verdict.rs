@@ -147,6 +147,7 @@ impl Verdict {
 
     /// What gets stored alongside the verdict.
     pub fn detail(&self, filenames: &[String]) -> VerificationDetail {
+        let file_count = filenames.iter().filter(|f| is_media_filename(f)).count();
         let files: Vec<String> = filenames
             .iter()
             .filter(|f| is_media_filename(f))
@@ -160,18 +161,21 @@ impl Verdict {
                 notes,
             } => VerificationDetail {
                 files,
+                file_count,
                 matched: Some(matched_file.clone()),
                 reason: format!("file names {matched_alias:?}"),
                 notes: notes.clone(),
             },
             Verdict::Misgrab { sample, notes } => VerificationDetail {
                 files: sample.clone(),
+                file_count,
                 matched: None,
                 reason: "no media file names the series or a related entry".to_string(),
                 notes: notes.clone(),
             },
             Verdict::Unverifiable { reason } => VerificationDetail {
                 files,
+                file_count,
                 matched: None,
                 reason: (*reason).to_string(),
                 notes: Vec::new(),

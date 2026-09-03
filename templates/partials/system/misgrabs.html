@@ -1,68 +1,87 @@
-<div class="tabbed-main">
-    <div class="logs-toolbar">
-        <h2 class="logs-title">Misgrabs</h2>
-        <span class="form-hint">Downloads whose files named a different series. Ryokan removed and blocklisted them, or held them when auto-remove is off. Restore if a release was right after all; Dismiss to keep it blocklisted.</span>
-    </div>
-    <div class="logs-empty" id="misgrab-empty-state" {% if !misgrab_entries.is_empty() %}hidden{% endif %}>
-        No misgrabs detected. Grabs are checked against their file list once the download client reports it.
-    </div>
-    <div class="logs-table-wrap" id="misgrab-table" {% if misgrab_entries.is_empty() %}hidden{% endif %}>
-        <table class="logs-table review-table">
-            <thead>
-                <tr>
-                    <th>Series</th>
-                    <th>Release</th>
-                    <th>Files</th>
-                    <th>Detected</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for entry in misgrab_entries %}
-                <tr id="misgrab-row-{{ entry.id }}" data-grab-id="{{ entry.id }}">
-                    <td title="{{ entry.series_title }}">{% if entry.anilist_id > 0 %}<a href="/series/{{ entry.anilist_id }}">{{ entry.series_title }}</a>{% else %}{{ entry.series_title }}{% endif %}</td>
-                    <td><div class="dl-torrent-name" title="{{ entry.torrent_name }}">{{ entry.torrent_name }}</div></td>
-                    <td>
-                        {% if entry.files_sample.is_empty() %}
-                        <span class="form-hint">No file list recorded</span>
-                        {% else %}
-                        <details>
-                            <summary>{{ entry.files_sample.len() }} file{% if entry.files_sample.len() != 1 %}s{% endif %}</summary>
-                            <ul class="misgrab-files">
-                                {% for f in entry.files_sample %}<li title="{{ f }}">{{ f }}</li>{% endfor %}
-                            </ul>
-                        </details>
-                        {% endif %}
-                        {% for note in entry.notes %}<div class="form-hint">{{ note }}</div>{% endfor %}
-                    </td>
-                    <td><span data-ts="{{ entry.verified_at }}" data-ts-rendered="1" title="{{ entry.verified_at }} UTC">{{ crate::services::relative_time::humanize_sqlite_short_now(entry.verified_at) }}</span></td>
-                    <td>{{ entry.status_label() }}</td>
-                    <td class="misgrab-actions">
-                        <form method="post" action="/api/library/misgrabs/{{ entry.id }}/restore" style="display:inline"
-                              hx-post="/api/library/misgrabs/{{ entry.id }}/restore"
-                              hx-target="closest tr"
-                              hx-swap="outerHTML"
-                              data-ryokan-confirm-title="Restore this release?"
-                              data-ryokan-confirm-body="Ryokan will treat this release as correct, re-add it to the download client if it was removed, and never flag it again."
-                              data-ryokan-confirm-yes="Restore"
-                              data-ryokan-confirm-no="Cancel">
-                            <button type="submit" class="btn btn-secondary btn-sm">Restore</button>
-                        </form>
-                        <form method="post" action="/api/library/misgrabs/{{ entry.id }}/dismiss" style="display:inline"
-                              hx-post="/api/library/misgrabs/{{ entry.id }}/dismiss"
-                              hx-target="closest tr"
-                              hx-swap="outerHTML"
-                              data-ryokan-confirm-title="Dismiss this misgrab?"
-                              data-ryokan-confirm-body="The release stays on the blocklist. If it is still in the download client it is removed now."
-                              data-ryokan-confirm-yes="Dismiss"
-                              data-ryokan-confirm-no="Cancel">
-                            <button type="submit" class="btn btn-ghost btn-sm">Dismiss</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+{# System → Misgrabs. Same shape as Downloads → Blocklist: an
+   `rss-panel` card around an `rss-table`. A successful Restore or
+   Dismiss swaps its own row away (static/js/misgrabs.js), so the empty
+   state is always rendered and only hidden while rows exist; the JS
+   reveals it once the table drains without a reload. #}
+<div class="rss-panel">
+    <div class="cf-section">
+        <h3>Misgrabs</h3>
+        <p class="form-hint">Downloads whose files belong to a different series than the one they were grabbed for. Ryokan removes and blocklists them, or keeps them in the download client when automatic removal is turned off. Restore a release that was right after all. Dismiss one to keep it blocklisted and clear it from this list.</p>
+        <div class="logs-empty" id="misgrab-empty-state" {% if !misgrab_entries.is_empty() %}hidden{% endif %}>No misgrabs detected. Every download is checked against the files the download client reports.</div>
+        <div class="rss-table-wrap" id="misgrab-table" {% if misgrab_entries.is_empty() %}hidden{% endif %}>
+            <table class="rss-table misgrab-table">
+                {# Fixed layout: the card is ~880px wide with the sidebar, so
+                   the columns share it by share instead of letting a long
+                   file name push the actions off the edge. #}
+                <colgroup>
+                    <col style="width:9%">
+                    <col style="width:18%">
+                    <col style="width:22%">
+                    <col style="width:18%">
+                    <col style="width:13%">
+                    <col style="width:20%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Detected</th>
+                        <th>Series</th>
+                        <th>Release</th>
+                        <th>Files</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in misgrab_entries %}
+                    <tr id="misgrab-row-{{ entry.id }}" data-grab-id="{{ entry.id }}">
+                        <td class="misgrab-when"><span data-ts="{{ entry.verified_at }}" data-ts-rendered="1" title="{{ entry.verified_at }} UTC">{{ crate::services::relative_time::humanize_sqlite_short_now(entry.verified_at) }}</span></td>
+                        <td class="misgrab-series">{% if entry.anilist_id > 0 %}<a href="/series/{{ entry.anilist_id }}">{{ entry.series_title }}</a>{% else %}{{ entry.series_title }}{% endif %}</td>
+                        <td>
+                            <div class="dl-torrent-name" title="{{ entry.torrent_name }}">{{ entry.torrent_name }}</div>
+                            {% if !entry.episode_numbers.is_empty() %}<div class="rss-release-meta">Episode{% if entry.episode_numbers.len() != 1 %}s{% endif %} {% for ep in entry.episode_numbers %}{% if !loop.first %}, {% endif %}{{ ep }}{% endfor %}</div>{% endif %}
+                        </td>
+                        <td class="misgrab-files-cell">
+                            {% if entry.files_sample.is_empty() %}
+                            <span class="rss-release-meta">No file list recorded</span>
+                            {% else %}
+                            <details class="misgrab-files">
+                                <summary>{{ entry.total_files() }} file{% if entry.total_files() != 1 %}s{% endif %}{% if entry.files_truncated() %} ({{ entry.files_sample.len() }} shown){% endif %}</summary>
+                                <ul>
+                                    {% for f in entry.files_sample %}<li>{{ f }}</li>{% endfor %}
+                                </ul>
+                            </details>
+                            {% endif %}
+                            {% for note in entry.notes %}<div class="rss-release-meta">{{ note }}</div>{% endfor %}
+                        </td>
+                        <td class="misgrab-status">{{ entry.status_label() }}</td>
+                        <td class="misgrab-actions">
+                            <div class="misgrab-actions-wrap">
+                            <form method="post" action="/api/library/misgrabs/{{ entry.id }}/restore" class="inline-form"
+                                  hx-post="/api/library/misgrabs/{{ entry.id }}/restore"
+                                  hx-target="closest tr"
+                                  hx-swap="outerHTML"
+                                  data-ryokan-confirm-title="Restore this release?"
+                                  data-ryokan-confirm-body="Ryokan will treat this release as correct, add it back to the download client if it was removed, and never flag it again."
+                                  data-ryokan-confirm-yes="Restore"
+                                  data-ryokan-confirm-no="Cancel">
+                                <button type="submit" class="btn btn-secondary btn-sm">Restore</button>
+                            </form>
+                            <form method="post" action="/api/library/misgrabs/{{ entry.id }}/dismiss" class="inline-form"
+                                  hx-post="/api/library/misgrabs/{{ entry.id }}/dismiss"
+                                  hx-target="closest tr"
+                                  hx-swap="outerHTML"
+                                  data-ryokan-confirm-title="Dismiss this misgrab?"
+                                  data-ryokan-confirm-body="The release stays on the blocklist. If it is still in the download client it is removed now."
+                                  data-ryokan-confirm-yes="Dismiss"
+                                  data-ryokan-confirm-no="Cancel">
+                                <button type="submit" class="btn btn-ghost btn-sm">Dismiss</button>
+                            </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>

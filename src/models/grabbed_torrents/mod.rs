@@ -1278,6 +1278,10 @@ pub struct VerificationDetail {
     /// A sample of the media file names (at most a handful).
     #[serde(default)]
     pub files: Vec<String>,
+    /// How many media files the list held in total, so the tab can say
+    /// "24 files, first 5 shown" instead of counting the sample.
+    #[serde(default)]
+    pub file_count: usize,
     /// The file that matched an alias, when one did.
     #[serde(default)]
     pub matched: Option<String>,
@@ -1593,10 +1597,24 @@ pub struct MisgrabEntry {
     pub misgrab_action: String,
     pub verified_at: String,
     pub files_sample: Vec<String>,
+    /// Total media files in the release (0 for rows stamped before the
+    /// count was recorded; the template then falls back to the sample).
+    pub file_count: usize,
     pub notes: Vec<String>,
 }
 
 impl MisgrabEntry {
+    /// Total media files, falling back to the sample size for rows
+    /// written before the count existed.
+    pub fn total_files(&self) -> usize {
+        self.file_count.max(self.files_sample.len())
+    }
+
+    /// True when the sample does not show every file.
+    pub fn files_truncated(&self) -> bool {
+        self.total_files() > self.files_sample.len()
+    }
+
     /// Human wording for the Status column.
     pub fn status_label(&self) -> &'static str {
         match self.misgrab_action.as_str() {
@@ -1647,6 +1665,7 @@ pub async fn list_misgrabs(
                 misgrab_action: row.get("misgrab_action"),
                 verified_at: row.get("verified_at"),
                 files_sample: detail.files,
+                file_count: detail.file_count,
                 notes: detail.notes,
             }
         })
