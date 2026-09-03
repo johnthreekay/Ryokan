@@ -996,6 +996,45 @@ pub async fn mark_grab_failed(
     Ok((series_id, episode_number, release_title))
 }
 
+/// Misgrab guardrails: fail every `grabbed` history row this release
+/// wrote for the series (the grab's own episodes plus any auto-expand
+/// backfill) and the matching quality tags, keyed by release title
+/// rather than history id because the sweep holds the grab row, not
+/// the history ids.
+pub async fn mark_grab_failed_for_release(
+    db: &SqlitePool,
+    series_id: i64,
+    release_title: &str,
+) -> Result<u64, sqlx::Error> {
+    let episodes: Vec<i32> = sqlx::query_scalar(
+        "SELECT episode_number FROM episode_grab_history \
+         WHERE series_id = ? AND release_title = ? AND state = 'grabbed'",
+    )
+    .bind(series_id)
+    .bind(release_title)
+    .fetch_all(db)
+    .await?;
+    let result = sqlx::query(
+        "UPDATE episode_grab_history SET state = 'failed' \
+         WHERE series_id = ? AND release_title = ? AND state = 'grabbed'",
+    )
+    .bind(series_id)
+    .bind(release_title)
+    .execute(db)
+    .await?;
+    for ep in episodes {
+        sqlx::query(
+            "UPDATE episode_quality_tags SET state = 'failed', updated_at = CURRENT_TIMESTAMP \
+             WHERE series_id = ? AND episode_number = ? AND state = 'grabbed'",
+        )
+        .bind(series_id)
+        .bind(ep)
+        .execute(db)
+        .await?;
+    }
+    Ok(result.rows_affected())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1540,5 +1579,61 @@ mod grab_history_state_tests {
         assert!(rows[0].match_kind.is_empty());
         assert!(rows[0].grab_match_summary.is_empty());
         assert_eq!(rows[0].match_ratio, 0.0);
+    }
+
+    #[tokio::test]
+    async fn mark_grab_failed_for_release_fails_history_and_tags_for_the_release() {
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let sid: i64 = sqlx::query_scalar(
+            "INSERT INTO series (anilist_id, title) VALUES (5, 'Show') RETURNING id",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let cls = ClassificationResult::unknown();
+        record_grab(&db, sid, 1, &cls, "[G] Show 01-02", "G", 0, true)
+            .await
+            .unwrap();
+        record_grab(&db, sid, 2, &cls, "[G] Show 01-02", "G", 0, true)
+            .await
+            .unwrap();
+        record_grab(&db, sid, 3, &cls, "[G] Show - 03", "G", 0, false)
+            .await
+            .unwrap();
+        let n = mark_grab_failed_for_release(&db, sid, "[G] Show 01-02")
+            .await
+            .unwrap();
+        assert_eq!(n, 2);
+        let states: Vec<(i32, String)> = sqlx::query_as(
+            "SELECT episode_number, state FROM episode_grab_history WHERE series_id = ? ORDER BY episode_number",
+        )
+        .bind(sid)
+        .fetch_all(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            states,
+            vec![
+                (1, "failed".into()),
+                (2, "failed".into()),
+                (3, "grabbed".into())
+            ]
+        );
+        let tag_states: Vec<(i32, String)> = sqlx::query_as(
+            "SELECT episode_number, state FROM episode_quality_tags WHERE series_id = ? ORDER BY episode_number",
+        )
+        .bind(sid)
+        .fetch_all(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            tag_states,
+            vec![
+                (1, "failed".into()),
+                (2, "failed".into()),
+                (3, "grabbed".into())
+            ]
+        );
     }
 }

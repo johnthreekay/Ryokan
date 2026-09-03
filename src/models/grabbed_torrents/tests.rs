@@ -709,3 +709,244 @@ async fn find_imported_for_episode_round_trips_download_client_id() {
     let row = imported.iter().find(|g| g.id == grab_id).expect("present");
     assert_eq!(row.download_client_id, Some(123));
 }
+
+// ── Misgrab guardrails ───────────────────────────────────────────────
+
+async fn misgrab_pool() -> SqlitePool {
+    let db = SqlitePool::connect("sqlite::memory:")
+        .await
+        .expect("in-memory sqlite");
+    crate::models::migrate(&db).await.expect("migrate");
+    db
+}
+
+async fn misgrab_series(db: &SqlitePool, anilist_id: i64, title: &str) -> i64 {
+    let (id, _) = series::upsert(
+        db,
+        series::SeriesCore {
+            anilist_id,
+            mal_id: None,
+            title,
+            title_romaji: title,
+            title_english: "",
+            title_native: "",
+            cover_url: "",
+            format: "TV",
+            status: "FINISHED",
+            episodes: Some(12),
+            season_year: Some(2024),
+            end_year: None,
+        },
+    )
+    .await
+    .expect("series upsert");
+    id
+}
+
+#[tokio::test]
+async fn misgrab_columns_exist_after_migrate() {
+    let db = misgrab_pool().await;
+    for col in [
+        "verification",
+        "verified_at",
+        "verification_detail",
+        "failure_reason",
+        "misgrab_action",
+        "reviewed_at",
+        "source_url",
+    ] {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_table_info('grabbed_torrents') WHERE name = ?",
+        )
+        .bind(col)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(n, 1, "column {col} missing");
+    }
+    let n: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('config') WHERE name = 'misgrab_auto_remove'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(n, 1);
+    let cfg = crate::models::config::get_config(&db).await.unwrap();
+    assert!(cfg.is_none_or(|c| c.misgrab_auto_remove), "default is on");
+}
+
+#[tokio::test]
+async fn stamp_verification_only_writes_when_null() {
+    let db = misgrab_pool().await;
+    let sid = misgrab_series(&db, 1, "Show").await;
+    let id = record_grab(&db, "aaaa", "[G] Show - 01", sid, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(get_verification(&db, id).await, None);
+    assert!(
+        stamp_verification(&db, id, "misgrab", "{\"files\":[\"x.mkv\"]}")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !stamp_verification(&db, id, "verified", "{}").await.unwrap(),
+        "second stamp is a no-op"
+    );
+    assert_eq!(get_verification(&db, id).await.as_deref(), Some("misgrab"));
+    let row = get_by_id(&db, id).await.unwrap().expect("row");
+    assert_eq!(row.verification.as_deref(), Some("misgrab"));
+    assert!(row.misgrab_action.is_none());
+}
+
+#[tokio::test]
+async fn is_blocklisted_release_matches_hash_or_series_title() {
+    let db = misgrab_pool().await;
+    let sid = misgrab_series(&db, 1, "Show").await;
+    let other = misgrab_series(&db, 2, "Other").await;
+    let id = record_grab(&db, "bbbb", "[G] Show - 02", sid, &[2], false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!is_blocklisted_release(&db, sid, "bbbb", "[G] Show - 02").await);
+    assert_eq!(
+        mark_failed_by_hash_with_reason(&db, "bbbb", "misgrab")
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(
+        is_blocklisted_release(&db, other, "bbbb", "anything").await,
+        "hash blocks globally"
+    );
+    assert!(
+        is_blocklisted_release(&db, sid, "", "[G] Show - 02").await,
+        "title blocks per series"
+    );
+    assert!(
+        !is_blocklisted_release(&db, other, "", "[G] Show - 02").await,
+        "title does not block another series"
+    );
+    let reason: String =
+        sqlx::query_scalar("SELECT failure_reason FROM grabbed_torrents WHERE id = ?")
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(reason, "misgrab");
+    let snap = blocklist_snapshot(&db, 1).await;
+    assert!(
+        snap.rejects("BBBB", "unrelated title"),
+        "hash match is case-insensitive"
+    );
+    assert!(
+        snap.rejects("", "[g] show - 02"),
+        "title match is case-insensitive"
+    );
+    assert!(
+        !blocklist_snapshot(&db, 2)
+            .await
+            .rejects("", "[G] Show - 02")
+    );
+}
+
+#[tokio::test]
+async fn whitelist_by_hash_marks_all_rows_for_hash() {
+    let db = misgrab_pool().await;
+    let sid = misgrab_series(&db, 1, "Show").await;
+    let old = record_grab(&db, "cccc", "[G] Show - 03", sid, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    stamp_verification(&db, old, "misgrab", "{}").await.unwrap();
+    mark_failed_by_hash_with_reason(&db, "cccc", "misgrab")
+        .await
+        .unwrap();
+    // A restored grab is a new pending row with the same hash.
+    let fresh = record_grab(&db, "cccc", "[G] Show - 03", sid, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(old, fresh);
+    assert!(!is_whitelisted_hash(&db, "cccc").await);
+    assert_eq!(whitelist_by_hash(&db, "cccc").await.unwrap(), 2);
+    assert!(is_whitelisted_hash(&db, "cccc").await);
+    assert_eq!(
+        get_verification(&db, fresh).await.as_deref(),
+        Some("whitelisted")
+    );
+    assert!(
+        list_misgrabs(&db, "romaji").await.unwrap().is_empty(),
+        "reviewed_at hides it"
+    );
+}
+
+#[tokio::test]
+async fn list_misgrabs_hides_reviewed_rows_and_parses_files_sample() {
+    let db = misgrab_pool().await;
+    let sid = misgrab_series(&db, 21521, "Kowaremono").await;
+    let id = record_grab(&db, "dddd", "[Xonline] Grisaia", sid, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    let detail = VerificationDetail {
+        files: vec![
+            "Grisaia - 01.mkv".to_string(),
+            "Grisaia - 02.mkv".to_string(),
+        ],
+        matched: None,
+        reason: "no file matched".to_string(),
+        notes: vec!["season mismatch".to_string()],
+    };
+    stamp_verification(&db, id, "misgrab", &serde_json::to_string(&detail).unwrap())
+        .await
+        .unwrap();
+    set_misgrab_action(&db, id, "removed").await.unwrap();
+    let rows = list_misgrabs(&db, "romaji").await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].series_title, "Kowaremono");
+    assert_eq!(rows[0].anilist_id, 21521);
+    assert_eq!(rows[0].files_sample, detail.files);
+    assert_eq!(rows[0].notes, vec!["season mismatch".to_string()]);
+    assert_eq!(rows[0].status_label(), "Removed and blocklisted");
+    assert_eq!(
+        list_unhandled_misgrabs(&db).await.unwrap().len(),
+        0,
+        "action recorded"
+    );
+    mark_misgrab_reviewed(&db, id).await.unwrap();
+    assert!(list_misgrabs(&db, "romaji").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn get_all_pending_excludes_misgrab_rows_and_unverified_listing_respects_age() {
+    let db = misgrab_pool().await;
+    let sid = misgrab_series(&db, 1, "Show").await;
+    let a = record_grab(&db, "eeee", "[G] Show - 04", sid, &[4], false)
+        .await
+        .unwrap()
+        .unwrap();
+    let b = record_grab(&db, "ffff", "[G] Show - 05", sid, &[5], false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(list_unverified_pending(&db, 0).await.unwrap().len(), 2);
+    assert!(
+        list_unverified_pending(&db, 3600).await.unwrap().is_empty(),
+        "too young"
+    );
+    stamp_verification(&db, a, "misgrab", "{}").await.unwrap();
+    let pending = get_all_pending(&db).await.unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].id, b);
+    assert_eq!(list_unhandled_misgrabs(&db).await.unwrap().len(), 1);
+    assert_eq!(list_unverified_pending(&db, 0).await.unwrap().len(), 1);
+    assert_eq!(count_recent_misgrabs(&db, sid, 24).await, 1);
+    set_source_url(&db, b, "magnet:?xt=urn:btih:ffff")
+        .await
+        .unwrap();
+    assert_eq!(
+        get_by_id(&db, b).await.unwrap().unwrap().source_url,
+        "magnet:?xt=urn:btih:ffff"
+    );
+}

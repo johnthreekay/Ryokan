@@ -1041,6 +1041,12 @@ pub async fn settings_submit(
         .unwrap_or(false);
 
     let cfg = config::Config {
+        // Misgrab guardrails: the checkbox lands with the Misgrabs tab UI;
+        // until then the stored value is preserved on every save.
+        misgrab_auto_remove: existing_cfg
+            .as_ref()
+            .map(|c| c.misgrab_auto_remove)
+            .unwrap_or(true),
         active_client: match form.active_client.trim() {
             "deluge" => "deluge".to_string(),
             "transmission" => "transmission".to_string(),
