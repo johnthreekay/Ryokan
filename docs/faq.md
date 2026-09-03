@@ -15,7 +15,7 @@ No. Different language (Rust vs C#), different architecture, different release e
 
 ## Can it manage manga, light novels, or webtoons?
 
-Not yet. Ryokan only manages anime in the current 1.x line. Manga, light novels, and similar long-form formats need different metadata sources, different naming conventions, and different file-organization patterns; supporting them properly is the focus of v2.0 rather than something to graft on partially.
+No. Ryokan only manages anime in the current 1.x line. Manga, light novels, and webtoons were going to be the focus of 2.x, but that work has been pushed back to concentrate on making Ryokan a true Sonarr replacement for anime first. They need different metadata sources, naming conventions, and file layouts, so they won't be grafted on partially.
 
 ## Can I run multiple Ryokan instances?
 
@@ -29,7 +29,7 @@ Not supported and not on the roadmap. Single-admin only. The reasoning matches S
 
 ## Can I use the API directly?
 
-Yes. Ryokan exposes a Swagger UI at `/api-docs` and the OpenAPI JSON at `/api-docs/openapi.json`. Two auth paths:
+Yes. Ryokan exposes a Swagger UI at `/api-docs` and the OpenAPI JSON at `/api-docs/openapi.json`. Both sit behind the web login, so open them in a browser where you are already signed in. Three auth paths for the endpoints themselves:
 
 - **Cookie auth** for the web-UI-facing endpoints (whatever the browser uses; you log in with username + password).
 - **API-key auth** for the Sonarr / Radarr-compatible shim that Seerr and friends call (`X-Api-Key` header or `?apikey=` query string, configured in **Settings → Connections**).
