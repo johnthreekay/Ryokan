@@ -72,6 +72,12 @@ pub struct AutoSearchReport {
     /// get overwritten by a generic terminal event.
     #[serde(default)]
     pub cancelled: bool,
+    /// Issue #219 — advisory lines the terminal toast shows above the
+    /// per-target reasons (currently: adult title with no indexer
+    /// configured). Carried on the report rather than emitted mid-search
+    /// because the sticky progress toast shows one event at a time.
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 /// Return all scored candidates for an episode target without grabbing anything.

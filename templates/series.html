@@ -35,7 +35,6 @@
         <div class="detail-tags">
             <span class="tag tag-res">{% if !detail.format.is_empty() %}{{ detail.format.replace("_", " ") }}{% else %}TBA{% endif %}</span>
             <span class="tag tag-status-{{ detail.status|lowercase }}">{{ detail.status_display }}</span>
-            {% if detail.is_adult %}<span class="tag tag-adult" title="AniList marks this title adult. Nyaa lists adult releases on sukebei, which Ryokan does not search.">18+</span>{% endif %}
             {% if let Some(eps) = detail.episodes %}<span class="tag tag-res">{{ eps }} eps</span>{% endif %}
             {% if let Some(dur) = detail.duration %}<span class="tag tag-res">{{ dur }} min</span>{% endif %}
             {% if let Some(year) = detail.season_year %}
@@ -53,6 +52,8 @@
             {% if let Some(you_score) = user_score_display %}
             <span class="tag tag-user-score" title="Your score on AL/MAL">You: {{ you_score.render_html()|safe }}</span>
             {% endif %}
+            {# Issue #219 — last in the row, beside the scores. #}
+            {% if detail.is_adult %}<span class="tag tag-adult" title="AniList marks this title adult. Nyaa lists adult releases on sukebei, which Ryokan does not search.">18+</span>{% endif %}
         </div>
 
         <div class="detail-genres">

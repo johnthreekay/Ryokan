@@ -175,6 +175,19 @@ pub(super) fn display_title_for_progress(detail: &anilist::AnimeDetail) -> &str 
 /// Emit a terminal progress event summarizing the outcome of an
 /// auto-search task. Called from inside the spawned task so the
 /// `progress::EMITTER` task-local is in scope.
+/// Issue #219 — the report's advisory notes go above the per-target
+/// lines on the terminal toast, which is the one event that stays on
+/// screen after the search ends.
+fn with_notes(report: &auto_search::AutoSearchReport, lines: Vec<String>) -> String {
+    report
+        .notes
+        .iter()
+        .cloned()
+        .chain(lines)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 async fn emit_auto_search_terminal(
     result: &Result<auto_search::AutoSearchReport, (axum::http::StatusCode, String)>,
 ) {
@@ -222,7 +235,7 @@ async fn emit_auto_search_terminal(
                     "done",
                     "warn",
                     "No releases grabbed",
-                    Some(report.skipped.join("\n")),
+                    Some(with_notes(report, report.skipped.clone())),
                     true,
                 )
                 .await;
@@ -231,7 +244,10 @@ async fn emit_auto_search_terminal(
                     "done",
                     "warn",
                     "Nothing to search",
-                    Some("No targets matched the requested scope".into()),
+                    Some(with_notes(
+                        report,
+                        vec!["No targets matched the requested scope".to_string()],
+                    )),
                     true,
                 )
                 .await;
@@ -299,11 +315,14 @@ async fn run_auto_search_targets_with_upgrades(
         &format!("{} target(s), allow_batch={}", targets.len(), allow_batch),
     )
     .await;
+    // Issue #219 — every Nyaa query for an adult title comes back
+    // empty, and Phase 1.5's loosened aliases were what let an
+    // unrelated release through. Say why in the log, and carry the
+    // note on the terminal progress event: the sticky progress toast
+    // shows one event at a time, so a mid-search warning would be
+    // overwritten by the next "Searching" line before anyone saw it.
+    let mut notes: Vec<String> = Vec::new();
     if detail.is_adult {
-        // Issue #219 — every Nyaa query for an adult title comes back
-        // empty, and Phase 1.5's loosened aliases were what let an
-        // unrelated release through. Say why up front, and put it in
-        // the user's face as a toast when nothing else could find it.
         let indexer_count = state.indexers.read().await.len();
         let no_indexer = crate::handlers::library::adult_needs_indexer(true, indexer_count);
         logger::warn(
@@ -318,17 +337,10 @@ async fn run_auto_search_targets_with_upgrades(
         )
         .await;
         if no_indexer {
-            progress::emit(
-                "search",
-                "warn",
-                format!("{} is marked adult", title),
-                Some(
-                    "No indexer is configured. Nyaa lists adult releases on sukebei, which Ryokan does not search."
-                        .to_string(),
-                ),
-                false,
-            )
-            .await;
+            notes.push(
+                "This title is marked adult on AniList and no indexer is configured. Nyaa lists adult releases on sukebei, which Ryokan does not search."
+                    .to_string(),
+            );
         }
     }
     progress::emit(
@@ -384,6 +396,7 @@ async fn run_auto_search_targets_with_upgrades(
             )
             .await;
             return Ok(auto_search::AutoSearchReport {
+                notes: notes.clone(),
                 grabbed,
                 skipped,
                 quality_profile: cfg.quality_profile,
@@ -851,6 +864,7 @@ async fn run_auto_search_targets_with_upgrades(
     .await;
 
     Ok(auto_search::AutoSearchReport {
+        notes,
         grabbed,
         skipped,
         quality_profile: cfg.quality_profile,
