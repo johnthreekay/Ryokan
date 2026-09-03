@@ -707,3 +707,11 @@ fn normalize_system_tab_unknown_or_missing_defaults_to_logs() {
         "logs"
     );
 }
+
+#[test]
+fn misgrabs_tab_is_recognized() {
+    assert_eq!(
+        crate::handlers::system::normalize_system_tab_for_test(Some("misgrabs".into())),
+        "misgrabs"
+    );
+}

@@ -720,6 +720,7 @@ mod non_htmx_path {
                 post_processing_mode: "move".to_string(), // seed=copy
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None, // submit→false, seed=true
+                misgrab_auto_remove: None,
                 recycle_bin_path: "/submit/recycle/".to_string(), // seed=/seed/recycle; trailing slash trimmed
                 recycle_bin_age_days: 45,                         // seed=7
                 series_folder_format: String::new(),
@@ -925,6 +926,49 @@ mod non_htmx_path {
     /// to drop the `!` would emit a warning here (since
     /// !"".is_empty() is false, and `false && X` short-circuits).
     #[tokio::test]
+    async fn general_tab_save_persists_misgrab_auto_remove_off_and_on() {
+        let db = in_memory_pool().await;
+        seed_initial_config(&db).await;
+        let state = build_test_app_state(db.clone(), None);
+        let form = |checked: bool| GeneralForm {
+            media_root: String::new(),
+            title_language: "english".to_string(),
+            rss_enabled: None,
+            rss_interval_minutes: 15,
+            disable_nyaa_rss: None,
+            post_processing_enabled: None,
+            post_processing_mode: "hardlink".to_string(),
+            search_on_monitoring_change: None,
+            manual_search_auto_add: None,
+            misgrab_auto_remove: checked.then(String::new),
+            recycle_bin_path: String::new(),
+            recycle_bin_age_days: 30,
+            series_folder_format: String::new(),
+            season_folder_format: String::new(),
+            episode_file_format: String::new(),
+            backup_schedule: String::new(),
+            backup_directory: String::new(),
+            backup_retention_count: 7,
+            backup_include_artwork: None,
+        };
+        // An unchecked box is absent from the POST body: off.
+        let _ = settings_general_submit(
+            State(state.clone()),
+            HxRequest(true),
+            axum::Form(form(false)),
+        )
+        .await
+        .into_response();
+        let saved = config::get_config(&db).await.unwrap().unwrap();
+        assert!(!saved.misgrab_auto_remove, "unchecked saves off");
+        let _ = settings_general_submit(State(state), HxRequest(true), axum::Form(form(true)))
+            .await
+            .into_response();
+        let saved = config::get_config(&db).await.unwrap().unwrap();
+        assert!(saved.misgrab_auto_remove, "checked saves on");
+    }
+
+    #[tokio::test]
     async fn general_save_with_empty_media_root_emits_no_warning() {
         let db = in_memory_pool().await;
         seed_initial_config(&db).await;
@@ -942,6 +986,7 @@ mod non_htmx_path {
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
+                misgrab_auto_remove: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -985,6 +1030,7 @@ mod non_htmx_path {
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
+                misgrab_auto_remove: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1031,6 +1077,7 @@ mod non_htmx_path {
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
+                misgrab_auto_remove: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1087,6 +1134,7 @@ mod non_htmx_path {
                 post_processing_mode: "garbage".to_string(),
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
+                misgrab_auto_remove: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1125,6 +1173,7 @@ mod non_htmx_path {
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
+                misgrab_auto_remove: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1553,6 +1602,7 @@ mod non_htmx_path {
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
+                misgrab_auto_remove: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1617,6 +1667,7 @@ mod non_htmx_path {
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
+                misgrab_auto_remove: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 series_folder_format: String::new(),
@@ -1672,6 +1723,7 @@ mod naming_templates {
             post_processing_mode: "hardlink".to_string(),
             search_on_monitoring_change: None,
             manual_search_auto_add: None,
+            misgrab_auto_remove: None,
             recycle_bin_path: String::new(),
             recycle_bin_age_days: 14,
             series_folder_format: series.to_string(),

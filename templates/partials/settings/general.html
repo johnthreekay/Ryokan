@@ -151,6 +151,17 @@
         </fieldset>
 
         <fieldset>
+            <legend>Downloads</legend>
+            <div class="form-group">
+                <label class="checkbox-row">
+                    <input type="checkbox" name="misgrab_auto_remove" id="misgrab_auto_remove" {% if config.misgrab_auto_remove %}checked{% endif %}>
+                    <span>Remove and blocklist detected misgrabs</span>
+                </label>
+                <span class="form-hint">Ryokan checks every grab against the file list the download client reports. When the files clearly name a different series, it removes the download from the client, blocklists the release, sends a notification, and searches again. On by default. Off keeps the download in the client, never imports it, and only flags it under System, Misgrabs, where you can restore or dismiss it.</span>
+            </div>
+        </fieldset>
+
+        <fieldset>
             <legend>Display</legend>
             <div class="form-group">
                 <label for="title_language">Preferred Title Language</label>

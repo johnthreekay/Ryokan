@@ -401,6 +401,8 @@ pub struct SettingsForm {
     /// Settings → General.
     #[serde(default)]
     manual_search_auto_add: Option<String>,
+    #[serde(default)]
+    misgrab_auto_remove: Option<String>,
     /// Recycle bin (#123). Settings → General.
     #[serde(default)]
     recycle_bin_path: String,
@@ -602,6 +604,8 @@ pub struct GeneralForm {
     /// no-op when a grabbed release isn't in the library yet.
     #[serde(default)]
     manual_search_auto_add: Option<String>,
+    #[serde(default)]
+    misgrab_auto_remove: Option<String>,
     /// Recycle bin (#123). Empty disables recycle.
     #[serde(default)]
     recycle_bin_path: String,
@@ -1041,12 +1045,16 @@ pub async fn settings_submit(
         .unwrap_or(false);
 
     let cfg = config::Config {
-        // Misgrab guardrails: the checkbox lands with the Misgrabs tab UI;
-        // until then the stored value is preserved on every save.
-        misgrab_auto_remove: existing_cfg
-            .as_ref()
-            .map(|c| c.misgrab_auto_remove)
-            .unwrap_or(true),
+        // Misgrab guardrails: only the General tab owns this checkbox;
+        // any other tab's save preserves the stored value.
+        misgrab_auto_remove: if form.tab.as_deref() == Some("general") {
+            form.misgrab_auto_remove.is_some()
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.misgrab_auto_remove)
+                .unwrap_or(true)
+        },
         active_client: match form.active_client.trim() {
             "deluge" => "deluge".to_string(),
             "transmission" => "transmission".to_string(),
@@ -1709,6 +1717,7 @@ pub async fn settings_general_submit(
         },
         search_on_monitoring_change: form.search_on_monitoring_change.is_some(),
         manual_search_auto_add: form.manual_search_auto_add.is_some(),
+        misgrab_auto_remove: form.misgrab_auto_remove.is_some(),
         recycle_bin_path: form
             .recycle_bin_path
             .trim()
