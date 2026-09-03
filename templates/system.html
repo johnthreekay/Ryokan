@@ -387,6 +387,8 @@
         {% endif %}
     </div>
 </div>
+{% else if tab == "misgrabs" %}
+{%~ include "partials/system/misgrabs.html" ~%}
 {% else if tab == "notifications" %}
 {%~ include "partials/system/notifications.html" ~%}
 {% else if tab == "backup" %}
@@ -580,5 +582,6 @@
 
 {% block page_js %}
 {% if tab == "review" %}<script src="/static/js/needs_review.js" defer></script>{% endif %}
+{% if tab == "misgrabs" %}<script src="/static/js/misgrabs.js" defer></script>{% endif %}
 <script src="/static/js/system.js" defer></script>
 {% endblock %}

@@ -698,6 +698,14 @@ window.addEventListener('DOMContentLoaded', function () {
                 post(crate::handlers::downloads::api_blocklist_remove),
             )
             .route(
+                "/api/library/misgrabs/{id}/restore",
+                post(crate::handlers::library::misgrabs::restore_misgrab),
+            )
+            .route(
+                "/api/library/misgrabs/{id}/dismiss",
+                post(crate::handlers::library::misgrabs::dismiss_misgrab),
+            )
+            .route(
                 "/api/jellyfin/test",
                 post(crate::handlers::settings::jellyfin_test),
             )

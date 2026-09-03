@@ -303,6 +303,69 @@ pub async fn research_allowed(db: &SqlitePool, series_id: i64) -> bool {
     grabbed_torrents::count_recent_misgrabs(db, series_id, 24).await < RESEARCH_LOOP_BREAKER
 }
 
+/// The toggle-independent core of remediation: delete from the client
+/// unless seed rules apply, blocklist by hash and title, and fail the
+/// history rows. Dismiss uses it directly for a flagged grab.
+pub async fn remove_and_blocklist(
+    state: &AppState,
+    grab: &GrabbedTorrent,
+) -> Result<MisgrabAction, String> {
+    let mut action = MisgrabAction::Removed;
+    match state
+        .resolve_grab_client(grab.download_client_id, &grab.hash)
+        .await
+    {
+        Some(client) if client.protocol() != "usenet" => {
+            if grabbed_torrents::respects_seed_rules(&state.db, &grab.hash).await {
+                logger::info(
+                    &state.db,
+                    LogCategory::DownloadClient,
+                    &format!(
+                        "Keeping misgrab '{}' in the client (respect_seed_rules)",
+                        grab.torrent_name
+                    ),
+                    &grab.hash,
+                )
+                .await;
+                action = MisgrabAction::RemovedNoDelete;
+            } else if let Err(e) = client.delete(&grab.hash, true).await {
+                logger::warn(
+                    &state.db,
+                    LogCategory::DownloadClient,
+                    &format!(
+                        "Failed to remove misgrab '{}' from the client",
+                        grab.torrent_name
+                    ),
+                    &e,
+                )
+                .await;
+                action = MisgrabAction::RemovedNoDelete;
+            }
+        }
+        Some(_) => action = MisgrabAction::RemovedNoDelete,
+        None => {
+            logger::warn(
+                &state.db,
+                LogCategory::DownloadClient,
+                &format!(
+                    "No download client to remove misgrab '{}' from",
+                    grab.torrent_name
+                ),
+                &grab.hash,
+            )
+            .await;
+            action = MisgrabAction::RemovedNoDelete;
+        }
+    }
+    grabbed_torrents::mark_failed_by_hash_with_reason(&state.db, &grab.hash, "misgrab")
+        .await
+        .map_err(|e| format!("blocklist misgrab: {e}"))?;
+    let _ =
+        episode_tags::mark_grab_failed_for_release(&state.db, grab.series_id, &grab.torrent_name)
+            .await;
+    Ok(action)
+}
+
 /// Act on a detected misgrab. With auto-remove on: delete from the
 /// client (unless seed rules apply), blocklist by hash and title, fail
 /// the history rows, notify, and re-search. With it off: flag, notify,
@@ -320,63 +383,7 @@ pub async fn remediate(
     let action = if !cfg.misgrab_auto_remove {
         MisgrabAction::Flagged
     } else {
-        let mut action = MisgrabAction::Removed;
-        match state
-            .resolve_grab_client(grab.download_client_id, &grab.hash)
-            .await
-        {
-            Some(client) if client.protocol() != "usenet" => {
-                if grabbed_torrents::respects_seed_rules(&state.db, &grab.hash).await {
-                    logger::info(
-                        &state.db,
-                        LogCategory::DownloadClient,
-                        &format!(
-                            "Keeping misgrab '{}' in the client (respect_seed_rules)",
-                            grab.torrent_name
-                        ),
-                        &grab.hash,
-                    )
-                    .await;
-                    action = MisgrabAction::RemovedNoDelete;
-                } else if let Err(e) = client.delete(&grab.hash, true).await {
-                    logger::warn(
-                        &state.db,
-                        LogCategory::DownloadClient,
-                        &format!(
-                            "Failed to remove misgrab '{}' from the client",
-                            grab.torrent_name
-                        ),
-                        &e,
-                    )
-                    .await;
-                    action = MisgrabAction::RemovedNoDelete;
-                }
-            }
-            Some(_) => action = MisgrabAction::RemovedNoDelete,
-            None => {
-                logger::warn(
-                    &state.db,
-                    LogCategory::DownloadClient,
-                    &format!(
-                        "No download client to remove misgrab '{}' from",
-                        grab.torrent_name
-                    ),
-                    &grab.hash,
-                )
-                .await;
-                action = MisgrabAction::RemovedNoDelete;
-            }
-        }
-        grabbed_torrents::mark_failed_by_hash_with_reason(&state.db, &grab.hash, "misgrab")
-            .await
-            .map_err(|e| format!("blocklist misgrab: {e}"))?;
-        let _ = episode_tags::mark_grab_failed_for_release(
-            &state.db,
-            grab.series_id,
-            &grab.torrent_name,
-        )
-        .await;
-        action
+        remove_and_blocklist(state, grab).await?
     };
     grabbed_torrents::set_misgrab_action(&state.db, grab.id, action.as_str())
         .await

@@ -116,6 +116,9 @@ struct SystemTemplate {
     /// populated when `tab == "review"`; empty on every other tab so
     /// the serial fan-out stays cheap.
     review_entries: Vec<episode_tags::NeedsReviewEntry>,
+    /// Misgrab guardrails: detected misgrabs awaiting Restore or Dismiss;
+    /// populated only when `tab == "misgrabs"`.
+    misgrab_entries: Vec<crate::models::grabbed_torrents::MisgrabEntry>,
     title_language: String,
     /// Issue gh-121 — notification provider rows for the System →
     /// Notifications tab. Empty until the user adds the first one.
@@ -167,6 +170,7 @@ fn normalize_system_tab(tab: Option<String>) -> String {
         Some("rss") => "rss".to_string(),
         Some("tasks") => "tasks".to_string(),
         Some("review") => "review".to_string(),
+        Some("misgrabs") => "misgrabs".to_string(),
         Some("credits") => "credits".to_string(),
         Some("notifications") => "notifications".to_string(),
         Some("backup") => "backup".to_string(),
@@ -270,6 +274,21 @@ pub async fn system_page(
             Vec::new()
         }
     };
+    let misgrab_entries_fut = async {
+        if tab == "misgrabs" {
+            let title_language = crate::models::config::get_config(&state.db)
+                .await
+                .ok()
+                .flatten()
+                .map(|c| c.title_language)
+                .unwrap_or_else(|| "romaji".to_string());
+            crate::models::grabbed_torrents::list_misgrabs(&state.db, &title_language)
+                .await
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
     let review_entries_fut = async {
         if tab == "review" {
             let mut entries = episode_tags::get_needs_review(&state.db)
@@ -311,6 +330,7 @@ pub async fn system_page(
         scheduled_tasks,
         log_count_res,
         review_entries,
+        misgrab_entries,
         (notification_providers, notification_event_toggles),
     ) = tokio::join!(
         logs_fut,
@@ -320,6 +340,7 @@ pub async fn system_page(
         scheduled_tasks_fut,
         log::count(&state.db),
         review_entries_fut,
+        misgrab_entries_fut,
         notification_payload_fut,
     );
     let cfg = cfg_res.ok().flatten();
@@ -411,6 +432,7 @@ pub async fn system_page(
         rss_recent,
         scheduled_tasks,
         review_entries,
+        misgrab_entries,
         title_language,
         notification_providers,
         notification_event_toggles,
@@ -531,6 +553,7 @@ pub async fn debug_settings_submit(
         rss_recent: Vec::new(),
         scheduled_tasks: scheduled_tasks::list(&state.db).await.unwrap_or_default(),
         review_entries: Vec::new(),
+        misgrab_entries: Vec::new(),
         title_language: cfg.title_language.clone(),
         notification_providers: Vec::new(),
         notification_event_toggles: Vec::new(),

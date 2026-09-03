@@ -73,6 +73,8 @@ use services::{
         handlers::downloads::api_resume_torrent,
         handlers::downloads::api_delete_torrent,
         handlers::downloads::api_blocklist_remove,
+        handlers::library::misgrabs::restore_misgrab,
+        handlers::library::misgrabs::dismiss_misgrab,
         // System
         handlers::settings::api_health,
         handlers::settings::jellyfin_test,
@@ -922,6 +924,14 @@ async fn main() {
         .route(
             "/api/downloads/blocklist/remove",
             post(handlers::downloads::api_blocklist_remove),
+        )
+        .route(
+            "/api/library/misgrabs/{id}/restore",
+            post(handlers::library::misgrabs::restore_misgrab),
+        )
+        .route(
+            "/api/library/misgrabs/{id}/dismiss",
+            post(handlers::library::misgrabs::dismiss_misgrab),
         )
         .route(
             "/settings",
