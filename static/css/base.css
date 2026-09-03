@@ -997,3 +997,5 @@ input[type="file"]::file-selector-button:hover {
     margin-top: 4px;
 }
 
+/* Keep a short inline token (a JSON example, a flag) on one line. */
+.nowrap { white-space: nowrap; }

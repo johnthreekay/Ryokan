@@ -326,7 +326,7 @@
         </div>
         {% else %}
         <form method="post" action="/settings/custom-formats/import" class="settings-form">
-            <p class="cf-section-desc" style="margin-top:0">Paste a Sonarr v4 export or upload a .json file. A single object, an array, or a <code>{"custom_formats": [...]}</code> wrapper all work. Nothing is written until you review the preview.</p>
+            <p class="cf-section-desc" style="margin-top:0">Paste a Sonarr v4 export or upload a .json file. A single object, an array, or a <code class="nowrap">{"custom_formats": [...]}</code> wrapper all work. Nothing is written until you review the preview.</p>
             <div class="form-group">
                 <label for="cf_import_file">Upload JSON file <span class="form-hint">(optional; fills the textarea below)</span></label>
                 <input type="file" id="cf_import_file" accept="application/json,.json"

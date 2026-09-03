@@ -431,6 +431,12 @@
 .task-detail-text {
     overflow-wrap: anywhere;
     word-break: break-word;
+    /* A backup path or a long error can run to 15 lines in this column;
+       show three and keep the whole text on the cell's tooltip. */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 .task-run-btn {
     white-space: nowrap;

@@ -270,7 +270,7 @@
                            correlate with other events. #}
                         <td>{% if let Some(started) = task.last_started_at %}<span class="task-time">{{ started }}</span>{% else %}—{% endif %}</td>
                         <td>{% if let Some(finished) = task.last_finished_at %}<span class="task-time">{{ finished }}</span>{% else %}—{% endif %}</td>
-                        <td class="task-detail-cell"><div class="task-detail-text">{{ task.last_detail }}</div></td>
+                        <td class="task-detail-cell" title="{{ task.last_detail }}"><div class="task-detail-text">{{ task.last_detail }}</div></td>
                         <td><button type="button" class="btn btn-secondary btn-sm task-run-btn" onclick="forceRunTask(this, '{{ task.task_key }}')">Run now</button></td>
                     </tr>
                     {% endfor %}

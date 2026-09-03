@@ -86,6 +86,14 @@
 
 .settings-form .form-group { margin-bottom: 16px; }
 
+/* The card's own padding already closes a fieldset; without this the
+   last field adds its 16px on top and every card sits deeper at the
+   bottom than at the top. */
+.settings-form fieldset > .form-group:last-child,
+.settings-form fieldset > .form-row:last-child {
+    margin-bottom: 0;
+}
+
 /* Inside a form-row, the row itself owns the bottom-margin. Zero
    the children so the row's height is clean and consecutive rows
    don't double-up. */

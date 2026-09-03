@@ -32,7 +32,7 @@ Two more things live on this tab:
 - **autobrr webhook**: accepts inbound webhooks at `/api/webhook/autobrr`. [autobrr](https://autobrr.com) is a separate self-hosted tool that watches IRC announce channels for new releases and pushes matches as HTTP webhooks; this is the receiving side. The webhook has its own API key with a dedicated regenerate button, so an accidental tab POST can't silently rotate or wipe it.
 - **Nyaa search** pin: Ryokan's built-in Nyaa search is not an indexer row, so this fieldset is where you pin it to a specific torrent client. **(use default)** routes Nyaa grabs to the torrent default.
 
-## Preferred Quality & Releases
+## Quality & Releases
 
 The scoring inputs that decide which release wins when several match the same episode.
 
