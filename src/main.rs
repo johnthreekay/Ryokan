@@ -33,8 +33,7 @@ use services::{
 #[openapi(
     info(
         title = "Ryokan API",
-        version = "0.1.0",
-        description = "Self-hosted anime PVR — search, download, and manage your anime library.",
+        description = "Self-hosted anime PVR: search, download, and manage your anime library.",
     ),
     paths(
         // Library
@@ -128,6 +127,44 @@ use services::{
         handlers::grab::grab_heartbeat,
         handlers::grab::grab_confirm,
         handlers::grab::grab_cancel,
+        // Library bulk actions + recycle bin (#123)
+        handlers::library::bulk::bulk_delete,
+        handlers::library::bulk::bulk_monitor,
+        handlers::library::crud::bulk_manual_override,
+        handlers::library::recycle::restore,
+        handlers::library::recycle::purge_entry,
+        handlers::library::recycle::empty,
+        // Progress stream
+        handlers::progress::stream_progress,
+        // Settings: indexer section, forms, and tests
+        handlers::settings::indexers::settings_indexers_section,
+        handlers::settings::indexers::settings_indexers_add_form,
+        handlers::settings::indexers::settings_indexers_edit_form,
+        handlers::settings::indexers::settings_indexers_test_rss,
+        handlers::settings::indexers::settings_indexers_test_stateless,
+        // Settings: direct RSS feeds
+        handlers::settings::direct_rss_feeds::settings_direct_rss_feeds_upsert,
+        handlers::settings::direct_rss_feeds::settings_direct_rss_feeds_delete,
+        handlers::settings::direct_rss_feeds::settings_direct_rss_feeds_test,
+        // Settings: naming preview (#124)
+        handlers::settings::naming::naming_preview,
+        // Scoped API keys (#114)
+        handlers::api_keys::list,
+        handlers::api_keys::create,
+        handlers::api_keys::toggle,
+        handlers::api_keys::delete,
+        handlers::api_keys::reveal,
+        // Calendar feed (#116)
+        handlers::calendar::ical_feed,
+        // Notifications (#118)
+        handlers::notifications::test_provider,
+        // Backup / restore (#126)
+        handlers::system::backup::api_backup_download,
+        handlers::system::backup::api_backup_run,
+        handlers::system::backup::api_backup_file,
+        handlers::system::backup::backup_file_delete,
+        handlers::system::backup::api_restore_upload,
+        handlers::system::backup::restore_cancel,
     ),
     components(schemas(
         services::anilist::AnimeEntry,
@@ -180,15 +217,27 @@ use services::{
         handlers::grab::GrabCancelForm,
     )),
     tags(
-        (name = "Library", description = "Anime library management — add, remove, search, and monitor series"),
+        (name = "Library", description = "Anime library management: add, remove, search, and monitor series"),
         (name = "Search", description = "Nyaa torrent search and grabbing"),
-        (name = "Downloads", description = "qBittorrent download management"),
+        (name = "Downloads", description = "Download queue management across the configured download clients"),
         (name = "System", description = "Health checks, logs, RSS sync, and background tasks"),
-        (name = "Settings", description = "Settings management — Custom Formats CRUD, import/export, and scoring thresholds"),
-        (name = "Grab", description = "Interactive file-picker grab flow (#83) — preview, heartbeat, confirm, cancel"),
+        (name = "Settings", description = "Settings management: Custom Formats CRUD, import/export, and scoring thresholds"),
+        (name = "Grab", description = "Interactive file-picker grab flow (#83): preview, heartbeat, confirm, cancel"),
+        (name = "Backup", description = "Backup and restore of the database, encryption key, and artwork (#126)"),
+        (name = "Calendar", description = "Airing calendar feed for scoped API keys (#116)"),
+        (name = "Webhook", description = "Inbound push receivers such as autobrr"),
     ),
 )]
 struct ApiDoc;
+
+/// The OpenAPI document with the version stamped from `Cargo.toml`.
+/// utoipa's `info(version = ...)` only takes a literal, and a hardcoded
+/// string drifted to `0.1.0` while the crate sat at 1.x.
+fn api_doc() -> utoipa::openapi::OpenApi {
+    let mut doc = ApiDoc::openapi();
+    doc.info.version = env!("CARGO_PKG_VERSION").to_string();
+    doc
+}
 
 /// Run a supervising loop around a background tick future.
 ///
@@ -1213,7 +1262,7 @@ async fn main() {
         // the rate-limited /login and /setup shapes. Exposing it
         // unauthenticated would hand a passing scanner a complete map of
         // the application before any auth check fires.
-        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api_doc()))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             handlers::auth::require_auth,
@@ -2499,4 +2548,33 @@ async fn main() {
     )
     .await
     .expect("Server error");
+}
+
+#[cfg(test)]
+mod api_doc_tests {
+    use super::api_doc;
+
+    #[test]
+    fn version_follows_cargo_toml() {
+        assert_eq!(api_doc().info.version, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn once_missing_routes_are_documented() {
+        let doc = api_doc();
+        for path in [
+            "/api/backup/download",
+            "/api/restore/upload",
+            "/api/library/recycle/{entry_id}/restore",
+            "/api/calendar.ics",
+            "/api/notifications/{id}/test",
+            "/api/settings/naming-preview",
+            "/api/api-keys",
+        ] {
+            assert!(
+                doc.paths.paths.contains_key(path),
+                "{path} missing from the OpenAPI document"
+            );
+        }
+    }
 }
