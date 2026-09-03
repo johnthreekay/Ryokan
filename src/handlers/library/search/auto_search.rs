@@ -672,6 +672,13 @@ async fn run_auto_search_targets_with_upgrades(
                             .await
                             .ok()
                             .flatten();
+                            // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+                            if let Some(gid) = grab_id {
+                                let _ = crate::models::grabbed_torrents::set_source_url(
+                                    &state.db, gid, &url,
+                                )
+                                .await;
+                            }
                             // Issue #28 — apply per-indexer
                             // seed rules + stamp attribution.
                             // Nyaa grabs (indexer_id None) take the

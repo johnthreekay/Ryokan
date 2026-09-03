@@ -385,6 +385,11 @@ pub async fn search_batch_releases(
                 .await
                 .ok()
                 .flatten();
+                // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+                if let Some(gid) = grab_id {
+                    let _ =
+                        crate::models::grabbed_torrents::set_source_url(&state.db, gid, &url).await;
+                }
                 // Stamp the resolved download_client_id on the grab
                 // row so per-grab delete routing
                 // (`state.resolve_grab_client`) sends the eventual

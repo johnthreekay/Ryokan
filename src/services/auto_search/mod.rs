@@ -617,6 +617,22 @@ pub async fn collect_scored_batches_for_target(
     }
 
     scored.sort_by(|a, b| b.score.cmp(&a.score).then(b.seeders.cmp(&a.seeders)));
+    // Misgrab guardrails: never hand back a release the blocklist knows,
+    // by hash (any series) or by exact title (this series). One read per
+    // search; the interactive picker deliberately skips this so its
+    // "previously blocklisted, unblock and continue" flow keeps working.
+    let blocklist = crate::models::grabbed_torrents::blocklist_snapshot(db, detail.id).await;
+    if !blocklist.is_empty() {
+        let before = scored.len();
+        scored.retain(|c| !blocklist.rejects(&c.info_hash, &c.title));
+        if scored.len() != before {
+            tracing::debug!(
+                "blocklist: dropped {} candidate(s) for anilist_id={}",
+                before - scored.len(),
+                detail.id
+            );
+        }
+    }
     scored
 }
 
@@ -912,6 +928,22 @@ async fn collect_scored_for_target(
     }
 
     scored.sort_by(|a, b| b.score.cmp(&a.score).then(b.seeders.cmp(&a.seeders)));
+    // Misgrab guardrails: never hand back a release the blocklist knows,
+    // by hash (any series) or by exact title (this series). One read per
+    // search; the interactive picker deliberately skips this so its
+    // "previously blocklisted, unblock and continue" flow keeps working.
+    let blocklist = crate::models::grabbed_torrents::blocklist_snapshot(db, detail.id).await;
+    if !blocklist.is_empty() {
+        let before = scored.len();
+        scored.retain(|c| !blocklist.rejects(&c.info_hash, &c.title));
+        if scored.len() != before {
+            tracing::debug!(
+                "blocklist: dropped {} candidate(s) for anilist_id={}",
+                before - scored.len(),
+                detail.id
+            );
+        }
+    }
     scored
 }
 

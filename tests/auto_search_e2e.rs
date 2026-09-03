@@ -1177,3 +1177,133 @@ async fn auto_search_episode_handler_still_grabs_fuzzy_only_candidate() {
 
     unset_nyaa_base();
 }
+
+#[tokio::test]
+async fn auto_search_episode_skips_blocklisted_hash_and_grabs_next_candidate() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // Row A would win on seeders, but its hash is on the blocklist (a
+    // misgrab the sweep removed, or a grab the user failed). Row B is the
+    // next best and must be the one grabbed.
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&format!(
+        "{}{}",
+        nyaa_row(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            99201,
+            "[Group] Blocklist Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            500,
+        ),
+        nyaa_row(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            99202,
+            "[Other] Blocklist Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            5,
+        )
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9004;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Blocklist Show").await;
+    ryokan::test_support::seed_grabbed_torrent(
+        &state.db,
+        series_id,
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "[Group] Blocklist Show - 03 (1080p) [WEB].mkv",
+        &[3],
+    )
+    .await;
+    sqlx::query(
+        "UPDATE grabbed_torrents SET state = 'failed', failure_reason = 'misgrab' WHERE hash = ?",
+    )
+    .bind("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert_eq!(report.grabbed.len(), 1, "report={report:?}");
+    let calls = client.add_calls();
+    assert_eq!(calls.len(), 1);
+    assert!(
+        calls[0].1.starts_with("bbbbbbbb"),
+        "the blocklisted hash must be skipped; grabbed {}",
+        calls[0].1
+    );
+    let url: String =
+        sqlx::query_scalar("SELECT source_url FROM grabbed_torrents WHERE hash LIKE 'bbbbbbbb%'")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+    assert!(
+        url.starts_with("magnet:?xt="),
+        "source_url recorded for Restore: {url}"
+    );
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn auto_search_episode_makes_no_add_call_when_only_candidate_is_blocklisted_by_title() {
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "cccccccccccccccccccccccccccccccccccccccc",
+        99203,
+        "[Group] Blocklist Show - 04 (1080p) [WEB].mkv",
+        "1.4 GiB",
+        50,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9005;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Blocklist Show").await;
+    // A failed row with no hash: blocklisted by title for this series only.
+    sqlx::query(
+        "INSERT INTO grabbed_torrents (hash, torrent_name, series_id, episode_numbers, state, failure_reason) \
+         VALUES ('', ?, ?, '[4]', 'failed', 'misgrab')",
+    )
+    .bind("[Group] Blocklist Show - 04 (1080p) [WEB].mkv")
+    .bind(series_id)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 4_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert!(report.grabbed.is_empty(), "report={report:?}");
+    assert!(
+        client.add_calls().is_empty(),
+        "no add call for a blocklisted title"
+    );
+
+    unset_nyaa_base();
+}

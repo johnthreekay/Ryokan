@@ -1113,6 +1113,42 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         // their `nzo_id` instead of the pre-computed BT-style hash.
         // For BT clients the returned id equals `info_hash` (default
         // impl), no behavior change.
+        // Misgrab guardrails: the blocklist wins over RSS matching. A
+        // release the sweep removed (or the user failed) is never
+        // re-grabbed from a feed, by hash or by exact title.
+        if crate::models::grabbed_torrents::is_blocklisted_release(
+            &state.db,
+            cand.found.series.id,
+            &info_hash,
+            &cand.item.title,
+        )
+        .await
+        {
+            skipped += 1;
+            let reason = format!(
+                "Blocklisted release | {}",
+                build_match_diag(&cand.item, Some(&cand.found), cand.score)
+            );
+            let (src_str, src_id) = source_dedup_key(&cand.item.source);
+            let _ = rss::record_decision(
+                &state.db,
+                rss::DecisionRecord {
+                    item_key: &cand.item_key,
+                    title: &cand.item.title,
+                    link: &cand.item.link,
+                    series_id: Some(cand.found.series.id),
+                    series_title: &cand.found.series.title,
+                    group_name: &cand.item.group,
+                    is_batch: cand.item.is_batch,
+                    decision: "rejected",
+                    reason: &reason,
+                    source: src_str,
+                    source_id: src_id,
+                },
+            )
+            .await;
+            continue;
+        }
         match client.add_torrent_returning_id(&grab_url, &info_hash).await {
             Ok((_outcome, canonical_id)) => {
                 grabbed += 1;
@@ -1166,6 +1202,12 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                 .await
                 .ok()
                 .flatten();
+                // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+                if let Some(gid) = grab_id {
+                    let _ =
+                        crate::models::grabbed_torrents::set_source_url(&state.db, gid, &grab_url)
+                            .await;
+                }
                 if let Some(gid) = grab_id {
                     let _ = crate::models::grabbed_torrents::set_download_client(
                         &state.db,

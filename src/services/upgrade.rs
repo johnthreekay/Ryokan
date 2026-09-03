@@ -393,6 +393,12 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                     .await
                     .ok()
                     .flatten();
+                    // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+                    if let Some(gid) = grab_id {
+                        let _ =
+                            crate::models::grabbed_torrents::set_source_url(&state.db, gid, &url)
+                                .await;
+                    }
                     if let Some(gid) = grab_id {
                         let _ = crate::models::grabbed_torrents::set_download_client(
                             &state.db,
