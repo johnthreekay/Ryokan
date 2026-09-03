@@ -1360,6 +1360,19 @@ pub async fn stamp_verification(
     Ok(result.rows_affected() > 0)
 }
 
+pub async fn get_verification_detail(db: &SqlitePool, id: i64) -> VerificationDetail {
+    sqlx::query_scalar::<_, String>(
+        "SELECT COALESCE(verification_detail, '') FROM grabbed_torrents WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|json| serde_json::from_str(&json).ok())
+    .unwrap_or_default()
+}
+
 pub async fn get_verification(db: &SqlitePool, id: i64) -> Option<String> {
     sqlx::query_scalar::<_, Option<String>>(
         "SELECT verification FROM grabbed_torrents WHERE id = ?",

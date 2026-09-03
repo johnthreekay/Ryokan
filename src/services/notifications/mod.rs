@@ -383,6 +383,40 @@ pub async fn emit_grabbed(
 /// the same way `emit_grabbed` resolves `series_title`. The event is
 /// fire-and-forget on top of the dispatch task so the post-processing
 /// loop doesn't block on receiver latency.
+/// Misgrab guardrails: a grab's files named a different series. One
+/// event per grab row by construction (the verdict is stamped once).
+pub async fn emit_misgrabbed(
+    state: &crate::AppState,
+    series_id: i64,
+    release_title: &str,
+    hash: &str,
+    files: Vec<String>,
+    action: &str,
+) {
+    let providers = state.notification_providers.read().await.clone();
+    if providers.is_empty() {
+        return;
+    }
+    let Some(series_title) = resolve_series_title(&state.db, series_id).await else {
+        tracing::debug!(
+            "notifications::emit_misgrabbed: series #{series_id} not found, skipping dispatch"
+        );
+        return;
+    };
+    dispatch(
+        &state.notification_providers,
+        state.db.clone(),
+        NotificationEvent::Misgrabbed {
+            series_id,
+            series_title,
+            release_title: release_title.to_string(),
+            hash: hash.to_string(),
+            files,
+            action: action.to_string(),
+        },
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn emit_imported(
     state: &crate::AppState,

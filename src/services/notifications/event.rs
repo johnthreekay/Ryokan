@@ -55,6 +55,18 @@ pub enum NotificationEvent {
         source_path: String,
         reason: String,
     },
+    /// Misgrab guardrails: the files inside a grab named a different
+    /// series. `action` is what the sweep did: `removed`,
+    /// `removed_no_delete` (seed rules kept the torrent), or `flagged`
+    /// (auto-remove is off).
+    Misgrabbed {
+        series_id: i64,
+        series_title: String,
+        release_title: String,
+        hash: String,
+        files: Vec<String>,
+        action: String,
+    },
     /// Fired from `models::episode_tags::update_classification` when
     /// the row being written has `needs_review = true`. One write,
     /// one event — multiple classifier paths (initial classify,
@@ -102,6 +114,7 @@ impl NotificationEvent {
             NotificationEvent::Grabbed { .. } => "Grabbed",
             NotificationEvent::Imported { .. } => "Imported",
             NotificationEvent::ImportFailed { .. } => "ImportFailed",
+            NotificationEvent::Misgrabbed { .. } => "Misgrabbed",
             NotificationEvent::ClassifierNeedsReview { .. } => "ClassifierNeedsReview",
             NotificationEvent::IndexerDown { .. } => "IndexerDown",
             NotificationEvent::DownloadClientUnreachable { .. } => "DownloadClientUnreachable",
@@ -120,6 +133,7 @@ pub const ALL_EVENT_KINDS: &[&str] = &[
     "Grabbed",
     "Imported",
     "ImportFailed",
+    "Misgrabbed",
     "ClassifierNeedsReview",
     "IndexerDown",
     "DownloadClientUnreachable",
@@ -138,6 +152,7 @@ pub const DEFAULT_ON_EVENT_KINDS: &[&str] = &[
     "Grabbed",
     "Imported",
     "ImportFailed",
+    "Misgrabbed",
     "ExternalSyncReLinkRequired",
 ];
 
@@ -169,6 +184,15 @@ mod tests {
                 source_path: String::new(),
                 dest_path: String::new(),
                 quality_tag: String::new(),
+            }
+            .kind(),
+            NotificationEvent::Misgrabbed {
+                series_id: 1,
+                series_title: "s".into(),
+                release_title: "r".into(),
+                hash: "h".into(),
+                files: vec![],
+                action: "removed".into(),
             }
             .kind(),
             NotificationEvent::ImportFailed {

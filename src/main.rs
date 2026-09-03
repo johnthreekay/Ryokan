@@ -2405,6 +2405,46 @@ async fn main() {
         });
     }
 
+    // Misgrab guardrails: verify unchecked grabs against their file
+    // list and remediate detected misgrabs (delete, blocklist, notify,
+    // re-search). Same one-tick-per-call shape as grab_sweep.
+    {
+        let misgrab_state = state.clone();
+        tokio::spawn(async move {
+            let registry = misgrab_state.tasks.clone();
+            supervise(&registry, "misgrab_sweep", move || {
+                let state = misgrab_state.clone();
+                async move {
+                    let mut interval = tokio::time::interval(services::misgrab::SWEEP_INTERVAL);
+                    loop {
+                        interval.tick().await;
+                        match services::misgrab::sweep_once(&state).await {
+                            Ok(summary) if summary.misgrabs > 0 || summary.remediated > 0 => {
+                                tracing::info!(
+                                    target: "ryokan::misgrab_sweep",
+                                    verified = summary.verified,
+                                    misgrabs = summary.misgrabs,
+                                    unverifiable = summary.unverifiable,
+                                    remediated = summary.remediated,
+                                    "misgrab sweep tick"
+                                );
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(
+                                    target: "ryokan::misgrab_sweep",
+                                    error = %e,
+                                    "sweep_once failed; will retry on next tick"
+                                );
+                            }
+                        }
+                    }
+                }
+            })
+            .await;
+        });
+    }
+
     // Issue #62 — watch-list sync. One of the supervised tasks.
     // Same minute-tick + minutes_since_last cadence pattern as
     // rss_sync (so a process restart respects the persisted
