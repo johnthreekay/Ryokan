@@ -56,6 +56,34 @@ pub async fn expand_from_files(
     torrent_title: &str,
     grab_ctx: &AutoExpandGrabContext,
 ) -> usize {
+    // Misgrab guardrails: judge the file list before anything is
+    // written. A detected misgrab must not upsert siblings, write
+    // routes, or widen the grab's episode coverage; the unclaimed-files
+    // fallback below would otherwise route every wrong file to the
+    // parent and legitimize the grab.
+    if grabbed_torrents::get_verification(db, grab_id)
+        .await
+        .is_none()
+        && let Ok(Some(grab)) = grabbed_torrents::get_by_id(db, grab_id).await
+    {
+        let aliases = crate::services::misgrab::aliases_from_detail(parent_detail, filenames);
+        let verdict =
+            crate::services::misgrab::assess_and_stamp(db, &grab, filenames, &aliases).await;
+        if verdict.is_misgrab() {
+            logger::info(
+                db,
+                LogCategory::Library,
+                &format!(
+                    "Auto-expand: skipping '{}', its files name a different series",
+                    torrent_title
+                ),
+                "the misgrab sweep removes and blocklists it",
+            )
+            .await;
+            return 0;
+        }
+    }
+
     let parent_title = if !parent_detail.title_english.is_empty() {
         parent_detail.title_english.as_str()
     } else {
@@ -900,5 +928,134 @@ mod tests {
             "grab row should be corrected to cover all 12 discovered episodes"
         );
         assert_eq!(row.1, 1, "grab row should be flipped to is_batch=true");
+    }
+
+    #[tokio::test]
+    async fn expand_from_files_writes_nothing_for_a_misgrab() {
+        // Misgrab guardrails: the unclaimed-files fallback used to route
+        // every wrong file to the parent and widen the grab's episode
+        // coverage. The verdict now runs first and a misgrab returns
+        // before any write.
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let (parent_id, _) = series::upsert(
+            &db,
+            series::SeriesCore {
+                anilist_id: 21521,
+                mal_id: None,
+                title: "Kowaremono: Risa THE ANIMATION",
+                title_romaji: "Kowaremono: Risa THE ANIMATION",
+                title_english: "",
+                title_native: "",
+                cover_url: "",
+                format: "OVA",
+                status: "FINISHED",
+                episodes: Some(1),
+                season_year: Some(2016),
+                end_year: None,
+            },
+        )
+        .await
+        .unwrap();
+        let grab_id = grabbed_torrents::record_grab(
+            &db,
+            "1234567890abcdef1234567890abcdef12345678",
+            "[Xonline] Grisaia Phantom Trigger The Animation",
+            parent_id,
+            &[1],
+            false,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let parent_detail = empty_anime_detail(21521, "Kowaremono: Risa THE ANIMATION", Some(1));
+        let filenames: Vec<String> = vec![
+            "[Xonline] Grisaia Phantom Trigger The Animation - 01 (BD 1920p x.264-10Bit Flac) [2E112DAF].mkv".to_string(),
+            "[Xonline] Grisaia Phantom Trigger The Animation - 02 (BD 1920p x.264-10Bit Flac) [02964F5A].mkv".to_string(),
+        ];
+        let ctx = AutoExpandGrabContext {
+            classification: ClassificationResult::unknown(),
+            release_group: "Xonline".to_string(),
+            size_bytes: 0,
+        };
+
+        let added = expand_from_files(
+            &db,
+            &filenames,
+            &parent_detail,
+            parent_id,
+            &[1],
+            grab_id,
+            "[Xonline] Grisaia Phantom Trigger The Animation",
+            &ctx,
+        )
+        .await;
+
+        assert_eq!(added, 0);
+        assert_eq!(
+            grabbed_torrents::get_verification(&db, grab_id)
+                .await
+                .as_deref(),
+            Some("misgrab")
+        );
+        let routes = grabbed_torrents::get_series_routes(&db, grab_id)
+            .await
+            .unwrap();
+        assert!(routes.is_empty(), "no routes for a misgrab: {routes:?}");
+        let row = grabbed_torrents::get_by_id(&db, grab_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.episode_numbers,
+            vec![1],
+            "coverage must not be rewritten"
+        );
+        assert!(!row.is_batch);
+        let history: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM episode_grab_history WHERE series_id = ? AND episode_number = 2",
+        )
+        .bind(parent_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(history, 0, "no AL-overflow backfill for a misgrab");
+
+        // The legitimate release still expands as before (nothing to add
+        // here, but the verdict is verified and the call proceeds).
+        let good_id = grabbed_torrents::record_grab(
+            &db,
+            "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            "[H-Enc] Kowaremono Risa The Animation 01-02",
+            parent_id,
+            &[1],
+            true,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let good_files = vec![
+            "[H-Enc] Kowaremono Risa The Animation 01-02/Kowaremono Risa The Animation - 01.mkv"
+                .to_string(),
+            "[H-Enc] Kowaremono Risa The Animation 01-02/Kowaremono Risa The Animation - 02.mkv"
+                .to_string(),
+        ];
+        let _ = expand_from_files(
+            &db,
+            &good_files,
+            &parent_detail,
+            parent_id,
+            &[1],
+            good_id,
+            "[H-Enc] Kowaremono Risa The Animation 01-02",
+            &ctx,
+        )
+        .await;
+        assert_eq!(
+            grabbed_torrents::get_verification(&db, good_id)
+                .await
+                .as_deref(),
+            Some("verified")
+        );
     }
 }

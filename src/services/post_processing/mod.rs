@@ -984,6 +984,30 @@ async fn import_torrent(
             .map(|file_idx| (*file_idx, &files[*file_idx]))
             .collect();
 
+    // Misgrab guardrails: a fast download can finish before the sweep's
+    // first look. Judge the file list now if nobody has; a misgrab is
+    // never imported, and the sweep removes and blocklists it.
+    if grabbed_torrents::get_verification(&state.db, grab.id)
+        .await
+        .is_none()
+    {
+        let names: Vec<String> = files.iter().map(|f| f.name.clone()).collect();
+        let verdict = crate::services::misgrab::assess_grab(&state.db, grab, &names).await;
+        if verdict.is_misgrab() {
+            logger::warn(
+                &state.db,
+                LogCategory::PostProcess,
+                &format!(
+                    "Import skipped for '{}': its files name a different series",
+                    grab.torrent_name
+                ),
+                "detected as a misgrab; the misgrab sweep removes and blocklists it",
+            )
+            .await;
+            return Ok(ImportOutcome::NotReady);
+        }
+    }
+
     // Resolve and validate the complete batch mapping before loading series
     // context, deleting an upgrade target, or moving/copying any source.
     // Duplicate destination slots fail the whole import without mutation;

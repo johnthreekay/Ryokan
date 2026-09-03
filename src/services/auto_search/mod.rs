@@ -27,8 +27,8 @@ mod search_target;
 use aliases::{SiblingRejectPrecompute, sibling_match_rejects};
 pub use aliases::{
     classify_match, collect_aliases, collect_extended_aliases, collect_sibling_aliases,
-    dedupe_strings, distinctive_overlap_ratio, matches_target, normalize_title,
-    sequel_variant_aliases, token_overlap_ratio, token_set,
+    dedupe_strings, distinctive_overlap_ratio, is_generic_title_token, matches_target,
+    normalize_title, sequel_variant_aliases, token_overlap_ratio, token_set,
 };
 pub use pack_detection::{
     TRANSITIVE_WALK_MAX_FETCHES, detect_sibling_entries_in_pack,
@@ -38,7 +38,7 @@ pub use provenance::{AliasMatch, MatchKind, MatchPhase, MatchProvenance, history
 pub(crate) use release_parse::is_media_filename;
 pub use release_parse::{
     has_selective_discriminator, infer_season_from_detail, parse_release_numbers,
-    pick_wanted_file_indices,
+    parse_release_season, pick_wanted_file_indices,
 };
 use release_parse::{
     normalize_subtitle, season_mismatch, trailing_subtitle_of, within_episode_slack,

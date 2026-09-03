@@ -36,6 +36,7 @@ pub mod rss;
 pub mod monitoring;
 
 pub mod metadata_sync;
+pub mod misgrab;
 
 pub mod artwork;
 
