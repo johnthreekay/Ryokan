@@ -251,15 +251,15 @@
     // The handler returns the same partial used for the initial
     // render, but the DOM nodes are fresh — so the timestamps,
     // today-highlight, and local filters all need re-applying.
-    // Listen on the list container; the event bubbles up but we
-    // scope to swaps that actually replaced our region.
-    var listEl = document.getElementById('calendar-list');
-    if (listEl) {
-        listEl.addEventListener('htmx:after:swap', function (ev) {
-            if (!ev || !ev.target) return;
-            // The target on a swap settle is the swapped element
-            // itself. Re-run the hydrators against the current
-            // list root so we don't pick up stale handles.
+    // htmx 4 dispatches after:swap on the request's source element
+    // (the range tab, which sits outside the list), so the listener
+    // lives on body and matches the swap target by id; a listener
+    // on #calendar-list itself never fires for a tab click.
+    if (document.getElementById('calendar-list')) {
+        document.body.addEventListener('htmx:after:swap', function (ev) {
+            if (window.ryokanSwapTargetId(ev) !== 'calendar-list') return;
+            // Re-run the hydrators against the current list root so
+            // we don't pick up stale handles.
             var root = document.getElementById('calendar-list') || document;
             hydrateTimes(root);
             applyTodayHighlight(root);
