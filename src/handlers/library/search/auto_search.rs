@@ -302,14 +302,34 @@ async fn run_auto_search_targets_with_upgrades(
     if detail.is_adult {
         // Issue #219 — every Nyaa query for an adult title comes back
         // empty, and Phase 1.5's loosened aliases were what let an
-        // unrelated release through. Say why up front.
+        // unrelated release through. Say why up front, and put it in
+        // the user's face as a toast when nothing else could find it.
+        let indexer_count = state.indexers.read().await.len();
+        let no_indexer = crate::handlers::library::adult_needs_indexer(true, indexer_count);
         logger::warn(
             &state.db,
             LogCategory::AutoSearch,
             &format!("{} is marked adult on AniList", title),
-            "Nyaa lists adult releases on sukebei, which Ryokan does not search. Only configured torznab or newznab indexers can find this title.",
+            if no_indexer {
+                "Nyaa lists adult releases on sukebei, which Ryokan does not search, and no indexer is configured. This search will find nothing."
+            } else {
+                "Nyaa lists adult releases on sukebei, which Ryokan does not search. Only the configured torznab or newznab indexers can find this title."
+            },
         )
         .await;
+        if no_indexer {
+            progress::emit(
+                "search",
+                "warn",
+                format!("{} is marked adult", title),
+                Some(
+                    "No indexer is configured. Nyaa lists adult releases on sukebei, which Ryokan does not search."
+                        .to_string(),
+                ),
+                false,
+            )
+            .await;
+        }
     }
     progress::emit(
         "search",

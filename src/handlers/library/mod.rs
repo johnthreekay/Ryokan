@@ -99,6 +99,15 @@ struct IndexTemplate {
     recycle_count: u64,
 }
 
+/// Issue #219 — an adult title (AniList `isAdult`) can only be found
+/// through a configured torznab / newznab indexer: Nyaa lists adult
+/// releases on sukebei, which Ryokan does not search. The series page
+/// banner and the auto-search toast both key off this so the two
+/// warnings can't drift apart.
+pub(crate) fn adult_needs_indexer(is_adult: bool, indexer_count: usize) -> bool {
+    is_adult && indexer_count == 0
+}
+
 #[derive(Template)]
 #[template(path = "series.html")]
 struct SeriesTemplate {
@@ -146,6 +155,11 @@ struct SeriesTemplate {
     /// path already serves the cached row regardless of staleness;
     /// this flag just makes the situation visible to the user.
     metadata_is_stale: bool,
+    /// Issue #219 — true when AniList marks the title adult and no
+    /// indexer is configured. Drives the warning banner: Nyaa lists
+    /// adult releases on sukebei, which Ryokan does not search, so the
+    /// series is unsearchable until an adult-capable indexer exists.
+    adult_without_indexers: bool,
     /// Recycle bin configured (#123): the remove-series modal and the
     /// per-episode delete confirm say "moves to the recycle bin"
     /// instead of "cannot be undone."
@@ -441,4 +455,17 @@ pub struct MarkEpisodeFailedForm {
     history_id: i64,
     #[serde(default)]
     blocklist: bool,
+}
+
+#[cfg(test)]
+mod adult_indexer_tests {
+    use super::adult_needs_indexer;
+
+    #[test]
+    fn adult_needs_indexer_only_when_adult_and_none_configured() {
+        assert!(adult_needs_indexer(true, 0));
+        assert!(!adult_needs_indexer(true, 1));
+        assert!(!adult_needs_indexer(false, 0));
+        assert!(!adult_needs_indexer(false, 3));
+    }
 }
