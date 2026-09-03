@@ -301,7 +301,7 @@ walkdir = "2"
 # `statvfs` for the free-disk-space precheck before a backup runs.
 tar = "0.4"
 flate2 = "1"
-nix = { version = "0.30", features = ["fs"] }
+nix = { version = "0.31", features = ["fs"] }
 
 # fantoccini: WebDriver client for browser-driven e2e tests of HTMX
 # UI flows. `optional = true` + the `browser-e2e` feature gate means
