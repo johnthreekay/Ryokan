@@ -428,10 +428,19 @@
    row heights would visibly jump. Fixed height + overflow:hidden
    gives every card the same outer dimension regardless of content,
    and the grid stays still through filter changes. */
+/* Fixed height keeps the grid rows even. 108px fits the common worst
+   case (two-line title, tag row plus a wrapped status pill) with the
+   bottom padding intact; at 100px that padding was clipped and the
+   pill sat 5px from the edge while the title had 14px above it. The
+   column layout pins the tags to the bottom so cards with a one-line
+   title line up with their neighbors. */
 .series-info {
-    height: 100px;
+    height: 108px;
     padding: 10px 12px 12px;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 .series-title {
