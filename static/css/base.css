@@ -943,13 +943,25 @@ input[type="file"]::file-selector-button:hover {
     margin: 0 0 12px;
 }
 
+/* Same palette as `.settings-input` and `.folder-select`; this used to
+   carry its own navy rgba fill and lavender border, which made the
+   Downloads → History and System → RSS controls the odd ones out. */
 .rss-table-controls input,
 .rss-table-controls select {
-    background: rgba(18, 21, 33, 0.9);
-    border: 1px solid rgba(178, 160, 255, 0.16);
-    color: var(--text-primary);
-    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
     padding: 10px 12px;
+    font-size: 14px;
+    font-family: var(--font-body);
+    transition: border-color 0.15s;
+}
+
+.rss-table-controls input:focus,
+.rss-table-controls select:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 .rss-table-controls input {
