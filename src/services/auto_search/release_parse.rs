@@ -701,6 +701,7 @@ mod tests {
 
     fn detail_with_titles(english: &str, romaji: &str) -> AnimeDetail {
         AnimeDetail {
+            is_adult: false,
             id: 1,
             id_mal: None,
             title_romaji: romaji.to_string(),

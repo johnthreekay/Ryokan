@@ -583,6 +583,7 @@ pub async fn search_anime_with_options(
                         format
                         status
                         episodes
+                        isAdult
                         seasonYear
                         averageScore
                     }
@@ -847,6 +848,13 @@ pub struct AnimeDetail {
     /// cleanly to `None`. Consumed by Layer 4 temporal inference.
     #[serde(default)]
     pub end_year: Option<i32>,
+    /// AniList `isAdult` (Jikan: a `rating` starting with `Rx`; Kitsu:
+    /// `nsfw`). `#[serde(default)]` so cached blobs from before the
+    /// field existed deserialize to `false`. Nyaa lists adult releases
+    /// on sukebei, which Ryokan does not search, so this mostly explains
+    /// why auto-search finds nothing for a title (issue #219).
+    #[serde(default)]
+    pub is_adult: bool,
     pub description: String,
     pub genres: Vec<String>,
     pub average_score: Option<i32>,
@@ -1059,6 +1067,7 @@ async fn fetch_media_detail(selector: MediaSelector) -> Result<Option<AnimeDetai
                     format
                     status
                     episodes
+                    isAdult
                     duration
                     season
                     seasonYear
@@ -1260,6 +1269,7 @@ fn parse_media_node(m: &serde_json::Value) -> Option<AnimeDetail> {
 
     let id = m["id"].as_i64().filter(|&n| n > 0)?;
     Some(AnimeDetail {
+        is_adult: m["isAdult"].as_bool().unwrap_or(false),
         id,
         id_mal: m["idMal"].as_i64(),
         title_romaji: m["title"]["romaji"].as_str().unwrap_or("").to_string(),
@@ -1413,6 +1423,7 @@ pub async fn get_anime_details_batch(ids: &[i64]) -> Result<HashMap<i64, AnimeDe
                             format
                             status
                             episodes
+                            isAdult
                             duration
                             season
                             seasonYear
@@ -1935,5 +1946,38 @@ mod tests {
         ]);
         let arr = lists.as_array().unwrap();
         assert!(!all_buckets_are_custom_lists(arr));
+    }
+
+    #[test]
+    fn parse_media_node_reads_is_adult_and_defaults_false() {
+        // Issue #219 — `isAdult` rides along with the detail fetch so
+        // the series row and the auto-search log can say why Nyaa
+        // returns nothing for a sukebei-only title.
+        let adult = serde_json::json!({
+            "id": 21521,
+            "title": { "romaji": "Kowaremono: Risa THE ANIMATION" },
+            "format": "OVA",
+            "status": "FINISHED",
+            "episodes": 1,
+            "isAdult": true
+        });
+        assert!(parse_media_node(&adult).expect("parses").is_adult);
+
+        let plain = serde_json::json!({
+            "id": 1,
+            "title": { "romaji": "Cowboy Bebop" },
+            "format": "TV",
+            "status": "FINISHED",
+            "episodes": 26
+        });
+        assert!(!parse_media_node(&plain).expect("parses").is_adult);
+
+        // Cached blobs written before the field existed still load.
+        let mut detail = parse_media_node(&plain).expect("parses");
+        detail.is_adult = true;
+        let mut blob: serde_json::Value = serde_json::to_value(&detail).unwrap();
+        blob.as_object_mut().unwrap().remove("is_adult");
+        let back: AnimeDetail = serde_json::from_value(blob).unwrap();
+        assert!(!back.is_adult);
     }
 }

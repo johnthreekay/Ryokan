@@ -2788,6 +2788,16 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         sqlx::query(sql).execute(db).await.ok();
     }
 
+    // Issue #219 — AniList `isAdult`. Stamped by the metadata refresh
+    // (`series::set_is_adult`); default 0 so existing rows read as
+    // not-adult until their next refresh. Nyaa lists adult releases on
+    // sukebei, which Ryokan does not search, so the flag mostly serves
+    // to explain an empty auto-search.
+    sqlx::query("ALTER TABLE series ADD COLUMN is_adult INTEGER NOT NULL DEFAULT 0")
+        .execute(db)
+        .await
+        .ok();
+
     Ok(())
 }
 

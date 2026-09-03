@@ -735,6 +735,9 @@ pub async fn series_detail(
         .as_ref()
         .map(|c| c.grab_preview_mode.clone())
         .unwrap_or_else(|| "batches_only".to_string());
+    // Issue #219 — the read lock releases before the template renders.
+    let adult_without_indexers =
+        super::adult_needs_indexer(detail.is_adult, state.indexers.read().await.len());
     let template = SeriesTemplate {
         page: "library".to_string(),
         route_id: db_id.unwrap_or(provider_id),
@@ -754,6 +757,7 @@ pub async fn series_detail(
         mal_url,
         metadata_refreshed_at,
         metadata_is_stale,
+        adult_without_indexers,
         recycle_enabled,
         monitor_mode,
         monitor_mode_label,

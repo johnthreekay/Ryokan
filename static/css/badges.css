@@ -105,6 +105,8 @@
 .tag-batch { background: var(--blue-bg); color: var(--blue); }
 
 .tag-trusted { background: var(--green-bg); color: var(--green); }
+/* Issue #219: AniList isAdult. Sits beside the status tag on the series page. */
+.tag-adult { background: rgba(211, 125, 125, 0.15); color: var(--red, #d37d7d); }
 
 .tag-res { background: var(--bg-elevated); color: var(--text-dim); }
 

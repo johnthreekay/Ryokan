@@ -418,6 +418,7 @@ mod tests {
 
     fn detail_with_everything() -> AnimeDetail {
         AnimeDetail {
+            is_adult: false,
             id: 12345,
             id_mal: Some(67890),
             title_romaji: "Romaji Title".to_string(),
@@ -449,6 +450,7 @@ mod tests {
 
     fn series_stub() -> Series {
         Series {
+            is_adult: false,
             id: 1,
             anilist_id: 12345,
             mal_id: Some(67890),

@@ -72,6 +72,12 @@ pub struct AutoSearchReport {
     /// get overwritten by a generic terminal event.
     #[serde(default)]
     pub cancelled: bool,
+    /// Issue #219 — advisory lines the terminal toast shows above the
+    /// per-target reasons (currently: adult title with no indexer
+    /// configured). Carried on the report rather than emitted mid-search
+    /// because the sticky progress toast shows one event at a time.
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 /// Return all scored candidates for an episode target without grabbing anything.
@@ -1324,13 +1330,16 @@ fn apply_interactive_filter_and_push(
         candidates.push(result);
         return;
     }
-    // Relaxed alias matching: lower threshold than auto search
+    // Relaxed alias matching: lower threshold than auto search. The
+    // fuzzy half scores distinctive tokens only (#219) so a "The
+    // Animation" release can't ride in on the format words alone.
     let normalized_title = normalize_title(&result.title);
     let title_tokens = token_set(&normalized_title);
     let alias_match = ctx.aliases.iter().any(|alias| {
         let normalized_alias = normalize_title(alias);
         normalized_title.contains(&normalized_alias)
-            || token_overlap_ratio(&title_tokens, &token_set(&normalized_alias)) >= 0.5
+            || aliases::distinctive_overlap_ratio(&title_tokens, &token_set(&normalized_alias))
+                >= 0.5
     });
     if !alias_match {
         return;
@@ -2120,6 +2129,7 @@ mod tests {
 
     fn series_with_overrides(tokens: &str, user: &str) -> crate::models::series::Series {
         crate::models::series::Series {
+            is_adult: false,
             id: 1,
             anilist_id: 1,
             mal_id: None,
@@ -2300,6 +2310,7 @@ mod tests {
 
     fn detail(id: i64, romaji: &str, english: &str, native: &str) -> AnimeDetail {
         AnimeDetail {
+            is_adult: false,
             id,
             id_mal: None,
             title_romaji: romaji.into(),

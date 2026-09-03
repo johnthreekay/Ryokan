@@ -251,6 +251,7 @@ fn entries_from_mal_leaves_anilist_id_at_zero_for_resolution() {
 
 fn make_detail(id: i64, title_english: &str, format: &str, status: &str) -> anilist::AnimeDetail {
     anilist::AnimeDetail {
+        is_adult: false,
         id,
         id_mal: None,
         title_romaji: title_english.to_string(),

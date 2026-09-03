@@ -171,6 +171,7 @@ mod tests {
 
     fn detail_with(format: &str, episodes: Option<i32>) -> AnimeDetail {
         AnimeDetail {
+            is_adult: false,
             id: 1,
             id_mal: None,
             title_romaji: String::new(),
