@@ -196,6 +196,25 @@ async fn find_all_for_target_returns_matching_release_from_nyaa() {
     let r = &results[0];
     assert_eq!(r.seeders, 50);
     assert_eq!(r.size, "1.4 GiB");
+    let provenance = r
+        .match_provenance
+        .as_ref()
+        .expect("collector stamps provenance on every gated candidate");
+    assert_eq!(
+        provenance.kind,
+        ryokan::services::auto_search::MatchKind::Verbatim
+    );
+    assert_eq!(
+        provenance.phase,
+        ryokan::services::auto_search::MatchPhase::Primary
+    );
+    assert_eq!(provenance.alias, "Test Show");
+    let confidence = r
+        .score_breakdown
+        .iter()
+        .find(|c| c.label == "Title Match Confidence")
+        .expect("breakdown always lists the confidence line");
+    assert_eq!(confidence.delta, 0);
     assert!(
         r.info_hash.starts_with("0123456789abcdef"),
         "info_hash must round-trip from the magnet"
@@ -1024,4 +1043,137 @@ async fn auto_search_episode_handler_returns_400_when_no_download_client_configu
         }
         Ok(_) => panic!("missing-client must surface as 400, not Ok"),
     }
+}
+
+#[tokio::test]
+async fn auto_search_episode_handler_prefers_verbatim_over_fuzzy_and_records_provenance() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // Row A matches the title verbatim with few seeders; row B has the
+    // same words in a different order (fuzzy at ratio 1.0) and ten
+    // times the seeders. Without the confidence penalty B wins on the
+    // seeder tier; with it A wins.
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&format!(
+        "{}{}",
+        nyaa_row(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            99101,
+            "[Group] Auto Search Show Deluxe - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            20,
+        ),
+        nyaa_row(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            99102,
+            "[Group] Deluxe Auto Search Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            200,
+        )
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9002;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Auto Search Show Deluxe").await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert_eq!(report.grabbed.len(), 1, "report={report:?}");
+
+    let calls = client.add_calls();
+    assert_eq!(calls.len(), 1);
+    assert!(
+        calls[0].1.starts_with("aaaaaaaa"),
+        "the verbatim candidate must win despite fewer seeders; grabbed hash {}",
+        calls[0].1
+    );
+
+    let row: (String, String, String, f64) = sqlx::query_as(
+        "SELECT match_kind, match_phase, matched_alias, match_ratio FROM episode_grab_history WHERE series_id = ? AND episode_number = 3",
+    )
+    .bind(series_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "verbatim");
+    assert_eq!(row.1, "primary");
+    assert_eq!(row.2, "Auto Search Show Deluxe");
+    assert_eq!(row.3, 1.0);
+
+    let detail: String = sqlx::query_scalar(
+        "SELECT detail FROM logs WHERE message LIKE 'Grabbed: %' ORDER BY id DESC LIMIT 1",
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert!(
+        detail
+            .contains("match=verbatim phase=primary alias=\"Auto Search Show Deluxe\" ratio=1.00"),
+        "{detail}"
+    );
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn auto_search_episode_handler_still_grabs_fuzzy_only_candidate() {
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "cccccccccccccccccccccccccccccccccccccccc",
+        99103,
+        "[Group] Deluxe Auto Search Show - 03 (1080p) [WEB].mkv",
+        "1.4 GiB",
+        200,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9003;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Auto Search Show Deluxe").await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert_eq!(
+        report.grabbed.len(),
+        1,
+        "a fuzzy-only pool still grabs; report={report:?}"
+    );
+    assert_eq!(client.add_calls().len(), 1);
+
+    let row: (String, f64) = sqlx::query_as(
+        "SELECT match_kind, match_ratio FROM episode_grab_history WHERE series_id = ? AND episode_number = 3",
+    )
+    .bind(series_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "fuzzy");
+    assert_eq!(row.1, 1.0);
+
+    unset_nyaa_base();
 }
