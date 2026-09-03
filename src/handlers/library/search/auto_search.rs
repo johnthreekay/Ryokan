@@ -299,6 +299,18 @@ async fn run_auto_search_targets_with_upgrades(
         &format!("{} target(s), allow_batch={}", targets.len(), allow_batch),
     )
     .await;
+    if detail.is_adult {
+        // Issue #219 — every Nyaa query for an adult title comes back
+        // empty, and Phase 1.5's loosened aliases were what let an
+        // unrelated release through. Say why up front.
+        logger::warn(
+            &state.db,
+            LogCategory::AutoSearch,
+            &format!("{} is marked adult on AniList", title),
+            "Nyaa lists adult releases on sukebei, which Ryokan does not search. Only configured torznab or newznab indexers can find this title.",
+        )
+        .await;
+    }
     progress::emit(
         "search",
         "info",

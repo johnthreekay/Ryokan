@@ -300,6 +300,7 @@ mod tests {
     /// test bodies stay focused on the inputs that matter.
     fn series_with_status(status: &str) -> series::Series {
         series::Series {
+            is_adult: false,
             id: 1,
             anilist_id: 1,
             mal_id: None,

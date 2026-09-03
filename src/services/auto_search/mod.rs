@@ -2123,6 +2123,7 @@ mod tests {
 
     fn series_with_overrides(tokens: &str, user: &str) -> crate::models::series::Series {
         crate::models::series::Series {
+            is_adult: false,
             id: 1,
             anilist_id: 1,
             mal_id: None,
@@ -2303,6 +2304,7 @@ mod tests {
 
     fn detail(id: i64, romaji: &str, english: &str, native: &str) -> AnimeDetail {
         AnimeDetail {
+            is_adult: false,
             id,
             id_mal: None,
             title_romaji: romaji.into(),

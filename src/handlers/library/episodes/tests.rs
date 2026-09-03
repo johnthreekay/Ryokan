@@ -545,6 +545,7 @@ mod episodes_ci {
 
     fn detail_fixture(id: i64, romaji: &str) -> crate::services::anilist::AnimeDetail {
         crate::services::anilist::AnimeDetail {
+            is_adult: false,
             id,
             id_mal: None,
             title_romaji: romaji.into(),
