@@ -1324,13 +1324,16 @@ fn apply_interactive_filter_and_push(
         candidates.push(result);
         return;
     }
-    // Relaxed alias matching: lower threshold than auto search
+    // Relaxed alias matching: lower threshold than auto search. The
+    // fuzzy half scores distinctive tokens only (#219) so a "The
+    // Animation" release can't ride in on the format words alone.
     let normalized_title = normalize_title(&result.title);
     let title_tokens = token_set(&normalized_title);
     let alias_match = ctx.aliases.iter().any(|alias| {
         let normalized_alias = normalize_title(alias);
         normalized_title.contains(&normalized_alias)
-            || token_overlap_ratio(&title_tokens, &token_set(&normalized_alias)) >= 0.5
+            || aliases::distinctive_overlap_ratio(&title_tokens, &token_set(&normalized_alias))
+                >= 0.5
     });
     if !alias_match {
         return;

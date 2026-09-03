@@ -90,6 +90,84 @@ pub fn token_overlap_ratio(a: &HashSet<String>, b: &HashSet<String>) -> f32 {
     common / b.len() as f32
 }
 
+/// Tokens that appear in so many anime titles that they say nothing
+/// about *which* title a release belongs to: English function words,
+/// romaji particles, and format nouns. Issue #219 — the colon-split
+/// alias `Risa THE ANIMATION` used to clear the 0.6 overlap gate on
+/// `the` + `animation` alone, so every "The Animation" release an
+/// indexer returned matched an unrelated adult OVA. The fuzzy overlap
+/// path now counts only the distinctive tokens; the verbatim-substring
+/// path is unchanged.
+const GENERIC_TITLE_TOKENS: &[&str] = &[
+    // English function words.
+    "the",
+    "a",
+    "an",
+    "of",
+    "and",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "with",
+    "from",
+    "by",
+    "vs",
+    "or",
+    // Romaji particles.
+    "no",
+    "wa",
+    "ga",
+    "ni",
+    "wo",
+    "de",
+    "mo",
+    "ka",
+    "ne",
+    "yo",
+    // Format / packaging nouns.
+    "animation",
+    "anime",
+    "movie",
+    "film",
+    "series",
+    "season",
+    "seasons",
+    "part",
+    "ova",
+    "oad",
+    "ona",
+    "tv",
+    "special",
+    "specials",
+    "episode",
+    "episodes",
+];
+
+pub fn is_generic_title_token(token: &str) -> bool {
+    GENERIC_TITLE_TOKENS.contains(&token)
+}
+
+/// Share of the alias's *distinctive* tokens (see
+/// `GENERIC_TITLE_TOKENS`) that appear in the title. An alias made of
+/// nothing but generic tokens (`The Movie`) has no distinctive signal
+/// and scores `0.0`, so only the verbatim-substring path can match it.
+pub fn distinctive_overlap_ratio(
+    title_tokens: &HashSet<String>,
+    alias_tokens: &HashSet<String>,
+) -> f32 {
+    let distinctive: HashSet<String> = alias_tokens
+        .iter()
+        .filter(|t| !is_generic_title_token(t))
+        .cloned()
+        .collect();
+    if distinctive.is_empty() {
+        return 0.0;
+    }
+    token_overlap_ratio(title_tokens, &distinctive)
+}
+
 pub fn collect_aliases(detail: &AnimeDetail) -> Vec<String> {
     dedupe_strings(vec![
         detail.title_romaji.clone(),
@@ -634,9 +712,22 @@ pub fn dedupe_strings(values: Vec<String>) -> Vec<String> {
 /// subtitle adds expected surplus) while 1-2 token aliases get a tight
 /// budget. Returns `true` to keep the alias as a viable match;
 /// `false` to discard this alias-vs-release pairing.
+/// Which alias tokens size the surplus tolerance in
+/// `passes_content_surplus_check`.
+#[derive(Clone, Copy)]
+enum SurplusBudget {
+    /// Every alias content token counts. Used for verbatim-substring
+    /// matches, where the whole alias is known to be present.
+    FullAlias,
+    /// Only distinctive tokens count (#219). Used for fuzzy overlap
+    /// matches so generic words can't widen the budget.
+    Distinctive,
+}
+
 fn passes_content_surplus_check(
     title_tokens: &HashSet<String>,
     alias_tokens: &HashSet<String>,
+    budget: SurplusBudget,
 ) -> bool {
     let is_metadata_number = |t: &str| -> bool {
         // Pure-digit tokens in the episode/year range. Mixed
@@ -678,7 +769,21 @@ fn passes_content_surplus_check(
     //   3+ alias tokens → unlimited. Existing 0.6-ratio gate carries
     //                     the load; multi-token aliases are
     //                     specific enough to not hit the bug.
-    let tolerance = match alias_content.len() {
+    let budget_tokens = match budget {
+        SurplusBudget::FullAlias => alias_content.len(),
+        SurplusBudget::Distinctive => {
+            let distinctive = alias_content
+                .iter()
+                .filter(|t| !is_generic_title_token(t))
+                .count();
+            if distinctive == 0 {
+                alias_content.len()
+            } else {
+                distinctive
+            }
+        }
+    };
+    let tolerance = match budget_tokens {
         1 => 1,
         2 => 3,
         _ => usize::MAX,
@@ -701,13 +806,29 @@ pub fn matches_target(
     let alias_match = aliases.iter().any(|alias| {
         let normalized_alias = normalize_title(alias);
         let alias_tokens = token_set(&normalized_alias);
-        let raw_match = normalized_title.contains(&normalized_alias)
-            || token_overlap_ratio(&title_tokens, &alias_tokens) >= 0.6;
         // Issue #103 — short aliases substring-match unrelated shows
         // sharing a token. Require the title's content tokens not to
         // substantially exceed the alias's; see
         // `passes_content_surplus_check` for the tolerance schedule.
-        raw_match && passes_content_surplus_check(&title_tokens, &alias_tokens)
+        if normalized_title.contains(&normalized_alias) {
+            return passes_content_surplus_check(
+                &title_tokens,
+                &alias_tokens,
+                SurplusBudget::FullAlias,
+            );
+        }
+        // Issue #219 — the fuzzy path scores distinctive tokens only,
+        // and its surplus budget is keyed on them too: `Risa THE
+        // ANIMATION` is a one-word alias for this purpose, so a
+        // release that merely says "The Animation" no longer matches,
+        // and one that says "Risa" can't smuggle in a whole other
+        // title around it.
+        distinctive_overlap_ratio(&title_tokens, &alias_tokens) >= 0.6
+            && passes_content_surplus_check(
+                &title_tokens,
+                &alias_tokens,
+                SurplusBudget::Distinctive,
+            )
     });
 
     if !alias_match {
@@ -1408,5 +1529,73 @@ mod tests {
             false,
             47,
         ));
+    }
+
+    #[test]
+    fn issue_219_generic_the_animation_alias_must_not_match_unrelated_show() {
+        // Issue #219 — aliases exactly as Phase 1.5 builds them for
+        // AL 21521 (romaji + native canonical, plus the colon-split
+        // segment). `the` + `animation` used to be 2 of the segment's
+        // 3 tokens, clearing the 0.6 gate for every "The Animation"
+        // release an indexer returned.
+        let segments = split_title_segments("Kowaremono: Risa THE ANIMATION");
+        assert_eq!(segments, vec!["Risa THE ANIMATION".to_string()]);
+        let aliases = vec![
+            "Kowaremono: Risa THE ANIMATION".to_string(),
+            "コワレモノ:璃沙 THE ANIMATION".to_string(),
+            "Risa THE ANIMATION".to_string(),
+        ];
+        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let target = SearchTarget::Single;
+        for legit in [
+            "[H-Enc] コワレモノ：璃沙 THE ANIMATION / Kowaremono Risa The Animation 01-02 (BDRip 1080p HEVC AAC)",
+            "[Group] Risa The Animation - 01 [1080p]",
+            "[Diogo4D] Kowaremono Risa The Animation [DVD][576p][Uncensored] [7FED77BC].mkv",
+        ] {
+            assert!(
+                matches_target(legit, &aliases, &no_siblings, &target, 0, false, 0),
+                "the real release must still match: {legit}"
+            );
+        }
+        for wrong in [
+            "[APRZ] Grisaia: Phantom Trigger - The Animation - 01 [SORD] [1080p]",
+            "[APRZ] Grisaia: Phantom Trigger - The Animation - 02 [SOUL SPEED]",
+            "Grisaia Phantom Trigger - The Animation Episode 1-2",
+            "[Xonline].Grisaia.Phantom.Trigger.The.Animation-02.BD.1920p.x.264-10Bit.Flac.[02964F5A]",
+            "[SubsPlease] Sword Art Online the Animation - 01 (1080p)",
+            // Shares the distinctive token but is a different show:
+            // the fuzzy path's surplus budget is keyed on the one
+            // distinctive token, so the extra title words reject it.
+            "[Kira-Fansub] Amagami SS Risa and Miya Arc (BD 1920x1080 h264 AAC)",
+        ] {
+            assert!(
+                !matches_target(wrong, &aliases, &no_siblings, &target, 0, false, 0),
+                "unrelated release must be rejected: {wrong}"
+            );
+        }
+    }
+
+    #[test]
+    fn distinctive_overlap_ratio_ignores_generic_tokens() {
+        let title = token_set("grisaia phantom trigger the animation 01");
+        let risa = token_set("risa the animation");
+        assert_eq!(distinctive_overlap_ratio(&title, &risa), 0.0);
+        assert!(
+            token_overlap_ratio(&title, &risa) > 0.6,
+            "the old ratio is what let #219 through"
+        );
+
+        // Generic tokens are dropped from the denominator, so the
+        // distinctive words carry the whole decision.
+        let hero = token_set("boku no hero academia");
+        let release = token_set("boku hero academia 12");
+        assert_eq!(distinctive_overlap_ratio(&release, &hero), 1.0);
+
+        // An all-generic alias has no signal on the fuzzy path.
+        let movie = token_set("the movie");
+        assert_eq!(
+            distinctive_overlap_ratio(&token_set("some show the movie"), &movie),
+            0.0
+        );
     }
 }
