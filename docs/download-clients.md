@@ -15,7 +15,7 @@ Pick the tab for your client. Each one covers preparation steps inside the clien
     **Prepare qBit:**
 
     1. Open qBit's web UI (default port 8080) and create your admin password if it's still on the random first-run password.
-    2. **Tools → Options → Web UI**: uncheck **Enable Host header validation**, then Save and restart the qBit container. qBit 4.5+ enables this by default; with it on, qBit returns 401 even for correct credentials when Ryokan-in-container POSTs with a `Host: qbittorrent:8080` header. Symptom in Ryokan is "qBittorrent Unauthorized" stuck in the connections panel while the web UI works fine from your browser.
+    2. **Tools → Options → Web UI**: uncheck **Enable Host header validation**, then Save and restart the qBit container. qBit 4.5+ enables this by default; with it on, qBit returns 401 even for correct credentials when Ryokan-in-container POSTs with a `Host: qbittorrent:8080` header. Symptom in Ryokan is "qBittorrent Unauthorized" stuck on Settings → Download Clients while the web UI works fine from your browser.
 
     **Add it to Ryokan** (Settings → Download Clients):
 
@@ -135,4 +135,4 @@ At grab time the chosen client ID is stamped on the `grabbed_torrents` row, so p
 
 ---
 
-*Last updated: 2026-05-07.*
+*Last updated: 2026-08-29.*

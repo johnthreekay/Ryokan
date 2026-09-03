@@ -30,7 +30,7 @@
 // The boot order is important: this script must load AFTER htmx
 // (so `window.htmx.onLoad` exists) and BEFORE the per-page scripts
 // that call `ryokanRegisterPageInit`. base.html loads it between
-// htmx + extensions and `base.js`.
+// htmx and `base.js`.
 
 (function () {
     const registry = [];

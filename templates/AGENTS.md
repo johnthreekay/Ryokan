@@ -8,21 +8,24 @@ Askama 0.16 (Jinja2-like, compiled into the binary at build time via proc-macro)
 
 - **Inheritance is explicit.** An attribute reaches descendants only with the `:inherited` suffix (`hx-boost:inherited`). A bare `hx-target` on a form is the form's alone; a link inside it boosts to the body. Don't add `:inherited` near a form unless every descendant should really use it. `hx-disinherit` no longer exists.
 - **Event names are colon-separated**: `htmx:after:swap`, `htmx:after:settle`, `htmx:after:request`, `htmx:response:error`, `htmx:config:request`, `htmx:after:init` (was `htmx:load`). In `hx-on` that is `hx-on::after:request` / `hx-on::response:error`; the 2.x kebab spellings bind to events that never fire. There is no `event.detail.successful`; read `event.detail.ctx.response.status`.
-- **`htmx:after:swap` fires on the request's source element** (or on `document` once that element was swapped out), not on the target. Section re-bind listeners compare `window.ryokanSwapTargetId(ev)` (`base.js`; reads `ev.detail.ctx.target.id`) instead of `ev.target.id`. `htmx:after:settle` still fires on the target.
+- **`htmx:after:swap` fires on the request's source element**, not on the target; when the source was swapped out htmx re-points the event at the connected target, and only if both are gone does it land on `document`. Section re-bind listeners compare `window.ryokanSwapTargetId(ev)` (`base.js`; reads `ev.detail.ctx.target.id`) instead of `ev.target.id`. `htmx:after:settle` still fires on the target.
 - **`htmx:confirm` fires only when the request has a confirm.** The `data-ryokan-confirm-*` bridge in `base.js` therefore stamps `ctx.confirm` from an `htmx:config:request` listener for opted-in source elements, then the `htmx:confirm` listener `preventDefault()`s and calls `issueRequest()` / `dropRequest()`. No template needs `hx-confirm`. Forms htmx drives (any `hx-*` verb, or boosted) go through the bridge; only `hx-boost="false"` forms use the native submit listener, decided at submit time via `elt._htmx.boosted`.
 - **Renamed attributes**: `hx-disable` now means "disable these elements during the request" (was `hx-disabled-elt`); "skip htmx processing" is `hx-ignore` (was `hx-disable`). `hx-ext` is gone.
 - **`htmx.ajax` options**: `push: true` (was `pushUrl`). `htmx.onLoad` still exists (fires on `htmx:after:process`); `htmx.process` and `htmx.trigger` are unchanged.
 - **Config meta** in `base.html`: `noSwap: [204, 304, "4xx", "5xx"]` (htmx 4 would otherwise swap error bodies; handlers return plain-text errors on those statuses and rely on the HX-Trigger toast) and `defaultTimeout: 0` (htmx 4 aborts at 60s by default; interactive search can run longer). History refetches on back / forward by default, which is what the old `historyEnableCache: false` did.
-- **Server contract unchanged**: `HX-Request`, `HX-Trigger`, `HX-Redirect`, `HX-Refresh`, `HX-Retarget` behave as before; `HX-Trigger-Name` is gone (Ryokan never read it). `hx-vals='js:…'`, `hx-target="closest tr"` / `next .x` / `this`, `hx-swap-oob`, `hx-include="closest form"`, and `hx-trigger="keyup changed delay:400ms"` all parse as before.
+- **Server contract unchanged**: `HX-Request`, `HX-Trigger`, `HX-Redirect`, `HX-Refresh`, `HX-Retarget` behave as before; `HX-Trigger-Name` is gone (Ryokan never read it). `hx-vals='js:…'`, `hx-target="closest tr"` / `this`, `hx-swap-oob`, `hx-include="closest form"`, and `hx-trigger="keyup changed delay:400ms"` all parse as before.
 - **Pinned by** `tests/htmx_foundation.rs` (vendored bundle shape, body attribute, meta config, and a vocabulary guard that fails on any 2.x attribute / event name / `pushUrl` / `detail.successful` in templates or JS) and the browser-e2e suite (`hx_on_handlers_fire_under_htmx_4_event_names`, the `indexers_delete_confirm_removes_row` rebind check, the confirm-bridge delete tests).
 
 ## Boot order
 
-`templates/base.html` loads the htmx core as `defer` *before* `static/js/page_lifecycle.js` and `static/js/base.js` so any code referencing the `htmx.*` global sees it on first paint. `base.js` guards its modal IIFEs, so a page without the modal markup (test fixtures) still gets the toast and confirm helpers that come before them.
+`templates/base.html` loads the htmx core as `defer` *before* `static/js/page_lifecycle.js` and `static/js/base.js` so any code referencing the `htmx.*` global sees it on first paint. `base.js` guards its modal IIFEs, so a page without the modal markup (test fixtures) still gets the toast helpers and the listeners defined after them; the confirm bridge registers too but needs the modal markup to actually confirm anything.
 
-Per-element `hx-boost="false"` opt-outs in `base.html`:
-- `/logout` (avoids swap-then-redirect race against session-clear)
-- `target="_blank"` and in-page `href="#anchor"` (defensive — htmx defaults already do the right thing, but explicit doesn't hurt)
+Per-element `hx-boost="false"` opt-outs:
+- `/logout` links in `base.html` (avoids a swap-then-redirect race against session-clear)
+- download links (`system.html`, `partials/system/backup.html`): a boosted click would swap the attachment's bytes into the page
+- the API-key create form (`partials/settings/api_keys.html`): a JS `submit` listener owns that form
+
+`target="_blank"` links and in-page anchors are not opted out; htmx handles both natively.
 
 ## Partial-rendering convention
 
@@ -41,7 +44,7 @@ Tested via `tests/htmx_browser_e2e*.rs`.
 
 - **`Form<T>`, not `Json<T>`**, on handler extractors. `hx-vals` + `hx-include="closest form"` form-encode by default. New handlers take `Form<T>` with `#[serde(default)]` on every field if `hx-include` may pull extras the handler doesn't care about — serde silently drops unknown fields.
 - **Always-200 for inline-result swaps.** The `noSwap` config in `base.html` makes htmx *skip the swap on 4xx/5xx* (htmx 2's built-in policy, opted back in under htmx 4) — a handler returning 502 on connection-test failure leaves the spinner up forever. Pattern: `templates/partials/settings/connection_test_result.html` + `ConnectionTestResultPartial::into_html_ok()` — render success/failure into the same partial (different inline color), always 200. Inverse for row-removal swaps: 5xx is the right signal so htmx skips the swap and the row stays put for the user to retry.
-- **`htmx:confirm` bridge** in `static/js/base.js` wires `data-ryokan-confirm-*` attrs to the in-app confirm modal *for forms with hx-\* attrs*. Load-bearing because htmx's submit listener fires before any per-form `submit` listener could (registration order — htmx loads first), so a custom listener calling `preventDefault()` runs after the AJAX is already in flight. **Pure form-POST forms (no `hx-*`) keep using the per-form submit-intercept pattern.** Adding a confirm modal to a new HTMX form is just adding the `data-ryokan-confirm-*` attrs.
+- **`htmx:confirm` bridge** in `static/js/base.js` wires `data-ryokan-confirm-*` attrs to the in-app confirm modal *for htmx-driven forms (any `hx-*` verb, or boosted)*. Load-bearing because htmx's submit listener fires before any per-form `submit` listener could (registration order — htmx loads first), so a custom listener calling `preventDefault()` runs after the AJAX is already in flight. **Only `hx-boost="false"` forms use the per-form submit-intercept pattern; under body-wide boost every other form is htmx-driven and goes through the bridge.** Adding a confirm modal to a new HTMX form is just adding the `data-ryokan-confirm-*` attrs.
 - **`HX-Refresh: true`** for full-page reload after a state change a per-row swap can't represent. CF delete returns this when the table goes empty so the empty-state CTA renders (lives outside the `{% for %}` loop, can't be swapped in by per-row `outerHTML`). Don't overuse — full reload is heavy; per-row swap is default.
 - **Wire legacy form fields through hidden inputs** even after they no longer drive runtime behavior. A user with a stale tab will blank them on save otherwise. Pattern in `handlers/settings/mod.rs::settings_submit` for `qbit_url` / `qbit_user` / `qbit_pass`.
 - **`htmx_aware_redirect` for any `Redirect::to`.** Under hx-boost, htmx follows 3xx via `fetch` and inline-swaps the destination's HTML into the source page's `hx-target` — producing nested-page renders (a Settings response inside the prior page's body). Helper at `src/handlers/responses.rs` returns `200 OK` + `HX-Redirect` for HTMX callers (htmx triggers a real `window.location` nav) and a standard 303 for plain callers. `htmx_aware_redirect_from_req(req, url)` is the middleware-friendly variant. **`tests/htmx_redirect_audit.rs` is a CI-enforced lint** — every `Redirect::to` must route through the helper, sit inside `if !is_htmx { ... }`, or be in the documented exceptions table.
@@ -68,7 +71,7 @@ Boost-nav users don't notice because the helpers stay loaded from a prior page; 
 
 ## Links inside forms that carry `hx-target`
 
-Under htmx 2's implicit inheritance a plain `<a href>` inside a form with `hx-target="#some-region" hx-swap="outerHTML"` (the per-tab Settings subforms) was boosted **using the form's target and swap**, rendering the destination page nested inside that region with two sidebars overlapping. htmx 4 inherits only through `:inherited`, so this can't happen unless someone adds `hx-target:inherited` to a form; don't. Download links are the one place that needs a per-link opt-out: `hx-boost="false"`, because a boosted click would swap the attachment's bytes into the page.
+Under htmx 2's implicit inheritance a plain `<a href>` inside a form with `hx-target="#some-region" hx-swap="outerHTML"` (the per-tab Settings subforms) was boosted **using the form's target and swap**, rendering the destination page nested inside that region with two sidebars overlapping. htmx 4 inherits only through `:inherited`, so this can't happen unless someone adds `hx-target:inherited` to a form; don't. The per-link `hx-boost="false"` opt-outs (download links, `/logout`, the API-key create form) are listed under Boot order.
 
 ## Per-page JS quirks under hx-boost
 
@@ -89,8 +92,8 @@ Non-ASCII bytes mojibake into Latin-1 (em-dash → `â\u{80}\u{94}`). Use ASCII 
 
 ## Toast helpers (defined in `static/js/base.js`)
 
-- `ryokanToast(msg, kind)` — kind is `info` | `success` | `error`.
-- `ryokanProgressToast(jobId, opts)` — long-job progress polling.
+- `ryokanToast({ title, body, kind, category, sticky, duration, log })` — one options object; `kind` is `info` | `success` | `warn` | `error` (anything else coerces to `info`), `sticky: true` disables auto-dismiss, `log: false` skips the System → Logs write.
+- `ryokanProgressToast({ progressId, title, body, kind, category })` — sticky toast driven by the `/api/progress/{id}` stream; throws without `progressId`, and `finalize()` on the returned handle turns it into a normal auto-dismissing toast.
 
 ## XSS surface
 

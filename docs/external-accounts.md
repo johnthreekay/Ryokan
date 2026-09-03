@@ -1,49 +1,41 @@
 # External accounts
 
-Link your AniList or MyAnimeList account and Ryokan will pull anime you mark as watching (or planning, completed, etc.) into your library automatically. New entries on the linked side become new series in Ryokan on the next sync tick; status changes propagate.
+Link your AniList or MyAnimeList account and Ryokan adds the anime you mark as watching (or planning, completed, and so on) to your library for you. New entries on the linked side show up in Ryokan on the next sync, and status changes carry over.
 
-You don't have to link anything. Manually-added series work fine without it. But if you already track anime on AL or MAL, linking saves typing.
-
-Configure under **Settings → Connections** (the External Accounts card near the bottom of the tab).
+Both accounts are set up under **Settings → Connections**.
 
 ## Linking AniList
 
-1. In Ryokan: **Settings → Connections → External Accounts → Link AniList**.
-2. Ryokan opens AniList's authorization page in a new browser tab via the `/start` endpoint.
-3. Sign in to AniList if you aren't already, click **Approve**.
-4. AniList redirects you to a broker page hosted alongside Ryokan's docs at `johnthreekay.github.io/Ryokan/auth/anilist/`. The broker exists because AniList's OAuth requires a static redirect URL, but every Ryokan instance is at a different address; the broker reflects the token back to your clipboard so you can paste it into your own Ryokan.
-5. Copy the access token + state from the broker page and paste them into Ryokan's paste modal.
+1. In Ryokan, go to **Settings → Connections** and click **Link AniList**.
+2. AniList opens in a new tab. Sign in if you need to, then click **Approve**.
+3. Come back to Ryokan. The account links itself; you can close the other tab.
 
-The token lasts about a year. No refresh flow; you'll re-link annually. Ryokan reads your AniList score format (POINT_10, POINT_100, etc.) on every sync, so flipping the format on AniList takes effect on the next tick without unlinking.
+If your browser blocked the new tab, allow pop-ups for Ryokan and click **Link AniList** again. If the tab opened but the link never completed, the page AniList sent you to shows the token and state; paste them into the box that is still open in Ryokan.
+
+The link lasts about a year; after that Ryokan asks you to link again. Your AniList score format (10-point, 100-point, and so on) is picked up automatically, so changing it on AniList needs no re-link.
 
 ## Linking MyAnimeList
 
-Same shape as AniList: Ryokan opens MAL's authorization page, you approve, the broker page reflects the token back, you paste it into Ryokan.
+Same steps: click **Link MyAnimeList**, approve on MyAnimeList, and come back to Ryokan. The same fallback applies if the tab was blocked.
 
-The difference under the hood is that MAL uses a more involved OAuth flow with a "refresh token" kept alongside the access token. Practical effect: when MAL's access token expires (every ~30 days), Ryokan refreshes it automatically using the refresh token without making you re-link. You only need to re-link if MAL invalidates the refresh token itself, which usually means you revoked the app or changed your MAL password.
+MyAnimeList links renew themselves in the background. You only need to link again if you remove Ryokan from your MyAnimeList apps or change your MyAnimeList password.
 
 ## Watch-list sync
 
-The watch-list sync runs as a background task every `external_sync_interval_minutes` (default 30, minimum 15). Each tick:
+Once an account is linked, Ryokan checks it every 30 minutes. **Sync interval (minutes)** in the same settings section changes that, down to every 15 minutes. Each check:
 
-1. Asks AniList or MAL for entries that changed since the last successful sync.
-2. Filters by your import preferences (Watching, Planning, Paused, Dropped, Completed).
-3. Pre-fetches AniList metadata for new ids in one batch so the import is fast.
-4. Adds new series to your library, updates monitor mode (Watching → All / Future / Cutoff) on existing ones based on the linked-side status.
-5. On every Nth tick (currently every 6th), does a full re-fetch instead of an incremental delta to catch removals; AniList and MAL don't expose a "this entry was deleted" signal, so the only way to detect a removal is to re-list the whole thing and notice the missing id.
+- picks up anime you added or moved between lists, limited to the lists you ticked (Watching, Planning, Paused, Dropped, Completed),
+- adds new series to your library and adjusts monitoring on existing ones to match their status on the linked side,
+- about once a week, re-reads the whole list so anime you removed are noticed too.
 
-The "Sync now" button on the External Accounts card forces an immediate tick instead of waiting for the next scheduled one.
+**Sync now** next to the linked account runs a check right away.
 
-## Failure modes
+## Common issues
 
-- **Token expired or revoked**: AniList responds with a GraphQL error mentioning `"token"`, or with HTTP 401. MAL returns 401 too. Ryokan logs the failure and surfaces "user may need to re-link" in System → Logs (filtered to ExternalSync category). The sync's exponential backoff defers retries so the failed sync doesn't hammer the server.
-- **Rate limited**: AniList caps at 30 requests per minute in degraded mode (the current state). The sync stops short of the cap rather than firing into a 429. See [Troubleshooting → AniList rate limits](troubleshooting.md#anilist-keeps-returning-429-too-many-requests).
-- **Token rejected on link** (the most common 400 on link/submit): the validation probe Ryokan uses to confirm the freshly-pasted token works shares the same per-account quota as syncing. If your account is in a rate-limit cooldown when you try to link, the link fails with the same 429. See [Troubleshooting → Per-account AniList cooldown](troubleshooting.md#anilist-per-account-cooldown-stuck-past-60s).
-
-## Provider order is fixed for the Sonarr / Radarr shim
-
-Ryokan's Sonarr/Radarr-compatible API (anibridge) does AniList lookups first, MAL lookups second when AniList is down. There's no user-facing toggle for this and no plan to add one. Seerr expects stable provider behavior; falling back inconsistently confuses its caching.
+- **Re-link required**: the account's access has expired or been revoked. Click **Link** again. Until you do, Ryokan retries at a slower pace and logs the problem under **System → Logs** (category External Sync).
+- **AniList rate limit**: AniList allows a limited number of requests per minute, and Ryokan stops short of that limit on its own. If syncs look stalled, see [Troubleshooting](troubleshooting.md#anilist-keeps-returning-429-too-many-requests).
+- **Linking fails right after pasting the token**: linking uses the same AniList allowance as syncing. If your account is in a cooldown, wait a minute and try again. See [Troubleshooting](troubleshooting.md#anilist-per-account-cooldown-stuck-past-60s).
 
 ---
 
-*Last updated: 2026-05-07.*
+*Last updated: 2026-08-29.*

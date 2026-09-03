@@ -35,15 +35,15 @@ All in `[dev-dependencies]` so release binaries don't pull them.
 When inline tests would push a source file past ~1500 LoC, tests move to a sibling submodule with per-topic files. Existing splits:
 
 - `handlers/auth/tests/{throttle,csrf,sessions,proxy_headers,setup,timing_equalization,forgot_password,sanitize}.rs`
-- `services/post_processing/tests/{file_ops,filenames,lock}.rs`
-- `handlers/{sonarr_compat,radarr_compat}/tests/{auth,system}.rs`
-- `services/download_client/{qbittorrent,deluge,transmission,rtorrent}/wiremock_tests/{fixture, auth|connect|session_handshake, add, list, files, control, hash_case}.rs`
+- `services/post_processing/tests/{file_ops,filenames,lock,batch_import_live,batch_preflight,grab_claims_episode,run_once,walk_video_files}.rs`
+- `handlers/{sonarr_compat,radarr_compat}/tests/{auth,system,helpers,series|movie}.rs` (plus `snapshots/`)
+- `services/download_client/{qbittorrent,deluge,transmission,rtorrent}/wiremock_tests/{fixture, auth|connect|session_handshake, add, list, files, control, seed_rules, hash_case}.rs` and `sabnzbd/wiremock_tests/{fixture,auth_test,category_create,add,list,control}.rs`
 
 The download-client test dir is named `wiremock_tests/` (not `tests/`) to avoid colliding with the inline `#[cfg(test)] mod tests` block that still holds each client's pure-helper + `live_smoke` tests. Discoverable via `cargo test <module>::tests::...` or `<module>::wiremock_tests::...`.
 
 ## Env-gated live smokes
 
-Each `services/download_client/*/mod.rs` impl ships a `#[ignore]`d `live_smoke` test that exercises the full trait surface against a real client on localhost. Run with `--ignored` *and* `RYOKAN_{QBIT,DELUGE,TRANSMISSION,RTORRENT}_E2E=1` set. CI never runs them. See `src/services/download_client/AGENTS.md` for per-client setup.
+Each `services/download_client/*/mod.rs` impl ships a `#[ignore]`d `live_smoke` test that exercises the full trait surface against a real client on localhost. Run with `--ignored` *and* `RYOKAN_{QBIT,DELUGE,TRANSMISSION,RTORRENT,SAB}_E2E=1` set. CI never runs them. See `src/services/download_client/AGENTS.md` for per-client setup.
 
 ## Browser e2e
 
@@ -56,22 +56,24 @@ Originally scoped to the issue #129 HTMX migration; kept as **general-purpose br
 ```bash
 sudo pacman -S geckodriver       # Arch
 scripts/browser-e2e.sh           # the whole suite, or: scripts/browser-e2e.sh htmx_browser_e2e_phase1
-# Override URL via RYOKAN_WEBDRIVER_URL=...
+# RYOKAN_WEBDRIVER_PORT=4445 moves the driver the script starts; RYOKAN_BROWSER_BIN and
+# RYOKAN_BROWSER_HEADLESS=0 reach the harness. RYOKAN_WEBDRIVER_URL only makes sense for a
+# bare `cargo test` against a driver you started yourself.
 ```
 
-**Use the script, not a bare `cargo test`.** geckodriver holds exactly one WebDriver session: tests within a binary run in parallel by default and a test that bails before `client.close()` leaks its session, after which every later test prints `[skip] … Session is already started` and passes with an `ok` verdict in 0.01s. That is how five rotted tests went unnoticed for months. The script runs one binary at a time with `--test-threads=1`, restarts the driver between binaries, and reports skips as a separate count so a run that never drove a browser cannot look green. Every test must end with `let _ = client.close().await;` on its happy path, and `try_connect_browser` retries briefly on the session-teardown race.
+**Use the script, not a bare `cargo test`.** geckodriver holds exactly one WebDriver session: tests within a binary run in parallel by default and a test that bails before `client.close()` leaks its session, after which every later test prints `[skip] … Session is already started` and passes with an `ok` verdict in 0.01s. That is how five rotted tests went unnoticed for months. The script runs one binary at a time with `--test-threads=1`, restarts the driver between binaries, and reports skips as a separate count and exits non-zero when any test skipped (`RYOKAN_E2E_ALLOW_SKIPS=1` downgrades that to a warning), so a run that never drove a browser cannot look green. Every test must end with `let _ = client.close().await;` on its happy path, and `try_connect_browser` retries briefly on the session-teardown race.
 
 Tests skip (loudly, with `[skip]`) when the driver is unreachable. The `fantoccini` dep sits in `[dependencies]` as `optional = true` (Cargo doesn't allow optional dev-deps) and the e2e fixture handler + router builder live behind `#[cfg(feature = "browser-e2e")]` in `test_support.rs`.
 
 ### Shared harness
 
-`tests/common/browser_e2e.rs`, pulled into each test binary via `#[path = "common/browser_e2e.rs"] mod browser_e2e;`. Provides binary spawn, WebDriver connect, LibreWolf shim, assertion helpers (`assert_htmx_handled_in_place`, `assert_dom_contains`, `assert_modal_text`, `wait_for_*`).
+`tests/common/browser_e2e.rs`, pulled into each test binary via `#[path = "common/browser_e2e.rs"] mod browser_e2e;`. Provides the in-process server spawn (`spawn_app`), WebDriver connect, LibreWolf shim, assertion helpers (`assert_htmx_handled_in_place`, `assert_dom_contains`, `assert_modal_text`, `wait_for_*`).
 
 ### False-positive guards (mandatory for new row-mutation tests)
 
 Per the PR 131 audit:
 
-1. **`assert_htmx_handled_in_place`** — catches the form-POST fallback masquerading as an htmx swap when the vendored script fails to load. Asserts (a) `window.htmx` is defined, (b) the URL didn't redirect, (c) at least one neighbor row is still in the DOM (catches over-broad swap targets like `closest div`).
+1. **`assert_htmx_handled_in_place`** — catches the form-POST fallback masquerading as an htmx swap when the vendored script fails to load. Asserts (a) `window.htmx` is defined, (b) the URL didn't redirect, (c) the URL carries no `msg=` / `err=` flash parameter, the signature of the form-POST fallback's redirect. Neighbor survival is the next guard's job.
 2. **`assert_dom_contains(survivor)`** — catches over-broad swap targets that swallow neighbors. Seed at least 2 rows in the fixture.
 3. **DB-side side-effect verification** — the partial response is rendered from the request payload, so a no-op handler still returns a "successful" partial. Always verify the row is actually gone / present in the DB.
 4. **`assert_modal_text(slot, expected)`** — catches `data-ryokan-confirm-*` attribute typos that fall through to default copy.

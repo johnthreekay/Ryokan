@@ -5,17 +5,20 @@
 If you've used Sonarr for TV, the shape is the same. Ryokan is just the anime-tuned version of that idea: release-group reputation, batch packs, fansub conventions, [SeaDex](https://releases.moe) authoritative picks, AniList as the metadata source.
 
 !!! info "Project status"
-    Ryokan is a one-person project; expect rough edges. v1.X handles anime only; manga and light novels are on the roadmap for v2.X.
+    Ryokan is a one-person project; expect rough edges. v1.X handles anime only; manga and light novels are a later goal, after the anime side is solid.
 
 ## What you can do with it
 
 - **Track anime from AniList or MAL.** Link your account and Ryokan auto-adds shows you mark as watching. Or add them manually from Ryokan's search.
 - **Search multiple sources at once.** Built-in [Nyaa](https://nyaa.si) search, torznab and newznab indexers via Prowlarr or Jackett, direct RSS feeds, and autobrr webhooks all merge into one ranked result list.
 - **Pick the best release automatically.** A quality profile, [TRaSH-Guides](https://trash-guides.info)-compatible Custom Formats (the same scoring rules Sonarr uses), and optional [SeaDex](https://releases.moe) picks (a community-curated list of best anime releases) decide what gets grabbed.
-- **Re-grab when something better lands.** Set a quality cutoff once; Ryokan watches for upgrades and replaces older grabs as higher-scoring releases show up.
+- **Re-grab when something better lands.** Set a quality cutoff and Ryokan keeps watching for higher-quality uploads, replacing older grabs as higher-scoring releases show up.
 - **See what's airing this week.** A built-in [Calendar](calendar.md) shows upcoming episodes for the shows in your library, as a list or a month grid. You can also subscribe to it from your phone or laptop's calendar app.
 - **Use the download client you already have.** qBittorrent, Deluge, Transmission, rTorrent, or SABnzbd. Run more than one at once and Ryokan routes per-grab.
 - **Land files in your library automatically.** Hardlink (default; keeps the torrent seeding), copy, or move.
+- **Import the anime you already have.** Point the [import wizard](manual-import.md) at a folder; it matches each series on AniList and lands the files in place.
+- **Undo a deletion.** With a recycle bin configured, deleted episodes and series folders wait there until you restore or purge them.
+- **Back up and restore from the UI.** Snapshot the database and encryption key from System → Backup, on a schedule if you like, and restore by uploading the archive.
 - **Plug into Seerr.** Ryokan exposes a Sonarr/Radarr-compatible API so Seerr requests anime the same way it asks Sonarr for TV.
 
 ## Get started
@@ -40,4 +43,4 @@ If you'd rather build the stack yourself, work through these in order:
 
 ---
 
-*Last updated: 2026-05-09.*
+*Last updated: 2026-08-29.*

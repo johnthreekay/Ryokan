@@ -30,7 +30,7 @@ volumes:
   - /srv/media/anime:/media/anime      # optional but required for post-processing
 ```
 
-**`/data` (required)** holds the SQLite database, the artwork blob cache, the encryption key, the anibridge mappings cache, and any sentinel files. Loss of `/data` means losing your library state, queued grabs, scoring history, and OAuth tokens. The named-volume default (`ryokan-data`) keeps it inside Docker; bind-mount to a host path if you want the database visible from the host filesystem.
+**`/data` (required)** holds the SQLite database, the artwork blob cache, the encryption key, the anibridge mappings cache, the default `backups/` folder, and any sentinel files. Loss of `/data` means losing your library state, queued grabs, scoring history, and OAuth tokens. The named-volume default (`ryokan-data`) keeps it inside Docker; bind-mount to a host path if you want the database visible from the host filesystem.
 
 **`/downloads` and `/media/...`** are post-processing's source and destination. They're optional in the sense that Ryokan boots without them, but post-processing requires both to be visible inside the container at the same paths your download client uses for "complete" files and the path you set in Settings → General → Media Root Path.
 
@@ -80,4 +80,4 @@ The [Stack builder](stack-builder.md) generates Caddy / Traefik / nginx config w
 
 ---
 
-*Last updated: 2026-05-07.*
+*Last updated: 2026-08-29.*

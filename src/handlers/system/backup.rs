@@ -201,7 +201,7 @@ fn flag(v: &Option<String>) -> bool {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct DownloadQuery {
     #[serde(default)]
     include_artwork: Option<String>,
@@ -212,6 +212,19 @@ pub struct DownloadQuery {
 /// `GET /api/backup/download?include_artwork=1&sanitize=1`. Builds the
 /// archive in a temp dir under the data dir and streams it; 503 while
 /// another backup runs, 507 when the disk-space precheck fails.
+#[utoipa::path(
+    get,
+    path = "/api/backup/download",
+    tag = "Backup",
+    summary = "Download a backup",
+    description = "Builds a fresh backup archive (database, encryption key, optional artwork) and streams it as a tar.gz. Cookie auth only: the archive carries the encryption key.",
+    params(DownloadQuery),
+    responses(
+        (status = 200, description = "Backup archive (application/gzip)"),
+        (status = 503, description = "Another backup is already running"),
+        (status = 507, description = "Not enough free disk space"),
+    ),
+)]
 pub async fn api_backup_download(
     State(state): State<AppState>,
     Query(q): Query<DownloadQuery>,
@@ -306,6 +319,17 @@ async fn run_to_folder_tracked(state: &AppState) -> Result<backup::FolderRun, Ba
 
 /// `POST /api/backup/run` and `POST /api/tasks/backup`: JSON shape for
 /// the Scheduled Tasks tab's Run now.
+#[utoipa::path(
+    post,
+    path = "/api/backup/run",
+    tag = "Backup",
+    summary = "Save a backup to the backup folder",
+    description = "Writes a backup archive into the configured backup folder and prunes old ones. Also mounted at POST /api/tasks/backup for the Scheduled Tasks tab.",
+    responses(
+        (status = 200, description = "Result envelope: ok, message, file", body = serde_json::Value),
+        (status = 507, description = "Not enough free disk space"),
+    ),
+)]
 pub async fn api_backup_run(State(state): State<AppState>) -> Response {
     match run_to_folder_tracked(&state).await {
         Ok(run) => Json(serde_json::json!({
@@ -359,6 +383,18 @@ async fn configured_backup_dir(state: &AppState) -> PathBuf {
 /// `GET /api/backup/files/{name}`: download a backup from the folder.
 /// The name must parse as one of ours, which is also the traversal
 /// guard.
+#[utoipa::path(
+    get,
+    path = "/api/backup/files/{name}",
+    tag = "Backup",
+    summary = "Download a saved backup",
+    description = "Streams one archive from the backup folder. The name must match Ryokan's own backup naming, which also blocks path traversal.",
+    params(("name" = String, Path, description = "Backup file name, e.g. ryokan-backup-20260901T120000Z.tar.gz")),
+    responses(
+        (status = 200, description = "Backup archive (application/gzip)"),
+        (status = 404, description = "No such backup"),
+    ),
+)]
 pub async fn api_backup_file(
     State(state): State<AppState>,
     AxumPath(name): AxumPath<String>,
@@ -374,6 +410,17 @@ pub async fn api_backup_file(
 }
 
 /// `POST /api/backup/files/{name}/delete` (form): remove one backup.
+#[utoipa::path(
+    post,
+    path = "/api/backup/files/{name}/delete",
+    tag = "Backup",
+    summary = "Delete a saved backup",
+    description = "Removes one archive from the backup folder, then redirects back to System > Backup with a message.",
+    params(("name" = String, Path, description = "Backup file name")),
+    responses(
+        (status = 303, description = "Redirect to System > Backup"),
+    ),
+)]
 pub async fn backup_file_delete(
     State(state): State<AppState>,
     HxRequest(is_htmx): HxRequest,
@@ -402,6 +449,20 @@ pub async fn backup_file_delete(
 /// `POST /api/restore/upload`: raw `application/gzip` body. Streams to
 /// a temp file, then validates and stages through
 /// `backup::stage_restore`. Nothing is applied until the next restart.
+#[utoipa::path(
+    post,
+    path = "/api/restore/upload",
+    tag = "Backup",
+    summary = "Stage a restore",
+    description = "Accepts a raw application/gzip backup archive, validates it, takes a pre-restore backup, and stages it. The restore is applied on the next restart.",
+    request_body(content = String, content_type = "application/gzip", description = "Backup archive bytes"),
+    responses(
+        (status = 200, description = "Restore staged; restart to apply", body = serde_json::Value),
+        (status = 400, description = "Archive rejected (bad manifest, version mismatch, integrity check failed)"),
+        (status = 409, description = "A restore is already staged"),
+        (status = 413, description = "Archive exceeds the upload limit"),
+    ),
+)]
 pub async fn api_restore_upload(State(state): State<AppState>, body: Body) -> Response {
     let paths = BackupPaths::from_env();
     if paths.pending_dir().exists() {
@@ -496,6 +557,16 @@ async fn write_body_to_file(body: Body, path: &Path) -> Result<(), String> {
 }
 
 /// `POST /api/restore/cancel` (form): drop the staged restore.
+#[utoipa::path(
+    post,
+    path = "/api/restore/cancel",
+    tag = "Backup",
+    summary = "Cancel a staged restore",
+    description = "Removes the staged restore so the next restart changes nothing. Redirects back to System > Backup.",
+    responses(
+        (status = 303, description = "Redirect to System > Backup"),
+    ),
+)]
 pub async fn restore_cancel(
     State(state): State<AppState>,
     HxRequest(is_htmx): HxRequest,

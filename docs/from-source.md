@@ -1,31 +1,48 @@
 # Build from source
 
-You don't need this if you're running the Docker image. This page is for contributing to Ryokan or running pre-release commits straight off the `dev` branch.
+You don't need this if you run the Docker image. This page is for contributing to Ryokan or running pre-release commits from the `dev` branch.
 
-## Prerequisites
+## What you need
 
-- **Rust 1.95 or later** (enforced via `Cargo.toml`'s `package.rust-version`).
-- **A C/C++ toolchain plus `cmake`**. Two crates compile native code at build time: `anitomy-sys` ships C++ source it builds via `cc` for anime title tokenization, and `aws-lc-sys` builds aws-lc via cmake (rustls' crypto provider since reqwest 0.13).
-- **`mold` and `clang`**. Ryokan pins `linker = "clang"` with `-fuse-ld=mold` for x86_64 and aarch64 Linux. Cuts incremental link time 3–5× vs ld/lld. Without them you'll get `linker 'clang' not found` or `ld.mold not found` at first build.
-- **`cargo-nextest`** for the canonical `cargo t` test alias. Falls through to plain `cargo test` if not installed.
+- **Rust 1.95 or later**.
+- **A C/C++ compiler and `cmake`**. Two of Ryokan's dependencies build native code (the anime title parser and the TLS library).
+- **`mold` and `clang`** on Linux. Ryokan links with them on Linux because it makes rebuilds much faster. Without them the first build stops with `linker 'clang' not found` or `ld.mold not found`.
+- **`cargo-nextest`** (optional) for the `cargo t` test shortcut. Plain `cargo test` works without it.
 
 ## Install the toolchain
 
-On Arch:
-
-```sh
-sudo pacman -S mold clang cmake
-cargo install cargo-nextest --locked
-```
-
-On Debian or Ubuntu:
+Debian or Ubuntu:
 
 ```sh
 sudo apt install mold clang cmake
-cargo install cargo-nextest --locked
 ```
 
-On macOS, the toolchain story is messier: aws-lc and anitomy-sys both build cleanly under Apple Clang, but mold isn't packaged and you'll fall back to ld64. Builds are slower but functional.
+Fedora:
+
+```sh
+sudo dnf install mold clang cmake
+```
+
+Arch:
+
+```sh
+sudo pacman -S mold clang cmake
+```
+
+macOS:
+
+```sh
+xcode-select --install     # Apple's compiler, once
+brew install cmake
+```
+
+The mold linker setting only applies to Linux, so macOS builds use Apple's linker and need nothing else.
+
+Then, on any of them:
+
+```sh
+cargo install cargo-nextest --locked
+```
 
 ## Clone and run
 
@@ -35,22 +52,22 @@ cd Ryokan
 cargo run                # http://localhost:8978; creates data/ryokan.db on first run
 ```
 
-The first build takes a while (aws-lc, anitomy C++, full dep tree). Subsequent rebuilds are fast; mold links the binary in under a second.
+The first build takes a while. Rebuilds after that are quick.
 
 ## Tests and lints
 
 ```sh
-cargo t                                                                  # canonical test alias (uses nextest)
-cargo fmt --all -- --check                                               # CI runs this first
-cargo clippy --workspace --all-targets --features test-support -- -D warnings   # CI form
+cargo t                                                                  # the test suite
+cargo fmt --all -- --check                                               # formatting (CI runs this first)
+cargo clippy --workspace --all-targets --features test-support -- -D warnings   # lints, the way CI runs them
 ```
 
 ## Where next
 
 - **[Configuration](configuration.md)**: the Settings tabs.
 - **[Download clients](download-clients.md)**: per-client setup notes.
-- **[Docker reference](docker.md)**: environment variable table; useful even when running from source since the `RYOKAN_*` flags work the same way.
+- **[Docker reference](docker.md)**: the environment variable table; the `RYOKAN_*` variables work the same way when running from source.
 
 ---
 
-*Last updated: 2026-05-07.*
+*Last updated: 2026-08-29.*

@@ -8,7 +8,7 @@ Before drilling into a specific symptom below, three quick checks resolve most i
 
 - **System → Logs**, filtered by category to whatever subsystem you suspect (AniList, Jikan, Kitsu, Grab, AutoSearch, Nyaa, DownloadClient, Jellyfin, PostProcess, etc.). Pick the one matching what you were doing when the issue appeared.
 - **Test connection** on each download-client row (Settings → Download Clients) and each indexer row (Settings → Indexers). Connection tests catch most config issues at config time rather than at grab time. The [Download clients](download-clients.md) page lists per-client gotchas.
-- **The grab-history modal** on each episode (click the episode in the library page, then the History button) shows every release ever grabbed for that episode, with state (`grabbed` / `completed` / `failed` / `removed` / `replaced`) and timestamp. Useful for "why is this episode in this state?" questions.
+- **The grab-history modal** on each episode (click the episode on its series page, then the **Grab History** section of the episode modal) shows every release ever grabbed for that episode, with state (`grabbed` / `completed` / `failed` / `removed` / `replaced`) and timestamp. Useful for "why is this episode in this state?" questions.
 
 ## SAB downloads disappear from Ryokan but still download in SAB
 
@@ -85,10 +85,10 @@ Ryokan's migrations are idempotent by design (each `ALTER TABLE … ADD COLUMN` 
 2. Back up the DB: `cp /srv/docker/ryokan/ryokan.db /srv/docker/ryokan/ryokan.db.backup` (path is wherever you put `/data` in your compose).
 3. Check integrity: `sqlite3 /srv/docker/ryokan/ryokan.db "PRAGMA integrity_check;"`. If it returns `ok`, the DB itself is fine and the migration error is something else (network during migration? unusual). If it returns anything other than `ok`, the DB is corrupt; restore from your backup or accept losing the DB and starting fresh (delete the file, restart Ryokan, the first-run setup runs again).
 
----
-
-*Last updated: 2026-05-07.*
-
 ## I deleted an episode or series by accident
 
-If a recycle bin path is configured under Settings > General, nothing is gone yet: open the Library page and click **Recycle Bin**. Each deleted episode (with its NFO, subtitles, and thumbnail) or series folder is listed by the day it was deleted with a **Restore** button that puts it back exactly where it came from. Restoring a series folder brings the files back but not the library entry. Re-add the series from Search afterwards and Ryokan will pick the files up on disk. Entries purge automatically after the configured number of days (14 by default), so restore before then. If the path was empty at the time of the delete, the files were removed permanently. If the path was set but not writable, the delete was refused and the file is still where it was.
+If a recycle bin path is configured under Settings → General, nothing is gone yet: open the Library page and click the recycle-bin icon in the toolbar (it appears once the bin has items), or go to `/library/recycle`. Each deleted episode (with its NFO, subtitles, and thumbnail) or series folder is listed by the day it was deleted with a **Restore** button that puts it back exactly where it came from. Restoring a series folder brings the files back but not the library entry. Re-add the series from Search afterwards and Ryokan will pick the files up on disk. Entries purge automatically after the configured number of days (14 by default), so restore before then. If the path was empty at the time of the delete, the files were removed permanently. If the path was set but not writable, the delete was refused and the file is still where it was.
+
+---
+
+*Last updated: 2026-08-29.*

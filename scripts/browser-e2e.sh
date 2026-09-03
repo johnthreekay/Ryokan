@@ -60,5 +60,10 @@ for bin in "${BINARIES[@]}"; do
     passed=$((passed + p - s)); failed=$((failed + f)); skipped=$((skipped + s))
 done
 echo "=== browser-e2e: $passed passed, $failed failed, $skipped skipped (logs in $LOG_DIR)"
-[ "$skipped" -gt 0 ] && echo "skips mean no browser session was available for those tests; they are not passes" >&2
+if [ "$skipped" -gt 0 ]; then
+    echo "skips mean no browser session was available for those tests; they are not passes" >&2
+    # A run that drove no browser must not exit green. Set
+    # RYOKAN_E2E_ALLOW_SKIPS=1 to keep the warning-only behavior.
+    if [ "${RYOKAN_E2E_ALLOW_SKIPS:-0}" != "1" ]; then status=1; fi
+fi
 exit $status
