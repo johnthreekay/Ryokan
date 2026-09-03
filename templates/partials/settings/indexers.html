@@ -23,9 +23,7 @@
        `config.nyaa_download_client_id`. #}
     <fieldset class="settings-form">
         <legend>Nyaa search</legend>
-        <p class="form-hint" style="margin: 0 0 12px;">
-            Ryokan's built-in Nyaa search (the public-tracker hot path) isn't a torznab indexer row; pin it to a download client here. Only torrent clients are eligible since Nyaa returns magnets / .torrent URLs.
-        </p>
+        <p class="form-hint" style="margin: 0 0 12px;">Choose which torrent client receives grabs from the built-in Nyaa search.</p>
         <form method="post" action="/settings/indexers/nyaa-pin" class="settings-form settings-subform">
             <div class="form-group">
                 <label for="nyaa-dc">Download Client</label>
@@ -57,9 +55,7 @@
        indexer registry entirely. #}
     <fieldset class="settings-form">
         <legend>Direct RSS feeds</legend>
-        <p class="form-hint" style="margin: 0 0 12px;">
-            User-supplied RSS URLs that don't go through Prowlarr / Jackett. The release-group RSS feeds from SubsPlease are the canonical use case; paste the per-quality feed URL and Ryokan picks up new episodes on every sync interval.
-        </p>
+        <p class="form-hint" style="margin: 0 0 12px;">Feeds polled directly, such as a SubsPlease quality feed. New episodes are picked up on every RSS sync.</p>
 
         {% if !direct_rss_feeds.is_empty() %}
         <div class="table-scroll-wrap" style="margin-bottom: 14px;">
@@ -80,13 +76,13 @@
                     <td><code>{{ feed.url }}</code></td>
                     <td>
                         {% if !feed.enabled %}
-                        <span class="rss-pill rss-pill-off" title="Auto-sync disabled for this feed">Disabled</span>
+                        <span class="rss-pill rss-pill-off" title="RSS off">Disabled</span>
                         {% else if !feed.last_poll_error.is_empty() %}
                         <span class="rss-pill rss-pill-error" title="{{ feed.last_poll_error }}">✗ Error</span>
                         {% else if let Some(_) = feed.last_polled_at %}
                         <span class="rss-pill rss-pill-ok" title="Last poll returned {{ feed.last_item_count }} item{% if feed.last_item_count == 1 %}{% else %}s{% endif %}{% if !feed.detected_protocol.is_empty() %} · {{ feed.detected_protocol }}{% endif %}">✓ {{ feed.last_item_count }} items</span>
                         {% else %}
-                        <span class="rss-pill rss-pill-idle" title="Enabled but not yet polled">Idle</span>
+                        <span class="rss-pill rss-pill-idle" title="Not polled yet">Idle</span>
                         {% endif %}
                     </td>
                     <td>
@@ -139,11 +135,9 @@
                     <input type="checkbox" name="enabled" checked>
                     Enabled
                 </label>
-                <span class="form-hint">When on, this feed is polled on every RSS sync interval. Toggle off to keep the row but stop polling.</span>
+                <span class="form-hint">Off keeps the feed but stops polling it.</span>
             </div>
-            <p class="form-hint" style="margin: 4px 0 12px;">
-                After saving, Ryokan will detect the feed's protocol (torrent / usenet) on the first successful poll. Until then, no download-client pin is enforced. Use the Nyaa search section above to pick a per-protocol default.
-            </p>
+            <p class="form-hint" style="margin: 4px 0 12px;">Ryokan works out whether the feed is torrent or usenet on its first poll.</p>
             <button type="submit" class="btn btn-primary">Add RSS feed</button>
         </form>
     </fieldset>
@@ -163,13 +157,7 @@
        sit flush against each other. #}
     <fieldset class="settings-form">
         <legend>autobrr push webhook</legend>
-        <p class="form-hint" style="margin: 0 0 16px;">
-            Receive IRC-announce pushes from
-            <a href="https://autobrr.com" target="_blank" rel="noopener">autobrr</a>'s
-            Webhook action. Per-indexer seed rules (configured above) apply
-            automatically when autobrr's <code>indexer</code> field matches a
-            configured Ryokan indexer.
-        </p>
+        <p class="form-hint" style="margin: 0 0 16px;">Receive announces from <a href="https://autobrr.com/" target="_blank" rel="noopener noreferrer">autobrr</a>'s Webhook action. Seed rules apply when autobrr's indexer name matches one configured above.</p>
         <div class="form-group">
             <label>API Key</label>
             <div style="display: flex; gap: 8px; align-items: center;">
@@ -192,7 +180,7 @@
                     {% if config.autobrr_api_key.is_empty() %}Generate{% else %}Regenerate{% endif %}
                 </button>
             </div>
-            <span class="form-hint">Empty = webhook disabled (returns 503). Paste this key into autobrr's Webhook action under <em>Authentication</em>.</span>
+            <span class="form-hint">Paste this key into autobrr's Webhook action under Authentication. No key means the webhook is off.</span>
         </div>
         <div class="form-group">
             <label>Webhook URL Path</label>
@@ -212,7 +200,7 @@
                         onclick="copyApiKey('autobrr_webhook_url', this)"
                         style="white-space:nowrap">Copy</button>
             </div>
-            <span class="form-hint">Prefix with the address autobrr can reach Ryokan at, not the address you use in your browser. Ryokan listens on port <strong><code>8978</code></strong> by default (override via <code>LISTEN_ADDR</code>). Common cases: <code>http://host.docker.internal:<strong>8978</strong></code> for autobrr-in-Docker against host-bound Ryokan, your LAN IP plus <code><strong>:8978</strong></code> for autobrr on a different host, or your reverse-proxy DNS name (no port suffix) for HTTPS deployments.</span>
+            <span class="form-hint">Prefix it with the address autobrr can reach Ryokan at, for example <code>http://host.docker.internal:8978</code> when both run in Docker.</span>
         </div>
         <div class="form-group">
             <label>autobrr Webhook Body Template</label>

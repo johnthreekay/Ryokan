@@ -85,13 +85,13 @@
                         {% if !idx.enabled %}
                         <span class="dc-status-pill dc-status-pill-disabled">Disabled</span>
                         {% else if !idx.rss_enabled %}
-                        <span class="dc-status-pill dc-status-pill-ok" title="Search-only; RSS auto-sync off for this indexer">Enabled</span>
+                        <span class="dc-status-pill dc-status-pill-ok" title="RSS off">Enabled</span>
                         {% else if !idx.rss_last_poll_error.is_empty() %}
                         <span class="dc-status-pill dc-status-pill-err" title="{{ idx.rss_last_poll_error }}">RSS error</span>
                         {% else if let Some(_) = idx.rss_last_polled_at %}
                         <span class="dc-status-pill dc-status-pill-ok" title="Last poll returned {{ idx.rss_last_item_count }} item{% if idx.rss_last_item_count == 1 %}{% else %}s{% endif %}">&#10003; RSS ({{ idx.rss_last_item_count }})</span>
                         {% else %}
-                        <span class="dc-status-pill dc-status-pill-loading" title="RSS enabled but not yet polled; first sync runs on the next interval">RSS idle</span>
+                        <span class="dc-status-pill dc-status-pill-loading" title="Not polled yet">RSS idle</span>
                         {% endif %}
                     </div>
                     <dl class="dc-card-meta">

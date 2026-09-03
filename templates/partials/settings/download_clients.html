@@ -13,11 +13,7 @@
     <div class="alert alert-error" data-ryokan-toast="error" data-ryokan-toast-title="Download Clients">{{ err }}</div>
     {% endif %}
 
-    <p class="form-hint" style="margin-bottom: 16px;">
-        Ryokan can route grabs to multiple download clients. Pin a specific client to an indexer on the
-        <a href="/settings?tab=indexers" class="link-accent">Indexers</a> tab; the built-in Nyaa search uses the dropdown there too.
-        Grabs without an explicit pin land on the default client.
-    </p>
+    <p class="form-hint" style="margin-bottom: 16px;">Grabs go to the default client unless an indexer is pinned to another one on the <a href="/settings?tab=indexers">Indexers</a> tab.</p>
     {% let rows = download_clients.clone() %}
     {%~ include "partials/settings/download_clients/list.html" ~%}
 </div>

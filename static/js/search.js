@@ -193,7 +193,7 @@ function loadMore() {
                 tr.innerHTML = `
                     <td class="col-score">
                         <details class="score-details" name="score-breakdown">
-                            <summary class="score-badge ${scoreClass}" title="Click to see breakdown">${r.score}</summary>
+                            <summary class="score-badge ${scoreClass}" title="Score breakdown">${r.score}</summary>
                             ${scoreBreakdownHtml}
                         </details>
                     </td>
@@ -225,7 +225,7 @@ function loadMore() {
                     card.innerHTML = `
                         <div class="result-card-header">
                             <details class="score-details" name="score-breakdown">
-                                <summary class="score-badge ${scoreClass}" title="Click to see breakdown">${r.score}</summary>
+                                <summary class="score-badge ${scoreClass}" title="Score breakdown">${r.score}</summary>
                                 ${scoreBreakdownHtml}
                             </details>
                             <a class="result-card-title" href="${escAttr(r.link)}" target="_blank" rel="noopener">${escHtml(r.title)}</a>

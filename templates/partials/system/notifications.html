@@ -4,9 +4,6 @@
    every successful save / delete (closes the modal + refreshes the
    cards atomically). #}
 <div class="notif-page">
-    <p class="form-hint" style="margin-bottom: 16px;">
-        Outbound notification providers. Webhook fans out the canonical event JSON; Discord renders embeds.
-        Per-event opt-in is configured per-provider in the edit form. Per-event toggles take effect on the next dispatch with no restart.
-    </p>
+    <p class="form-hint" style="margin-bottom: 16px;">Where Ryokan sends event notifications. Webhooks receive JSON, Discord gets an embed. Pick the events per provider.</p>
     {%~ include "partials/system/notifications/list.html" ~%}
 </div>

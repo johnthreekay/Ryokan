@@ -4,7 +4,7 @@
     {% if let Some(p) = b.pending %}
     <div class="cf-section backup-pending">
         <h3>Restore staged</h3>
-        <p class="form-hint">A backup from {{ p.when }} (Ryokan {{ p.version }}) is staged. Restart Ryokan to apply it. The database running now is kept next to the restored one as <code>ryokan.db.pre-restore-&lt;time&gt;</code>, and everyone is signed out afterwards.</p>
+        <p class="form-hint">A backup from {{ p.when }} (Ryokan {{ p.version }}) is staged. Restart Ryokan to apply it. The current database is kept next to the restored one, and everyone is signed out afterwards.</p>
         {% if !p.includes_key %}<p class="form-hint">This backup has no encryption key. Linked AniList and MyAnimeList accounts will need to be linked again.</p>{% endif %}
         {% if p.sanitized %}<p class="form-hint">This is a sanitized backup. Passwords, API keys, and account tokens were blanked when it was made.</p>{% endif %}
         {% if p.includes_artwork %}<p class="form-hint">The artwork cache is replaced too.</p>{% endif %}
@@ -19,7 +19,7 @@
 
     <div class="cf-section">
         <h3>Backup</h3>
-        <p class="form-hint">A backup holds the database, the encryption key, and the activity log. Whoever has the file has your linked accounts and every stored password. Treat it like a password export.</p>
+        <p class="form-hint">A backup holds the database, the encryption key, and the activity log. Treat the file like a password export.</p>
         <div class="backup-options">
             <label class="checkbox-row">
                 <input type="checkbox" id="backup-include-artwork" data-backup-option="include_artwork">
@@ -38,7 +38,7 @@
                 <button type="submit" class="btn btn-secondary">Save to backup folder</button>
             </form>
         </div>
-        <p class="form-hint">Scheduled backups are {{ b.schedule }}. Folder: <code>{{ b.backup_dir }}</code>. Keeping the newest {{ b.retention }}.{% if let Some(free) = b.free_space %} Free space there: {{ free }}.{% endif %} Change the schedule in <a href="/settings?tab=general">Settings → General</a>.</p>
+        <p class="form-hint">Scheduled backups: {{ b.schedule }}, newest {{ b.retention }} kept in <code>{{ b.backup_dir }}</code>{% if let Some(free) = b.free_space %} ({{ free }} free){% endif %}. Change this in <a href="/settings?tab=general">Settings → General</a>.</p>
         {% if b.files.is_empty() %}
         <div class="logs-empty">No backups in the folder yet.</div>
         {% else %}
@@ -80,7 +80,7 @@
 
     <div class="cf-section">
         <h3>Restore</h3>
-        <p class="form-hint">Upload a backup made by this or an older Ryokan. It is checked, a backup of the current state is saved to the folder first, and the restore is applied when Ryokan restarts. A backup from a newer Ryokan is refused.</p>
+        <p class="form-hint">Upload a backup from this or an older Ryokan. The current state is backed up first, and the restore is applied when Ryokan restarts.</p>
         <div class="backup-actions">
             <input type="file" id="restore-file" accept=".tar.gz,.tgz,application/gzip">
             <button type="button" class="btn btn-primary" id="restore-upload"{% if b.pending.is_some() %} disabled{% endif %}>Upload and stage restore</button>

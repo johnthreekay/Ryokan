@@ -410,6 +410,9 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
+    /* Equal tiles so the three actions line up now that their hints are
+       one line each. */
+    flex: 1 1 260px;
 }
 
 .debug-action-row > .btn {

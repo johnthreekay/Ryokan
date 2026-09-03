@@ -6,7 +6,7 @@
 <div class="rss-panel">
     <div class="cf-section">
         <h3>Misgrabs</h3>
-        <p class="form-hint">Downloads whose files belong to a different series than the one they were grabbed for. Ryokan removes and blocklists them, or keeps them in the download client when automatic removal is turned off. Restore a release that was right after all. Dismiss one to keep it blocklisted and clear it from this list.</p>
+        <p class="form-hint">Downloads whose files belong to a different series. Restore one that was right after all. Dismiss one to keep it blocklisted and clear it from this list.</p>
         <div class="logs-empty" id="misgrab-empty-state" {% if !misgrab_entries.is_empty() %}hidden{% endif %}>No misgrabs detected. Every download is checked against the files the download client reports.</div>
         <div class="rss-table-wrap" id="misgrab-table" {% if misgrab_entries.is_empty() %}hidden{% endif %}>
             <table class="rss-table misgrab-table">

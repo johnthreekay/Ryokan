@@ -81,7 +81,7 @@
                     class="library-sort-dir"
                     data-desc="{{ sort_desc }}"
                     onclick="librarySortDirToggled(this)"
-                    title="{% if sort_desc %}Descending; click for ascending{% else %}Ascending; click for descending{% endif %}"
+                    title="{% if sort_desc %}Descending{% else %}Ascending{% endif %}"
                     aria-label="Toggle sort direction">
                 <svg class="library-sort-dir-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
             </button>
@@ -89,7 +89,7 @@
                so it sits last among the quiet tools. index.js owns
                the mode; this button gets .active + the "Cancel" label
                swap while selecting. #}
-            <button type="button" id="bulk-select-toggle" class="btn btn-secondary bulk-select-toggle" onclick="toggleBulkSelectMode()" title="Select multiple series for bulk actions">
+            <button type="button" id="bulk-select-toggle" class="btn btn-secondary bulk-select-toggle" onclick="toggleBulkSelectMode()" title="Select series">
                 <svg class="bulk-select-toggle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <polyline points="9 11 12 14 22 4"/>
                     <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
@@ -264,7 +264,7 @@
                 <input type="checkbox" id="bulk-delete-files-toggle" style="margin-top: 3px;">
                 <span>
                     <strong style="display:block; color: var(--text-bright); font-size: 14px;">{% if recycle_enabled %}Also move files to the recycle bin{% else %}Also delete files from disk{% endif %}</strong>
-                    <span class="form-hint" style="display:block; margin-top: 2px;">{% if recycle_enabled %}Move each series folder to the recycle bin (restorable from the <a href="/library/recycle">Recycle Bin</a> page until it is purged) and tell every download client to drop the active torrents.{% else %}Permanently remove the on-disk media folders and tell every download client to drop the active torrents. <strong style="color: var(--red);">Cannot be undone.</strong>{% endif %}</span>
+                    <span class="form-hint" style="display:block; margin-top: 2px;">{% if recycle_enabled %}Each series folder moves to the recycle bin and its active torrents are removed from the download client.{% else %}Each series folder is deleted permanently and its active torrents are removed from the download client. This cannot be undone.{% endif %}</span>
                 </span>
             </label>
         </div>

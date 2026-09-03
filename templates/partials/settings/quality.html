@@ -4,12 +4,12 @@
                 <div class="form-group">
                     <label for="preferred_groups">Preferred Group Whitelist</label>
                     <input type="text" name="preferred_groups" id="preferred_groups" value="{{ config.preferred_groups }}" placeholder="SubsPlease, Erai-raws, Judas">
-                    <span class="form-hint">Comma-separated groups to prioritize in search results and to allow during RSS auto-grabs. Leave blank to allow any group.</span>
+                    <span class="form-hint">Groups to prefer, comma separated. Blank allows any group.</span>
                 </div>
                 <div class="form-group">
                     <label for="blocked_groups">Blocked Group Blacklist</label>
                     <input type="text" name="blocked_groups" id="blocked_groups" value="{{ config.blocked_groups }}" placeholder="EMBER, ASW, randomgroup">
-                    <span class="form-hint">Comma-separated groups Ryokan should never auto-grab from. Manual search results still appear, but RSS auto-grabs will reject them.</span>
+                    <span class="form-hint">Groups never grabbed automatically, comma separated. They still show in manual search.</span>
                 </div>
             </div>
         </fieldset>
@@ -24,7 +24,7 @@
                         <option value="bluray" {% if config.preferred_source == "bluray" %}selected{% endif %}>BD</option>
                         <option value="dvd" {% if config.preferred_source == "dvd" %}selected{% endif %}>DVD</option>
                     </select>
-                    <span class="form-hint">The release source auto search ranks highest. Other sources still match but are deprioritized in scoring.</span>
+                    <span class="form-hint">The source auto-search ranks highest. Others still match but score lower.</span>
                 </div>
                 <div class="form-group">
                     <label for="preferred_resolution">Preferred Resolution</label>
@@ -34,7 +34,7 @@
                         <option value="720" {% if config.preferred_resolution == "720" %}selected{% endif %}>720p</option>
                         <option value="480" {% if config.preferred_resolution == "480" %}selected{% endif %}>480p</option>
                     </select>
-                    <span class="form-hint">Target resolution for both manual and auto search. Resolution dominates source in scoring, so resolution matches are prioritized over source matches.</span>
+                    <span class="form-hint">The resolution that scores highest. Resolution outweighs source.</span>
                 </div>
             </div>
             <div class="form-row">
@@ -47,7 +47,7 @@
                         <option value="bluray_bdmv" {% if config.cutoff_source == "bluray_bdmv" %}selected{% endif %}>BD-RAW</option>
                         <option value="dvd" {% if config.cutoff_source == "dvd" %}selected{% endif %}>DVD</option>
                     </select>
-                    <span class="form-hint">Stop upgrading once the existing file reaches this source at or above the cutoff resolution. Should be ≥ preferred source. BD-Remux and BD-RAW require a matching sub-tier. Plain BD encodes will stay upgradeable.</span>
+                    <span class="form-hint">Upgrades stop once a file reaches this source at the cutoff resolution.</span>
                 </div>
                 <div class="form-group">
                     <label for="cutoff_resolution">Cutoff Resolution</label>
@@ -57,7 +57,7 @@
                         <option value="720" {% if config.cutoff_resolution == "720" %}selected{% endif %}>720p</option>
                         <option value="480" {% if config.cutoff_resolution == "480" %}selected{% endif %}>480p</option>
                     </select>
-                    <span class="form-hint">Minimum resolution required to satisfy the cutoff. Files below this are candidates for upgrade search.</span>
+                    <span class="form-hint">Files below this resolution stay eligible for upgrades.</span>
                 </div>
             </div>
             <div class="form-group">
@@ -67,7 +67,7 @@
                     <option value="prefer_bd" {% if config.finished_series_quality == "prefer_bd" %}selected{% endif %}>Prefer BD (fall back to WEB)</option>
                     <option value="bd_only" {% if config.finished_series_quality == "bd_only" %}selected{% endif %}>BD only (skip WEB)</option>
                 </select>
-                <span class="form-hint">For series marked "Finished" on AniList. "Prefer BD" searches for BD releases first, falling back to WEB if none found. "BD only" will skip WEB releases entirely.</span>
+                <span class="form-hint">For finished series. Prefer BD falls back to WEB when no BD release exists. BD only never takes WEB.</span>
             </div>
         </fieldset>
 
@@ -86,14 +86,14 @@
                         <input type="checkbox" name="upgrade_search_enabled" value="1" {% if config.upgrade_search_enabled %}checked{% endif %}>
                         Automatic Upgrade Search
                     </label>
-                    <span class="form-hint">Periodically search for higher-quality releases of downloaded episodes. Runs every 24 hours. Upgrades via RSS are always active regardless of this setting.</span>
+                    <span class="form-hint">Look for better releases of downloaded episodes once a day. RSS upgrades happen regardless.</span>
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
                         <input type="checkbox" name="seadex_enabled" value="1" {% if config.seadex_enabled %}checked{% endif %}>
                         Enable SeaDex release boost
                     </label>
-                    <span class="form-hint">Query <a href="https://releases.moe" target="_blank" rel="noopener">releases.moe</a> during auto-search and boost releases the SeaDex community has flagged as best (or alt-best). Automatically suppressed when you have a <code>SeaDexBestSpecification</code> Custom Format, since the CF takes precedence.</span>
+                    <span class="form-hint">Boost releases <a href="https://releases.moe" target="_blank" rel="noopener noreferrer">releases.moe</a> lists as best. Ignored when a SeaDex Custom Format exists.</span>
                 </div>
             </div>
         </fieldset>
@@ -109,19 +109,16 @@
             <div class="form-group">
                 <label for="default_custom_query_tokens">Default Custom Query Tokens</label>
                 <input type="text" name="default_custom_query_tokens" id="default_custom_query_tokens" value="{{ config.default_custom_query_tokens }}" placeholder="bd 1080p">
-                <span class="form-hint">Extra keywords appended to every search (e.g. <code>bd</code>, <code>1080p</code>, <code>h.264</code>). Useful for narrowing the result pool at the source. Reaches Nyaa and every configured torznab / newznab indexer. Per-series overrides on the series page beat this default.</span>
+                <span class="form-hint">Keywords added to every search, such as <code>bd 1080p</code>. A series can override this on its own page.</span>
             </div>
         </fieldset>
 
         <fieldset>
             <legend>Nyaa-only defaults</legend>
-            <p class="form-hint">
-                Settings that only affect the built-in Nyaa search. Torznab / newznab indexers
-                ignore these because they have no equivalent on the wire.
-            </p>
+            <p class="form-hint">Only the built-in Nyaa search uses these.</p>
             <div class="form-group">
                 <label for="default_restrict_to_uploader">Default Restrict to Uploader</label>
                 <input type="text" name="default_restrict_to_uploader" id="default_restrict_to_uploader" value="{{ config.default_restrict_to_uploader }}" placeholder="SubsPlease">
-                <span class="form-hint">When set, every Nyaa search is scoped to <code>?u=&lt;name&gt;</code> so only this uploader's releases come back. Tighter and faster than a title-contains group filter. Must match an actual Nyaa account; groups without a dedicated uploader return zero results. Per-series overrides on the series page beat this default.</span>
+                <span class="form-hint">Only show releases from this Nyaa account. A series can override this on its own page.</span>
             </div>
         </fieldset>

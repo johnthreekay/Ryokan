@@ -86,7 +86,7 @@
 
         <fieldset class="settings-subform" style="margin-top: 12px">
             <legend>Events</legend>
-            <p class="form-hint">Per-event toggles take effect on the next dispatch with no restart.</p>
+            <p class="form-hint">Events this provider receives.</p>
             {% for ev in notification_event_toggles %}
             <label class="checkbox-row">
                 <input type="checkbox" name="event_{{ ev.kind }}" {% if ev.enabled %}checked{% endif %}>

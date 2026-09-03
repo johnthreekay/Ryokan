@@ -66,7 +66,7 @@
             <div class="form-group">
                 <label for="dc-add-download-path">Download path (as Ryokan sees it)</label>
                 <input id="dc-add-download-path" type="text" name="download_path" placeholder="/downloads">
-                <span class="form-hint">Where the client's completed downloads are accessible to Ryokan. Leave blank if Ryokan and the client see the exact same paths.</span>
+                <span class="form-hint">Where Ryokan sees the client's finished downloads. Blank if both see the same paths.</span>
             </div>
         </div>
         <div class="form-row">
@@ -95,7 +95,7 @@
                            data-first-usenet="{% if first_usenet_client %}1{% else %}0{% endif %}">
                     Default client
                 </label>
-                <span class="form-hint">Receives every grab without an explicit indexer pin. Per-protocol; torrent and usenet defaults are independent.</span>
+                <span class="form-hint">Receives grabs from indexers without a client of their own. Torrent and usenet have separate defaults.</span>
             </div>
         </div>
     </div>

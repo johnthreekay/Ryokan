@@ -8,14 +8,14 @@
 
     <fieldset>
         <legend>Release Group Source Map</legend>
-        <p class="form-hint">Maps release groups to their known source. Used by Layer 3 of the classification pipeline when the filename alone doesn't carry source keywords (e.g. SubsPlease is WEB, VCB-Studio is BD). Seeded rows are restored on startup; user-edited rows are preserved.</p>
+        <p class="form-hint">Tells Ryokan which source a release group usually uses, for files whose names do not say (SubsPlease is WEB, VCB-Studio is BD). Your edits are kept across restarts.</p>
 
         {% if !suggestions.is_empty() %}
         {# Suggested mappings — promoted to the top so the user sees
            what's actionable without scrolling past the (long)
            current-entries table. #}
         <h3 class="settings-subheading">Suggested Mappings ({{ suggestions.len() }})</h3>
-        <p class="form-hint">Inferred from your manual classification overrides. When you've pinned multiple episodes from the same release group to the same source, Ryokan surfaces it here so you can teach the identity table.</p>
+        <p class="form-hint">Suggested from your own overrides. Accept one to add it to the table.</p>
         <div class="table-scroll-wrap">
         <table class="group-source-table">
             <thead>
@@ -35,7 +35,7 @@
                     <td>{{ s.episode_count }} episode{% if s.episode_count != 1 %}s{% endif %}</td>
                     <td>
                         {% if let Some(existing) = s.existing_source %}
-                        <span class="log-badge tag-src-{{ existing.as_str()|lowercase }}" title="Accepting will overwrite the existing mapping">conflicts: {{ existing.as_str() }}</span>
+                        <span class="log-badge tag-src-{{ existing.as_str()|lowercase }}" title="Overwrites the existing mapping">conflicts: {{ existing.as_str() }}</span>
                         {% else %}
                         <span class="form-hint">(new)</span>
                         {% endif %}

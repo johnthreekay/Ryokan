@@ -81,7 +81,7 @@
     <div class="import-spinner" aria-hidden="true"></div>
     <div class="import-scanning-text">
         <strong>Scanning <code>{{ root }}</code></strong>
-        <p class="form-hint">Reading filenames and matching each series against AniList and MAL. Large libraries take a few minutes because the providers allow about thirty lookups a minute. This page updates itself when the preview is ready.</p>
+        <p class="form-hint">Matching each series against AniList and MAL. Large libraries take a few minutes. This page updates itself when the preview is ready.</p>
     </div>
     <div class="import-scanning-actions">
         <a href="/system/import?session={{ session_id }}" class="btn btn-secondary btn-sm">Refresh</a>
@@ -97,7 +97,7 @@
     <div class="import-spinner" aria-hidden="true"></div>
     <div class="import-scanning-text">
         <strong>Importing from <code>{{ root }}</code></strong>
-        <p class="form-hint">Files are being {{ mode_past }} into the media root, then each series is classified and given its artwork and NFO files. Cancel stops after the file in progress; everything already imported stays. This page updates itself when the import is done.</p>
+        <p class="form-hint">Files are being {{ mode_past }} into the media library. Cancel stops after the current file and keeps what was already imported. This page updates itself when the import is done.</p>
     </div>
     <div class="import-scanning-actions">
         <a href="/system/import?session={{ session_id }}" class="btn btn-secondary btn-sm">Refresh</a>

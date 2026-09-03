@@ -30,7 +30,7 @@
         <tr>
             <td class="col-score">
                 <details class="score-details" name="isearch-score-breakdown">
-                    <summary class="score-badge {{ r.score_class }}" title="Click to see breakdown">{{ r.result.score }}</summary>
+                    <summary class="score-badge {{ r.score_class }}" title="Score breakdown">{{ r.result.score }}</summary>
                     <div class="score-components">
                         <div class="score-components-title">Score breakdown</div>
                         {% if r.result.score_breakdown.is_empty() %}

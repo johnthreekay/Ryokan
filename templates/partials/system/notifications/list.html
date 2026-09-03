@@ -14,9 +14,7 @@
     <div class="notif-card-grid">
         {% if notification_providers.is_empty() %}
         <div class="notif-empty">
-            <p class="form-hint" style="margin: 0">
-                No notification providers configured yet. Add a webhook (ntfy / Apprise / n8n / custom) or a Discord channel to start receiving events.
-            </p>
+            <p class="form-hint" style="margin: 0">No providers yet. Add a webhook or a Discord channel.</p>
         </div>
         {% endif %}
 
