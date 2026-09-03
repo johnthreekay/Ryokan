@@ -14,6 +14,7 @@ use regex_lite::Regex;
 use crate::services::anilist::AnimeDetail;
 
 use super::pack_detection::is_pack_candidate_relation;
+use super::provenance::{AliasMatch, MatchKind};
 use super::{SearchTarget, episode_match, parse_release_numbers, season_mismatch};
 
 pub fn normalize_title(input: &str) -> String {
@@ -791,6 +792,146 @@ fn passes_content_surplus_check(
     surplus <= tolerance
 }
 
+/// How strict the alias scan is. The auto path uses the strict policy
+/// (0.6 distinctive overlap plus the #103 surplus budget); the
+/// interactive picker uses the relaxed one so users see a broader set
+/// of candidates to choose from.
+#[derive(Clone, Copy)]
+pub(super) struct AliasPolicy {
+    pub fuzzy_threshold: f32,
+    pub surplus_check: bool,
+}
+
+pub(super) const STRICT_ALIAS_POLICY: AliasPolicy = AliasPolicy {
+    fuzzy_threshold: 0.6,
+    surplus_check: true,
+};
+
+pub(super) const RELAXED_ALIAS_POLICY: AliasPolicy = AliasPolicy {
+    fuzzy_threshold: 0.5,
+    surplus_check: false,
+};
+
+/// Scan every alias and report the best match. A verbatim hit wins
+/// immediately (it is the maximum); otherwise the fuzzy match with the
+/// highest ratio is kept, and ties keep the earlier alias because the
+/// canonical AniList titles precede the synthetic sequel variants.
+///
+/// Issue #103 — short aliases substring-match unrelated shows sharing
+/// a token, so a verbatim hit must also pass the content-surplus
+/// budget; one that fails contributes nothing and does not fall
+/// through to the fuzzy path. Issue #219 — the fuzzy path scores
+/// distinctive tokens only, and its surplus budget is keyed on them
+/// too: `Risa THE ANIMATION` is a one-word alias for this purpose, so
+/// a release that merely says "The Animation" no longer matches, and
+/// one that says "Risa" can't smuggle in a whole other title around it.
+pub(super) fn best_alias_match(
+    normalized_title: &str,
+    title_tokens: &HashSet<String>,
+    aliases: &[String],
+    policy: AliasPolicy,
+) -> Option<AliasMatch> {
+    let mut best: Option<AliasMatch> = None;
+    for alias in aliases {
+        let normalized_alias = normalize_title(alias);
+        let alias_tokens = token_set(&normalized_alias);
+        if normalized_title.contains(&normalized_alias) {
+            if !policy.surplus_check
+                || passes_content_surplus_check(
+                    title_tokens,
+                    &alias_tokens,
+                    SurplusBudget::FullAlias,
+                )
+            {
+                return Some(AliasMatch {
+                    kind: MatchKind::Verbatim,
+                    alias: alias.clone(),
+                    ratio: 1.0,
+                });
+            }
+            continue;
+        }
+        let ratio = distinctive_overlap_ratio(title_tokens, &alias_tokens);
+        if ratio < policy.fuzzy_threshold {
+            continue;
+        }
+        if policy.surplus_check
+            && !passes_content_surplus_check(
+                title_tokens,
+                &alias_tokens,
+                SurplusBudget::Distinctive,
+            )
+        {
+            continue;
+        }
+        if best.as_ref().is_none_or(|b| ratio > b.ratio) {
+            best = Some(AliasMatch {
+                kind: MatchKind::Fuzzy,
+                alias: alias.clone(),
+                ratio,
+            });
+        }
+    }
+    best
+}
+
+/// The auto-search title gate, reporting how the release matched.
+/// `None` means the release is not this series (or not this episode).
+pub fn classify_match(
+    title: &str,
+    aliases: &[String],
+    sibling_precompute: &SiblingRejectPrecompute,
+    target: &SearchTarget,
+    expected_season: i32,
+    allow_batch_episode: bool,
+    absolute_offset: i32,
+) -> Option<AliasMatch> {
+    let normalized_title = normalize_title(title);
+    let title_tokens = token_set(&normalized_title);
+
+    let alias_match = best_alias_match(
+        &normalized_title,
+        &title_tokens,
+        aliases,
+        STRICT_ALIAS_POLICY,
+    )?;
+
+    // Sibling rejection: if the release looks more like a sequel /
+    // prequel / side story than it looks like us, reject. See the
+    // JJK S1→S3 case in the `collect_sibling_aliases` docstring.
+    if sibling_match_rejects(&normalized_title, &title_tokens, sibling_precompute) {
+        return None;
+    }
+
+    match target {
+        SearchTarget::Single => Some(alias_match),
+        SearchTarget::Episode(target_ep) => {
+            // Season check: reject if release has an explicit season that doesn't match
+            if season_mismatch(title, expected_season) {
+                return None;
+            }
+
+            let parsed = parse_release_numbers(title);
+            if parsed.is_empty() {
+                return None;
+            }
+            // Reject releases with 3+ episode numbers (batch/multi-episode)
+            // unless the caller explicitly allows batch-to-episode matching
+            // (used for quality upgrade searches where BD season packs are the
+            // only source for higher-quality individual episodes).
+            if !allow_batch_episode && parsed.len() > 2 {
+                return None;
+            }
+            // #30 — Accept either the relative (AL-own) or the absolute
+            // (SubsPlease-style) episode number. See `episode_match`
+            // for the details.
+            episode_match(&parsed, *target_ep, absolute_offset).then_some(alias_match)
+        }
+    }
+}
+
+/// Boolean form of [`classify_match`], kept for the many call sites and
+/// tests that only need the verdict.
 pub fn matches_target(
     title: &str,
     aliases: &[String],
@@ -800,73 +941,16 @@ pub fn matches_target(
     allow_batch_episode: bool,
     absolute_offset: i32,
 ) -> bool {
-    let normalized_title = normalize_title(title);
-    let title_tokens = token_set(&normalized_title);
-
-    let alias_match = aliases.iter().any(|alias| {
-        let normalized_alias = normalize_title(alias);
-        let alias_tokens = token_set(&normalized_alias);
-        // Issue #103 — short aliases substring-match unrelated shows
-        // sharing a token. Require the title's content tokens not to
-        // substantially exceed the alias's; see
-        // `passes_content_surplus_check` for the tolerance schedule.
-        if normalized_title.contains(&normalized_alias) {
-            return passes_content_surplus_check(
-                &title_tokens,
-                &alias_tokens,
-                SurplusBudget::FullAlias,
-            );
-        }
-        // Issue #219 — the fuzzy path scores distinctive tokens only,
-        // and its surplus budget is keyed on them too: `Risa THE
-        // ANIMATION` is a one-word alias for this purpose, so a
-        // release that merely says "The Animation" no longer matches,
-        // and one that says "Risa" can't smuggle in a whole other
-        // title around it.
-        distinctive_overlap_ratio(&title_tokens, &alias_tokens) >= 0.6
-            && passes_content_surplus_check(
-                &title_tokens,
-                &alias_tokens,
-                SurplusBudget::Distinctive,
-            )
-    });
-
-    if !alias_match {
-        return false;
-    }
-
-    // Sibling rejection: if the release looks more like a sequel /
-    // prequel / side story than it looks like us, reject. See the
-    // JJK S1→S3 case in the `collect_sibling_aliases` docstring.
-    if sibling_match_rejects(&normalized_title, &title_tokens, sibling_precompute) {
-        return false;
-    }
-
-    match target {
-        SearchTarget::Single => true,
-        SearchTarget::Episode(target_ep) => {
-            // Season check: reject if release has an explicit season that doesn't match
-            if season_mismatch(title, expected_season) {
-                return false;
-            }
-
-            let parsed = parse_release_numbers(title);
-            if parsed.is_empty() {
-                return false;
-            }
-            // Reject releases with 3+ episode numbers (batch/multi-episode)
-            // unless the caller explicitly allows batch-to-episode matching
-            // (used for quality upgrade searches where BD season packs are the
-            // only source for higher-quality individual episodes).
-            if !allow_batch_episode && parsed.len() > 2 {
-                return false;
-            }
-            // #30 — Accept either the relative (AL-own) or the absolute
-            // (SubsPlease-style) episode number. See `episode_match`
-            // for the details.
-            episode_match(&parsed, *target_ep, absolute_offset)
-        }
-    }
+    classify_match(
+        title,
+        aliases,
+        sibling_precompute,
+        target,
+        expected_season,
+        allow_batch_episode,
+        absolute_offset,
+    )
+    .is_some()
 }
 
 #[cfg(test)]
@@ -1597,5 +1681,102 @@ mod tests {
             distinctive_overlap_ratio(&token_set("some show the movie"), &movie),
             0.0
         );
+    }
+
+    #[test]
+    fn classify_match_prefers_verbatim_over_earlier_fuzzy_alias() {
+        // The first alias only matches fuzzily (its tokens are out of
+        // order, so it is not a substring, and "journey" is not
+        // "journeys": 2 of 3 distinctive tokens); the second is a
+        // verbatim substring. The old `.any()` scan would have stopped
+        // at the first, hiding the stronger match.
+        let aliases = vec![
+            "Frieren Journey Beyond".to_string(),
+            "Frieren Beyond Journeys End".to_string(),
+        ];
+        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let m = classify_match(
+            "[G] Frieren Beyond Journeys End - 01 [1080p].mkv",
+            &aliases,
+            &no_siblings,
+            &SearchTarget::Episode(1),
+            0,
+            false,
+            0,
+        )
+        .expect("matches");
+        assert_eq!(m.kind, MatchKind::Verbatim);
+        assert_eq!(m.alias, "Frieren Beyond Journeys End");
+        assert_eq!(m.ratio, 1.0);
+    }
+
+    #[test]
+    fn classify_match_reports_highest_fuzzy_ratio_when_no_verbatim() {
+        let aliases = vec![
+            "Boku no Hero Academia Final Season".to_string(),
+            "Boku no Hero Academia".to_string(),
+        ];
+        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        // "boku hero academia 12": alias 1 has distinctive tokens
+        // {boku, hero, academia, final} -> 0.75; alias 2 has
+        // {boku, hero, academia} -> 1.0 but not a substring because
+        // "no" is missing from the title.
+        let m = classify_match(
+            "[G] Boku Hero Academia - 12 [1080p].mkv",
+            &aliases,
+            &no_siblings,
+            &SearchTarget::Episode(12),
+            0,
+            false,
+            0,
+        )
+        .expect("matches");
+        assert_eq!(m.kind, MatchKind::Fuzzy);
+        assert_eq!(m.alias, "Boku no Hero Academia");
+        assert!((m.ratio - 1.0).abs() < f32::EPSILON, "ratio {}", m.ratio);
+    }
+
+    #[test]
+    fn classify_match_returns_none_when_episode_check_fails() {
+        let aliases = vec!["Sousou no Frieren".to_string()];
+        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let title = "[G] Sousou no Frieren - 07 [1080p].mkv";
+        assert!(
+            classify_match(
+                title,
+                &aliases,
+                &no_siblings,
+                &SearchTarget::Episode(7),
+                0,
+                false,
+                0
+            )
+            .is_some()
+        );
+        assert!(
+            classify_match(
+                title,
+                &aliases,
+                &no_siblings,
+                &SearchTarget::Episode(8),
+                0,
+                false,
+                0
+            )
+            .is_none(),
+            "a verbatim alias hit must still fail the episode check"
+        );
+    }
+
+    #[test]
+    fn best_alias_match_relaxed_accepts_0_5_that_strict_rejects() {
+        let aliases = vec!["Alpha Beta Gamma Delta".to_string()];
+        let title = normalize_title("[G] Alpha Beta Something - 01");
+        let tokens = token_set(&title);
+        assert!(best_alias_match(&title, &tokens, &aliases, STRICT_ALIAS_POLICY).is_none());
+        let relaxed = best_alias_match(&title, &tokens, &aliases, RELAXED_ALIAS_POLICY)
+            .expect("relaxed policy accepts 2 of 4 distinctive tokens");
+        assert_eq!(relaxed.kind, MatchKind::Fuzzy);
+        assert!((relaxed.ratio - 0.5).abs() < f32::EPSILON);
     }
 }

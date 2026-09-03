@@ -534,6 +534,7 @@ impl Release {
         let indexer_id = self.indexer_id;
         let indexer_name = self.indexer_name;
         crate::services::nyaa::SearchResult {
+            match_provenance: None,
             title: self.title,
             link: self.link.clone(),
             magnet: self.magnet,
