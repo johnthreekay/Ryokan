@@ -53,7 +53,7 @@
             <span class="tag tag-user-score" title="Your score on AL/MAL">You: {{ you_score.render_html()|safe }}</span>
             {% endif %}
             {# Issue #219 — last in the row, beside the scores. #}
-            {% if detail.is_adult %}<span class="tag tag-adult" title="Adult title. Nyaa lists these on sukebei, which Ryokan does not search.">18+</span>{% endif %}
+            {% if detail.is_adult %}<span class="tag tag-adult" title="Adult title. Nyaa keeps these on sukebei, which Ryokan does not search.">18+</span>{% endif %}
         </div>
 
         <div class="detail-genres">
@@ -105,8 +105,8 @@
            adult-capable indexer; say so where the user is looking. #}
         {% if adult_without_indexers %}
         <div class="alert alert-warn adult-indexer-banner" role="status">
-            <strong>This title is marked adult on AniList, and no indexer is configured.</strong>
-            Nyaa lists adult releases on sukebei, which Ryokan does not search, so every search for this series will come back empty. Add an indexer that carries adult releases, such as sukebei through Prowlarr or Jackett, under <a href="/settings?tab=indexers">Settings &rarr; Indexers</a>.
+            <strong>This title is marked adult, and no indexer is configured.</strong>
+            Nyaa keeps adult releases on sukebei, which Ryokan does not search, so searches for this series will come back empty until you add an indexer that carries them under <a href="/settings?tab=indexers">Settings &rarr; Indexers</a>.
         </div>
         {% endif %}
 

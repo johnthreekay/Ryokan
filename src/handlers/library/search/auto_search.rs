@@ -328,17 +328,17 @@ async fn run_auto_search_targets_with_upgrades(
         logger::warn(
             &state.db,
             LogCategory::AutoSearch,
-            &format!("{} is marked adult on AniList", title),
+            &format!("{} is marked adult", title),
             if no_indexer {
-                "Nyaa lists adult releases on sukebei, which Ryokan does not search, and no indexer is configured. This search will find nothing."
+                "No indexer is configured, and Nyaa keeps adult releases on sukebei, which Ryokan does not search, so this search finds nothing."
             } else {
-                "Nyaa lists adult releases on sukebei, which Ryokan does not search. Only the configured torznab or newznab indexers can find this title."
+                "Nyaa keeps adult releases on sukebei, which Ryokan does not search. Only the configured indexers can find this title."
             },
         )
         .await;
         if no_indexer {
             notes.push(
-                "This title is marked adult on AniList and no indexer is configured. Nyaa lists adult releases on sukebei, which Ryokan does not search."
+                "This title is marked adult and no indexer is configured. Nyaa keeps adult releases on sukebei, which Ryokan does not search."
                     .to_string(),
             );
         }
