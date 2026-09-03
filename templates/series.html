@@ -52,6 +52,8 @@
             {% if let Some(you_score) = user_score_display %}
             <span class="tag tag-user-score" title="Your score on AL/MAL">You: {{ you_score.render_html()|safe }}</span>
             {% endif %}
+            {# Issue #219 — last in the row, beside the scores. #}
+            {% if detail.is_adult %}<span class="tag tag-adult" title="AniList marks this title adult. Nyaa lists adult releases on sukebei, which Ryokan does not search.">18+</span>{% endif %}
         </div>
 
         <div class="detail-genres">
@@ -97,6 +99,14 @@
         {% else if !metadata_refreshed_at.is_empty() %}
         <div class="detail-meta-refresh">
             <span class="form-hint">Metadata last refreshed <span data-ts="{{ metadata_refreshed_at }}" data-ts-rendered="1" title="{{ metadata_refreshed_at }} UTC">{{ crate::services::relative_time::humanize_sqlite_short_now(metadata_refreshed_at) }}</span></span>
+        </div>
+        {% endif %}
+        {# Issue #219 — adult titles are unsearchable without an
+           adult-capable indexer; say so where the user is looking. #}
+        {% if adult_without_indexers %}
+        <div class="alert alert-warn adult-indexer-banner" role="status">
+            <strong>This title is marked adult on AniList, and no indexer is configured.</strong>
+            Nyaa lists adult releases on sukebei, which Ryokan does not search, so every search for this series will come back empty. Add an indexer that carries adult releases, such as sukebei through Prowlarr or Jackett, under <a href="/settings?tab=indexers">Settings &rarr; Indexers</a>.
         </div>
         {% endif %}
 

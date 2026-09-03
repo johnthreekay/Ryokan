@@ -23,6 +23,12 @@ pub struct Series {
     /// `None` for currently-airing shows and for metadata providers
     /// that don't supply an end date.
     pub end_year: Option<i32>,
+    /// AniList `isAdult` (issue #219). Stamped by the metadata refresh
+    /// (`set_is_adult`), so a freshly added row reads `false` until its
+    /// first refresh lands. Nyaa lists adult releases on sukebei, which
+    /// Ryokan does not search; the flag exists so the UI and the
+    /// auto-search log can say why nothing turns up.
+    pub is_adult: bool,
     pub folder_name: String,
     pub monitor_mode: String,
     /// Phase 4 per-series upgrade toggle. When false the upgrade scanner
@@ -104,6 +110,10 @@ impl Series {
 
 fn map_series_row(row: sqlx::sqlite::SqliteRow) -> Series {
     Series {
+        is_adult: row
+            .try_get::<i64, _>("is_adult")
+            .map(|v| v != 0)
+            .unwrap_or(false),
         id: row.get("id"),
         anilist_id: row.get("anilist_id"),
         mal_id: row.try_get("mal_id").ok(),
@@ -152,7 +162,7 @@ fn map_series_row(row: sqlx::sqlite::SqliteRow) -> Series {
 /// Get all tracked series, ordered by most recently added.
 pub async fn get_all(db: &SqlitePool) -> Result<Vec<Series>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, added_at FROM series ORDER BY added_at DESC",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series ORDER BY added_at DESC",
     )
     .fetch_all(db)
     .await?;
@@ -162,7 +172,7 @@ pub async fn get_all(db: &SqlitePool) -> Result<Vec<Series>, sqlx::Error> {
 
 pub async fn get_by_id(db: &SqlitePool, id: i64) -> Result<Option<Series>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, added_at FROM series WHERE id = ?",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(db)
@@ -176,7 +186,7 @@ pub async fn get_by_anilist_id(
     anilist_id: i64,
 ) -> Result<Option<Series>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, added_at FROM series WHERE anilist_id = ?",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id = ?",
     )
     .bind(anilist_id)
     .fetch_optional(db)
@@ -199,7 +209,7 @@ pub async fn get_by_anilist_ids(
     }
     let placeholders = vec!["?"; anilist_ids.len()].join(",");
     let sql = format!(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, added_at FROM series WHERE anilist_id IN ({placeholders})"
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id IN ({placeholders})"
     );
     let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
     for id in anilist_ids {
@@ -215,7 +225,7 @@ pub async fn get_by_anilist_ids(
 
 pub async fn get_by_mal_id(db: &SqlitePool, mal_id: i64) -> Result<Option<Series>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, added_at FROM series WHERE mal_id = ?",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ?",
     )
     .bind(mal_id)
     .fetch_optional(db)
@@ -482,7 +492,7 @@ pub async fn refresh_core_metadata(
 
 pub async fn get_unreconciled_fallbacks(db: &SqlitePool) -> Result<Vec<Series>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, added_at FROM series WHERE mal_id IS NOT NULL AND anilist_id < 0 ORDER BY added_at DESC",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id IS NOT NULL AND anilist_id < 0 ORDER BY added_at DESC",
     )
     .fetch_all(db)
     .await?;
@@ -640,6 +650,17 @@ pub async fn update_allow_upgrades(
 /// false (the default), the upgrade sweep won't accept a private-
 /// tracker release as the chosen upgrade for this series. Initial
 /// grabs and manual-search grabs aren't gated.
+/// Stamp AniList's `isAdult` on the row. Called from the metadata
+/// refresh, which is the only path that holds a full `AnimeDetail`.
+pub async fn set_is_adult(db: &SqlitePool, id: i64, is_adult: bool) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE series SET is_adult = ? WHERE id = ?")
+        .bind(is_adult as i64)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
 pub async fn update_allow_pt_upgrades(
     db: &SqlitePool,
     id: i64,
@@ -784,5 +805,33 @@ mod tests {
             assert!(id.is_none(), "series_id should be NULL after removal");
             assert_eq!(title, "DIGIMON BEATBREAK", "series_title preserved");
         }
+    }
+
+    #[tokio::test]
+    async fn set_is_adult_round_trips_through_the_row() {
+        // Issue #219 — the column defaults to 0 for existing rows and
+        // is stamped only by the metadata refresh.
+        let db = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        crate::models::migrate(&db).await.expect("full migrate");
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO series (anilist_id, title) VALUES (?, ?) RETURNING id")
+                .bind(21521_i64)
+                .bind("Kowaremono: Risa THE ANIMATION")
+                .fetch_one(&db)
+                .await
+                .expect("insert series");
+
+        let row = get_by_id(&db, id).await.expect("query").expect("row");
+        assert!(!row.is_adult, "fresh rows read as not adult");
+
+        set_is_adult(&db, id, true).await.expect("stamp");
+        let row = get_by_id(&db, id).await.expect("query").expect("row");
+        assert!(row.is_adult);
+
+        set_is_adult(&db, id, false).await.expect("clear");
+        let row = get_by_id(&db, id).await.expect("query").expect("row");
+        assert!(!row.is_adult);
     }
 }

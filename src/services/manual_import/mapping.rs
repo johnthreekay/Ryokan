@@ -320,6 +320,7 @@ mod tests {
     #[test]
     fn entry_from_detail_carries_the_search_fields() {
         let d = AnimeDetail {
+            is_adult: false,
             id: 7,
             id_mal: Some(8),
             title_romaji: "R".into(),

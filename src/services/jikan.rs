@@ -254,6 +254,9 @@ struct FullAnime {
     title_japanese: Option<String>,
     synopsis: Option<String>,
     background: Option<String>,
+    /// MAL age-rating label, e.g. `Rx - Hentai`; the adult signal.
+    #[serde(default)]
+    rating: Option<String>,
     images: Option<SearchImages>,
     trailer: Option<TrailerInfo>,
     #[serde(rename = "type")]
@@ -613,6 +616,13 @@ pub async fn get_anime_detail_cached(mal_id: i64) -> Result<AnimeDetail, String>
     Ok(detail)
 }
 
+/// MAL's `rating` label is the only adult signal Jikan carries. `Rx -
+/// Hentai` is the tier AniList also flags `isAdult`; `R+ - Mild Nudity`
+/// and below are not adult on either site.
+fn is_adult_rating(rating: Option<&str>) -> bool {
+    rating.is_some_and(|r| r.trim_start().starts_with("Rx"))
+}
+
 pub async fn get_anime_detail(mal_id: i64) -> Result<AnimeDetail, String> {
     let client = &*HTTP_CLIENT;
     let api_base = std::env::var("JIKAN_API_BASE").unwrap_or_else(|_| JIKAN_API.to_string());
@@ -647,6 +657,7 @@ pub async fn get_anime_detail(mal_id: i64) -> Result<AnimeDetail, String> {
     let relations = enrich_relations(anime.relations.take().unwrap_or_default()).await;
 
     Ok(AnimeDetail {
+        is_adult: is_adult_rating(anime.rating.as_deref()),
         id: -anime.mal_id,
         id_mal: Some(anime.mal_id),
         title_romaji: anime.title.clone().unwrap_or_default(),
@@ -1328,5 +1339,15 @@ mod tests {
         assert!(estimate_next_airing(&Some("Currently Airing".into()), None).is_some());
         assert!(estimate_next_airing(&Some("Finished Airing".into()), None).is_none());
         assert!(estimate_next_airing(&None, None).is_none());
+    }
+
+    #[test]
+    fn is_adult_rating_only_flags_rx() {
+        assert!(is_adult_rating(Some("Rx - Hentai")));
+        assert!(is_adult_rating(Some("  Rx - Hentai")));
+        assert!(!is_adult_rating(Some("R+ - Mild Nudity")));
+        assert!(!is_adult_rating(Some("R - 17+ (violence & profanity)")));
+        assert!(!is_adult_rating(Some("PG-13 - Teens 13 or older")));
+        assert!(!is_adult_rating(None));
     }
 }

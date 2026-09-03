@@ -56,6 +56,7 @@ struct Candidate {
     start_date: Option<String>,
     end_date: Option<String>,
     average_rating: Option<String>,
+    nsfw: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +101,8 @@ struct AnimeAttributes {
     start_date: Option<String>,
     end_date: Option<String>,
     average_rating: Option<String>,
+    #[serde(default)]
+    nsfw: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -242,6 +245,7 @@ fn to_candidate(resource: Resource<AnimeAttributes>) -> Option<Candidate> {
     let id = resource.id.parse::<i64>().ok()?;
     let attrs = resource.attributes;
     Some(Candidate {
+        nsfw: attrs.nsfw.unwrap_or(false),
         id,
         canonical_title: attrs.canonical_title.unwrap_or_default(),
         titles: attrs.titles.unwrap_or_default(),
@@ -314,6 +318,7 @@ fn to_anime_detail(item: Candidate) -> AnimeDetail {
     .to_string();
 
     AnimeDetail {
+        is_adult: item.nsfw,
         id: item.id,
         id_mal: None,
         title_romaji,
@@ -625,6 +630,7 @@ mod tests {
         subtype: &str,
     ) -> Candidate {
         Candidate {
+            nsfw: false,
             id: 42,
             canonical_title: canonical.to_string(),
             titles: titles
@@ -828,5 +834,13 @@ mod tests {
         assert!(exact > near);
         assert!(near > mid);
         assert!(mid > far);
+    }
+
+    #[test]
+    fn to_anime_detail_carries_nsfw_as_is_adult() {
+        let mut c = test_candidate("Kowaremono", &[], Some("2016-01-01"), Some(1), "OVA");
+        assert!(!to_anime_detail(c.clone()).is_adult);
+        c.nsfw = true;
+        assert!(to_anime_detail(c).is_adult);
     }
 }

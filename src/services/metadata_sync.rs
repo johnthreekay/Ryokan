@@ -596,6 +596,9 @@ async fn refresh_series_metadata_inner(
         )
         .await
         .map_err(|e| e.to_string())?;
+        series::set_is_adult(db, tracked.id, detail.is_adult)
+            .await
+            .map_err(|e| e.to_string())?;
 
         metadata_cache::upsert(db, tracked.id, stored_anilist_id, detail.id_mal, &detail)
             .await
@@ -982,6 +985,7 @@ mod tests {
 
     fn series_fixture(anilist_id: i64) -> series::Series {
         series::Series {
+            is_adult: false,
             id: 1,
             anilist_id,
             mal_id: None,
@@ -1010,6 +1014,7 @@ mod tests {
 
     fn detail_fixture(id: i64) -> anilist::AnimeDetail {
         anilist::AnimeDetail {
+            is_adult: false,
             id,
             id_mal: None,
             title_romaji: String::new(),

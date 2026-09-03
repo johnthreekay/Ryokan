@@ -9,6 +9,7 @@ use crate::services::source::DecisionRule;
 
 fn series(status: &str) -> series::Series {
     series::Series {
+        is_adult: false,
         id: 1,
         anilist_id: 101,
         mal_id: None,

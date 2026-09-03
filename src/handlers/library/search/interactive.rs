@@ -435,6 +435,7 @@ pub async fn search_batch_releases(
                 .await;
             }
             Ok(Json(auto_search::AutoSearchReport {
+                notes: Vec::new(),
                 grabbed: vec![auto_search::AutoSearchHit {
                     target_label: "Batch".to_string(),
                     release_title: result.title,

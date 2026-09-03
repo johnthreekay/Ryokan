@@ -517,6 +517,7 @@ mod tests {
 
     fn empty_anime_detail(id: i64, title_english: &str, episodes: Option<i32>) -> AnimeDetail {
         AnimeDetail {
+            is_adult: false,
             id,
             id_mal: None,
             title_romaji: title_english.to_string(),
