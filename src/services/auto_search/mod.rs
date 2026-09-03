@@ -27,8 +27,8 @@ mod search_target;
 use aliases::{SiblingRejectPrecompute, sibling_match_rejects};
 pub use aliases::{
     classify_match, collect_aliases, collect_extended_aliases, collect_sibling_aliases,
-    dedupe_strings, matches_target, normalize_title, sequel_variant_aliases, token_overlap_ratio,
-    token_set,
+    dedupe_strings, distinctive_overlap_ratio, matches_target, normalize_title,
+    sequel_variant_aliases, token_overlap_ratio, token_set,
 };
 pub use pack_detection::{
     TRANSITIVE_WALK_MAX_FETCHES, detect_sibling_entries_in_pack,
