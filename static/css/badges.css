@@ -6,14 +6,14 @@
     font-size: 12px;
     font-weight: 600;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
-.score-high { background: rgba(125, 211, 147, 0.15); color: var(--green); }
+.score-high { background: rgba(var(--green-rgb),, 0.15); color: var(--green); }
 
-.score-mid { background: rgba(203, 166, 247, 0.12); color: var(--accent); }
+.score-mid { background: rgba(var(--accent-rgb),, 0.12); color: var(--accent); }
 
-.score-low { background: rgba(211, 125, 125, 0.12); color: var(--red); }
+.score-low { background: rgba(var(--red-rgb),, 0.12); color: var(--red); }
 
 /* v1.3.0 — score breakdown expander. Used by both the manual Nyaa
    search page and the per-series interactive search picker, so the
@@ -106,7 +106,7 @@
 
 .tag-trusted { background: var(--green-bg); color: var(--green); }
 /* Issue #219: AniList isAdult. Sits beside the status tag on the series page. */
-.tag-adult { background: rgba(211, 125, 125, 0.15); color: var(--red, #d37d7d); }
+.tag-adult { background: rgba(var(--red-rgb),, 0.15); color: var(--red); }
 
 .tag-res { background: var(--bg-elevated); color: var(--text-dim); }
 
@@ -115,7 +115,7 @@
 .leech-count { color: var(--red); font-family: var(--font-mono); font-weight: 600; }
 
 .tag-score-green {
-    background: rgba(125, 211, 147, 0.15);
+    background: rgba(var(--green-rgb),, 0.15);
     color: var(--green);
 }
 
@@ -125,12 +125,12 @@
 }
 
 .tag-score-yellow {
-    background: rgba(211, 176, 125, 0.15);
+    background: rgba(var(--orange-rgb),, 0.15);
     color: var(--orange);
 }
 
 .tag-score-red {
-    background: rgba(211, 125, 125, 0.12);
+    background: rgba(var(--red-rgb),, 0.12);
     color: var(--red);
 }
 
@@ -141,7 +141,7 @@
    reads as "this is yours" without competing with the community
    badge's score-bucket coloring. */
 .tag-user-score {
-    background: rgba(203, 166, 247, 0.16);
+    background: rgba(var(--accent-rgb),, 0.16);
     color: var(--accent);
     font-variant-numeric: tabular-nums;
     display: inline-flex;
@@ -172,10 +172,10 @@
     font-size: 11px;
     font-weight: 500;
     padding: 3px 10px;
-    border-radius: 20px;
-    background: rgba(203, 166, 247, 0.12);
+    border-radius: var(--radius-pill);
+    background: rgba(var(--accent-rgb),, 0.12);
     color: var(--accent);
-    border: 1px solid rgba(203, 166, 247, 0.30);
+    border: 1px solid rgba(var(--accent-rgb),, 0.30);
     text-decoration: none;
     line-height: 1.4;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -183,8 +183,8 @@
 
 .tag-custom-list:hover,
 .tag-custom-list:focus-visible {
-    background: rgba(203, 166, 247, 0.20);
-    border-color: rgba(203, 166, 247, 0.55);
+    background: rgba(var(--accent-rgb),, 0.20);
+    border-color: rgba(var(--accent-rgb),, 0.55);
     color: var(--accent);
     text-decoration: none;
 }
@@ -234,7 +234,7 @@
 .log-badge {
     display: inline-block;
     padding: 1px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-size: 11px;
     font-weight: 600;
     font-family: var(--font-body);
@@ -242,13 +242,13 @@
     letter-spacing: 0.02em;
 }
 
-.log-badge-debug { background: rgba(125, 174, 211, 0.15); color: var(--blue); }
+.log-badge-debug { background: rgba(var(--blue-rgb),, 0.15); color: var(--blue); }
 
-.log-badge-info { background: rgba(125, 211, 147, 0.15); color: var(--green); }
+.log-badge-info { background: rgba(var(--green-rgb),, 0.15); color: var(--green); }
 
-.log-badge-warn { background: rgba(211, 176, 125, 0.15); color: var(--orange); }
+.log-badge-warn { background: rgba(var(--orange-rgb),, 0.15); color: var(--orange); }
 
-.log-badge-error { background: rgba(211, 125, 125, 0.2);  color: var(--red); }
+.log-badge-error { background: rgba(var(--red-rgb),, 0.2);  color: var(--red); }
 
 .tag-quality-grabbed {
     background: var(--mauve-bg);
@@ -265,12 +265,12 @@
  * affordance — if you add another source variant, add it here and
  * the groups + suggestions tables pick it up automatically. */
 .tag-src-bluray { background: var(--mauve-bg); color: var(--accent); }
-.tag-src-web    { background: rgba(125, 211, 147, 0.15); color: var(--green); }
-.tag-src-dvd    { background: rgba(211, 176, 125, 0.15); color: var(--orange); }
-.tag-src-hdtv   { background: rgba(125, 174, 211, 0.15); color: var(--blue); }
+.tag-src-web    { background: rgba(var(--green-rgb),, 0.15); color: var(--green); }
+.tag-src-dvd    { background: rgba(var(--orange-rgb),, 0.15); color: var(--orange); }
+.tag-src-hdtv   { background: rgba(var(--blue-rgb),, 0.15); color: var(--blue); }
 .tag-src-tv,
 .tag-src-unknown {
-    background: rgba(125, 125, 125, 0.15);
+    background: rgba(var(--text-dim-rgb),, 0.15);
     color: var(--text-dim);
 }
 
@@ -280,7 +280,7 @@
  * with the dim color. */
 .tag-origin-user { background: var(--mauve-bg); color: var(--accent); }
 .tag-origin-seed {
-    background: rgba(125, 125, 125, 0.15);
+    background: rgba(var(--text-dim-rgb),, 0.15);
     color: var(--text-dim);
 }
 

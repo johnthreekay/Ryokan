@@ -125,7 +125,7 @@ fieldset legend {
     text-decoration: none;
     font-size: 14px;
     font-weight: 500;
-    border-radius: 6px;
+    border-radius: var(--radius);
     transition: color 0.15s, background 0.15s;
     /* Wrap multi-word labels (Preferred Quality & Releases, Download
        Clients) cleanly within the 200px column. White-space:normal
@@ -148,7 +148,7 @@ fieldset legend {
 
 .tabbed-side-tab.active {
     color: var(--accent);
-    background: rgba(203, 166, 247, 0.08);
+    background: rgba(var(--accent-rgb),, 0.08);
 }
 
 .tabbed-side-tab:focus-visible {
@@ -292,7 +292,7 @@ fieldset legend {
 
 .group-source-table td {
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(42, 42, 58, 0.4);
+    border-bottom: 1px solid rgba(var(--border-rgb),, 0.4);
     vertical-align: middle;
     color: var(--text);
 }
@@ -302,7 +302,7 @@ fieldset legend {
 }
 
 .group-source-table tbody tr:hover {
-    background: rgba(124, 122, 255, 0.05);
+    background: rgba(var(--accent-rgb),, 0.05);
 }
 
 .group-source-table td:last-child {
@@ -362,7 +362,7 @@ fieldset legend {
     background: var(--bg-elevated);
     color: var(--text-dim);
     border: 1px solid var(--border);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 2px 10px;
     font-size: 12px;
     font-weight: 500;
@@ -501,28 +501,28 @@ fieldset legend {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     border: 1px solid var(--border);
     background: var(--bg);
     color: var(--text-dim);
 }
 
 .cf-import-status-badge.cf-import-status-new {
-    background: rgba(140, 204, 151, 0.12);
-    color: #8ccc97;
-    border-color: rgba(140, 204, 151, 0.3);
+    background: rgba(var(--green-rgb),, 0.12);
+    color: var(--green);
+    border-color: rgba(var(--green-rgb),, 0.3);
 }
 
 .cf-import-status-badge.cf-import-status-collision {
-    background: rgba(234, 179, 8, 0.14);
-    color: #e6c86b;
-    border-color: rgba(234, 179, 8, 0.35);
+    background: rgba(var(--yellow-rgb),, 0.14);
+    color: var(--yellow);
+    border-color: rgba(var(--yellow-rgb),, 0.35);
 }
 
 .cf-import-status-badge.cf-import-status-invalid {
-    background: rgba(220, 70, 70, 0.12);
-    color: #e06b6b;
-    border-color: rgba(220, 70, 70, 0.3);
+    background: rgba(var(--red-rgb),, 0.12);
+    color: var(--red);
+    border-color: rgba(var(--red-rgb),, 0.3);
 }
 
 .cf-import-name {
@@ -543,12 +543,12 @@ fieldset legend {
 .cf-import-error {
     grid-column: 1 / -1;
     font-size: 11px;
-    color: #e06b6b;
-    font-family: monospace;
+    color: var(--red);
+    font-family: var(--font-mono);
     word-break: break-word;
-    background: rgba(220, 70, 70, 0.06);
+    background: rgba(var(--red-rgb),, 0.06);
     padding: 4px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     margin-top: 4px;
 }
 
@@ -586,7 +586,7 @@ fieldset legend {
 
 .cf-card-selected {
     border-color: var(--accent);
-    background: rgba(203, 166, 247, 0.06);
+    background: rgba(var(--accent-rgb),, 0.06);
 }
 
 .cf-card-body {
@@ -651,7 +651,7 @@ fieldset legend {
     font-size: 11px;
     font-weight: 500;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--bg);
     color: var(--text-dim);
     border: 1px solid var(--border);
@@ -662,21 +662,21 @@ fieldset legend {
 }
 
 .cf-pill-required {
-    background: rgba(140, 204, 151, 0.12);
-    color: #8ccc97;
-    border-color: rgba(140, 204, 151, 0.3);
+    background: rgba(var(--green-rgb),, 0.12);
+    color: var(--green);
+    border-color: rgba(var(--green-rgb),, 0.3);
 }
 
 .cf-pill-negate {
-    background: rgba(220, 70, 70, 0.12);
-    color: #e06b6b;
-    border-color: rgba(220, 70, 70, 0.3);
+    background: rgba(var(--red-rgb),, 0.12);
+    color: var(--red);
+    border-color: rgba(var(--red-rgb),, 0.3);
 }
 
 .cf-pill-error {
-    background: rgba(220, 70, 70, 0.2);
-    color: #e06b6b;
-    border-color: rgba(220, 70, 70, 0.4);
+    background: rgba(var(--red-rgb),, 0.2);
+    color: var(--red);
+    border-color: rgba(var(--red-rgb),, 0.4);
 }
 
 .cf-pill-muted {
@@ -723,7 +723,7 @@ fieldset legend {
 .cf-card-add:hover {
     color: var(--accent);
     border-color: var(--accent);
-    background: rgba(203, 166, 247, 0.04);
+    background: rgba(var(--accent-rgb),, 0.04);
 }
 
 .cf-card-add-icon {
@@ -749,7 +749,7 @@ fieldset legend {
 
 .cf-origin-dot-defaults { background: var(--accent); }
 
-.cf-origin-dot-import { background: #8ccc97; }
+.cf-origin-dot-import { background: var(--green); }
 
 .cf-origin-dot-manual { background: var(--text-dim); }
 
@@ -757,7 +757,7 @@ fieldset legend {
     width: 20px;
     height: 20px;
     padding: 0;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     background: var(--bg-card);
     color: var(--text-dim);
@@ -771,9 +771,9 @@ fieldset legend {
 }
 
 .btn-icon-danger:hover {
-    background: #5a2b2b;
-    color: #ffb3b3;
-    border-color: #8a3a3a;
+    background: rgba(var(--red-rgb), 0.25);
+    color: var(--red);
+    border-color: rgba(var(--red-rgb), 0.5);
 }
 
 .cf-trash-description {
@@ -866,8 +866,8 @@ fieldset legend {
 }
 
 .ext-alert-error {
-    background: rgba(211, 125, 125, 0.10);
-    border: 1px solid rgba(211, 125, 125, 0.32);
+    background: rgba(var(--red-rgb),, 0.10);
+    border: 1px solid rgba(var(--red-rgb),, 0.32);
 }
 
 .ext-alert-error strong {
@@ -875,8 +875,8 @@ fieldset legend {
 }
 
 .ext-alert-warn {
-    background: rgba(211, 176, 125, 0.10);
-    border: 1px solid rgba(211, 176, 125, 0.30);
+    background: rgba(var(--orange-rgb),, 0.10);
+    border: 1px solid rgba(var(--orange-rgb),, 0.30);
 }
 
 .ext-alert-warn strong {
@@ -978,18 +978,18 @@ fieldset legend {
     font-weight: 700;
     letter-spacing: 0.4px;
     padding: 2px 7px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     flex-shrink: 0;
 }
 
 .indexer-catalog-card-pill-private {
-    background: rgba(243, 139, 168, 0.16);
-    color: var(--red, #f38ba8);
+    background: rgba(var(--red-rgb),, 0.16);
+    color: var(--red);
 }
 
 .indexer-catalog-card-pill-public {
-    background: rgba(166, 227, 161, 0.16);
-    color: var(--green, #a6e3a1);
+    background: rgba(var(--green-rgb),, 0.16);
+    color: var(--green);
 }
 
 .indexer-catalog-card-blurb {
@@ -1024,9 +1024,9 @@ fieldset legend {
 .indexer-seed-notes {
     margin: 12px 0 16px;
     padding: 12px 14px;
-    background: rgba(203, 166, 247, 0.08);
+    background: rgba(var(--accent-rgb),, 0.08);
     border-left: 3px solid var(--accent);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 13px;
     color: var(--text);
     line-height: 1.55;
@@ -1129,9 +1129,9 @@ fieldset legend {
     letter-spacing: 0.5px;
     text-transform: uppercase;
     padding: 2px 7px;
-    border-radius: 999px;
-    background: rgba(166, 227, 161, 0.18);
-    color: var(--green, #a6e3a1);
+    border-radius: var(--radius-pill);
+    background: rgba(var(--green-rgb),, 0.18);
+    color: var(--green);
     flex-shrink: 0;
 }
 
@@ -1145,16 +1145,16 @@ fieldset legend {
     font-weight: 600;
     letter-spacing: 0.2px;
     padding: 3px 9px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     flex-shrink: 0;
     white-space: nowrap;
     line-height: 1.4;
 }
 
-.dc-status-pill-loading  { background: rgba(108, 112, 134, 0.16); color: var(--text-dim); }
-.dc-status-pill-ok       { background: rgba(166, 227, 161, 0.18); color: var(--green, #a6e3a1); }
-.dc-status-pill-err      { background: rgba(243, 139, 168, 0.18); color: var(--red, #f38ba8); cursor: help; }
-.dc-status-pill-disabled { background: rgba(108, 112, 134, 0.18); color: var(--text-dim); }
+.dc-status-pill-loading  { background: rgba(var(--text-dim-rgb),, 0.16); color: var(--text-dim); }
+.dc-status-pill-ok       { background: rgba(var(--green-rgb),, 0.18); color: var(--green); }
+.dc-status-pill-err      { background: rgba(var(--red-rgb),, 0.18); color: var(--red); cursor: help; }
+.dc-status-pill-disabled { background: rgba(var(--text-dim-rgb),, 0.18); color: var(--text-dim); }
 
 .dc-card-meta {
     display: flex;
@@ -1236,7 +1236,7 @@ fieldset legend {
 .dc-card-add:hover {
     color: var(--accent);
     border-color: var(--accent);
-    background: rgba(203, 166, 247, 0.04);
+    background: rgba(var(--accent-rgb),, 0.04);
 }
 
 .dc-card-add-icon {
@@ -1295,28 +1295,28 @@ fieldset legend {
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     white-space: nowrap;
 }
 
 .rss-pill-off {
-    background: rgba(108, 112, 134, 0.18);
+    background: rgba(var(--text-dim-rgb),, 0.18);
     color: var(--text-dim);
 }
 
 .rss-pill-idle {
-    background: rgba(116, 199, 236, 0.16);
-    color: var(--blue, #74c7ec);
+    background: rgba(var(--blue-rgb),, 0.16);
+    color: var(--blue);
 }
 
 .rss-pill-ok {
-    background: rgba(166, 227, 161, 0.16);
-    color: var(--green, #a6e3a1);
+    background: rgba(var(--green-rgb),, 0.16);
+    color: var(--green);
 }
 
 .rss-pill-error {
-    background: rgba(243, 139, 168, 0.16);
-    color: var(--red, #f38ba8);
+    background: rgba(var(--red-rgb),, 0.16);
+    color: var(--red);
 }
 
 
@@ -1405,7 +1405,7 @@ fieldset legend {
 .api-key-status-pill {
     flex-shrink: 0;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -1414,16 +1414,16 @@ fieldset legend {
 }
 
 /* Match the notif/dc/indexer status pill palette so the page reads
-   as one family of cards. Catppuccin green (`--green: #a6e3a1`) on
+   as one family of cards. the palette green on
    a 0.18-alpha tint, with the dim variant for disabled. */
 .api-key-status-pill-on {
-    color: var(--green, #a6e3a1);
-    background: rgba(166, 227, 161, 0.18);
+    color: var(--green);
+    background: rgba(var(--green-rgb),, 0.18);
 }
 
 .api-key-status-pill-off {
     color: var(--text-dim);
-    background: rgba(108, 112, 134, 0.18);
+    background: rgba(var(--text-dim-rgb),, 0.18);
 }
 
 .api-key-card-scopes {
@@ -1434,12 +1434,12 @@ fieldset legend {
 
 .api-key-scope-chip {
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--accent);
-    background: rgba(203, 166, 247, 0.1);
-    border: 1px solid rgba(203, 166, 247, 0.2);
+    background: rgba(var(--accent-rgb),, 0.1);
+    border: 1px solid rgba(var(--accent-rgb),, 0.2);
 }
 
 .api-key-card-meta {
@@ -1557,7 +1557,7 @@ fieldset legend {
     height: 18px;
     background: var(--bg-elevated);
     border: 1px solid var(--border);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     transition: background 0.15s, border-color 0.15s;
 }
 
@@ -1568,12 +1568,12 @@ fieldset legend {
     width: 14px;
     height: 14px;
     background: var(--text-dim);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s;
 }
 
 .api-key-switch input:checked + .api-key-switch-track {
-    background: rgba(203, 166, 247, 0.2);
+    background: rgba(var(--accent-rgb),, 0.2);
     border-color: var(--accent);
 }
 
@@ -1618,7 +1618,7 @@ fieldset legend {
 .api-key-card-add:hover {
     color: var(--accent);
     border-color: var(--accent);
-    background: rgba(203, 166, 247, 0.04);
+    background: rgba(var(--accent-rgb),, 0.04);
 }
 
 .api-key-card-add-icon {
@@ -1739,11 +1739,11 @@ fieldset legend {
     gap: 8px;
     margin: 0 24px 12px;
     padding: 10px 12px;
-    background: rgba(211, 125, 125, 0.08);
-    border: 1px solid rgba(211, 125, 125, 0.3);
+    background: rgba(var(--red-rgb),, 0.08);
+    border: 1px solid rgba(var(--red-rgb),, 0.3);
     border-left-width: 3px;
     border-radius: var(--radius);
-    color: var(--red, #d37d7d);
+    color: var(--red);
     font-size: 13px;
     line-height: 1.4;
 }
@@ -1774,7 +1774,7 @@ fieldset legend {
 
 .api-keys-scope-tile:hover {
     border-color: var(--border-accent, var(--accent));
-    background: rgba(203, 166, 247, 0.04);
+    background: rgba(var(--accent-rgb),, 0.04);
 }
 
 /* When admin is checked, the other scope tiles render disabled
@@ -1807,12 +1807,12 @@ fieldset legend {
 .api-keys-scope-tile input:focus-visible + .api-keys-scope-tile-body {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 .api-keys-scope-tile:has(input:checked) {
     border-color: var(--accent);
-    background: rgba(203, 166, 247, 0.08);
+    background: rgba(var(--accent-rgb),, 0.08);
 }
 
 .api-keys-scope-tile-body {
@@ -1849,7 +1849,7 @@ fieldset legend {
 .api-keys-scope-tile-tag {
     margin-left: auto;
     padding: 2px 7px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
@@ -1860,15 +1860,15 @@ fieldset legend {
 }
 
 .api-keys-scope-tile-tag-live {
-    color: var(--green, #98c379);
-    background: rgba(152, 195, 121, 0.1);
-    border-color: rgba(152, 195, 121, 0.3);
+    color: var(--green);
+    background: rgba(var(--green-rgb),, 0.1);
+    border-color: rgba(var(--green-rgb),, 0.3);
 }
 
 .api-keys-scope-tile-tag-warn {
-    color: #e5c07b;
-    background: rgba(229, 192, 123, 0.1);
-    border-color: rgba(229, 192, 123, 0.3);
+    color: var(--yellow);
+    background: rgba(var(--yellow-rgb),, 0.1);
+    border-color: rgba(var(--yellow-rgb),, 0.3);
 }
 
 .api-keys-scope-tile-desc {
@@ -1888,8 +1888,8 @@ fieldset legend {
     gap: 10px;
     padding: 12px 14px;
     margin-bottom: 16px;
-    background: rgba(229, 192, 123, 0.08);
-    border: 1px solid rgba(229, 192, 123, 0.3);
+    background: rgba(var(--yellow-rgb),, 0.08);
+    border: 1px solid rgba(var(--yellow-rgb),, 0.3);
     border-left-width: 3px;
     border-radius: var(--radius);
     color: var(--text);
@@ -1898,7 +1898,7 @@ fieldset legend {
 }
 
 .api-keys-reveal-warning svg {
-    color: #e5c07b;
+    color: var(--yellow);
     flex-shrink: 0;
     margin-top: 2px;
 }
@@ -1945,7 +1945,7 @@ fieldset legend {
     gap: 6px;
     margin: 10px 0 0;
     font-size: 12px;
-    color: var(--green, #98c379);
+    color: var(--green);
 }
 
 /* ── File naming (issue #124) ─────────────────────────────────────── */

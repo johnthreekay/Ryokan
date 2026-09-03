@@ -23,7 +23,7 @@
     .log-table tr.log-row {
         display: block;
         padding: 10px 12px;
-        border-bottom: 1px solid rgba(42, 42, 58, 0.4);
+        border-bottom: 1px solid rgba(var(--border-rgb),, 0.4);
         background: var(--bg-card);
     }
     .log-table td {
@@ -206,7 +206,7 @@
     height: 16px;
     background: var(--bg);
     border: 2px solid var(--border-accent);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     box-sizing: border-box;
     cursor: pointer;
     position: relative;
@@ -274,7 +274,7 @@
 
 .log-table td {
     padding: 5px 10px;
-    border-bottom: 1px solid rgba(42, 42, 58, 0.4);
+    border-bottom: 1px solid rgba(var(--border-rgb),, 0.4);
     vertical-align: top;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -302,18 +302,18 @@
     max-width: 100%;
 }
 
-.log-badge-trace { background: rgba(110, 110, 136, 0.15); color: var(--text-dim); }
+.log-badge-trace { background: rgba(var(--text-dim-rgb),, 0.15); color: var(--text-dim); }
 
-.log-level-error { background: rgba(211, 125, 125, 0.04); }
+.log-level-error { background: rgba(var(--red-rgb),, 0.04); }
 
-.log-level-warn { background: rgba(211, 176, 125, 0.03); }
+.log-level-warn { background: rgba(var(--orange-rgb),, 0.03); }
 
 .log-row-new {
     animation: log-flash 2s ease-out;
 }
 
 .log-row:hover {
-    background: rgba(203, 166, 247, 0.04);
+    background: rgba(var(--accent-rgb),, 0.04);
 }
 
 .log-row:hover .log-detail {
@@ -376,18 +376,18 @@
 }
 
 .rss-decision-grabbed {
-    background: rgba(125, 211, 147, 0.14);
+    background: rgba(var(--green-rgb),, 0.14);
     color: var(--green);
 }
 
 .rss-decision-rejected,
 .rss-decision-error {
-    background: rgba(211, 125, 125, 0.12);
+    background: rgba(var(--red-rgb),, 0.12);
     color: var(--red);
 }
 
 .rss-decision-skipped {
-    background: rgba(125, 174, 211, 0.12);
+    background: rgba(var(--blue-rgb),, 0.12);
     color: var(--blue);
 }
 
@@ -455,7 +455,7 @@
     align-items: center;
     padding: 10px 14px;
     margin-bottom: 12px;
-    background: var(--panel);
+    background: var(--bg-card);
     border: 1px solid var(--accent);
     border-radius: var(--radius);
 }
@@ -530,7 +530,7 @@
     font-family: var(--font-mono);
     font-size: 12px;
     padding: 1px 5px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     color: var(--text);
@@ -653,13 +653,13 @@
     font-weight: 600;
     letter-spacing: 0.2px;
     padding: 3px 9px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     flex-shrink: 0;
     white-space: nowrap;
     line-height: 1.4;
 }
-.notif-status-pill-ok       { background: rgba(166, 227, 161, 0.18); color: var(--green, #a6e3a1); }
-.notif-status-pill-disabled { background: rgba(108, 112, 134, 0.18); color: var(--text-dim); }
+.notif-status-pill-ok       { background: rgba(var(--green-rgb),, 0.18); color: var(--green); }
+.notif-status-pill-disabled { background: rgba(var(--text-dim-rgb),, 0.18); color: var(--text-dim); }
 
 /* Kind badge — webhook / discord. Faint background tint so the
    badge reads as "tag" not "alert" — reserved alert colors stay
@@ -670,13 +670,13 @@
     letter-spacing: 0.5px;
     text-transform: uppercase;
     padding: 2px 7px;
-    border-radius: 999px;
-    background: rgba(108, 112, 134, 0.18);
+    border-radius: var(--radius-pill);
+    background: rgba(var(--text-dim-rgb),, 0.18);
     color: var(--text-dim);
     flex-shrink: 0;
 }
-.notif-kind-pill-discord { background: rgba(88, 101, 242, 0.18); color: #8b95f8; }
-.notif-kind-pill-webhook { background: rgba(203, 166, 247, 0.16); color: var(--accent); }
+.notif-kind-pill-discord { background: rgba(var(--blue-rgb),, 0.18); color: var(--blue); }
+.notif-kind-pill-webhook { background: rgba(var(--accent-rgb),, 0.16); color: var(--accent); }
 
 /* Corner × delete action. Test is modal-only; both DC and
    notifications expose connection-test inside the edit modal so
@@ -694,8 +694,8 @@
     font-size: 12px;
     color: var(--text-dim);
 }
-.notif-modal-test-result.ok  { color: var(--green, #a6e3a1); }
-.notif-modal-test-result.err { color: var(--red, #f38ba8); }
+.notif-modal-test-result.ok  { color: var(--green); }
+.notif-modal-test-result.err { color: var(--red); }
 
 .notif-empty {
     grid-column: 1 / -1;
@@ -726,7 +726,7 @@
 .notif-card-add:hover {
     color: var(--accent);
     border-color: var(--accent);
-    background: rgba(203, 166, 247, 0.04);
+    background: rgba(var(--accent-rgb),, 0.04);
 }
 .notif-card-add-icon {
     font-size: 28px;

@@ -76,6 +76,7 @@
 }
 
 :root {
+    /* Surfaces */
     --bg: #0f0f13;
     --bg-card: #16161d;
     --bg-elevated: #1e1e28;
@@ -84,28 +85,63 @@
     --text: #d4d4e0;
     --text-bright: #e8e8f0;
     --text-dim: #7a7a96;
+    /* Palette. Every colored surface in the app derives from these;
+       nothing else in static/css names a hex or rgb value except the
+       black / white overlays used for scrims, shadows, and hairlines. */
     --accent: #cba6f7;
     --accent-hover: #d9bfff;
     --green: #7dd393;
-    --green-bg: rgba(125, 211, 147, 0.1);
     --blue: #7daed3;
-    --blue-bg: rgba(125, 174, 211, 0.1);
     --purple: #cba6f7;
-    --purple-bg: rgba(203, 166, 247, 0.1);
     --red: #d37d7d;
+    --red-hover: #c46a6a;
     --orange: #d3b07d;
     --yellow: #e0c97d;
     --mauve: #cba6f7;
-    --mauve-bg: rgba(203, 166, 247, 0.12);
     --lavender: #b4a0ff;
+    /* The same colors as bare channel triples, for tints: write
+       `rgba(var(--accent-rgb), 0.12)` instead of restating the hex. */
+    --bg-rgb: 15, 15, 19;
+    --bg-card-rgb: 22, 22, 29;
+    --border-rgb: 42, 42, 58;
+    --text-bright-rgb: 232, 232, 240;
+    --text-dim-rgb: 122, 122, 150;
+    --accent-rgb: 203, 166, 247;
+    --green-rgb: 125, 211, 147;
+    --blue-rgb: 125, 174, 211;
+    --red-rgb: 211, 125, 125;
+    --orange-rgb: 211, 176, 125;
+    --yellow-rgb: 224, 201, 125;
+    --lavender-rgb: 180, 160, 255;
+    /* Standard tint backgrounds for pills and badges. */
+    --green-bg: rgba(var(--green-rgb), 0.1);
+    --blue-bg: rgba(var(--blue-rgb), 0.1);
+    --purple-bg: rgba(var(--accent-rgb), 0.1);
+    --mauve-bg: rgba(var(--accent-rgb), 0.12);
+    --red-bg: rgba(var(--red-rgb), 0.12);
+    --orange-bg: rgba(var(--orange-rgb), 0.12);
+    --yellow-bg: rgba(var(--yellow-rgb), 0.12);
+    --dim-bg: rgba(var(--text-dim-rgb), 0.15);
+    /* Saturated signal colors for the library card's completeness
+       bar only: the pastel palette is tuned for text on dark and
+       washes out as a 4px strip. Not for text or pills. */
+    --signal-green: #2fce5f;
+    --signal-red: #e5484d;
+    --signal-accent: #a06cf5;
+    --signal-accent-rgb: 160, 108, 245;
     --font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
     /* Murecho is used for the three display surfaces: nav-brand,
      * page-header h2, and series detail-title. See @font-face block
      * at top of this file. */
     --font-display: 'Murecho', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    /* Radii: sm for tags and badges, the default for inputs and
+       buttons, md for tiles, lg for cards and modals, pill for pills. */
+    --radius-sm: 4px;
     --radius: 6px;
+    --radius-md: 8px;
     --radius-lg: 10px;
+    --radius-pill: 999px;
     
     --bp-phone: 640px;
     --bp-tablet: 900px;
@@ -289,7 +325,7 @@ a:hover {
     font-weight: 600;
     letter-spacing: 0.5px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
 }
 
 .empty-state {
@@ -362,7 +398,7 @@ a:hover {
     color: var(--text-dim);
     background: var(--bg-elevated);
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
 }
 
 .relations-grid {
@@ -385,7 +421,7 @@ a:hover {
     flex-shrink: 0;
     width: 56px;
     height: 80px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--bg-elevated);
 }
@@ -469,7 +505,7 @@ a:hover {
     flex-shrink: 0;
     width: 120px;
     height: 68px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--bg-elevated);
 }
@@ -784,7 +820,7 @@ input[type="file"]::file-selector-button {
     background: var(--bg-card);
     color: var(--text-bright);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 4px 12px;
     margin-right: 10px;
     font-size: 12px;
@@ -843,7 +879,7 @@ input[type="file"]::file-selector-button:hover {
 .cf-origin-badge {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -859,15 +895,15 @@ input[type="file"]::file-selector-button:hover {
 .cf-parse-error {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 11px;
     font-weight: 600;
-    background: rgba(211, 125, 125, 0.12);
+    background: rgba(var(--red-rgb),, 0.12);
     color: var(--red);
 }
 
 @keyframes log-flash {
-    0%   { background: rgba(203, 166, 247, 0.12); }
+    0%   { background: rgba(var(--accent-rgb),, 0.12); }
     100% { background: transparent; }
 }
 
@@ -983,14 +1019,14 @@ input[type="file"]::file-selector-button:hover {
     flex: 1;
     height: 6px;
     background: var(--bg-elevated);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
 }
 
 .dl-progress-fill {
     height: 100%;
     background: var(--accent);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     transition: width 0.3s ease;
 }
 

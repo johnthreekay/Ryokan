@@ -195,7 +195,7 @@
                    the host themselves. #}
                 <input type="text" id="autobrr_webhook_url"
                        value="/api/webhook/autobrr"
-                       readonly style="flex:1; font-family: monospace;">
+                       readonly style="flex:1; font-family: var(--font-mono);">
                 <button type="button" class="btn btn-secondary"
                         onclick="copyApiKey('autobrr_webhook_url', this)"
                         style="white-space:nowrap">Copy</button>
@@ -204,7 +204,7 @@
         </div>
         <div class="form-group">
             <label>autobrr Webhook Body Template</label>
-            <pre style="margin: 0; background: var(--bg-secondary, #1a1a1a); padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 0.85em;">{{ "{" }}
+            <pre style="margin: 0; background: var(--bg); padding: 12px; border-radius: var(--radius-sm); overflow-x: auto; font-size: 0.85em;">{{ "{" }}
   "torrent_name": "{{ "{{" }}.TorrentName{{ "}}" }}",
   "info_hash": "{{ "{{" }}.InfoHash{{ "}}" }}",
   "magnet_uri": "{{ "{{" }}.MagnetURI{{ "}}" }}",

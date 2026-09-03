@@ -74,7 +74,7 @@
                         <div class="dc-card-title">
                             <strong class="dc-card-name">{{ idx.name }}</strong>
                             {% if idx.is_private_tracker %}
-                            <span class="dc-default-pill" style="background: rgba(243, 139, 168, 0.18); color: var(--red, #f38ba8);" title="Private tracker">PT</span>
+                            <span class="dc-default-pill" style="background: rgba(var(--red-rgb),, 0.18); color: var(--red);" title="Private tracker">PT</span>
                             {% endif %}
                         </div>
                         {# Status pill — server-rendered from the row.

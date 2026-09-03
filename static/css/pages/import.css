@@ -255,7 +255,7 @@
     letter-spacing: 0.5px;
     text-transform: uppercase;
     padding: 2px 7px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border-accent);
     color: var(--text-dim);
     white-space: nowrap;
@@ -263,13 +263,13 @@
 
 .import-kind-new {
     color: var(--green);
-    border-color: rgba(125, 211, 147, 0.4);
+    border-color: rgba(var(--green-rgb),, 0.4);
     background: var(--green-bg);
 }
 
 .import-kind-merge {
     color: var(--blue);
-    border-color: rgba(125, 174, 211, 0.4);
+    border-color: rgba(var(--blue-rgb),, 0.4);
     background: var(--blue-bg);
 }
 
@@ -292,7 +292,7 @@
     width: 56px;
     height: 80px;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
     background: var(--bg-elevated);
 }
@@ -352,7 +352,7 @@
 
 .import-tag-warn {
     color: var(--yellow);
-    background: rgba(224, 201, 125, 0.12);
+    background: rgba(var(--yellow-rgb),, 0.12);
     text-transform: none;
     letter-spacing: 0;
     font-family: var(--font-body);
@@ -573,7 +573,7 @@
     font-size: 11px;
     font-weight: 600;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--bg-elevated);
     color: var(--text-dim);
 }
