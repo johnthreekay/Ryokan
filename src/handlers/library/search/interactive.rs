@@ -347,8 +347,13 @@ pub async fn search_batch_releases(
                 LogCategory::Grab,
                 &format!("Grabbed batch: {}", result.title),
                 &format!(
-                    "group={}, score={}, tier={}",
-                    result.group, result.score, tier_label
+                    "group={}, score={}, tier={}{}",
+                    result.group,
+                    result.score,
+                    tier_label,
+                    crate::services::auto_search::MatchProvenance::log_suffix(
+                        result.match_provenance.as_ref()
+                    )
                 ),
             )
             .await;
@@ -411,7 +416,7 @@ pub async fn search_batch_releases(
                     .await;
                 }
                 for ep_num in &ep_nums {
-                    let _ = episode_tags::record_grab(
+                    let _ = episode_tags::record_grab_with_match(
                         &state.db,
                         sid,
                         *ep_num,
@@ -420,6 +425,7 @@ pub async fn search_batch_releases(
                         &result.group,
                         result.size_bytes,
                         result.is_batch,
+                        result.match_provenance.as_ref(),
                     )
                     .await;
                 }

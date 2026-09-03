@@ -1,5 +1,6 @@
 use sqlx::{Row, SqlitePool};
 
+use crate::services::auto_search::{MatchProvenance, history_summary};
 use crate::services::source::ClassificationResult;
 
 /// One entry in the cross-series "needs review" list. Carries just enough
@@ -121,6 +122,27 @@ pub struct GrabHistoryEntry {
     #[serde(default)]
     #[sqlx(default)]
     pub client_content_path: String,
+    /// Misgrab guardrails: how the release title matched the series at
+    /// grab time. Empty strings and 0 for rows written before the
+    /// columns existed and for paths that carry no provenance (RSS,
+    /// autobrr, the picker).
+    #[serde(default)]
+    #[sqlx(default)]
+    pub match_kind: String,
+    #[serde(default)]
+    #[sqlx(default)]
+    pub match_phase: String,
+    #[serde(default)]
+    #[sqlx(default)]
+    pub matched_alias: String,
+    #[serde(default)]
+    #[sqlx(default)]
+    pub match_ratio: f64,
+    /// Readable sentence built from the four columns; empty for legacy
+    /// rows. The episode modal shows it under the release title.
+    #[serde(default)]
+    #[sqlx(default)]
+    pub grab_match_summary: String,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -190,6 +212,45 @@ pub async fn record_grab(
     size_bytes: i64,
     is_batch: bool,
 ) -> Result<i64, sqlx::Error> {
+    record_grab_with_match(
+        db,
+        series_id,
+        episode_number,
+        classification,
+        release_title,
+        release_group,
+        size_bytes,
+        is_batch,
+        None,
+    )
+    .await
+}
+
+/// `record_grab` plus the match provenance the search pipeline stamped
+/// on the winning candidate (misgrab guardrails). The auto-search,
+/// upgrade, and interactive grab paths use this; everything else goes
+/// through `record_grab` and leaves the provenance columns empty.
+#[allow(clippy::too_many_arguments)]
+pub async fn record_grab_with_match(
+    db: &SqlitePool,
+    series_id: i64,
+    episode_number: i32,
+    classification: &ClassificationResult,
+    release_title: &str,
+    release_group: &str,
+    size_bytes: i64,
+    is_batch: bool,
+    provenance: Option<&MatchProvenance>,
+) -> Result<i64, sqlx::Error> {
+    let (match_kind, match_phase, matched_alias, match_ratio) = match provenance {
+        Some(p) => (
+            p.kind.as_str(),
+            p.phase.as_str(),
+            p.alias.as_str(),
+            f64::from(p.ratio),
+        ),
+        None => ("", "", "", 0.0),
+    };
     let quality_tag = classification.label();
     let source_str = classification.source.as_str();
     let resolution_str = classification.resolution.as_str();
@@ -235,8 +296,8 @@ pub async fn record_grab(
     let mut tx = db.begin().await?;
 
     let history_id: i64 = sqlx::query_scalar(
-        "INSERT INTO episode_grab_history (series_id, episode_number, quality_tag, release_title, release_group, file_name, size_bytes, is_batch, state)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'grabbed')
+        "INSERT INTO episode_grab_history (series_id, episode_number, quality_tag, release_title, release_group, file_name, size_bytes, is_batch, state, match_kind, match_phase, matched_alias, match_ratio)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'grabbed', ?, ?, ?, ?)
          RETURNING id",
     )
     .bind(series_id)
@@ -247,6 +308,10 @@ pub async fn record_grab(
     .bind(release_title)
     .bind(size_bytes)
     .bind(is_batch_i)
+    .bind(match_kind)
+    .bind(match_phase)
+    .bind(matched_alias)
+    .bind(match_ratio)
     .fetch_one(&mut *tx)
     .await?;
 
@@ -351,7 +416,7 @@ pub async fn get_grab_history(
     series_id: i64,
     episode_number: i32,
 ) -> Result<Vec<GrabHistoryEntry>, sqlx::Error> {
-    sqlx::query_as::<_, GrabHistoryEntry>(
+    let mut rows = sqlx::query_as::<_, GrabHistoryEntry>(
         "SELECT egh.id,
                 egh.quality_tag,
                 egh.release_title,
@@ -361,6 +426,10 @@ pub async fn get_grab_history(
                 COALESCE(egh.is_batch, 0) AS is_batch,
                 egh.grabbed_at,
                 egh.state,
+                COALESCE(egh.match_kind, '') AS match_kind,
+                COALESCE(egh.match_phase, '') AS match_phase,
+                COALESCE(egh.matched_alias, '') AS matched_alias,
+                COALESCE(egh.match_ratio, 0) AS match_ratio,
                 COALESCE((
                     SELECT gt.client_content_path
                       FROM grabbed_torrents gt
@@ -377,7 +446,16 @@ pub async fn get_grab_history(
     .bind(series_id)
     .bind(episode_number)
     .fetch_all(db)
-    .await
+    .await?;
+    for row in &mut rows {
+        row.grab_match_summary = history_summary(
+            &row.match_kind,
+            &row.match_phase,
+            &row.matched_alias,
+            row.match_ratio,
+        );
+    }
+    Ok(rows)
 }
 
 /// Overwrite the structured classification columns on an existing tag row.
@@ -1330,6 +1408,11 @@ mod tests {
             grabbed_at: "2026-04-24T00:00:00Z".to_string(),
             state: "grabbed".to_string(),
             client_content_path: "/downloads/Show - 01.mkv".to_string(),
+            match_kind: String::new(),
+            match_phase: String::new(),
+            matched_alias: String::new(),
+            match_ratio: 0.0,
+            grab_match_summary: String::new(),
         };
         let v = serde_json::to_value(&entry).unwrap();
         assert_eq!(v["client_content_path"], "/downloads/Show - 01.mkv");
@@ -1385,5 +1468,77 @@ mod grab_history_state_tests {
             .await
             .unwrap();
         assert_eq!(states(&db, sid).await, vec!["replaced", "completed"]);
+    }
+
+    #[tokio::test]
+    async fn record_grab_with_match_round_trips_provenance_into_history() {
+        use crate::services::auto_search::{MatchKind, MatchPhase};
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let sid: i64 = sqlx::query_scalar(
+            "INSERT INTO series (anilist_id, title) VALUES (21521, 'Kowaremono') RETURNING id",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let provenance = MatchProvenance {
+            phase: MatchPhase::Extended,
+            kind: MatchKind::Fuzzy,
+            alias: "Risa THE ANIMATION".to_string(),
+            ratio: 0.67,
+        };
+        record_grab_with_match(
+            &db,
+            sid,
+            1,
+            &ClassificationResult::unknown(),
+            "[Xonline] Grisaia",
+            "Xonline",
+            0,
+            false,
+            Some(&provenance),
+        )
+        .await
+        .unwrap();
+        let rows = get_grab_history(&db, sid, 1).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.match_kind, "fuzzy");
+        assert_eq!(row.match_phase, "extended");
+        assert_eq!(row.matched_alias, "Risa THE ANIMATION");
+        assert!((row.match_ratio - 0.67).abs() < 1e-6, "{}", row.match_ratio);
+        assert_eq!(
+            row.grab_match_summary,
+            "Fuzzy alias match: \"Risa THE ANIMATION\" at 67% (extended alias pass)"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_grab_without_match_leaves_provenance_columns_empty() {
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let sid: i64 = sqlx::query_scalar(
+            "INSERT INTO series (anilist_id, title) VALUES (1, 'Bebop') RETURNING id",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        record_grab(
+            &db,
+            sid,
+            3,
+            &ClassificationResult::unknown(),
+            "[G] Bebop - 03",
+            "G",
+            0,
+            false,
+        )
+        .await
+        .unwrap();
+        let rows = get_grab_history(&db, sid, 3).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].match_kind.is_empty());
+        assert!(rows[0].grab_match_summary.is_empty());
+        assert_eq!(rows[0].match_ratio, 0.0);
     }
 }

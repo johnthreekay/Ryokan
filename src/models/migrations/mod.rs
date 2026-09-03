@@ -2798,6 +2798,19 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .await
         .ok();
 
+    // Misgrab guardrails (search side): how the title match that
+    // produced each grab was made, so a later misgrab is diagnosable
+    // from the history. `NOT NULL DEFAULT` keeps the raw INSERTs in
+    // older tests valid; legacy rows read back as empty strings.
+    for sql in [
+        "ALTER TABLE episode_grab_history ADD COLUMN match_kind TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_grab_history ADD COLUMN match_phase TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_grab_history ADD COLUMN matched_alias TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_grab_history ADD COLUMN match_ratio REAL NOT NULL DEFAULT 0",
+    ] {
+        sqlx::query(sql).execute(db).await.ok();
+    }
+
     Ok(())
 }
 

@@ -354,11 +354,14 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                         LogCategory::Grab,
                         &format!("Upgrade grabbed: {}", result.title),
                         &format!(
-                            "series={}, target={}, group={}, tier={}",
+                            "series={}, target={}, group={}, tier={}{}",
                             title,
                             label,
                             result.group,
-                            incoming_classification.label()
+                            incoming_classification.label(),
+                            crate::services::auto_search::MatchProvenance::log_suffix(
+                                result.match_provenance.as_ref()
+                            )
                         ),
                     )
                     .await;
@@ -418,7 +421,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                         .await;
                     }
                     for ep_num in &ep_nums {
-                        let _ = episode_tags::record_grab(
+                        let _ = episode_tags::record_grab_with_match(
                             &state.db,
                             row.id,
                             *ep_num,
@@ -427,6 +430,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                             &result.group,
                             result.size_bytes,
                             result.is_batch,
+                            result.match_provenance.as_ref(),
                         )
                         .await;
                     }

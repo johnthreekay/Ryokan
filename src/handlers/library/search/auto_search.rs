@@ -614,13 +614,16 @@ async fn run_auto_search_targets_with_upgrades(
                             LogCategory::Grab,
                             &format!("Grabbed: {}", result.title),
                             &format!(
-                                "target={}, group={}, score={}, tier={}, batch={}{}",
+                                "target={}, group={}, score={}, tier={}, batch={}{}{}",
                                 label,
                                 result.group,
                                 result.score,
                                 incoming_classification.label(),
                                 result.is_batch,
-                                selective_suffix
+                                selective_suffix,
+                                crate::services::auto_search::MatchProvenance::log_suffix(
+                                    result.match_provenance.as_ref()
+                                )
                             ),
                         )
                         .await;
@@ -729,7 +732,7 @@ async fn run_auto_search_targets_with_upgrades(
                                 .await;
                             }
                             for ep_num in &ep_nums {
-                                let _ = episode_tags::record_grab(
+                                let _ = episode_tags::record_grab_with_match(
                                     &state.db,
                                     sid,
                                     *ep_num,
@@ -738,6 +741,7 @@ async fn run_auto_search_targets_with_upgrades(
                                     &result.group,
                                     result.size_bytes,
                                     result.is_batch,
+                                    result.match_provenance.as_ref(),
                                 )
                                 .await;
                             }
