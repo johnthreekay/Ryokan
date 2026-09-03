@@ -916,12 +916,15 @@ input[type="file"]::file-selector-button:hover {
     background: var(--bg-card);
 }
 
-.rss-table td a {
+/* `:not(.btn)`: an anchor styled as a button inside a table cell
+   (Backup's per-file Download) keeps its `.btn-*` colors instead of
+   turning into an underlined accent link on hover. */
+.rss-table td a:not(.btn) {
     color: var(--accent);
     text-decoration: none;
 }
 
-.rss-table td a:hover {
+.rss-table td a:not(.btn):hover {
     color: var(--accent-hover);
     text-decoration: underline;
 }

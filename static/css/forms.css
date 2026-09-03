@@ -311,6 +311,29 @@
 
 .btn-danger { background: var(--red); color: var(--bg); }
 
+/* Hover for the solid fill above. Without this the muted block's
+   `.btn-danger:hover` (same specificity, earlier in the file) wins and
+   fades the fill to a faint tint under the dark label, so the label
+   disappears while the pointer is on it. Same shade the Remove-series
+   modal uses. */
+.btn-danger:hover { background: #c46a6a; }
+
+/* Anchors styled as buttons (`<a class="btn btn-primary">`). base.css
+   gives every `a:hover` the accent color at (0,1,1), which outranks
+   the (0,1,0) label color on the variants, so a hovered solid button
+   painted its label in its own fill color and the text vanished. Pin
+   the label color per variant at (0,2,1) and keep links underline-free. */
+a.btn:hover { text-decoration: none; }
+
+a.btn-primary:hover,
+a.btn-success:hover,
+a.btn-danger:hover { color: var(--bg); }
+
+a.btn-secondary:hover,
+a.btn-grab:hover { color: var(--accent); }
+
+a.btn-ghost:hover { color: var(--text); }
+
 .form-group-checkbox {
     margin-top: 4px;
 }
