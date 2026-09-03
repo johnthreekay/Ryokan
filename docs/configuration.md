@@ -101,6 +101,7 @@ Day-to-day knobs.
 - **Purge after (days)**: how long recycled items survive before the hourly cleanup task deletes them for good. Default 14. `0` keeps everything until you empty the bin manually.
 - **Auto-search when monitoring changes**: when a series' monitoring mode widens (for example none → all), run a background auto-search for the newly monitored aired episodes. Off by default; narrowing changes never search.
 - **Auto-add series to library on grab**: grabbing from the manual search page resolves the release title through anitomy and AniList and adds the series if it isn't in the library yet. On by default; off keeps the old behavior where the grab lands in the client with no library row.
+- **Remove and blocklist detected misgrabs**: when the files inside a download clearly name a different series, Ryokan removes the download from the client, blocklists the release, notifies you, and searches again. On by default. Off keeps the download in the client, never imports it, and lists it under System, Misgrabs for you to restore or dismiss.
 
 ## On the System page (not Settings)
 

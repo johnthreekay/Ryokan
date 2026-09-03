@@ -73,6 +73,19 @@ When to come here:
 
 This list is opt-in noise: each "needs review" entry is also written to the `Quality` log category, and notifications can fire on each one (off by default for a new provider, toggled per provider on **System → Notifications**, because reclassify sweeps can produce hundreds of entries at once).
 
+## Misgrabs
+
+Ryokan checks every download against the list of files the download client reports. When those files clearly name a different series than the one the release was grabbed for, the download is a misgrab. By default Ryokan removes it from the download client, adds the release to the blocklist so it is never grabbed again, sends a notification, and searches again for the episode it was supposed to fill.
+
+The Misgrabs tab lists what was caught: the series, the release name, a sample of the file names inside it, when it was detected, and what happened to it. Each row has two actions.
+
+- **Restore** says the release was right after all. Ryokan stops treating it as a misgrab for good, and if the download was removed it is added back to the download client.
+- **Dismiss** confirms the misgrab. The release stays on the blocklist and the row leaves this tab. If the download was only flagged and is still in the client, it is removed now.
+
+Downloads whose file names carry no title at all (for example `01.mkv` inside an unnamed folder) are never treated as misgrabs, and neither are files that share a word with the series title, so abbreviated fansub names are safe.
+
+You can turn off automatic removal under Settings, General, "Remove and blocklist detected misgrabs". Ryokan then keeps the download in the client, never imports it, and lists it here as held until you restore or dismiss it.
+
 ## Notifications
 
 CRUD UI for outbound notification destinations. Two provider kinds:
