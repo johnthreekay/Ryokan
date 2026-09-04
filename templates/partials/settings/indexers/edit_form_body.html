@@ -56,8 +56,20 @@
 
         <div class="form-group">
             <label for="indexer-edit-categories-{{ row.id }}">Categories</label>
-            <input id="indexer-edit-categories-{{ row.id }}" type="text" name="categories" value="{{ row.categories }}" placeholder="automatic">
-            <span class="form-hint">Torznab or newznab category ids to ask this indexer for, comma separated. Blank asks for what each series needs and falls back to what the indexer reports.{% if !reported_categories.is_empty() %} This indexer reports: {% for c in reported_categories %}{{ c }}{% if !loop.last %}, {% endif %}{% endfor %}.{% endif %}</span>
+            <input id="indexer-edit-categories-{{ row.id }}" type="text" name="categories" value="{{ row.categories }}" placeholder="automatic" data-indexer-categories-input>
+            <span class="form-hint">Comma separated ids. Blank asks for what each series needs, from what this indexer offers.</span>
+            {% if !reported_categories.is_empty() %}
+            {# What the cached caps report, folded away; a chip toggles
+               its id in the field (static/js/settings.js). #}
+            <details class="cat-report">
+                <summary>What this indexer offers ({{ reported_categories.len() }})</summary>
+                <div class="cat-chips">
+                    {% for c in reported_categories %}
+                    <button type="button" class="cat-chip" data-cat-id="{{ c.id }}"><span class="cat-chip-id">{{ c.id }}</span>{{ c.name }}</button>
+                    {% endfor %}
+                </div>
+            </details>
+            {% endif %}
         </div>
 
         <div class="form-group">

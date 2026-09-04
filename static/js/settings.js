@@ -662,13 +662,56 @@ function bindIndexerKindCopyToForm(form) {
         applyIndexerKindCopy(form, kindSelect.value);
     });
 }
+// ── Indexer modal: category chips ─────────────────────────────────
+//
+// The Edit form folds what the indexer's caps report under the
+// Categories field as chips. A chip toggles its id in the comma list
+// and reads as on while the list holds it, so the field stays a plain
+// text input (paste a list, type an id the indexer does not report)
+// and the chips are a shortcut, not the source of truth.
+function indexerCategoryIds(input) {
+    return input.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+}
+function paintIndexerCategoryChips(form) {
+    const input = form.querySelector('[data-indexer-categories-input]');
+    if (!input) return;
+    const ids = indexerCategoryIds(input);
+    form.querySelectorAll('.cat-chip[data-cat-id]').forEach(function(chip) {
+        chip.classList.toggle('is-on', ids.indexOf(chip.dataset.catId) !== -1);
+    });
+}
+function bindIndexerCategoryChips(form) {
+    if (!form || form.dataset.indexerChipsBound === '1') return;
+    form.dataset.indexerChipsBound = '1';
+    const input = form.querySelector('[data-indexer-categories-input]');
+    if (!input) return;
+    form.addEventListener('click', function(ev) {
+        const chip = ev.target.closest('.cat-chip[data-cat-id]');
+        if (!chip) return;
+        ev.preventDefault();
+        const id = chip.dataset.catId;
+        let ids = indexerCategoryIds(input);
+        if (ids.indexOf(id) === -1) {
+            ids.push(id);
+        } else {
+            ids = ids.filter(function(x) { return x !== id; });
+        }
+        input.value = ids.join(', ');
+        paintIndexerCategoryChips(form);
+    });
+    input.addEventListener('input', function() { paintIndexerCategoryChips(form); });
+    paintIndexerCategoryChips(form);
+}
 // One-shot guard — see top of file for rationale.
 if (!window.__ryokanSettingsIndexerModalListener) {
     window.__ryokanSettingsIndexerModalListener = true;
     document.body.addEventListener('htmx:after:settle', function(ev) {
         if (ev.target && ev.target.id === 'indexer-modal-body') {
             const form = ev.target.querySelector('form');
-            if (form) bindIndexerKindCopyToForm(form);
+            if (form) {
+                bindIndexerKindCopyToForm(form);
+                bindIndexerCategoryChips(form);
+            }
             // Pick up focus the body-clear-on-open dance left
             // pending — `openIndexerModal` ran before the swap
             // landed, so its querySelector found nothing.
