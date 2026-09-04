@@ -1,26 +1,5 @@
 /* pages/settings.css — auto-split from style.css. */
 
-@media (max-width: 640px) {
-    fieldset {
-        padding: 16px;
-        min-width: 0;
-    }
-}
-
-fieldset {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    margin-bottom: 24px;
-}
-
-fieldset legend {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--accent);
-    padding: 0 8px;
-}
-
 .settings-tabs {
     margin-bottom: 24px;
 }

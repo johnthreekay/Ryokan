@@ -57,9 +57,9 @@ async fn set_desktop_viewport(client: &fantoccini::Client) -> Result<(), String>
 /// the boosted nav and the assertion below would fail. With it, the
 /// extension diffs the response head and adds the new `<link>`.
 ///
-/// Marker: `pages/settings.css` defines `fieldset { padding: 24px }`.
-/// Read the computed `padding` of a `<fieldset>` on Settings; assert
-/// it's `24px`. Browsers fall back to user-agent default padding (~0)
+/// Marker: `base.css` defines `.cf-section { padding: 22px 24px }`.
+/// Read the computed `padding` of a Settings card; assert it is
+/// `22px`. Browsers fall back to user-agent default padding (~0)
 /// when the rule isn't loaded — clear signal.
 #[tokio::test]
 async fn boost_swaps_head_when_navigating_library_to_settings() {
@@ -107,11 +107,11 @@ async fn boost_swaps_head_when_navigating_library_to_settings() {
     let fieldset = client
         .wait()
         .at_most(Duration::from_secs(5))
-        .for_element(Locator::Css("fieldset"))
+        .for_element(Locator::Css(".cf-section"))
         .await
-        .expect("settings fieldset present");
+        .expect("settings card present");
 
-    // Read computed padding. `pages/settings.css` sets it to 24px;
+    // Read computed padding. `base.css` sets it to 22px;
     // unstyled fallback is 0 / user-agent default. The mobile-side
     // `@media (max-width: 640px)` override sets 16px, so accept both
     // values (test runs in headless mode at default viewport, but
@@ -127,7 +127,7 @@ async fn boost_swaps_head_when_navigating_library_to_settings() {
         .unwrap_or_else(|_| panic!("expected pixel value, got: {padding}"));
     assert!(
         padding_px >= 16.0,
-        "settings.css `fieldset {{ padding: 24px }}` rule must apply after boosted nav; \
+        "base.css `.cf-section {{ padding: 22px 24px }}` rule must apply after boosted nav; \
          got computed padding-top={padding_px}px (head-support extension probably didn't merge \
          the new page's CSS link)"
     );

@@ -25,8 +25,8 @@
         <input type="hidden" name="rtorrent_label" value="{{ config.rtorrent_label }}">
         <input type="hidden" name="rtorrent_download_path" value="{{ config.rtorrent_download_path }}">
 
-        <fieldset>
-            <legend>Jellyfin <span id="jellyfin-health" class="form-hint"></span></legend>
+        <div class="cf-section">
+            <h3>Jellyfin <span id="jellyfin-health" class="form-hint"></span></h3>
             <div class="form-group">
                 <label for="jellyfin_url">URL</label>
                 <input type="text" name="jellyfin_url" id="jellyfin_url" value="{{ config.jellyfin_url }}" placeholder="http://192.168.68.61:8096">
@@ -54,10 +54,10 @@
                         hx-disable="this">Refresh Library</button>
                 <span id="jellyfin-test-result" class="form-hint" aria-live="polite"></span>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Seerr (Sonarr API Compatibility)</legend>
+        <div class="cf-section">
+            <h3>Seerr (Sonarr API Compatibility)</h3>
             <p class="form-hint" style="margin-bottom: 12px;">Lets Seerr add anime through Ryokan. In Seerr, add a Sonarr server with this address and the key below.</p>
             <div class="setting-rows">
                 <label class="setting-row">
@@ -78,10 +78,10 @@
                 </div>
                 
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Seerr (Radarr API Compatibility)</legend>
+        <div class="cf-section">
+            <h3>Seerr (Radarr API Compatibility)</h3>
             <p class="form-hint" style="margin-bottom: 12px;">Lets Seerr add anime movies through Ryokan. In Seerr, add a Radarr server with this address, URL base <code>/radarr</code>, and the key below.</p>
             <div class="setting-rows">
                 <label class="setting-row">
@@ -102,7 +102,7 @@
                 </div>
                 
             </div>
-        </fieldset>
+        </div>
 
         {# Issue #62 — External account linkage. Same fieldset
            + form-group + settings-inline-actions vocabulary as every
@@ -112,7 +112,7 @@
            identity → sync state → banners → prefs → skip-watched →
            interval → actions — but rebuilt entirely from the
            connections-tab primitives. No bespoke card surface. #}
-        <fieldset>
+        <div class="cf-section">
             {# Legend health badge — same visual primitive
                qBittorrent / Jellyfin / Deluge / Transmission /
                rTorrent use. Server-rendered (we have the data; JS
@@ -122,7 +122,7 @@
                  • green (.log-badge-info)  → linked + auth healthy
                  • red   (.log-badge-error) → linked + re-link required
                  • neutral (.log-badge)     → not linked #}
-            <legend>
+            <h3>
                 External Accounts
                 {% match external_account %}
                     {% when Some with (acct) %}
@@ -133,7 +133,7 @@
                     {% when None %}
                         <span class="form-hint"><span class="log-badge">Not linked</span></span>
                 {% endmatch %}
-            </legend>
+            </h3>
             {% match external_account %}
                 {% when Some with (acct) %}
                     {# Banners — sticky flags cleared on the next
@@ -250,5 +250,5 @@
                         </div>
                     </div>
             {% endmatch %}
-        </fieldset>
+        </div>
 

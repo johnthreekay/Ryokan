@@ -105,11 +105,12 @@
 
 .settings-form .form-group { margin-bottom: 16px; }
 
-/* The card's own padding already closes a fieldset; without this the
-   last field adds its 16px on top and every card sits deeper at the
+/* The card's own padding already closes it; without this the last
+   field adds its 16px on top and every card sits deeper at the
    bottom than at the top. */
-.settings-form fieldset > .form-group:last-child,
-.settings-form fieldset > .form-row:last-child {
+.settings-form .cf-section > .form-group:last-child,
+.settings-form .cf-section > .form-row:last-child,
+.cf-section.settings-form > .form-group:last-child {
     margin-bottom: 0;
 }
 

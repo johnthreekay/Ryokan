@@ -21,9 +21,9 @@
        client. Standalone form (not nested in any other) — POSTs
        to `/settings/indexers/nyaa-pin`, which writes
        `config.nyaa_download_client_id`. #}
-    <fieldset class="settings-form">
-        <legend>Nyaa search</legend>
-        <p class="form-hint" style="margin: 0 0 12px;">Choose which torrent client receives grabs from the built-in Nyaa search.</p>
+    <div class="cf-section settings-form">
+        <h3>Nyaa search</h3>
+        <p class="cf-section-desc">Choose which torrent client receives grabs from the built-in Nyaa search.</p>
         <form method="post" action="/settings/indexers/nyaa-pin" class="settings-form settings-subform">
             <div class="form-group">
                 <label for="nyaa-dc">Download Client</label>
@@ -45,7 +45,7 @@
             </div>
             <button type="submit" class="btn btn-primary">Save Nyaa pin</button>
         </form>
-    </fieldset>
+    </div>
 
     {# Multi-RSS — user-supplied direct RSS feeds (e.g.
        SubsPlease's per-quality feeds). Distinct from the per-indexer
@@ -53,9 +53,9 @@
        their RSS endpoint and route through their indexer-level
        seed rules; direct feeds are arbitrary URLs that bypass the
        indexer registry entirely. #}
-    <fieldset class="settings-form">
-        <legend>Direct RSS feeds</legend>
-        <p class="form-hint" style="margin: 0 0 12px;">Feeds polled directly, such as a SubsPlease quality feed. New episodes are picked up on every RSS sync.</p>
+    <div class="cf-section settings-form">
+        <h3>Direct RSS feeds</h3>
+        <p class="cf-section-desc">Feeds polled directly, such as a SubsPlease quality feed. New episodes are picked up on every RSS sync.</p>
 
         {% if !direct_rss_feeds.is_empty() %}
         <div class="rss-table-wrap" style="margin-bottom: 16px;">
@@ -103,7 +103,9 @@
                               data-ryokan-confirm-no="Cancel"
                               data-ryokan-confirm-danger="1">
                             <input type="hidden" name="id" value="{{ feed.id }}">
-                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                            <button type="submit" class="btn btn-ghost btn-sm" title="Delete {{ feed.name }}" aria-label="Delete {{ feed.name }}">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                            </button>
                         </form>
                     </td>
                 </tr>
@@ -142,7 +144,7 @@
             <p class="form-hint" style="margin: 4px 0 12px;">Ryokan works out whether the feed is torrent or usenet on its first poll.</p>
             <button type="submit" class="btn btn-primary">Add RSS feed</button>
         </form>
-    </fieldset>
+    </div>
 
     {# Push receivers — webhook-driven release sources. autobrr's
        Webhook action POSTs releases at Ryokan's /api/webhook/autobrr
@@ -157,9 +159,9 @@
        apply, giving the stacked form-groups the same vertical
        rhythm as everywhere else. Without this hook the form-groups
        sit flush against each other. #}
-    <fieldset class="settings-form">
-        <legend>autobrr push webhook</legend>
-        <p class="form-hint" style="margin: 0 0 16px;">Receive announces from <a href="https://autobrr.com/" target="_blank" rel="noopener noreferrer">autobrr</a>'s Webhook action. Seed rules apply when autobrr's indexer name matches one configured above.</p>
+    <div class="cf-section settings-form">
+        <h3>autobrr push webhook</h3>
+        <p class="cf-section-desc">Receive announces from <a href="https://autobrr.com/" target="_blank" rel="noopener noreferrer">autobrr</a>'s Webhook action. Seed rules apply when autobrr's indexer name matches one configured above.</p>
         <div class="form-group">
             <label>API Key</label>
             <div style="display: flex; gap: 8px; align-items: center;">
@@ -217,4 +219,4 @@
 {{ "}" }}</pre>
             <span class="form-hint">Paste this into autobrr's Webhook action <em>Data (JSON)</em> field. Set Content-Type to <code>application/json</code> and add an <code>X-Api-Key</code> header with the API key above.</span>
         </div>
-    </fieldset>
+    </div>

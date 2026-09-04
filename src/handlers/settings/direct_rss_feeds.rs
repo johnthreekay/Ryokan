@@ -70,7 +70,7 @@ fn parse_optional_i64(s: &Option<String>) -> Option<i64> {
     path = "/settings/direct-rss-feeds/upsert",
     tag = "Settings",
     summary = "Create or update a direct RSS feed",
-    description = "Form-driven upsert for the new Direct RSS feeds fieldset on the Settings → Indexers tab. Direct feeds are user-supplied RSS URLs that don't go through Prowlarr/Jackett (e.g. SubsPlease's per-quality feeds). Redirects back to the indexers tab.",
+    description = "Form-driven upsert for the Direct RSS feeds section on the Settings → Indexers tab. Direct feeds are user-supplied RSS URLs that don't go through Prowlarr/Jackett (e.g. SubsPlease's per-quality feeds). Redirects back to the indexers tab.",
     responses(
         (status = 303, description = "Redirect to settings tab"),
     ),

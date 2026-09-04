@@ -1,5 +1,5 @@
-        <fieldset>
-            <legend>Group preferences</legend>
+        <div class="cf-section">
+            <h3>Group preferences</h3>
             <div class="form-row">
                 <div class="form-group">
                     <label for="preferred_groups">Preferred Group Whitelist</label>
@@ -12,10 +12,10 @@
                     <span class="form-hint">Groups never grabbed automatically, comma separated. They still show in manual search.</span>
                 </div>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Quality targets</legend>
+        <div class="cf-section">
+            <h3>Quality targets</h3>
             <div class="form-row">
                 <div class="form-group">
                     <label for="preferred_source">Preferred Source</label>
@@ -69,10 +69,10 @@
                 </select>
                 <span class="form-hint">For finished series. Prefer BD falls back to WEB when no BD release exists. BD only never takes WEB.</span>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Scoring &amp; boosts</legend>
+        <div class="cf-section">
+            <h3>Scoring &amp; boosts</h3>
             <div class="form-group">
                 <label for="prefer_subs">Audio Preference</label>
                 <select name="prefer_subs" id="prefer_subs">
@@ -96,10 +96,10 @@
                     <input type="checkbox" name="seadex_enabled" value="1" {% if config.seadex_enabled %}checked{% endif %}>
                 </label>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Search defaults</legend>
+        <div class="cf-section">
+            <h3>Search defaults</h3>
             {# #23 — Global search defaults. Per-series overrides on the
                series detail page take precedence when set. The token field
                reaches every configured indexer (Nyaa + torznab / newznab)
@@ -111,14 +111,14 @@
                 <input type="text" name="default_custom_query_tokens" id="default_custom_query_tokens" value="{{ config.default_custom_query_tokens }}" placeholder="bd 1080p">
                 <span class="form-hint">Keywords added to every search, such as <code>bd 1080p</code>. A series can override this on its own page.</span>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Nyaa-only defaults</legend>
-            <p class="form-hint" style="margin: 0 0 12px;">Only the built-in Nyaa search uses these.</p>
+        <div class="cf-section">
+            <h3>Nyaa-only defaults</h3>
+            <p class="cf-section-desc">Only the built-in Nyaa search uses these.</p>
             <div class="form-group">
                 <label for="default_restrict_to_uploader">Default Restrict to Uploader</label>
                 <input type="text" name="default_restrict_to_uploader" id="default_restrict_to_uploader" value="{{ config.default_restrict_to_uploader }}" placeholder="SubsPlease">
                 <span class="form-hint">Only show releases from this Nyaa account. A series can override this on its own page.</span>
             </div>
-        </fieldset>
+        </div>
