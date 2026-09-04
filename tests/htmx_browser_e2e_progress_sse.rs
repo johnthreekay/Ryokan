@@ -135,7 +135,12 @@ async fn progress_toast_streams_buffered_events_and_finalizes_on_terminal() {
 /// have anyway — no `<body hx-boost>`) so this asserts the simpler
 /// "old toast stays gone after a fresh page load" property.
 #[tokio::test]
-async fn progress_toast_does_not_orphan_event_source_across_navigations() {
+async fn finished_progress_toast_follows_a_full_navigation_exactly_once() {
+    // The toast runtime records live toasts in sessionStorage and
+    // rebuilds them on the next full page load. A finished toast with
+    // time left on its auto-dismiss must appear once on the next page
+    // (not twice: the old follower is gone with the document, and the
+    // record is consumed on restore).
     let client = match try_connect_browser().await {
         Ok(c) => c,
         Err(msg) => {
@@ -150,28 +155,25 @@ async fn progress_toast_does_not_orphan_event_source_across_navigations() {
     let addr = spawn_app(state).await;
 
     let progress_id = format!(
-        "p_orphan_{}",
+        "p_follow_{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0)
     );
 
-    // Pre-seed terminal so the first visit's toast finalizes promptly.
     let resp = reqwest::Client::new()
         .post(format!(
             "http://{addr}/__test/progress-emit?progress_id={}",
             progress_id
         ))
         .header("Cookie", format!("session={}", session))
-        // POSTs without Origin / Referer are rejected by the same-origin CSRF check.
         .header("Origin", format!("http://{addr}"))
         .send()
         .await
         .expect("pre-seed");
     assert_eq!(resp.status(), 200);
 
-    // First visit: open fixture → toast fires → finalizes on terminal.
     open_with_session(
         &client,
         addr,
@@ -193,14 +195,7 @@ async fn progress_toast_does_not_orphan_event_source_across_navigations() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    // Second visit (different progress_id, no pre-seed): the OLD
-    // toast's EventSource should already be closed (terminal flipped
-    // `stopped = true` in the toast closure). Loading a fresh page
-    // reuses the same EventSource constructor with a new id. If the
-    // old EventSource leaked, we'd see two toasts in the stack on the
-    // new page (only the new id's toast should show because the new
-    // page has no pre-seeded events, so it stays at "Initializing").
-    let new_id = format!("p_orphan_b_{}", progress_id);
+    let new_id = format!("p_follow_b_{}", progress_id);
     open_with_session(
         &client,
         addr,
@@ -217,11 +212,185 @@ async fn progress_toast_does_not_orphan_event_source_across_navigations() {
         .await
         .expect("second visit toast stack");
     let text = new_stack.text().await.unwrap_or_default();
-    // The new page should show ONE toast — its initial state. If the
-    // OLD toast leaked, "All done" would still be visible.
+    assert_eq!(
+        text.matches("All done").count(),
+        1,
+        "the finished toast follows the user to the next page exactly once; got: {text:?}"
+    );
     assert!(
-        !text.contains("All done"),
-        "second visit must not retain the prior visit's terminal toast text — indicates orphan EventSource or stale toast DOM; got: {text:?}"
+        text.contains("Initializing"),
+        "the new page's own toast opens next to it; got: {text:?}"
+    );
+    // The restored toast is a plain finished toast: no spinner, and it
+    // still dismisses on its own.
+    let spinners: serde_json::Value = client
+        .execute(
+            "return Array.from(document.querySelectorAll('.ryokan-toast')).map(function (t) { var s = t.querySelector('.ryokan-toast-spinner'); return getComputedStyle(s).display; });",
+            vec![],
+        )
+        .await
+        .expect("read spinner states");
+    let states: Vec<String> = serde_json::from_value(spinners).unwrap_or_default();
+    assert!(
+        states.iter().filter(|d| d.as_str() == "none").count() >= 1,
+        "the finished toast shows no spinner; spinner states: {states:?}"
+    );
+    let mut gone = false;
+    for _ in 0..60 {
+        if !new_stack
+            .text()
+            .await
+            .unwrap_or_default()
+            .contains("All done")
+        {
+            gone = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+    assert!(gone, "the restored toast keeps its auto-dismiss");
+
+    let _ = client.close().await;
+}
+
+#[tokio::test]
+async fn running_progress_toast_survives_a_boosted_swap_with_its_follower() {
+    // A job still running when the user follows a boosted link: the
+    // spinner toast is carried into the new body, its EventSource stays
+    // open, and the events that arrive afterwards land on the carried
+    // toast, which then finishes and drops the spinner.
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
+    };
+
+    let db = in_memory_pool().await;
+    let state = build_test_app_state(db.clone(), None);
+    let session = seed_user_session(&db).await;
+    let addr = spawn_app(state).await;
+
+    let progress_id = format!(
+        "p_boost_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+
+    // Not seeded yet: the toast opens on "Initializing" with the
+    // spinner and waits.
+    open_with_session(
+        &client,
+        addr,
+        &session,
+        &format!("/__test/progress-toast-fixture?progress_id={}", progress_id),
+    )
+    .await
+    .expect("first visit");
+    client
+        .wait()
+        .at_most(Duration::from_secs(5))
+        .for_element(Locator::Css("#ryokan-toast-stack .ryokan-toast"))
+        .await
+        .expect("toast opened");
+    let spinner_before: serde_json::Value = client
+        .execute(
+            "return getComputedStyle(document.querySelector('.ryokan-toast-spinner')).display;",
+            vec![],
+        )
+        .await
+        .expect("spinner state");
+    assert_ne!(
+        spinner_before.as_str().unwrap_or(""),
+        "none",
+        "a running progress toast shows its spinner"
+    );
+
+    // Follow the boosted link. The new body carries the old toast.
+    client
+        .find(Locator::Css("#fixture-nav"))
+        .await
+        .expect("boosted link")
+        .click()
+        .await
+        .expect("click boosted link");
+    client
+        .wait()
+        .at_most(Duration::from_secs(5))
+        .for_element(Locator::Css(
+            "#fixture-page[data-fixture-progress$=\"-hop\"]",
+        ))
+        .await
+        .expect("boosted swap landed");
+    let stack = client
+        .wait()
+        .at_most(Duration::from_secs(5))
+        .for_element(Locator::Css("#ryokan-toast-stack .ryokan-toast"))
+        .await
+        .expect("toast carried over");
+    let text = stack.text().await.unwrap_or_default();
+    assert!(
+        text.contains("Initializing"),
+        "the running toast is still on screen after the swap; got: {text:?}"
+    );
+
+    // Now the job produces its events; the carried follower must see
+    // them.
+    let resp = reqwest::Client::new()
+        .post(format!(
+            "http://{addr}/__test/progress-emit?progress_id={}",
+            progress_id
+        ))
+        .header("Cookie", format!("session={}", session))
+        .header("Origin", format!("http://{addr}"))
+        .send()
+        .await
+        .expect("emit after swap");
+    assert_eq!(resp.status(), 200);
+
+    let whole = client
+        .find(Locator::Css("#ryokan-toast-stack"))
+        .await
+        .expect("stack");
+    let mut saw_terminal = false;
+    for _ in 0..40 {
+        if whole.text().await.unwrap_or_default().contains("All done") {
+            saw_terminal = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+    let errors = fixture_errors(&client).await;
+    assert!(
+        saw_terminal,
+        "the follower carried across the swap must receive the terminal event; fixture script errors: {errors:?}"
+    );
+    let count: serde_json::Value = client
+        .execute(
+            "return document.querySelectorAll('#ryokan-toast-stack .ryokan-toast').length;",
+            vec![],
+        )
+        .await
+        .expect("toast count");
+    assert_eq!(
+        count.as_i64().unwrap_or(0),
+        1,
+        "one toast, not a carried one plus a new one"
+    );
+    let spinner_after: serde_json::Value = client
+        .execute(
+            "return getComputedStyle(document.querySelector('.ryokan-toast-spinner')).display;",
+            vec![],
+        )
+        .await
+        .expect("spinner state after");
+    assert_eq!(
+        spinner_after.as_str().unwrap_or(""),
+        "none",
+        "the spinner goes with the terminal event"
     );
 
     let _ = client.close().await;
