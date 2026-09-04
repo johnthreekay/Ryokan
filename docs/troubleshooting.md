@@ -79,7 +79,7 @@ Check System → Logs filtered to `Search` and `AutoSearch`. The most common cau
 
 ## An adult title finds nothing even with an indexer configured
 
-Nyaa keeps adult releases on sukebei, which Ryokan does not search, so an adult title (marked 18+ on its series page) depends on an indexer that carries them, such as sukebei through Prowlarr or Jackett. Indexers file those releases under the adult category rather than anime, and since 1.9.2 Ryokan asks for both categories whenever the title is adult. Movies ask for the Movies category too, since trackers disagree on where anime films go. If a search still comes back empty, run the same search in Prowlarr or Jackett: if it finds releases there, check that the indexer is enabled under **Settings → Indexers** and that its test passes.
+Nyaa keeps adult releases on sukebei, which Ryokan does not search, so an adult title (marked 18+ on its series page) depends on an indexer that carries them, such as sukebei through Prowlarr or Jackett. Indexers file those releases under the adult category rather than anime, and since 1.9.2 Ryokan asks for both categories whenever the title is adult. Movies ask for the Movies category too, since trackers disagree on where anime films go. Ryokan also never asks an indexer for a category it does not report, and the indexer's **Categories** field under Settings → Indexers overrides all of this when you know better. If a search still comes back empty, run the same search in Prowlarr or Jackett: if it finds releases there, check that the indexer is enabled under **Settings → Indexers** and that its test passes.
 
 ## Migrations failing on first boot
 
