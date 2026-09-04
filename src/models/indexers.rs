@@ -61,6 +61,9 @@ pub struct Indexer {
     /// multi-rss commit E — observability fields populated by the
     /// sync fan-out on every poll attempt. The Settings UI renders
     /// these inline as the "Poll RSS" column status chip.
+    /// Comma-separated torznab category ids to ask this indexer for on
+    /// every search and poll; blank means automatic.
+    pub categories: String,
     pub rss_last_polled_at: Option<i64>,
     /// Most recent RSS poll error, if any. Empty when the last
     /// poll succeeded — UI uses non-empty as the "✗ pill" signal.
@@ -101,11 +104,12 @@ pub struct IndexerForm<'a> {
     /// fan-out via its `?t=tvsearch` (torznab) or `?t=search` /
     /// `?t=tvsearch` (newznab) endpoint. Default false.
     pub rss_enabled: bool,
+    pub categories: &'a str,
 }
 
 const SELECT_COLUMNS: &str = "id, name, kind, url, api_key, priority, enabled, \
     is_private_tracker, seed_ratio, seed_time_minutes, min_seeders, request_timeout_secs, \
-    download_client_id, rss_enabled, rss_last_polled_at, rss_last_poll_error, \
+    download_client_id, rss_enabled, categories, rss_last_polled_at, rss_last_poll_error, \
     rss_last_item_count, caps_json, caps_refreshed_at, created_at, updated_at";
 
 fn row_to_indexer(row: &sqlx::sqlite::SqliteRow) -> Indexer {
@@ -137,6 +141,7 @@ fn row_to_indexer(row: &sqlx::sqlite::SqliteRow) -> Indexer {
             .try_get::<Option<i64>, _>("download_client_id")
             .unwrap_or(None),
         rss_enabled: row.try_get::<i64, _>("rss_enabled").unwrap_or(0) != 0,
+        categories: row.try_get("categories").unwrap_or_default(),
         rss_last_polled_at: row
             .try_get::<Option<i64>, _>("rss_last_polled_at")
             .unwrap_or(None),
@@ -206,8 +211,8 @@ pub async fn insert(db: &SqlitePool, form: IndexerForm<'_>) -> Result<i64, sqlx:
         "INSERT INTO indexers \
          (name, kind, url, api_key, priority, enabled, is_private_tracker, \
           seed_ratio, seed_time_minutes, min_seeders, request_timeout_secs, \
-          download_client_id, rss_enabled) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          download_client_id, rss_enabled, categories) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(form.name)
     .bind(form.kind)
@@ -222,6 +227,7 @@ pub async fn insert(db: &SqlitePool, form: IndexerForm<'_>) -> Result<i64, sqlx:
     .bind(form.request_timeout_secs)
     .bind(form.download_client_id)
     .bind(form.rss_enabled as i64)
+    .bind(normalize_category_list(form.categories))
     .execute(db)
     .await?;
     Ok(result.last_insert_rowid())
@@ -233,7 +239,7 @@ pub async fn update(db: &SqlitePool, id: i64, form: IndexerForm<'_>) -> Result<(
          name = ?, kind = ?, url = ?, api_key = ?, priority = ?, enabled = ?, \
          is_private_tracker = ?, seed_ratio = ?, seed_time_minutes = ?, min_seeders = ?, \
          request_timeout_secs = ?, download_client_id = ?, rss_enabled = ?, \
-         updated_at = strftime('%s','now') \
+         categories = ?, updated_at = strftime('%s','now') \
          WHERE id = ?",
     )
     .bind(form.name)
@@ -249,6 +255,7 @@ pub async fn update(db: &SqlitePool, id: i64, form: IndexerForm<'_>) -> Result<(
     .bind(form.request_timeout_secs)
     .bind(form.download_client_id)
     .bind(form.rss_enabled as i64)
+    .bind(normalize_category_list(form.categories))
     .bind(id)
     .execute(db)
     .await?;
@@ -330,6 +337,36 @@ pub async fn update_caps(db: &SqlitePool, id: i64, caps_json: &str) -> Result<()
     Ok(())
 }
 
+/// Parse a comma or space separated list of torznab category ids;
+/// junk and duplicates dropped, order kept.
+pub fn parse_category_list(raw: &str) -> Vec<i32> {
+    let mut out: Vec<i32> = Vec::new();
+    for tok in raw.split(|c: char| c == ',' || c.is_whitespace() || c == ';') {
+        if let Ok(n) = tok.trim().parse::<i32>()
+            && n > 0
+            && !out.contains(&n)
+        {
+            out.push(n);
+        }
+    }
+    out
+}
+
+/// The stored form of the categories field.
+pub fn normalize_category_list(raw: &str) -> String {
+    parse_category_list(raw)
+        .iter()
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+impl Indexer {
+    pub fn category_list(&self) -> Vec<i32> {
+        parse_category_list(&self.categories)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,6 +393,7 @@ mod tests {
             request_timeout_secs: None,
             download_client_id: None,
             rss_enabled: false,
+            categories: "",
         }
     }
 

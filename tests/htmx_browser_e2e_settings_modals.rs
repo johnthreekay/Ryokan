@@ -45,6 +45,7 @@ async fn seed_indexer(db: &SqlitePool, name: &str) -> i64 {
             request_timeout_secs: None,
             download_client_id: None,
             rss_enabled: false,
+            categories: "",
         },
     )
     .await

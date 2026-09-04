@@ -2461,6 +2461,14 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(db)
         .await
         .ok();
+    // Per-indexer category override (comma-separated torznab ids). Blank
+    // asks for what the series needs (5070, plus Movies or XXX by
+    // format and adult flag) and falls back to what the indexer's caps
+    // report; a value is sent as written, Sonarr-style.
+    sqlx::query("ALTER TABLE indexers ADD COLUMN categories TEXT NOT NULL DEFAULT ''")
+        .execute(db)
+        .await
+        .ok();
 
     // multi-rss commit E — rename rss_feeds → direct_rss_feeds
     // (the latter matches the plan's terminology and disambiguates

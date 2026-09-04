@@ -168,3 +168,101 @@ async fn search_empty_q_omits_q_param() {
     let releases = client.search(&query).await.expect("must succeed");
     assert!(releases.is_empty());
 }
+
+/// The per-indexer categories override is sent as written, whatever
+/// the series asked for.
+#[tokio::test]
+async fn configured_categories_override_the_request() {
+    use super::fixture::new_fixture_with_row;
+    let (server, client) =
+        new_fixture_with_row(|row| row.categories = "6000,2000".to_string()).await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("t", "tvsearch"))
+        .and(query_param("cat", "6000,2000"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(SEARCH_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let query = SearchQuery {
+        q: "Test Show".to_string(),
+        categories: vec![5070],
+        limit: None,
+        offset: None,
+    };
+    client.search(&query).await.expect("search must succeed");
+}
+
+/// An indexer whose cached caps report only XXX is asked for XXX when
+/// the series wants anime: what sukebei through Prowlarr looks like.
+#[tokio::test]
+async fn caps_without_the_requested_category_fall_back_to_what_the_indexer_has() {
+    use super::fixture::new_fixture_with_row;
+    let caps = r#"{"categories":[{"id":6000,"name":"XXX","subcategories":[]},{"id":125996,"name":"Adult Anime","subcategories":[]}],"search_modes":[],"max_limit":null,"default_limit":null}"#;
+    let (server, client) = new_fixture_with_row(|row| row.caps_json = caps.to_string()).await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("cat", "6000"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(SEARCH_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let query = SearchQuery {
+        q: "Test Show".to_string(),
+        categories: Vec::new(),
+        limit: None,
+        offset: None,
+    };
+    client.search(&query).await.expect("search must succeed");
+}
+
+/// Newznab rows go through the same client, so the override and the
+/// caps fallback apply to usenet indexers unchanged. Pinned separately
+/// so a future newznab-specific branch cannot drop them.
+#[tokio::test]
+async fn newznab_rows_get_the_same_category_override_and_fallback() {
+    use super::fixture::new_fixture_with_row;
+    use crate::models::indexers::KIND_NEWZNAB;
+
+    let (server, client) = new_fixture_with_row(|row| {
+        row.kind = KIND_NEWZNAB.to_string();
+        row.categories = "6000,2000".to_string();
+    })
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("cat", "6000,2000"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(SEARCH_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let query = SearchQuery {
+        q: "Test Show".to_string(),
+        categories: vec![5070],
+        limit: None,
+        offset: None,
+    };
+    client.search(&query).await.expect("search must succeed");
+    assert_eq!(client.kind(), KIND_NEWZNAB);
+
+    let caps = r#"{"categories":[{"id":2000,"name":"Movies","subcategories":[{"id":2040,"name":"HD","subcategories":[]}]}],"search_modes":[],"max_limit":null,"default_limit":null}"#;
+    let (server, client) = new_fixture_with_row(|row| {
+        row.kind = KIND_NEWZNAB.to_string();
+        row.caps_json = caps.to_string();
+    })
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("cat", "2000"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(SEARCH_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let query = SearchQuery {
+        q: "Test Show".to_string(),
+        categories: vec![5070],
+        limit: None,
+        offset: None,
+    };
+    client.search(&query).await.expect("search must succeed");
+}
