@@ -634,6 +634,21 @@ a:hover {
 
 .help-content { max-width: 700px; }
 
+/* A block of literal text the user copies out (a webhook body, a
+   path): mono on the elevated fill with the control radius. */
+.code-block {
+    margin: 0;
+    padding: 8px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    overflow-x: auto;
+}
+
 @media (max-width: 640px) {
     .content { padding: 20px 16px 60px; }
     .ep-filename { max-width: 180px; }

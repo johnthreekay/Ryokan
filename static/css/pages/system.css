@@ -286,7 +286,7 @@
 
 .log-col-level { width: 70px; }
 
-.log-col-cat { width: 100px; color: var(--text-dim); font-size: 12px; }
+.log-col-cat { width: 140px; color: var(--text-dim); font-size: 12px; white-space: nowrap; }
 
 .log-col-msg { }
 
@@ -680,14 +680,6 @@
 .notif-modal-test-result.ok  { color: var(--green); }
 .notif-modal-test-result.err { color: var(--red); }
 
-.notif-empty {
-    grid-column: 1 / -1;
-    padding: 18px 20px;
-    background: var(--bg-elevated);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius);
-    text-align: center;
-}
 
 .notif-card-add {
     font: inherit;

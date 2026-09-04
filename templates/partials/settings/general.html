@@ -103,7 +103,7 @@
                 <label class="setting-row">
                     <span class="setting-row-text">
                         <span class="setting-row-title">Remove and blocklist detected misgrabs</span>
-                        <span class="setting-row-desc">A download whose files name a different series is removed from the client, blocklisted, and searched again. Off keeps it in the client and lists it under System, Misgrabs.</span>
+                        <span class="setting-row-desc">A download whose files name a different series is removed from the client, blocklisted, and searched again. Off keeps it in the client and lists it under System → Misgrabs.</span>
                     </span>
                     <input type="checkbox" name="misgrab_auto_remove" id="misgrab_auto_remove" {% if config.misgrab_auto_remove %}checked{% endif %}>
                 </label>
@@ -131,7 +131,7 @@
             <div class="form-group">
                 <label for="rss_interval_minutes">RSS Sync Interval (minutes)</label>
                 <input type="number" min="1" max="60" name="rss_interval_minutes" id="rss_interval_minutes" value="{{ config.rss_interval_minutes }}">
-                <span class="form-hint">Run a sync by hand from System, RSS.</span>
+                <span class="form-hint">Run a sync by hand from System → RSS.</span>
             </div>
         </fieldset>
 
@@ -156,7 +156,7 @@
                     <option value="daily" {% if config.backup_schedule == "daily" %}selected{% endif %}>Daily</option>
                     <option value="weekly" {% if config.backup_schedule == "weekly" %}selected{% endif %}>Weekly</option>
                 </select>
-                <span class="form-hint">A backup holds the database and the encryption key. Download or restore one from <a href="/system?tab=backup">System, Backup</a>.</span>
+                <span class="form-hint">A backup holds the database and the encryption key. Download or restore one from <a href="/system?tab=backup">System → Backup</a>.</span>
             </div>
             <div class="form-group">
                 <label for="backup_directory">Backup folder</label>

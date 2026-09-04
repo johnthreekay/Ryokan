@@ -345,6 +345,11 @@
     padding: 2px 0;
 }
 
+.monitoring-card .monitoring-controls {
+    flex: 1;
+    min-width: 0;
+}
+
 .monitoring-divider {
     height: 1px;
     background: var(--border);

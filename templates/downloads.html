@@ -27,7 +27,7 @@
 <div class="rss-panel">
     <div id="queue-container">
         {% if !queue_error.is_empty() %}
-        <div class="logs-empty">{{ queue_error }}</div>
+        <div class="alert alert-warn" role="status">{{ queue_error }}</div>
         {% else if queue.is_empty() %}
         <div class="logs-empty">
             <p>No active downloads.</p>

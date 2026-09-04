@@ -12,12 +12,6 @@
    tweak doesn't bleed across. #}
 <div id="notif-section" class="notif-section">
     <div class="notif-card-grid">
-        {% if notification_providers.is_empty() %}
-        <div class="notif-empty">
-            <p class="form-hint" style="margin: 0">No providers yet. Add a webhook or a Discord channel.</p>
-        </div>
-        {% endif %}
-
         {% for p in notification_providers %}
         <article class="notif-card" id="notif-card-{{ p.id }}">
             <div class="notif-card-body"

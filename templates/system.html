@@ -104,7 +104,7 @@
             <tr class="log-row log-level-{{ entry.level }}" data-id="{{ entry.id }}">
                 <td class="log-col-time" title="{{ entry.timestamp }}">{{ entry.timestamp }}</td>
                 <td class="log-col-level"><span class="log-badge log-badge-{{ entry.level }}">{{ entry.level }}</span></td>
-                <td class="log-col-cat">{{ entry.category }}</td>
+                <td class="log-col-cat">{{ entry.category_label }}</td>
                 <td class="log-col-msg">
                     <span class="log-message">{{ entry.message }}</span>
                     {% if !entry.detail.is_empty() %}
@@ -245,9 +245,8 @@
                         <th>Task</th>
                         <th>Schedule</th>
                         <th>Enabled</th>
-                        <th>Last status</th>
-                        <th>Last started</th>
-                        <th>Last finished</th>
+                        <th class="nowrap">Last status</th>
+                        <th class="nowrap">Last run</th>
                         <th>Detail</th>
                         <th></th>
                     </tr>
@@ -255,21 +254,14 @@
                 <tbody>
                     {% for task in scheduled_tasks %}
                     <tr>
-                        <td>
-                            <div>{{ task.display_name }}</div>
-                            <div class="rss-release-meta">{{ task.task_key }}</div>
-                        </td>
+                        <td title="{{ task.task_key }}">{{ task.display_name }}</td>
                         <td>{{ task.schedule_label }}</td>
                         <td>{% if task.enabled %}<span class="log-badge log-badge-info">enabled</span>{% else %}<span class="log-badge log-badge-warn">disabled</span>{% endif %}</td>
                         <td>{% if task.last_status == "ok" %}<span class="log-badge log-badge-info">ok</span>{% else if task.last_status == "warn" %}<span class="log-badge log-badge-warn">warn</span>{% else if task.last_status == "error" %}<span class="log-badge log-badge-error">error</span>{% else if task.last_status == "running" %}<span class="log-badge log-badge-debug">running</span>{% else %}<span class="log-badge">{{ task.last_status }}</span>{% endif %}</td>
-                        {# Render the absolute timestamp directly (no
-                           data-ts) so the time formatter doesn't flash
-                           the relative-time replacement on page load.
-                           For run-state info the exact time is more
-                           useful than "5m ago" anyway — users want to
-                           correlate with other events. #}
-                        <td>{% if let Some(started) = task.last_started_at %}<span class="task-time">{{ started }}</span>{% else %}—{% endif %}</td>
-                        <td>{% if let Some(finished) = task.last_finished_at %}<span class="task-time">{{ finished }}</span>{% else %}—{% endif %}</td>
+                        {# One relative time; the exact UTC stamp is the
+                           tooltip. A task that has started but not
+                           finished shows when it started. #}
+                        <td>{% if let Some(finished) = task.last_finished_at %}<span class="task-time nowrap" title="Finished {{ finished }} UTC">{{ crate::services::relative_time::humanize_sqlite_short_now(finished) }}</span>{% else if let Some(started) = task.last_started_at %}<span class="task-time nowrap" title="Started {{ started }} UTC">running since {{ crate::services::relative_time::humanize_sqlite_short_now(started) }}</span>{% else %}<span class="task-time">never</span>{% endif %}</td>
                         <td class="task-detail-cell" title="{{ task.last_detail }}"><div class="task-detail-text">{{ task.last_detail }}</div></td>
                         <td><button type="button" class="btn btn-secondary btn-sm task-run-btn" onclick="forceRunTask(this, '{{ task.task_key }}')">Run now</button></td>
                     </tr>
@@ -393,9 +385,7 @@
 <div class="debug-panel">
     {# The form wraps just the provider-fallback card. Maintenance and RSS
        cards live outside the form since each of their buttons posts to
-       its own endpoint. The Save button at the bottom uses the HTML5
-       `form="debug-settings-form"` attribute to submit the form from
-       outside, so visually it sits at the end of the debug tab. #}
+       its own endpoint, and Save sits inside the one card it saves. #}
     <form id="debug-settings-form" method="post" action="/system" class="settings-form">
         <div class="cf-section">
             <div class="cf-section-header">
@@ -418,8 +408,10 @@
                     <input type="checkbox" name="force_kitsu_fallback" id="force_kitsu_fallback" {% if force_kitsu_fallback %}checked{% endif %}>
                 </label>
             </div>
+            <div class="settings-inline-actions" style="margin-top: 16px">
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
         </div>
-
     </form>
 
     <div class="cf-section">
@@ -453,9 +445,6 @@
         </div>
     </div>
 
-    <div class="settings-inline-actions" style="margin-top:16px">
-        <button type="submit" form="debug-settings-form" class="btn btn-primary">Save</button>
-    </div>
 </div>
 
 {% else if tab == "credits" %}

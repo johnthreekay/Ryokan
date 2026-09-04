@@ -196,8 +196,18 @@ pub struct LogEntry {
     pub timestamp: String,
     pub level: String,
     pub category: String,
+    /// The category's display name (`Download Client` for
+    /// `download_client`); the slug itself for anything unknown.
+    pub category_label: String,
     pub message: String,
     pub detail: String,
+}
+
+/// Display name for a stored category slug, falling back to the slug.
+pub fn category_display_label(slug: &str) -> String {
+    LogCategory::from_str(slug)
+        .map(|c| c.label().to_string())
+        .unwrap_or_else(|| slug.to_string())
 }
 
 /// Query parameters for fetching logs.
@@ -301,6 +311,7 @@ pub async fn query(db: &SqlitePool, params: &LogQuery) -> Result<Vec<LogEntry>, 
                 id,
                 timestamp,
                 level,
+                category_label: category_display_label(&category),
                 category,
                 message,
                 detail,
@@ -387,6 +398,7 @@ pub async fn entries_after(
                 id,
                 timestamp,
                 level,
+                category_label: category_display_label(&category),
                 category,
                 message,
                 detail,
