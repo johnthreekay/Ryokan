@@ -68,10 +68,13 @@
             syncRangeTabHrefs();
             // htmx.ajax with target+swap mirrors what hx-get would
             // do declaratively, plus push for back/forward.
+            // `push` takes the hx-push-url vocabulary: the string
+            // 'true' pushes the request URL. A boolean true is read
+            // as a URL and pushes a page literally named /true.
             window.htmx.ajax('GET', calendarUrl(), {
                 target: '#calendar-list',
                 swap: 'innerHTML',
-                push: true,
+                push: 'true',
             });
         });
     }
@@ -264,12 +267,18 @@
             hydrateTimes(root);
             applyTodayHighlight(root);
             applyLocalFilters(root);
-            // Active-tab class follows hx-push-url'd state. htmx
-            // doesn't update the `.active` class on swap, so we
-            // resync from the URL.
+            // Active-tab class follows the range that was requested:
+            // the clicked tab's data-range when a tab made the
+            // request, else the URL (the monitored toggle keeps the
+            // range, so the URL already carries it). htmx doesn't
+            // update `.active` on swap.
             try {
-                var url = new URL(window.location.href);
-                var range = url.searchParams.get('range') || 'this_week';
+                var src = ev.detail && ev.detail.ctx && ev.detail.ctx.sourceElement;
+                var range = src && src.dataset && src.dataset.range;
+                if (!range) {
+                    var url = new URL(window.location.href);
+                    range = url.searchParams.get('range') || activeRange();
+                }
                 document.querySelectorAll('.calendar-range-tab').forEach(function (a) {
                     var on = a.dataset.range === range;
                     a.classList.toggle('active', on);
