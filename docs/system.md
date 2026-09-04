@@ -109,9 +109,7 @@ Opens this documentation site in a new tab. The scoring reference that used to l
 
 ## Credits
 
-Project credits and third-party license attributions. Useful when you want to know which crates Ryokan ships with or want to see the upstream URL for a specific dependency.
-
-The full third-party license texts are bundled into the binary at compile time and surfaced from this tab.
+Where Ryokan's data and releases come from (AniList, MyAnimeList through Tenrai, Kitsu, Nyaa, your indexers and feeds, SeaDex, anibridge-mappings, TRaSH Guides), the libraries it is built on, and the font it uses, each with a link and its license. The full list of Rust crates with their license texts is the third-party notices file in the repository, linked from this tab.
 
 ## Debug
 

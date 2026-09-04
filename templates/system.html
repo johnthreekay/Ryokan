@@ -477,7 +477,7 @@
     <section class="credits-section">
         <h3>Where the releases come from</h3>
         <p>
-            Every search result comes from <a href="https://nyaa.si" target="_blank" rel="noopener noreferrer">Nyaa</a>, at least until torznab support ships. Public indexer, no gatekeeping, curated by community tags and the honor system.
+            Ryokan's built-in search reads <a href="https://nyaa.si" target="_blank" rel="noopener noreferrer">Nyaa</a> directly: a public indexer, no gatekeeping, curated by community tags and the honor system. Private trackers and Usenet arrive through the torznab and newznab indexers you add from <a href="https://prowlarr.com" target="_blank" rel="noopener noreferrer">Prowlarr</a> or <a href="https://github.com/Jackett/Jackett" target="_blank" rel="noopener noreferrer">Jackett</a>, direct RSS feeds such as <a href="https://subsplease.org" target="_blank" rel="noopener noreferrer">SubsPlease</a>'s, and announces pushed by <a href="https://autobrr.com" target="_blank" rel="noopener noreferrer">autobrr</a>. Every source merges into one ranked list.
         </p>
     </section>
 
@@ -498,7 +498,14 @@
     <section class="credits-section">
         <h3>Custom formats</h3>
         <p>
-            On a fresh install, Ryokan ships 28 Custom Formats already baked in. They come from <a href="https://trash-guides.info" target="_blank" rel="noopener noreferrer">TRaSH Guides</a>, the de-facto quality-profile reference for the whole *arr ecosystem. You can edit them, delete them, or reset to defaults from Settings → Custom Formats. MIT-licensed (<a href="/static/licenses/trash-guides-LICENSE.txt" target="_blank" rel="noopener noreferrer">license text</a>).
+            On a fresh install, Ryokan ships eight Custom Formats already baked in. Their shape and their release-group tiers follow <a href="https://trash-guides.info" target="_blank" rel="noopener noreferrer">TRaSH Guides</a>, the de-facto quality reference for the whole *arr ecosystem, and any TRaSH Custom Format pastes straight in. You can edit them, delete them, or reset to defaults from Settings → Custom Formats. MIT-licensed (<a href="/static/licenses/trash-guides-LICENSE.txt" target="_blank" rel="noopener noreferrer">license text</a>).
+        </p>
+    </section>
+
+    <section class="credits-section">
+        <h3>Under the hood</h3>
+        <p>
+            Every page is driven by <a href="https://htmx.org" target="_blank" rel="noopener noreferrer">htmx</a>, vendored so Ryokan never loads a script from a CDN. Release names are tokenized by <a href="https://github.com/erengy/anitomy" target="_blank" rel="noopener noreferrer">anitomy</a>, compiled in through its Rust bindings under the Mozilla Public License 2.0. Every Rust crate Ryokan ships with is listed, with its license text, in the <a href="https://github.com/johnthreekay/Ryokan/blob/main/licenses/THIRD_PARTY_LICENSES.html" target="_blank" rel="noopener noreferrer">third-party notices</a> in the repository.
         </p>
     </section>
 
