@@ -311,10 +311,11 @@ a:hover {
 
 .page-header { margin-bottom: 28px; }
 
+.tabbed-page-header h2,
 .page-header h2 {
     font-family: var(--font-display);
     font-weight: 700;
-    font-size: 24px;
+    font-size: 22px;
     letter-spacing: -0.005em;
     color: var(--text-bright);
     margin-bottom: 4px;
@@ -810,6 +811,18 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
     align-items: baseline;
     justify-content: space-between;
     gap: 16px;
+    margin: 0 0 6px;
+}
+
+/* Card titles: the same 15px whether the h3 sits in a header wrapper
+   (Custom Formats, Debug) or directly in the card (Backup, Misgrabs,
+   Release Groups), and for the API Keys and Import page titles. */
+.cf-section > h3:not(.settings-subheading),
+.settings-section-title,
+.import-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-bright);
     margin: 0 0 6px;
 }
 

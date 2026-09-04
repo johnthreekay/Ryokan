@@ -249,10 +249,10 @@ fieldset legend {
 }
 
 .settings-subheading {
-    margin: 28px 0 10px;
-    font-size: 15px;
+    margin: 24px 0 10px;
+    font-size: 13px;
     font-weight: 600;
-    color: var(--text-bright);
+    color: var(--text);
     /* Drop uppercase + wide tracking so subheadings sit visually
        above the per-field labels (which keep the small + uppercase
        + dim treatment) instead of reading as just another label. */
