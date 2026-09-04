@@ -92,8 +92,9 @@ Non-ASCII bytes mojibake into Latin-1 (em-dash → `â\u{80}\u{94}`). Use ASCII 
 
 ## Toast helpers (defined in `static/js/base.js`)
 
-- `ryokanToast({ title, body, kind, category, sticky, duration, log })` — one options object; `kind` is `info` | `success` | `warn` | `error` (anything else coerces to `info`), `sticky: true` disables auto-dismiss, `log: false` skips the System → Logs write.
-- `ryokanProgressToast({ progressId, title, body, kind, category })` — sticky toast driven by the `/api/progress/{id}` stream; throws without `progressId`, and `finalize()` on the returned handle turns it into a normal auto-dismissing toast.
+- `ryokanToast({ title, body, kind, category, sticky, duration, busy, log, actions })` — one options object; `kind` is `info` | `success` | `warn` | `error` (anything else coerces to `info`), `sticky: true` disables auto-dismiss, `busy: true` shows a spinner next to the title (`update({busy: false})` or `finalize()` hides it), `log: false` skips the System → Logs write.
+- `ryokanProgressToast({ progressId, title, body, kind, category, onTerminal })` — sticky, busy toast driven by the `/api/progress/{id}` stream; throws without `progressId`, and `finalize()` on the returned handle turns it into a normal auto-dismissing toast.
+- **Toasts follow the user across pages.** The live set lives on `window.__ryokanToastRuntime`, which survives base.js re-executing on a boosted swap: the toast elements are re-appended to the new stack with their timers, action buttons, and progress followers intact (the old follower keeps its EventSource; nothing re-subscribes). A full page load rebuilds the set from the `ryokanLiveToasts` sessionStorage record: transient toasts come back with their remaining time, progress toasts re-attach to their job by id (the stream replays the buffer from the start), action buttons are dropped. Consequences: a toast is never "gone with the page", so a page-specific `onTerminal` must tolerate firing on a different page (it does not survive a full load at all), and `ryokanQueueToast` is only needed for a toast fired in the same tick as a `location.reload()` / `location.href` assignment.
 
 ## XSS surface
 
