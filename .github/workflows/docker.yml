@@ -81,8 +81,6 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=pr
 
       - name: Build and push by digest
         if: env.PUSH_IMAGE == 'true'
