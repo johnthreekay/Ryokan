@@ -1,12 +1,29 @@
 name: Publish Docker image
 
+# Every branch push builds and publishes a multi-arch image tagged with
+# the branch name (`feat/foo` -> `:feat-foo`), so a PR from this repo
+# has a pullable image the moment it is pushed; `main` and `dev` keep
+# their tags, semver tags publish releases and `latest`. `gh-pages` is
+# the docs deploy target and has no Dockerfile.
+#
+# The `pull_request` trigger is for fork PRs, whose branches live
+# outside this repo and never fire the push event. A fork PR's token
+# cannot write to GHCR (and must not: the Dockerfile runs the
+# contributor's code), so that path builds the same image, runs the
+# same smoke test, and uploads a `docker load`-able tarball per
+# platform as a workflow artifact instead of pushing. The job-level
+# `if` skips same-repo PRs so they are not built twice.
 on:
   push:
-    branches:
-      - main
-      - dev
+    branches: [ "**", "!gh-pages" ]
     tags:
       - 'v*.*.*'
+  pull_request:
+    branches: [ "main", "dev" ]
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -15,9 +32,11 @@ env:
 
 jobs:
   # Per-platform job: builds the image on a native runner for its target
-  # architecture and pushes a digest-only reference to GHCR. No tags are
-  # attached yet — that happens in the merge job below.
+  # architecture. On a push it pushes a digest-only reference to GHCR
+  # (tags are attached in the merge job below); on a fork PR it writes
+  # the image to a tarball and uploads it as an artifact.
   build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -32,10 +51,16 @@ jobs:
       packages: write
 
     steps:
-      - name: Prepare platform pair
+      - name: Prepare platform pair and mode
         run: |
           platform=${{ matrix.platform }}
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "PUSH_IMAGE=false" >> $GITHUB_ENV
+            echo "PR_TAG=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          else
+            echo "PUSH_IMAGE=true" >> $GITHUB_ENV
+          fi
 
       - name: Checkout
         uses: actions/checkout@v7
@@ -44,6 +69,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
+        if: env.PUSH_IMAGE == 'true'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -55,8 +81,11 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=pr
 
       - name: Build and push by digest
+        if: env.PUSH_IMAGE == 'true'
         id: build
         uses: docker/build-push-action@v7
         with:
@@ -67,13 +96,34 @@ jobs:
           cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
 
+      - name: Build to a tarball (fork PR)
+        if: env.PUSH_IMAGE == 'false'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.PR_TAG }}
+          outputs: type=docker,dest=${{ runner.temp }}/ryokan-${{ env.PR_TAG }}-${{ env.PLATFORM_PAIR }}.tar
+          cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
+
+      - name: Resolve the image to smoke test
+        if: matrix.platform == 'linux/amd64'
+        run: |
+          if [ "$PUSH_IMAGE" = "true" ]; then
+            echo "SMOKE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
+          else
+            docker load -i "${{ runner.temp }}/ryokan-${PR_TAG}-${PLATFORM_PAIR}.tar"
+            echo "SMOKE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${PR_TAG}" >> $GITHUB_ENV
+          fi
+
       - name: Smoke test amd64 image
         if: matrix.platform == 'linux/amd64'
         run: |
           docker run -d --name ryokan-smoke \
             -e LISTEN_ADDR=0.0.0.0:8978 \
             -p 8978:8978 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+            "$SMOKE_IMAGE"
           # Probe /login (matches the production HEALTHCHECK). 200 means
           # the auth UI rendered; anything else fails. Polling loop
           # rather than fixed sleep so a fast cold-boot doesn't waste a
@@ -118,12 +168,14 @@ jobs:
         run: docker rm -f ryokan-smoke || true
 
       - name: Export digest
+        if: env.PUSH_IMAGE == 'true'
         run: |
           mkdir -p ${{ runner.temp }}/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest
+        if: env.PUSH_IMAGE == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
@@ -131,11 +183,24 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      # A fork PR's image is only reachable here: download the artifact
+      # from the run, `docker load -i` the tarball, and run
+      # `ghcr.io/johnthreekay/ryokan:pr-<n>`.
+      - name: Upload image tarball (fork PR)
+        if: env.PUSH_IMAGE == 'false'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ryokan-${{ env.PR_TAG }}-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/ryokan-${{ env.PR_TAG }}-${{ env.PLATFORM_PAIR }}.tar
+          if-no-files-found: error
+          retention-days: 14
+
   # Merge job: pulls the per-platform digests and stitches them into a
   # single multi-arch manifest list under the real tags (branch, semver,
   # latest). Docker pulls on amd64 and arm64 hosts pick the matching
-  # platform transparently.
+  # platform transparently. Not run for fork PRs, which push nothing.
   merge:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs: build
     permissions:
