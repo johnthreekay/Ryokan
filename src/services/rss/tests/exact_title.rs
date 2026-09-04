@@ -7,10 +7,14 @@
 use super::super::*;
 
 fn series_named(title: &str, alternate_titles: &str) -> series::Series {
+    series_named_with_id(1, title, alternate_titles)
+}
+
+fn series_named_with_id(id: i64, title: &str, alternate_titles: &str) -> series::Series {
     series::Series {
         is_adult: false,
-        id: 1,
-        anilist_id: 101,
+        id,
+        anilist_id: 100 + id,
         mal_id: None,
         title: title.to_string(),
         title_romaji: title.to_string(),
@@ -79,5 +83,22 @@ fn alternate_title_makes_the_reordered_name_exact() {
     ))];
     let found = best_series_match(&item("[Group] Deluxe Auto Search Show - 01 (1080p)"), &meta)
         .expect("alternate title matches");
+    assert!(found.alias_score >= 1.0, "{}", found.alias_score);
+}
+
+#[test]
+fn season_release_goes_to_the_season_that_fits_and_stays_exact() {
+    // "Show Title S2 - 01" contains "Show Title" verbatim, so the
+    // season-less first entry is an exact match too; the season-adjusted
+    // score still picks the second season, and the sequel-variant
+    // aliases make that pick exact as well. The gate must never hand
+    // the release to the lower-ranked entry just because it is exact.
+    let meta = vec![
+        SeriesMeta::from_series(&series_named_with_id(1, "Show Title", "")),
+        SeriesMeta::from_series(&series_named_with_id(2, "Show Title 2nd Season", "")),
+    ];
+    let found = best_series_match(&item("[Group] Show Title S2 - 01 (1080p)"), &meta)
+        .expect("the second season matches");
+    assert_eq!(found.series.id, 2, "season-adjusted pick");
     assert!(found.alias_score >= 1.0, "{}", found.alias_score);
 }

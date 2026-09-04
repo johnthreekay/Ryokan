@@ -775,6 +775,16 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         // Automatic paths take a release only when its title names the
         // series (a title or alias contained verbatim, or the same words);
         // a token-overlap match is left for interactive search.
+        //
+        // The check reads the winner `best_series_match` picked by its
+        // season- and episode-adjusted score, on purpose. When that
+        // winner is inexact and an exact match sits lower, the exact one
+        // is the series the release fits worse (a season-less entry for
+        // a `S2` release, a wrong episode range); grabbing it there would
+        // be the wrong-season misgrab the adjustments exist to prevent.
+        // Dropping the item is the safe answer, and the sequel-variant
+        // aliases (`SeriesMeta::from_series`) keep the right season exact
+        // in the common case.
         if found.alias_score < 1.0 {
             skipped += 1;
             let reason = format!(
