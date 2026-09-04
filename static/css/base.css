@@ -556,7 +556,7 @@ a:hover {
 }
 
 .folder-select {
-    padding: 5px 10px;
+    padding: 6px 10px;
     /* Longhand `background-color` (not the `background:` shorthand)
      * so the global `select { background-image: ...chevron... }` rule
      * in forms.css survives the cascade. The shorthand resets
@@ -567,7 +567,7 @@ a:hover {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
-    font-size: 12px;
+    font-size: 13px;
     font-family: var(--font-body);
     max-width: 260px;
 }
@@ -813,13 +813,17 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
 
 .cf-section > form:last-child > :last-child { margin-bottom: 0; }
 
-input[type="file"] {
-    background: var(--bg-elevated);
+/* A file field is the regular 41px field with the picker button
+   inside it; `.form-group` gives it the same padding as here so the
+   two sites (Backup, Custom Formats import) match. */
+input[type="file"],
+.form-group input[type="file"] {
+    background: var(--bg);
     color: var(--text-dim);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 6px 10px;
-    font-size: 13px;
+    padding: 6px 12px;
+    font-size: 14px;
     max-width: 100%;
 }
 
@@ -828,9 +832,9 @@ input[type="file"]::file-selector-button {
     color: var(--text-bright);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 4px 12px;
+    padding: 5px 12px;
     margin-right: 10px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;

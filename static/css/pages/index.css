@@ -223,7 +223,7 @@
    space for it so typed text doesn't run under the icon. */
 .library-search-input {
     box-sizing: border-box;
-    height: 42px;
+    height: 41px;
     padding: 0 12px 0 38px;
     background-color: var(--bg);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237a7a96' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
@@ -233,7 +233,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
-    font-size: 13px;
+    font-size: 14px;
     font-family: var(--font-body);
     /* Row 1's single flexible element: 300px when space allows,
        shrinking to 150px before anything else in the row moves. */

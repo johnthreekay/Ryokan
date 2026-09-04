@@ -1960,7 +1960,7 @@ fieldset legend {
 .naming-input-row input {
     flex: 1;
     font-family: var(--font-mono);
-    font-size: 0.9rem;
+    font-size: 13px;
 }
 .naming-preview {
     font-family: var(--font-mono);

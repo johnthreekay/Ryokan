@@ -84,7 +84,7 @@
      * `.folder-select` in base.css for the rationale. The shorthand
      * resets `background-image` to none, clobbering the global chevron
      * rule from forms.css. */
-    background-color: var(--bg-elevated);
+    background-color: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -106,7 +106,7 @@
 }
 
 .log-filter-input {
-    background: var(--bg-elevated);
+    background: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--radius);

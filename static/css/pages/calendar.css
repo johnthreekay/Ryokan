@@ -72,9 +72,9 @@
 
 .calendar-series-search {
     width: 220px;
-    height: 36px;
-    padding: 0 12px;
-    background: var(--bg-elevated);
+    height: 32px;
+    padding: 0 10px;
+    background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);

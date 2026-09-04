@@ -187,8 +187,8 @@
 .search-bar input[type="text"] {
     flex: 1;
     min-width: 200px;
-    padding: 10px 14px;
-    background: var(--bg-card);
+    padding: 10px 12px;
+    background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
@@ -199,7 +199,7 @@
 
 .search-bar select {
     padding: 10px 12px;
-    background: var(--bg-card);
+    background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
