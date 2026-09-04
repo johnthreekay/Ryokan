@@ -66,6 +66,31 @@ use std::sync::Arc;
 /// release's reported categories.
 pub const TORZNAB_CAT_ANIME: i32 = 5070;
 
+/// Standard torznab / newznab parent category for movies. Some
+/// trackers file anime films here rather than under TV/Anime.
+pub const TORZNAB_CAT_MOVIES: i32 = 2000;
+
+/// Standard torznab / newznab parent category for adult content.
+/// Prowlarr and Jackett file sukebei and similar trackers here, so
+/// an adult title that only asks for TV/Anime finds nothing.
+pub const TORZNAB_CAT_XXX: i32 = 6000;
+
+/// The categories a search for a series asks an indexer for. A parent
+/// category includes its children on the wire, so parents are enough.
+/// Anime is always requested; movies also ask for Movies because
+/// trackers disagree on where anime films go; adult titles also ask
+/// for XXX, which is where Prowlarr and Jackett put sukebei.
+pub fn search_categories(format: &str, is_adult: bool) -> Vec<i32> {
+    let mut cats = vec![TORZNAB_CAT_ANIME];
+    if format.eq_ignore_ascii_case("MOVIE") {
+        cats.push(TORZNAB_CAT_MOVIES);
+    }
+    if is_adult {
+        cats.push(TORZNAB_CAT_XXX);
+    }
+    cats
+}
+
 /// Default per-indexer search timeout when the row's
 /// `request_timeout_secs` is NULL. Decision #7 — tighter than
 /// Sonarr's 100s default because Ryokan's interactive search
@@ -1026,5 +1051,20 @@ mod tests {
             !snapshot.iter().any(|c| c.id() == _b_id),
             "B's id must not survive — its client was never instantiated"
         );
+    }
+}
+
+#[cfg(test)]
+mod search_categories_tests {
+    use super::*;
+
+    #[test]
+    fn categories_follow_format_and_adult_flag() {
+        assert_eq!(search_categories("TV", false), vec![5070]);
+        assert_eq!(search_categories("OVA", false), vec![5070]);
+        assert_eq!(search_categories("MOVIE", false), vec![5070, 2000]);
+        assert_eq!(search_categories("TV", true), vec![5070, 6000]);
+        assert_eq!(search_categories("MOVIE", true), vec![5070, 2000, 6000]);
+        assert_eq!(search_categories("", true), vec![5070, 6000]);
     }
 }
