@@ -51,7 +51,7 @@ Releases on the blocklist (Downloads → Blocklist) are skipped before any of th
 
 ## What automatic search will and will not grab
 
-Automatic search and RSS only take a release whose name contains one of the series' titles or synonyms as written and names nothing beyond it. A release that merely looks similar is left alone, and so is one that names more, such as "Dr. Stone New World" for Dr. STONE, and the search says so: the toast and the log list the releases it saw and skipped. When one of them is right, open the series page, expand **Advanced search overrides**, and add the name that group uses under **Alternate titles**, one per line. From then on that name counts as an exact match for automatic search, RSS, and the misgrab check. Interactive search keeps showing near matches, since you are the one choosing there.
+Automatic search and RSS only take a release whose name contains one of the series' titles as written, or an alternate title you added, and names nothing beyond it. The other names AniList lists for a show are tried only when the titles themselves find nothing. A release that merely looks similar is left alone, and so is one that names more, such as "Dr. Stone New World" for Dr. STONE, and the search says so: the toast and the log list the releases it saw and skipped. When one of them is right, open the series page, expand **Advanced search overrides**, and add the name that group uses under **Alternate titles**, one per line. From then on that name is searched for and counts as an exact match, the same as the series' own titles, for automatic search, RSS, the upgrade search, and the misgrab check. Interactive search keeps showing near matches, since you are the one choosing there.
 
 ## Search tips
 

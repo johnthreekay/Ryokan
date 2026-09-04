@@ -249,7 +249,25 @@ async fn maybe_reconcile_mal_entry(
     Some((refreshed, detail))
 }
 
+/// The series row (when tracked), the provider id, and the detail every
+/// search path works from. The series' alternate titles are folded into
+/// the detail's synonyms here, once, on every path the resolver takes
+/// (cache hit, live AniList fetch, MAL, Kitsu), so a title the user
+/// added a minute ago counts before the first metadata sync.
 pub(super) async fn resolve_series_context(
+    db: &SqlitePool,
+    request_id: i64,
+) -> Result<(Option<series::Series>, i64, anilist::AnimeDetail), String> {
+    let (row, provider_id, detail) = resolve_series_context_raw(db, request_id).await?;
+    let alt = row
+        .as_ref()
+        .map(|s| s.alternate_titles.as_str())
+        .unwrap_or("");
+    let detail = crate::services::auto_search::with_alternate_titles(detail, alt);
+    Ok((row, provider_id, detail))
+}
+
+async fn resolve_series_context_raw(
     db: &SqlitePool,
     request_id: i64,
 ) -> Result<(Option<series::Series>, i64, anilist::AnimeDetail), String> {
@@ -258,10 +276,6 @@ pub(super) async fn resolve_series_context(
         .await
         .map_err(|e| e.to_string())?;
     let mut db_series = resolved_row.clone();
-    let alt = db_series
-        .as_ref()
-        .map(|s| s.alternate_titles.clone())
-        .unwrap_or_default();
 
     if let Some(ref tracked) = db_series {
         if let Ok(Some(cached)) = metadata_cache::get_by_series_id(db, tracked.id).await {
@@ -283,42 +297,26 @@ pub(super) async fn resolve_series_context(
                     .await;
                 });
             }
-            return Ok((
-                db_series,
-                cached.provider_id,
-                crate::services::auto_search::with_alternate_titles(cached.detail, &alt),
-            ));
+            return Ok((db_series, cached.provider_id, cached.detail));
         }
         if tracked.anilist_id > 0 {
             if let Ok(Some(cached)) =
                 metadata_cache::get_by_provider_id(db, tracked.anilist_id).await
             {
-                return Ok((
-                    db_series,
-                    cached.provider_id,
-                    crate::services::auto_search::with_alternate_titles(cached.detail, &alt),
-                ));
+                return Ok((db_series, cached.provider_id, cached.detail));
             }
         } else if tracked.anilist_id < 0 {
             // MAL-sourced entry: check provider cache with the negative ID.
             if let Ok(Some(cached)) =
                 metadata_cache::get_by_provider_id(db, tracked.anilist_id).await
             {
-                return Ok((
-                    db_series,
-                    cached.provider_id,
-                    crate::services::auto_search::with_alternate_titles(cached.detail, &alt),
-                ));
+                return Ok((db_series, cached.provider_id, cached.detail));
             }
         }
     } else if provider_id != 0
         && let Ok(Some(cached)) = metadata_cache::get_by_provider_id(db, provider_id).await
     {
-        return Ok((
-            db_series,
-            cached.provider_id,
-            crate::services::auto_search::with_alternate_titles(cached.detail, &alt),
-        ));
+        return Ok((db_series, cached.provider_id, cached.detail));
     }
 
     let mal_hint = db_series.as_ref().and_then(|s| s.mal_id);
@@ -357,14 +355,7 @@ pub(super) async fn resolve_series_context(
                             &format!("cached_at={}", cached.cached_at),
                         )
                         .await;
-                        return Ok((
-                            db_series,
-                            cached.provider_id,
-                            crate::services::auto_search::with_alternate_titles(
-                                cached.detail,
-                                &alt,
-                            ),
-                        ));
+                        return Ok((db_series, cached.provider_id, cached.detail));
                     }
                     match jikan::get_anime_detail_cached(mid).await {
                         Ok(detail) => detail,
@@ -411,14 +402,7 @@ pub(super) async fn resolve_series_context(
                                 &format!("cached_at={}", cached.cached_at),
                             )
                             .await;
-                            return Ok((
-                                db_series,
-                                cached.provider_id,
-                                crate::services::auto_search::with_alternate_titles(
-                                    cached.detail,
-                                    &alt,
-                                ),
-                            ));
+                            return Ok((db_series, cached.provider_id, cached.detail));
                         }
                         // Prefer Kitsu's MAL-mapping filter when a MAL id is
                         // available — single exact-match request rather than the

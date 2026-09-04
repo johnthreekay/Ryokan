@@ -1738,3 +1738,92 @@ async fn misgrab_sweep_stops_re_searching_after_the_loop_breaker() {
 
     unset_nyaa_base();
 }
+
+// ─── Alternate titles are primary aliases ────────────────────────
+
+#[tokio::test]
+async fn alternate_title_drives_the_queries_and_counts_as_exact() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // The only release on offer names the show the way one group does,
+    // not the way AniList does. With that name on the series row as an
+    // alternate title, the search must ask Nyaa for it (a query that
+    // carries the alternate name) and take the release as an exact
+    // match, cache or no cache.
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "dddddddddddddddddddddddddddddddddddddddd",
+        99401,
+        "[Group] Nickname Show - 03 (1080p) [WEB].mkv",
+        "1.4 GiB",
+        40,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .and(query_param("q", "Nickname Show 03"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page("")))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9009;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Official Long Title").await;
+    sqlx::query("UPDATE series SET alternate_titles = 'Nickname Show' WHERE id = ?")
+        .bind(series_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert_eq!(report.grabbed.len(), 1, "report={report:?}");
+    assert!(
+        report.grabbed[0].release_title.contains("Nickname Show"),
+        "{report:?}"
+    );
+    let calls = client.add_calls();
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].1.starts_with("dddddddd"));
+
+    // The alternate title was asked for by name, as a primary query.
+    let asked: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|r| {
+            r.url
+                .query_pairs()
+                .find(|(k, _)| k == "q")
+                .map(|(_, v)| v.into_owned())
+        })
+        .collect();
+    assert!(
+        asked.iter().any(|q| q.starts_with("Nickname Show")),
+        "queries sent: {asked:?}"
+    );
+
+    // Provenance says verbatim through the alternate title.
+    let kind: String = sqlx::query_scalar(
+        "SELECT match_kind FROM episode_grab_history WHERE series_id = ? AND episode_number = 3",
+    )
+    .bind(series_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert_eq!(kind, "verbatim");
+
+    unset_nyaa_base();
+}

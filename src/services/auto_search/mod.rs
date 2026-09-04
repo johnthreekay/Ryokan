@@ -106,6 +106,8 @@ pub async fn find_all_for_target(
         indexers_snapshot.as_slice();
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
+    let (aliases, canonical_aliases) =
+        add_alternate_aliases(aliases, canonical_aliases, &series_ctx.alternate_titles);
     let queries = append_custom_tokens(
         build_queries_mixed(
             &canonical_aliases,
@@ -221,7 +223,12 @@ pub async fn find_all_for_target(
     // pass to avoid paying N × round-trip cost for zero coverage.
     if !preferred_groups.is_empty() && series_ctx.restrict_user.is_empty() {
         let group_queries = append_custom_tokens(
-            build_group_queries(detail, target, &preferred_groups),
+            build_group_queries(
+                detail,
+                target,
+                &preferred_groups,
+                &series_ctx.alternate_titles,
+            ),
             &series_ctx.custom_tokens,
         );
         run_queries_interactive(
@@ -425,10 +432,33 @@ pub async fn find_best_batch_for_target(
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
 ) -> Option<SearchResult> {
-    collect_scored_batches_for_target(db, detail, config, target, cfs, indexers_cache, true)
+    find_best_batch_for_target_with_diag(db, detail, config, target, cfs, indexers_cache)
         .await
-        .into_iter()
-        .next()
+        .0
+}
+
+/// `find_best_batch_for_target` plus the titles the exact title gate
+/// turned away, so the caller can say "looked close" instead of
+/// "nothing found".
+pub async fn find_best_batch_for_target_with_diag(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    target: &SearchTarget,
+    cfs: &[CompiledCustomFormat],
+    indexers_cache: &crate::IndexerCache,
+) -> (Option<SearchResult>, Vec<String>) {
+    let (scored, rejected) = collect_scored_batches_for_target_with_diag(
+        db,
+        detail,
+        config,
+        target,
+        cfs,
+        indexers_cache,
+        true,
+    )
+    .await;
+    (scored.into_iter().next(), rejected)
 }
 
 /// Collection + scoring variant focused on batch releases.
@@ -447,8 +477,34 @@ pub async fn collect_scored_batches_for_target(
     indexers_cache: &crate::IndexerCache,
     require_verbatim: bool,
 ) -> Vec<SearchResult> {
+    collect_scored_batches_for_target_with_diag(
+        db,
+        detail,
+        config,
+        target,
+        cfs,
+        indexers_cache,
+        require_verbatim,
+    )
+    .await
+    .0
+}
+
+/// `collect_scored_batches_for_target` plus the titles the exact title
+/// gate turned away (empty when `require_verbatim` is false).
+pub async fn collect_scored_batches_for_target_with_diag(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    target: &SearchTarget,
+    cfs: &[CompiledCustomFormat],
+    indexers_cache: &crate::IndexerCache,
+    require_verbatim: bool,
+) -> (Vec<SearchResult>, Vec<String>) {
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
+    let (aliases, canonical_aliases) =
+        add_alternate_aliases(aliases, canonical_aliases, &series_ctx.alternate_titles);
     let preferred_groups = quality::parse_group_list(&config.preferred_groups);
     let preferred_res = preferred_resolution_search_value(config);
     let is_finished = detail.is_finished();
@@ -565,7 +621,12 @@ pub async fn collect_scored_batches_for_target(
     // already active.
     if !has_preferred_hit && !preferred_groups.is_empty() && series_ctx.restrict_user.is_empty() {
         let group_queries = append_custom_tokens(
-            build_group_queries(detail, target, &preferred_groups),
+            build_group_queries(
+                detail,
+                target,
+                &preferred_groups,
+                &series_ctx.alternate_titles,
+            ),
             &series_ctx.custom_tokens,
         );
         run_queries(
@@ -671,7 +732,7 @@ pub async fn collect_scored_batches_for_target(
             );
         }
     }
-    scored
+    (scored, fuzzy_rejected.into_inner().unwrap_or_default())
 }
 
 /// Internal: run the full auto-search query sweep (Phase 1 primary →
@@ -698,6 +759,8 @@ async fn collect_scored_for_target(
     let require_verbatim = true;
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
+    let (aliases, canonical_aliases) =
+        add_alternate_aliases(aliases, canonical_aliases, &series_ctx.alternate_titles);
     let queries = append_custom_tokens(
         build_queries_mixed(
             &canonical_aliases,
@@ -831,7 +894,12 @@ async fn collect_scored_for_target(
     // already active.
     if !has_preferred_hit && !preferred_groups.is_empty() && series_ctx.restrict_user.is_empty() {
         let group_queries = append_custom_tokens(
-            build_group_queries(detail, target, &preferred_groups),
+            build_group_queries(
+                detail,
+                target,
+                &preferred_groups,
+                &series_ctx.alternate_titles,
+            ),
             &series_ctx.custom_tokens,
         );
         run_queries(
@@ -1001,6 +1069,18 @@ async fn collect_scored_for_target(
 /// order. Named fields make the swap impossible. Derive `Copy` so the
 /// Phase 1.5 alias override can reuse most fields via
 /// `AutoQueryCtx { aliases: &all_aliases, ..ctx }`.
+impl AutoQueryCtx<'_> {
+    /// Remember a release the verbatim gate turned away, once. The same
+    /// release comes back from every query and category of a sweep,
+    /// and the report lists these titles.
+    fn note_rejected(&self, title: &str) {
+        let mut rejected = self.fuzzy_rejected.lock().unwrap();
+        if !rejected.iter().any(|t| t.eq_ignore_ascii_case(title)) {
+            rejected.push(title.to_string());
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct AutoQueryCtx<'a> {
     /// Which query pass this context runs; stamped on every candidate.
@@ -1218,6 +1298,12 @@ async fn run_queries(
         .map(|r| r.into_search_result())
         .collect();
 
+    // Releases the gate turned away in this call. They stay out of
+    // `seen` so a later pass with more aliases can admit them, but the
+    // same release comes back from every query and category here and
+    // re-classifying it (an anitomy parse plus the alias loop) each
+    // time is pure waste.
+    let mut rejected_here: HashSet<String> = HashSet::new();
     for resp in responses {
         let results = match resp {
             Ok(v) => v.results,
@@ -1229,7 +1315,7 @@ async fn run_queries(
             } else {
                 result.title.to_lowercase()
             };
-            if seen.contains(&dedupe_key) {
+            if seen.contains(&dedupe_key) || rejected_here.contains(&dedupe_key) {
                 continue;
             }
             // SeaDex trusts its AniList-ID-based curation over any
@@ -1268,10 +1354,8 @@ async fn run_queries(
                     ctx.absolute_offset,
                 ) {
                     Some(m) if ctx.require_verbatim && m.kind == MatchKind::Fuzzy => {
-                        ctx.fuzzy_rejected
-                            .lock()
-                            .unwrap()
-                            .push(result.title.clone());
+                        ctx.note_rejected(&result.title);
+                        rejected_here.insert(dedupe_key);
                         continue;
                     }
                     Some(m)
@@ -1279,10 +1363,8 @@ async fn run_queries(
                             && m.kind == MatchKind::Verbatim
                             && aliases::names_more_than_the_series(&result.title, ctx.aliases) =>
                     {
-                        ctx.fuzzy_rejected
-                            .lock()
-                            .unwrap()
-                            .push(result.title.clone());
+                        ctx.note_rejected(&result.title);
+                        rejected_here.insert(dedupe_key);
                         continue;
                     }
                     Some(m) => m.into_provenance(ctx.phase),
@@ -1309,7 +1391,7 @@ async fn run_queries(
         } else {
             result.title.to_lowercase()
         };
-        if seen.contains(&dedupe_key) {
+        if seen.contains(&dedupe_key) || rejected_here.contains(&dedupe_key) {
             continue;
         }
         if !ctx.allow_batch && result.is_batch {
@@ -1328,10 +1410,8 @@ async fn run_queries(
                 ctx.absolute_offset,
             ) {
                 Some(m) if ctx.require_verbatim && m.kind == MatchKind::Fuzzy => {
-                    ctx.fuzzy_rejected
-                        .lock()
-                        .unwrap()
-                        .push(result.title.clone());
+                    ctx.note_rejected(&result.title);
+                    rejected_here.insert(dedupe_key);
                     continue;
                 }
                 Some(m)
@@ -1339,10 +1419,8 @@ async fn run_queries(
                         && m.kind == MatchKind::Verbatim
                         && aliases::names_more_than_the_series(&result.title, ctx.aliases) =>
                 {
-                    ctx.fuzzy_rejected
-                        .lock()
-                        .unwrap()
-                        .push(result.title.clone());
+                    ctx.note_rejected(&result.title);
+                    rejected_here.insert(dedupe_key);
                     continue;
                 }
                 Some(m) => m.into_provenance(ctx.phase),
@@ -1602,13 +1680,18 @@ fn build_group_queries(
     detail: &AnimeDetail,
     target: &SearchTarget,
     preferred_groups: &[String],
+    alternate_titles: &[String],
 ) -> Vec<String> {
     // Skip `collect_aliases_with_variants` here — that helper also
     // builds the combined own+variant list (for `matches_target`'s
     // alias pool), which `build_group_queries` never consumes. Fetch
     // the two pieces we actually need directly and leave the combined
     // allocation to the call sites that use it.
-    let canonical_aliases = collect_aliases(detail);
+    let canonical_aliases = if alternate_titles.is_empty() {
+        collect_aliases(detail)
+    } else {
+        dedupe_strings([collect_aliases(detail), alternate_titles.to_vec()].concat())
+    };
     let variant_aliases = sequel_variant_aliases(&canonical_aliases);
     let mut queries = Vec::new();
 
@@ -1705,6 +1788,13 @@ struct SeriesSearchCtx {
     /// never in the candidate pool — loosening the filter alone is
     /// not enough. Empty for first-season entries.
     franchise_aliases: Vec<String>,
+    /// The user's alternate titles for the series (one per line on the
+    /// series page). First-class aliases: they drive the primary
+    /// queries and count as an exact match at the title gate, the same
+    /// as the AniList titles. Read off the series row here rather than
+    /// the metadata detail so a title added a minute ago counts on the
+    /// next search, cache or no cache.
+    alternate_titles: Vec<String>,
 }
 
 /// Resolve per-series search overrides + the cumulative-prior-episodes
@@ -1732,6 +1822,7 @@ async fn resolve_search_overrides(
             // Sonarr-shim searches for unadded series.
             absolute_offset: 0,
             franchise_aliases: Vec::new(),
+            alternate_titles: Vec::new(),
         },
     }
 }
@@ -1774,7 +1865,25 @@ fn resolve_search_overrides_from_row(
         // the async variant. Tests pin the sync variant's behavior on
         // the other fields only.
         franchise_aliases: Vec::new(),
+        alternate_titles: series.alternate_title_list(),
     }
+}
+
+/// Fold the series' alternate titles into both alias lists: the
+/// combined list the title gate matches against and the canonical list
+/// the queries are built from.
+fn add_alternate_aliases(
+    aliases: Vec<String>,
+    canonical: Vec<String>,
+    alternate_titles: &[String],
+) -> (Vec<String>, Vec<String>) {
+    if alternate_titles.is_empty() {
+        return (aliases, canonical);
+    }
+    (
+        dedupe_strings([aliases, alternate_titles.to_vec()].concat()),
+        dedupe_strings([canonical, alternate_titles.to_vec()].concat()),
+    )
 }
 
 /// #23 — Append user-supplied custom query tokens to every query in
