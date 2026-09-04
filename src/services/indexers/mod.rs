@@ -66,6 +66,119 @@ use std::sync::Arc;
 /// release's reported categories.
 pub const TORZNAB_CAT_ANIME: i32 = 5070;
 
+/// Standard torznab / newznab parent category for movies. Some
+/// trackers file anime films here rather than under TV/Anime.
+pub const TORZNAB_CAT_MOVIES: i32 = 2000;
+
+/// Standard torznab / newznab parent category for adult content.
+/// Prowlarr and Jackett file sukebei and similar trackers here, so
+/// an adult title that only asks for TV/Anime finds nothing.
+pub const TORZNAB_CAT_XXX: i32 = 6000;
+
+/// Every category id an indexer reports in its caps, parents and
+/// children flattened. Empty when the caps have not been probed yet.
+pub fn known_category_ids(caps_json: &str) -> Vec<i32> {
+    fn walk(cats: &[CategoryCap], out: &mut Vec<i32>) {
+        for c in cats {
+            out.push(c.id);
+            walk(&c.subcategories, out);
+        }
+    }
+    let Ok(caps) = serde_json::from_str::<IndexerCaps>(caps_json) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    walk(&caps.categories, &mut out);
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// The indexer's reported categories as `id name` lines for the edit
+/// form, parents first, custom ids last.
+/// One category an indexer's caps report, for the categories field's
+/// chip list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReportedCategory {
+    pub id: i32,
+    pub name: String,
+}
+
+pub fn reported_categories(caps_json: &str) -> Vec<ReportedCategory> {
+    let Ok(caps) = serde_json::from_str::<IndexerCaps>(caps_json) else {
+        return Vec::new();
+    };
+    let mut flat: Vec<(i32, String)> = Vec::new();
+    fn walk(cats: &[CategoryCap], out: &mut Vec<(i32, String)>) {
+        for c in cats {
+            out.push((c.id, c.name.clone()));
+            walk(&c.subcategories, out);
+        }
+    }
+    walk(&caps.categories, &mut flat);
+    flat.sort_by_key(|(id, _)| *id);
+    flat.dedup_by_key(|(id, _)| *id);
+    flat.into_iter()
+        .map(|(id, name)| ReportedCategory { id, name })
+        .collect()
+}
+
+/// What to put on the wire for one indexer: the requested categories
+/// that the indexer actually reports, and when it reports none of them,
+/// its own top-level categories instead. A tracker whose caps list only
+/// XXX (sukebei through Prowlarr) or only Movies (YTS) would otherwise
+/// answer every anime request with nothing, silently. A requested
+/// parent counts as supported when the indexer lists it or any of its
+/// standard children (2000 is satisfied by 2040). With no caps cached
+/// the request goes out as asked.
+pub fn resolve_request_categories(requested: &[i32], known: &[i32]) -> Vec<i32> {
+    if known.is_empty() {
+        return requested.to_vec();
+    }
+    // Standard ids are grouped by thousands: 5070 sits under 5000, 2040
+    // under 2000. A request for a child is satisfied by its parent (an
+    // indexer that lists TV lists anime), and a request for a parent by
+    // any of its children.
+    let supports = |cat: i32| -> bool {
+        let standard = cat < 100_000;
+        let parent = cat - cat % 1000;
+        known.iter().any(|k| {
+            *k == cat
+                || (standard && *k == parent)
+                || (standard && cat == parent && (parent..parent + 1000).contains(k))
+        })
+    };
+    let supported: Vec<i32> = requested.iter().copied().filter(|c| supports(*c)).collect();
+    if !supported.is_empty() {
+        return supported;
+    }
+    let mut parents: Vec<i32> = known
+        .iter()
+        .copied()
+        .filter(|k| *k < 100_000 && k % 1000 == 0)
+        .collect();
+    if parents.is_empty() {
+        parents = known.to_vec();
+    }
+    parents
+}
+
+/// The categories a search for a series asks an indexer for. A parent
+/// category includes its children on the wire, so parents are enough.
+/// Anime is always requested; movies also ask for Movies because
+/// trackers disagree on where anime films go; adult titles also ask
+/// for XXX, which is where Prowlarr and Jackett put sukebei.
+pub fn search_categories(format: &str, is_adult: bool) -> Vec<i32> {
+    let mut cats = vec![TORZNAB_CAT_ANIME];
+    if format.eq_ignore_ascii_case("MOVIE") {
+        cats.push(TORZNAB_CAT_MOVIES);
+    }
+    if is_adult {
+        cats.push(TORZNAB_CAT_XXX);
+    }
+    cats
+}
+
 /// Default per-indexer search timeout when the row's
 /// `request_timeout_secs` is NULL. Decision #7 — tighter than
 /// Sonarr's 100s default because Ryokan's interactive search
@@ -1006,6 +1119,7 @@ mod tests {
             request_timeout_secs: None,
             download_client_id: None,
             rss_enabled: false,
+            categories: "",
         };
         let a_id = insert(&db, mk("A", "https://a.example/api", 5))
             .await
@@ -1027,5 +1141,57 @@ mod tests {
             !snapshot.iter().any(|c| c.id() == _b_id),
             "B's id must not survive — its client was never instantiated"
         );
+    }
+}
+
+#[cfg(test)]
+mod search_categories_tests {
+    use super::*;
+
+    #[test]
+    fn request_categories_fall_back_to_what_the_indexer_reports() {
+        // No caps yet: ask as requested.
+        assert_eq!(resolve_request_categories(&[5070], &[]), vec![5070]);
+        // A multi-category tracker: keep the supported subset.
+        let nyaa = [5000, 2000, 140679, 127720];
+        assert_eq!(
+            resolve_request_categories(&[5070, 2000], &nyaa),
+            vec![5070, 2000]
+        );
+        assert_eq!(resolve_request_categories(&[5070], &nyaa), vec![5070]);
+        // sukebei through Prowlarr reports XXX and custom adult cats only:
+        // an anime-only request becomes XXX.
+        let sukebei = [6000, 125996, 140679];
+        assert_eq!(resolve_request_categories(&[5070], &sukebei), vec![6000]);
+        assert_eq!(
+            resolve_request_categories(&[5070, 6000], &sukebei),
+            vec![6000]
+        );
+        // YTS reports Movies only: a series request becomes Movies.
+        let yts = [2000, 100044, 100045];
+        assert_eq!(resolve_request_categories(&[5070], &yts), vec![2000]);
+        assert_eq!(resolve_request_categories(&[5070, 2000], &yts), vec![2000]);
+        // Only custom categories: send those.
+        assert_eq!(
+            resolve_request_categories(&[5070], &[100001, 100002]),
+            vec![100001, 100002]
+        );
+    }
+
+    #[test]
+    fn known_category_ids_flattens_children_and_tolerates_missing_caps() {
+        assert!(known_category_ids("").is_empty());
+        let json = r#"{"categories":[{"id":2000,"name":"Movies","subcategories":[{"id":2040,"name":"HD","subcategories":[]}]},{"id":6000,"name":"XXX","subcategories":[]}],"search_modes":[],"max_limit":null,"default_limit":null}"#;
+        assert_eq!(known_category_ids(json), vec![2000, 2040, 6000]);
+    }
+
+    #[test]
+    fn categories_follow_format_and_adult_flag() {
+        assert_eq!(search_categories("TV", false), vec![5070]);
+        assert_eq!(search_categories("OVA", false), vec![5070]);
+        assert_eq!(search_categories("MOVIE", false), vec![5070, 2000]);
+        assert_eq!(search_categories("TV", true), vec![5070, 6000]);
+        assert_eq!(search_categories("MOVIE", true), vec![5070, 2000, 6000]);
+        assert_eq!(search_categories("", true), vec![5070, 6000]);
     }
 }

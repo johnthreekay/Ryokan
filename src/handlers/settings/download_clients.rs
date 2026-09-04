@@ -1300,6 +1300,7 @@ mod tests {
                 request_timeout_secs: None,
                 download_client_id: Some(id),
                 rss_enabled: false,
+                categories: "",
             },
         )
         .await

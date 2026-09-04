@@ -130,12 +130,28 @@ pub async fn assess_and_stamp(
         let _ = grabbed_torrents::stamp_verification(db, grab.id, "whitelisted", &detail).await;
         return verdict;
     }
-    let verdict = assess(&VerdictInput {
-        own_aliases: &aliases.own,
-        sibling_aliases: &aliases.siblings,
-        filenames,
-        expected_season: aliases.expected_season,
-    });
+    // Pure CPU (regex normalization and an anitomy parse per path
+    // segment) over every file times every alias; a large pack with
+    // a wide sibling set is milliseconds of work that must not sit on
+    // a Tokio worker.
+    let verdict = {
+        let own = aliases.own.clone();
+        let siblings = aliases.siblings.clone();
+        let files = filenames.to_vec();
+        let expected_season = aliases.expected_season;
+        tokio::task::spawn_blocking(move || {
+            assess(&VerdictInput {
+                own_aliases: &own,
+                sibling_aliases: &siblings,
+                filenames: &files,
+                expected_season,
+            })
+        })
+        .await
+        .unwrap_or(Verdict::Unverifiable {
+            reason: "the verdict task did not finish",
+        })
+    };
     let detail = verdict.detail(filenames);
     let detail_json = serde_json::to_string(&detail).unwrap_or_default();
     let wrote = grabbed_torrents::stamp_verification(db, grab.id, verdict.as_str(), &detail_json)

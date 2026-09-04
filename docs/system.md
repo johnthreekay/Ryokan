@@ -49,7 +49,7 @@ Download a backup, keep scheduled ones in a folder, and restore from one.
 
 A backup is a `.tar.gz` holding a consistent snapshot of the database (`ryokan.db`), the encryption key (`.ryokan-key`) that protects linked AniList and MyAnimeList tokens, a `manifest.json` with the Ryokan version and schema level, and, when you tick the option, the cached artwork. The snapshot is taken with SQLite's `VACUUM INTO`, so it is complete even while Ryokan is busy; copying `ryokan.db` by hand while Ryokan runs is not, because recent writes live in `ryokan.db-wal` until a checkpoint.
 
-**A backup is a password export.** It contains the key, the encrypted account tokens, every download client password, and the activity log. Keep it where you keep secrets. For sharing with support, tick **Sanitize** instead: passwords, API keys, and tokens are blanked, the log is trimmed to its last 1000 lines, and the key and hostname stay out.
+**A backup is a password export.** It contains the key, the encrypted account tokens, every download client password, and the activity log. Keep it where you keep secrets. For sharing with support, tick **Sanitize** instead: passwords, API keys, tokens, and the keys inside indexer download links and feed addresses are blanked, the log is trimmed to its last 1000 lines, and the key and hostname stay out.
 
 - **Download backup** builds the archive and sends it to the browser.
 - **Save to backup folder** writes one to the folder from Settings → General, the same as a scheduled run, and prunes older ones past the retention count. The folder's contents are listed below the buttons with per-file Download and Delete.

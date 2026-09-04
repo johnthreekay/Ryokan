@@ -1416,3 +1416,325 @@ async fn auto_search_episode_makes_no_add_call_when_only_candidate_is_blockliste
 
     unset_nyaa_base();
 }
+
+// ─── Misgrab re-search ───────────────────────────────────────────
+
+/// Poll the recording client until it has seen an add call or the
+/// budget runs out. The re-search runs as a detached task after the
+/// sweep returns, so the test has to wait for it.
+async fn wait_for_add_calls(
+    client: &AutoSearchRecordingClient,
+    want: usize,
+) -> Vec<(String, String)> {
+    for _ in 0..200 {
+        let calls = client.add_calls();
+        if calls.len() >= want {
+            return calls;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    client.add_calls()
+}
+
+/// Every log row, for assertion messages.
+async fn dump_logs(db: &sqlx::SqlitePool) -> String {
+    let rows: Vec<(String, String, String)> =
+        sqlx::query_as("SELECT level, message, detail FROM logs ORDER BY id")
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+    rows.iter()
+        .map(|(l, m, d)| format!("[{l}] {m} | {d}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+async fn wait_for_log_like(db: &sqlx::SqlitePool, pattern: &str) -> i64 {
+    for _ in 0..200 {
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM logs WHERE message LIKE ?")
+            .bind(pattern)
+            .fetch_one(db)
+            .await
+            .unwrap();
+        if n > 0 {
+            return n;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    0
+}
+
+/// A grab the verdict already condemned but the sweep has not acted on.
+async fn seed_unhandled_misgrab(
+    state: &AppState,
+    series_id: i64,
+    hash: &str,
+    title: &str,
+    episodes: &[i32],
+    is_batch: bool,
+) -> i64 {
+    let id =
+        ryokan::test_support::seed_grabbed_torrent(&state.db, series_id, hash, title, episodes)
+            .await;
+    sqlx::query("UPDATE grabbed_torrents SET is_batch = ? WHERE id = ?")
+        .bind(is_batch as i64)
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    ryokan::models::grabbed_torrents::stamp_verification(&state.db, id, "misgrab", "{}")
+        .await
+        .unwrap();
+    id
+}
+
+const WRONG_HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const RIGHT_HASH: &str = "cccccccccccccccccccccccccccccccccccccccc";
+
+fn research_results_page() -> String {
+    nyaa_results_page(&format!(
+        "{}{}",
+        nyaa_row(
+            WRONG_HASH,
+            99301,
+            "[Wrong] Research Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            500,
+        ),
+        nyaa_row(
+            RIGHT_HASH,
+            99302,
+            "[Right] Research Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            5,
+        )
+    ))
+}
+
+#[tokio::test]
+async fn misgrab_sweep_re_searches_a_single_episode_and_grabs_the_next_candidate() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // The condemned release still tops the Nyaa page on seeders; the
+    // re-search must skip it (it is blocklisted by the remediation)
+    // and take the runner-up for the same slot.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(research_results_page()))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9006;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Research Show").await;
+    let grab_id = seed_unhandled_misgrab(
+        &state,
+        series_id,
+        WRONG_HASH,
+        "[Wrong] Research Show - 03 (1080p) [WEB].mkv",
+        &[3],
+        false,
+    )
+    .await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let summary = ryokan::services::misgrab::sweep_once(&state)
+        .await
+        .expect("sweep runs");
+    assert_eq!(
+        summary.remediated,
+        1,
+        "{summary:?}\n{}",
+        dump_logs(&state.db).await
+    );
+
+    let calls = wait_for_add_calls(&client, 1).await;
+    assert_eq!(calls.len(), 1, "the re-search grabs exactly one release");
+    assert!(
+        calls[0].1.starts_with("cccccccc"),
+        "the condemned hash is blocklisted, the runner-up fills the slot; grabbed {}",
+        calls[0].1
+    );
+    assert_eq!(
+        wait_for_log_like(
+            &state.db,
+            "Re-search after misgrab '[Wrong] Research Show%grabbed 1 release(s)"
+        )
+        .await,
+        1
+    );
+
+    // The old row is failed and blocklisted; the new one is pending
+    // for the same episode.
+    let old = ryokan::models::grabbed_torrents::get_by_id(&state.db, grab_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(old.state, "failed");
+    assert_eq!(old.misgrab_action.as_deref(), Some("removed"));
+    let pending = ryokan::models::grabbed_torrents::get_all_pending(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].hash, RIGHT_HASH);
+    assert_eq!(pending[0].episode_numbers, vec![3]);
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn misgrab_sweep_re_searches_the_whole_series_for_a_batch_grab() {
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(research_results_page()))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9007;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Research Show").await;
+    // The series search takes its targets from the monitoring rows.
+    sqlx::query("UPDATE series SET episodes = 12, monitor_mode = 'all' WHERE id = ?")
+        .bind(series_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let series_row = ryokan::models::series::get_by_id(&state.db, series_id)
+        .await
+        .unwrap()
+        .unwrap();
+    ryokan::services::monitoring::ensure_series_monitoring_rows(&state.db, &series_row)
+        .await
+        .unwrap();
+    seed_unhandled_misgrab(
+        &state,
+        series_id,
+        WRONG_HASH,
+        "[Wrong] Research Show - 01-12 (1080p) [WEB]",
+        &[1, 2, 3],
+        true,
+    )
+    .await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let summary = ryokan::services::misgrab::sweep_once(&state)
+        .await
+        .expect("sweep runs");
+    assert_eq!(
+        summary.remediated,
+        1,
+        "{summary:?}\n{}",
+        dump_logs(&state.db).await
+    );
+
+    // A batch grab re-searches the series, not one slot: the sweep
+    // takes whatever the series search can fill (here episode 3, the
+    // only release the page offers) and never the blocklisted hash.
+    let calls = wait_for_add_calls(&client, 1).await;
+    assert!(!calls.is_empty(), "the series re-search grabs something");
+    assert!(
+        calls.iter().all(|(_, hash)| !hash.starts_with("aaaaaaaa")),
+        "the condemned hash is never re-grabbed: {calls:?}"
+    );
+    assert_eq!(
+        wait_for_log_like(
+            &state.db,
+            "Re-search after misgrab '[Wrong] Research Show - 01-12%grabbed % release(s)"
+        )
+        .await,
+        1
+    );
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn misgrab_sweep_stops_re_searching_after_the_loop_breaker() {
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(research_results_page()))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9008;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Research Show").await;
+    // Three misgrabs already handled today for this series ...
+    for (i, hash) in [
+        "1111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222",
+        "3333333333333333333333333333333333333333",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let id = seed_unhandled_misgrab(
+            &state,
+            series_id,
+            hash,
+            &format!("[Wrong{i}] Research Show - 03 (1080p) [WEB].mkv"),
+            &[3],
+            false,
+        )
+        .await;
+        sqlx::query(
+            "UPDATE grabbed_torrents SET state = 'failed', misgrab_action = 'removed' WHERE id = ?",
+        )
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+    // ... and a fourth the sweep is about to act on.
+    let fourth = seed_unhandled_misgrab(
+        &state,
+        series_id,
+        WRONG_HASH,
+        "[Wrong] Research Show - 03 (1080p) [WEB].mkv",
+        &[3],
+        false,
+    )
+    .await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let summary = ryokan::services::misgrab::sweep_once(&state)
+        .await
+        .expect("sweep runs");
+    assert_eq!(
+        summary.remediated,
+        1,
+        "removal still happens; {summary:?}\n{}",
+        dump_logs(&state.db).await
+    );
+    assert_eq!(
+        wait_for_log_like(&state.db, "Not re-searching after misgrab%").await,
+        1,
+        "the loop breaker logs why\n{}",
+        dump_logs(&state.db).await
+    );
+    // Give a stray re-search every chance to show up before asserting
+    // it never did.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(
+        client.add_calls().is_empty(),
+        "no re-search after {} misgrabs in a day",
+        ryokan::services::misgrab::RESEARCH_LOOP_BREAKER
+    );
+    let old = ryokan::models::grabbed_torrents::get_by_id(&state.db, fourth)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(old.state, "failed");
+
+    unset_nyaa_base();
+}

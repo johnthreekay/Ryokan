@@ -125,12 +125,64 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
                 rtorrent_password = CASE WHEN rtorrent_password = '' THEN '' ELSE '[REDACTED]' END,
                 jellyfin_api_key = CASE WHEN jellyfin_api_key = '' THEN '' ELSE '[REDACTED]' END,
                 sonarr_api_key = CASE WHEN sonarr_api_key = '' THEN '' ELSE '[REDACTED]' END,
-                radarr_api_key = CASE WHEN radarr_api_key = '' THEN '' ELSE '[REDACTED]' END",
+                radarr_api_key = CASE WHEN radarr_api_key = '' THEN '' ELSE '[REDACTED]' END,
+                autobrr_api_key = CASE WHEN autobrr_api_key = '' THEN '' ELSE '[REDACTED]' END,
+                tmdb_api_key = CASE WHEN tmdb_api_key = '' THEN '' ELSE '[REDACTED]' END",
     )
     .execute(&pool)
     .await
     .map_err(|e| format!("scrub config secrets: {e}"))?
     .rows_affected();
+
+    // Per-row secrets that live outside `config`: torznab/newznab API
+    // keys, download-client passwords, and the scoped API keys (#114).
+    // `api_keys.key` is UNIQUE, so the rowid keeps the placeholders
+    // distinct.
+    let indexer_rows = sqlx::query(
+        "UPDATE indexers SET api_key = CASE WHEN api_key = '' THEN '' ELSE '[REDACTED]' END",
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| format!("scrub indexers: {e}"))?
+    .rows_affected();
+    let client_rows = sqlx::query(
+        "UPDATE download_clients \
+            SET password = CASE WHEN password = '' THEN '' ELSE '[REDACTED]' END",
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| format!("scrub download_clients: {e}"))?
+    .rows_affected();
+    let api_key_rows = sqlx::query("UPDATE api_keys SET key = '[REDACTED-key-' || rowid || ']'")
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("scrub api_keys: {e}"))?
+        .rows_affected();
+
+    // URLs that carry credentials in their query string: a grab's
+    // recorded download link (`?apikey=` on every torznab/newznab
+    // release, kept so Restore can re-add it) and a direct feed's
+    // address (private trackers put the passkey there). The query
+    // string goes, the host and path stay so the dump still says
+    // where a grab came from.
+    let url_rows = sqlx::query(
+        "UPDATE grabbed_torrents \
+            SET source_url = substr(source_url, 1, instr(source_url, '?') - 1) || '?[REDACTED]' \
+          WHERE instr(source_url, '?') > 0",
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| format!("scrub grabbed_torrents.source_url: {e}"))?
+    .rows_affected()
+        + sqlx::query(
+            "UPDATE direct_rss_feeds \
+                SET url = substr(url, 1, instr(url, '?') - 1) || '?[REDACTED]' \
+              WHERE instr(url, '?') > 0",
+        )
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("scrub direct_rss_feeds.url: {e}"))?
+        .rows_affected();
 
     // `sessions.token` — cookie values double as DB session keys.
     // A sanitized DB handed to someone else shouldn't let them log
@@ -161,6 +213,10 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
         config_passwords: cfg_rows as usize,
         session_tokens: session_rows as usize,
         user_password_hashes: user_rows as usize,
+        indexer_keys: indexer_rows as usize,
+        client_passwords: client_rows as usize,
+        api_keys: api_key_rows as usize,
+        credential_urls: url_rows as usize,
         output_path: output.to_path_buf(),
     })
 }
@@ -171,6 +227,10 @@ pub struct SanitizeSummary {
     pub config_passwords: usize,
     pub session_tokens: usize,
     pub user_password_hashes: usize,
+    pub indexer_keys: usize,
+    pub client_passwords: usize,
+    pub api_keys: usize,
+    pub credential_urls: usize,
     pub output_path: std::path::PathBuf,
 }
 
@@ -196,6 +256,22 @@ impl std::fmt::Display for SanitizeSummary {
             f,
             "  user password hashes redacted:   {}",
             self.user_password_hashes
+        )?;
+        writeln!(
+            f,
+            "  indexer API keys redacted:       {}",
+            self.indexer_keys
+        )?;
+        writeln!(
+            f,
+            "  download client passwords:       {}",
+            self.client_passwords
+        )?;
+        writeln!(f, "  API keys redacted:               {}", self.api_keys)?;
+        writeln!(
+            f,
+            "  URLs with credentials scrubbed:  {}",
+            self.credential_urls
         )?;
         write!(f, "Safe to share in bug reports.")
     }
@@ -244,6 +320,49 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+
+        // Secrets outside `config`: an indexer key, a client password,
+        // a scoped API key, and two URLs with credentials in the query.
+        sqlx::query(
+            "INSERT INTO indexers (name, kind, url, api_key) \
+             VALUES ('Prowlarr', 'torznab', 'http://prowlarr:9696/1/api', 'indexer-key-123')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO download_clients (name, kind, url, username, password) \
+             VALUES ('qbit', 'qbittorrent', 'http://qbit:8080', 'admin', 'client-pass-456')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO api_keys (name, key) VALUES ('calendar', 'scoped-key-789')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let sid = crate::test_support::seed_series(&pool, 4242, "Sanitize Show").await;
+        let gid = crate::test_support::seed_grabbed_torrent(
+            &pool,
+            sid,
+            "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            "[Group] Sanitize Show - 01",
+            &[1],
+        )
+        .await;
+        sqlx::query("UPDATE grabbed_torrents SET source_url = ? WHERE id = ?")
+            .bind("http://prowlarr:9696/1/download?apikey=indexer-key-123&link=abc&file=x.torrent")
+            .bind(gid)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO direct_rss_feeds (name, url, enabled) \
+             VALUES ('Private', 'https://tracker.example/rss?passkey=feed-pass-000&cat=1', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Seed an external_accounts row via the real model helper so
         // the encrypted blobs match the live encrypt() output shape.
@@ -308,6 +427,10 @@ mod tests {
         assert!(summary.config_passwords > 0);
         assert!(summary.session_tokens > 0);
         assert!(summary.user_password_hashes > 0);
+        assert_eq!(summary.indexer_keys, 1);
+        assert_eq!(summary.client_passwords, 1);
+        assert_eq!(summary.api_keys, 1);
+        assert_eq!(summary.credential_urls, 2);
 
         let url = format!("sqlite://{}?mode=ro", out.display());
         let pool = SqlitePool::connect(&url).await.unwrap();
@@ -317,6 +440,32 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(qbit_pass, "[REDACTED]");
+
+        let indexer_key: String = sqlx::query_scalar("SELECT api_key FROM indexers")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(indexer_key, "[REDACTED]");
+        let client_pass: String = sqlx::query_scalar("SELECT password FROM download_clients")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(client_pass, "[REDACTED]");
+        let scoped: String = sqlx::query_scalar("SELECT key FROM api_keys")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert!(scoped.starts_with("[REDACTED-key-"), "{scoped}");
+        let source_url: String = sqlx::query_scalar("SELECT source_url FROM grabbed_torrents")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(source_url, "http://prowlarr:9696/1/download?[REDACTED]");
+        let feed_url: String = sqlx::query_scalar("SELECT url FROM direct_rss_feeds")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(feed_url, "https://tracker.example/rss?[REDACTED]");
 
         let jf_key: String = sqlx::query_scalar("SELECT jellyfin_api_key FROM config WHERE id = 1")
             .fetch_one(&pool)

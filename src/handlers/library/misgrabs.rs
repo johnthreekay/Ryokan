@@ -112,18 +112,6 @@ pub async fn restore_misgrab(
             "This grab is not a detected misgrab",
         );
     }
-    // Whitelist every row for the hash (this one included) so a
-    // re-added torrent is never judged again.
-    if let Err(e) = grabbed_torrents::whitelist_by_hash(db, &row.hash).await {
-        return respond(
-            is_htmx,
-            false,
-            id,
-            "restore",
-            &format!("Could not whitelist: {e}"),
-        );
-    }
-
     let removed = matches!(
         row.misgrab_action.as_deref(),
         Some("removed") | Some("removed_no_delete")
@@ -131,6 +119,15 @@ pub async fn restore_misgrab(
     if !removed {
         // Flagged and still in the client: the whitelist alone puts it
         // back on the import path.
+        if let Err(e) = grabbed_torrents::whitelist_by_hash(db, &row.hash).await {
+            return respond(
+                is_htmx,
+                false,
+                id,
+                "restore",
+                &format!("Could not whitelist: {e}"),
+            );
+        }
         logger::info(
             db,
             LogCategory::Grab,
@@ -147,6 +144,11 @@ pub async fn restore_misgrab(
         );
     }
 
+    // Removed: nothing below may whitelist the row until the client
+    // has the release back. A whitelisted row leaves the Misgrabs tab
+    // (that is the tab's filter), so whitelisting first would strand a
+    // failed re-add with no way to retry it; every early return here
+    // leaves the row exactly as it was.
     let Some(url) = restore_url(&row) else {
         return respond(
             is_htmx,
@@ -201,6 +203,7 @@ pub async fn restore_misgrab(
     {
         Ok(Some(new_id)) => new_id,
         Ok(None) => {
+            let _ = grabbed_torrents::whitelist_by_hash(db, &row.hash).await;
             return respond(
                 is_htmx,
                 true,
@@ -219,6 +222,27 @@ pub async fn restore_misgrab(
             );
         }
     };
+    // The new row first, with the reason, then every row for the hash
+    // (the old one included) so a re-added torrent is never judged
+    // again.
+    let detail = serde_json::to_string(&grabbed_torrents::VerificationDetail {
+        reason: "restored by the user".to_string(),
+        ..Default::default()
+    })
+    .unwrap_or_default();
+    let _ = grabbed_torrents::stamp_verification(db, new_id, "whitelisted", &detail).await;
+    if let Err(e) = grabbed_torrents::whitelist_by_hash(db, &row.hash).await {
+        logger::warn(
+            db,
+            LogCategory::Grab,
+            &format!(
+                "Re-added '{}' but could not whitelist its hash",
+                row.torrent_name
+            ),
+            &e.to_string(),
+        )
+        .await;
+    }
     let _ = grabbed_torrents::unblock_by_hash(db, &row.hash, new_id).await;
     let _ = grabbed_torrents::set_download_client(db, new_id, row.download_client_id).await;
     let _ = grabbed_torrents::set_indexer_attribution(
@@ -229,12 +253,6 @@ pub async fn restore_misgrab(
     )
     .await;
     let _ = grabbed_torrents::set_source_url(db, new_id, &url).await;
-    let detail = serde_json::to_string(&grabbed_torrents::VerificationDetail {
-        reason: "restored by the user".to_string(),
-        ..Default::default()
-    })
-    .unwrap_or_default();
-    let _ = grabbed_torrents::stamp_verification(db, new_id, "whitelisted", &detail).await;
     for ep in &row.episode_numbers {
         let _ = episode_tags::record_grab(
             db,
@@ -369,6 +387,7 @@ mod tests {
     struct RecordingClient {
         add_calls: Mutex<Vec<(String, String)>>,
         delete_calls: Mutex<Vec<(String, bool)>>,
+        fail_add: bool,
     }
 
     #[async_trait]
@@ -377,6 +396,9 @@ mod tests {
             Ok("fake".into())
         }
         async fn add_torrent(&self, url: &str, hash: &str) -> Result<AddOutcome, String> {
+            if self.fail_add {
+                return Err("simulated refusal".into());
+            }
             self.add_calls
                 .lock()
                 .unwrap()
@@ -544,6 +566,84 @@ mod tests {
         assert!(trigger(&resp).contains("\"ok\":true"));
         let adds = client.add_calls.lock().unwrap().clone();
         assert_eq!(adds[0].0, "https://indexer.example/dl/1.torrent");
+    }
+
+    #[tokio::test]
+    async fn restore_that_cannot_readd_leaves_the_row_on_the_tab_for_a_retry() {
+        let db = in_memory_pool().await;
+        let sid = seed(&db).await;
+        let old = removed_misgrab(&db, sid).await;
+
+        // No client at all, then a client that refuses the release:
+        // both must leave the row exactly as it was.
+        let state = build_test_app_state(db.clone(), None);
+        let resp = restore_misgrab(State(state), HxRequest(true), Path(old)).await;
+        assert!(
+            trigger(&resp).contains("\"ok\":false"),
+            "{}",
+            trigger(&resp)
+        );
+        let refusing = Arc::new(RecordingClient {
+            fail_add: true,
+            ..Default::default()
+        });
+        let state = build_test_app_state(db.clone(), Some(refusing.clone()));
+        let resp = restore_misgrab(State(state), HxRequest(true), Path(old)).await;
+        assert!(
+            trigger(&resp).contains("\"ok\":false"),
+            "{}",
+            trigger(&resp)
+        );
+        assert_eq!(resp.headers().get("HX-Reswap").unwrap(), "none");
+        assert!(
+            !grabbed_torrents::is_whitelisted_hash(&db, HASH).await,
+            "a failed re-add must not whitelist"
+        );
+        let row = grabbed_torrents::get_by_id(&db, old)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.verification.as_deref(), Some("misgrab"));
+        assert_eq!(row.state, "failed");
+        assert_eq!(
+            grabbed_torrents::list_misgrabs(&db, "romaji")
+                .await
+                .unwrap()
+                .len(),
+            1,
+            "still on the tab"
+        );
+        assert!(
+            grabbed_torrents::get_all_pending(&db)
+                .await
+                .unwrap()
+                .is_empty(),
+            "no orphan pending row"
+        );
+
+        // The client is back: the same button finishes the job.
+        let working = Arc::new(RecordingClient::default());
+        let state = build_test_app_state(db.clone(), Some(working.clone()));
+        let resp = restore_misgrab(State(state), HxRequest(true), Path(old)).await;
+        assert!(trigger(&resp).contains("\"ok\":true"), "{}", trigger(&resp));
+        assert_eq!(working.add_calls.lock().unwrap().len(), 1);
+        assert!(grabbed_torrents::is_whitelisted_hash(&db, HASH).await);
+        assert!(
+            grabbed_torrents::list_misgrabs(&db, "romaji")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let pending = grabbed_torrents::get_all_pending(&db).await.unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].verification.as_deref(), Some("whitelisted"));
+        let reason: String =
+            sqlx::query_scalar("SELECT verification_detail FROM grabbed_torrents WHERE id = ?")
+                .bind(pending[0].id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert!(reason.contains("restored by the user"), "{reason}");
     }
 
     #[tokio::test]

@@ -166,9 +166,12 @@ pub async fn find_all_for_target(
         }
     }
 
+    let indexer_categories =
+        crate::services::indexers::search_categories(&detail.format, detail.is_adult);
     let ctx = InteractiveQueryCtx {
         phase: MatchPhase::Primary,
         aliases: &aliases,
+        indexer_categories: &indexer_categories,
         sibling_precompute: &sibling_precompute,
         preferred_groups: &preferred_groups,
         preferred_resolution: &preferred_res,
@@ -495,11 +498,14 @@ pub async fn collect_scored_batches_for_target(
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
     let fuzzy_rejected = std::sync::Mutex::new(Vec::new());
+    let indexer_categories =
+        crate::services::indexers::search_categories(&detail.format, detail.is_adult);
     let ctx = AutoQueryCtx {
         phase: MatchPhase::Primary,
         require_verbatim,
         fuzzy_rejected: &fuzzy_rejected,
         aliases: &aliases,
+        indexer_categories: &indexer_categories,
         sibling_precompute: &sibling_precompute,
         preferred_groups: &preferred_groups,
         preferred_resolution: &preferred_res,
@@ -764,11 +770,14 @@ async fn collect_scored_for_target(
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
     let fuzzy_rejected = std::sync::Mutex::new(Vec::new());
+    let indexer_categories =
+        crate::services::indexers::search_categories(&detail.format, detail.is_adult);
     let ctx = AutoQueryCtx {
         phase: MatchPhase::Primary,
         require_verbatim,
         fuzzy_rejected: &fuzzy_rejected,
         aliases: &aliases,
+        indexer_categories: &indexer_categories,
         sibling_precompute: &sibling_precompute,
         preferred_groups: &preferred_groups,
         preferred_resolution: &preferred_res,
@@ -1003,6 +1012,9 @@ struct AutoQueryCtx<'a> {
     require_verbatim: bool,
     fuzzy_rejected: &'a std::sync::Mutex<Vec<String>>,
     aliases: &'a [String],
+    /// Torznab / newznab categories to ask indexers for (see
+    /// `indexers::search_categories`).
+    indexer_categories: &'a [i32],
     /// Precomputed token sets for own + sibling aliases, used by
     /// [`sibling_match_rejects`] to reject a release that looks MORE
     /// like a sequel/prequel/side-story than the target. Built once
@@ -1059,6 +1071,9 @@ struct InteractiveQueryCtx<'a> {
     /// Which query pass this context runs; stamped on every candidate.
     phase: MatchPhase,
     aliases: &'a [String],
+    /// Torznab / newznab categories to ask indexers for (see
+    /// `indexers::search_categories`).
+    indexer_categories: &'a [i32],
     sibling_precompute: &'a SiblingRejectPrecompute,
     preferred_groups: &'a [String],
     preferred_resolution: &'a str,
@@ -1161,7 +1176,7 @@ async fn run_queries(
             .map(|query| async move {
                 let search_query = crate::services::indexers::SearchQuery {
                     q: query.clone(),
-                    categories: Vec::new(),
+                    categories: ctx.indexer_categories.to_vec(),
                     limit: None,
                     offset: None,
                 };
@@ -1381,7 +1396,7 @@ async fn run_queries_interactive(
     // identical to v1.4 behavior. Helper is named so it can be
     // tested in isolation against a wiremock'd torznab/newznab.
     let indexer_responses: Vec<SearchResult> =
-        fan_out_indexers_for_interactive(queries, ctx.indexers).await;
+        fan_out_indexers_for_interactive(queries, ctx.indexers, ctx.indexer_categories).await;
 
     for resp in responses {
         let results = match resp {
@@ -1420,6 +1435,7 @@ async fn run_queries_interactive(
 async fn fan_out_indexers_for_interactive(
     queries: &[String],
     indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>],
+    indexer_categories: &[i32],
 ) -> Vec<SearchResult> {
     if indexers.is_empty() {
         return Vec::new();
@@ -1428,7 +1444,7 @@ async fn fan_out_indexers_for_interactive(
         .map(|query| async move {
             let search_query = crate::services::indexers::SearchQuery {
                 q: query.clone(),
-                categories: Vec::new(),
+                categories: indexer_categories.to_vec(),
                 limit: None,
                 offset: None,
             };
@@ -1910,7 +1926,8 @@ mod tests {
     async fn fan_out_skips_when_no_indexers_configured() {
         let result = fan_out_indexers_for_interactive(
             &["any query".to_string()],
-            &[], // no indexers configured
+            &[], // no indexers configured,
+            &[],
         )
         .await;
         assert!(
@@ -1923,6 +1940,78 @@ mod tests {
     /// indexer, call the helper, assert that the resulting
     /// SearchResult carries the indexer's name (so the UI's
     /// "Indexer" column attributes it correctly).
+    /// #219 follow-up: an adult title asks the indexer for the XXX
+    /// parent category alongside anime, because Prowlarr and Jackett
+    /// file sukebei there and a 5070-only request returns nothing.
+    /// The mock only answers a request whose `cat` is exactly
+    /// `5070,6000`, so a regression to the anime-only default fails
+    /// the count.
+    #[tokio::test]
+    async fn fan_out_asks_for_the_adult_category_when_requested() {
+        use crate::services::indexers::torznab::TorznabIndexer;
+        use std::sync::Arc;
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api"))
+            .and(query_param("cat", "5070,6000"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"<?xml version="1.0"?>
+<rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
+<channel>
+<item>
+  <title>[sukebei] Adult Show - 01</title>
+  <guid>g-adult</guid>
+  <enclosure url="http://server/dl/adult" length="1000000000" type="application/x-bittorrent"/>
+  <torznab:attr name="seeders" value="3"/>
+  <torznab:attr name="leechers" value="0"/>
+  <torznab:attr name="infohash" value="ABCDEF1234567890"/>
+  <torznab:attr name="category" value="6070"/>
+</item>
+</channel>
+</rss>"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let row = crate::models::indexers::Indexer {
+            id: 8,
+            name: "sukebei-via-prowlarr".to_string(),
+            kind: crate::models::indexers::KIND_TORZNAB.to_string(),
+            url: format!("{}/api", server.uri()),
+            api_key: "k".to_string(),
+            priority: 25,
+            enabled: true,
+            is_private_tracker: false,
+            seed_ratio: None,
+            seed_time_minutes: None,
+            min_seeders: 0,
+            request_timeout_secs: Some(5),
+            download_client_id: None,
+            rss_enabled: false,
+            rss_last_polled_at: None,
+            rss_last_poll_error: String::new(),
+            rss_last_item_count: 0,
+            categories: String::new(),
+            caps_json: String::new(),
+            caps_refreshed_at: None,
+            created_at: 0,
+            updated_at: 0,
+        };
+        let indexer = TorznabIndexer::from_row_arc(&row).expect("indexer must build");
+        let indexers: Vec<Arc<dyn crate::services::indexers::Indexer>> = vec![indexer];
+
+        let categories = crate::services::indexers::search_categories("OVA", true);
+        let results =
+            fan_out_indexers_for_interactive(&["Adult Show".to_string()], &indexers, &categories)
+                .await;
+        assert_eq!(results.len(), 1, "the XXX-tagged release comes back");
+        assert_eq!(results[0].title, "[sukebei] Adult Show - 01");
+    }
+
     #[tokio::test]
     async fn fan_out_torznab_indexer_results_carry_indexer_name() {
         use crate::services::indexers::torznab::TorznabIndexer;
@@ -1969,6 +2058,7 @@ mod tests {
             rss_last_polled_at: None,
             rss_last_poll_error: String::new(),
             rss_last_item_count: 0,
+            categories: String::new(),
             caps_json: String::new(),
             caps_refreshed_at: None,
             created_at: 0,
@@ -1977,7 +2067,8 @@ mod tests {
         let indexer = TorznabIndexer::from_row_arc(&row).expect("indexer must build");
         let indexers: Vec<Arc<dyn crate::services::indexers::Indexer>> = vec![indexer];
 
-        let results = fan_out_indexers_for_interactive(&["Test Show".to_string()], &indexers).await;
+        let results =
+            fan_out_indexers_for_interactive(&["Test Show".to_string()], &indexers, &[]).await;
         assert_eq!(
             results.len(),
             1,
@@ -2056,6 +2147,7 @@ mod tests {
         let ctx = InteractiveQueryCtx {
             phase: MatchPhase::Primary,
             aliases: &aliases,
+            indexer_categories: &[],
             sibling_precompute: &sibling_precompute,
             preferred_groups: &preferred_groups,
             preferred_resolution: "1080p",
@@ -2137,6 +2229,7 @@ mod tests {
         let ctx = InteractiveQueryCtx {
             phase: MatchPhase::Primary,
             aliases: &aliases,
+            indexer_categories: &[],
             sibling_precompute: &sibling_precompute,
             preferred_groups: &preferred_groups,
             preferred_resolution: "1080p",
@@ -2212,6 +2305,7 @@ mod tests {
             rss_last_polled_at: None,
             rss_last_poll_error: String::new(),
             rss_last_item_count: 0,
+            categories: String::new(),
             caps_json: String::new(),
             caps_refreshed_at: None,
             created_at: 0,
@@ -2220,7 +2314,8 @@ mod tests {
         let indexer = TorznabIndexer::from_row_arc(&row).expect("indexer must build");
         let indexers: Vec<Arc<dyn crate::services::indexers::Indexer>> = vec![indexer];
 
-        let results = fan_out_indexers_for_interactive(&["Test Show".to_string()], &indexers).await;
+        let results =
+            fan_out_indexers_for_interactive(&["Test Show".to_string()], &indexers, &[]).await;
         assert_eq!(
             results.len(),
             1,
@@ -2738,6 +2833,7 @@ mod tests {
             absolute_offset: 0,
             categories: &categories,
             indexers: &[],
+            indexer_categories: &[],
         };
         let mut seen: HashSet<String> = HashSet::new();
         let mut candidates: Vec<SearchResult> = Vec::new();

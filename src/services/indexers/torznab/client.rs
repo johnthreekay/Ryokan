@@ -47,6 +47,10 @@ pub struct TorznabIndexer {
     /// `download_clients` this indexer is bound to. `None` =
     /// fall through to the default client at grab time.
     download_client_id: Option<i64>,
+    /// Category ids from the cached caps probe, empty until probed.
+    known_categories: Vec<i32>,
+    /// The user's per-indexer override; sent as written when set.
+    configured_categories: Vec<i32>,
     http: Client,
 }
 
@@ -79,6 +83,8 @@ impl TorznabIndexer {
             is_private_tracker: row.is_private_tracker,
             min_seeders: row.min_seeders,
             download_client_id: row.download_client_id,
+            known_categories: super::super::known_category_ids(&row.caps_json),
+            configured_categories: row.category_list(),
             http,
         })
     }
@@ -220,11 +226,24 @@ impl Indexer for TorznabIndexer {
         if !query.q.is_empty() {
             params.push(("q", query.q.clone()));
         }
-        let cats = if query.categories.is_empty() {
+        let requested = if query.categories.is_empty() {
             vec![TORZNAB_CAT_ANIME]
         } else {
             query.categories.clone()
         };
+        let cats = if self.configured_categories.is_empty() {
+            super::super::resolve_request_categories(&requested, &self.known_categories)
+        } else {
+            self.configured_categories.clone()
+        };
+        if cats != requested {
+            tracing::debug!(
+                "indexer {}: asking for categories {:?} instead of {:?} (caps)",
+                self.name,
+                cats,
+                requested
+            );
+        }
         let cat_csv = cats
             .iter()
             .map(|n| n.to_string())
@@ -323,6 +342,7 @@ mod tests {
             rss_last_polled_at: None,
             rss_last_poll_error: String::new(),
             rss_last_item_count: 0,
+            categories: String::new(),
             caps_json: String::new(),
             caps_refreshed_at: None,
             created_at: 0,

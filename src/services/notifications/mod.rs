@@ -377,12 +377,6 @@ pub async fn emit_grabbed(
     );
 }
 
-/// Convenience: dispatch an `Imported` event from
-/// `services::post_processing` after a per-file copy/hardlink/move
-/// succeeds. Resolves `series_title` and `quality_tag` from the DB
-/// the same way `emit_grabbed` resolves `series_title`. The event is
-/// fire-and-forget on top of the dispatch task so the post-processing
-/// loop doesn't block on receiver latency.
 /// Misgrab guardrails: a grab's files named a different series. One
 /// event per grab row by construction (the verdict is stamped once).
 pub async fn emit_misgrabbed(
@@ -417,6 +411,12 @@ pub async fn emit_misgrabbed(
     );
 }
 
+/// Convenience: dispatch an `Imported` event from
+/// `services::post_processing` after a per-file copy/hardlink/move
+/// succeeds. Resolves `series_title` and `quality_tag` from the DB
+/// the same way `emit_grabbed` resolves `series_title`. The event is
+/// fire-and-forget on top of the dispatch task so the post-processing
+/// loop doesn't block on receiver latency.
 #[allow(clippy::too_many_arguments)]
 pub async fn emit_imported(
     state: &crate::AppState,
