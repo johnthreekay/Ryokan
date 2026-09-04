@@ -18,7 +18,7 @@
         {# Suggested mappings — promoted to the top so the user sees
            what's actionable without scrolling past the (long)
            current-entries table. #}
-        <h3 class="settings-subheading">Suggested Mappings ({{ suggestions.len() }})</h3>
+        <div class="settings-label">Suggested mappings ({{ suggestions.len() }})</div>
         <p class="form-hint">Suggested from your own overrides. Accept one to add it to the table.</p>
         <div class="rss-table-wrap group-table-wrap">
         <table class="rss-table group-source-table">
@@ -66,7 +66,7 @@
            visual flow + hiding the bulk of the data behind a long
            scroll. Now the data is the prominent content; Add lives
            at the bottom where it doesn't interrupt scanning. #}
-        <h3 class="settings-subheading">Current Entries ({{ groups.len() }})</h3>
+        <div class="settings-label">Current entries ({{ groups.len() }})</div>
         <div class="rss-table-wrap group-table-wrap">
         <table class="rss-table group-source-table">
             <thead>

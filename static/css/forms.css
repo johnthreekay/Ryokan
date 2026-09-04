@@ -25,12 +25,24 @@
     gap: 6px;
 }
 
-.form-group label {
+.form-group label,
+.settings-label {
     font-size: 13px;
     font-weight: 600;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+/* A field label standing on its own above a table or a group of
+   controls (Release Groups' "Current entries"). */
+.settings-label {
+    display: block;
+    margin: 20px 0 8px;
+}
+
+.settings-label:first-child {
+    margin-top: 0;
 }
 
 .form-group input,
