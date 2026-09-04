@@ -233,12 +233,6 @@
 }
 
 .genre-tag {
-    font-size: 11px;
-    padding: 3px 10px;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    font-weight: 500;
 }
 
 .detail-actions {
@@ -408,10 +402,6 @@
 }
 
 .season-badge {
-    font-size: 12px;
-    font-weight: 700;
-    padding: 2px 10px;
-    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
 }
 
@@ -818,19 +808,6 @@
     opacity: 0.45;
 }
 
-.icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--border);
-    background: var(--bg-elevated);
-    color: var(--text);
-    cursor: pointer;
-    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-}
 
 /* Force svg to block so the button's flex center aligns on the
  * svg's own box rather than its inline-text baseline. Without this
@@ -838,10 +815,6 @@
  * baseline, which reads as subtle off-center drift. */
 .icon-btn svg { display: block; }
 
-.icon-btn:hover:not(:disabled) {
-    border-color: var(--accent);
-    transform: translateY(-1px);
-}
 
 .icon-btn:disabled {
     opacity: 0.75;
@@ -893,15 +866,8 @@
 }
 
 .ep-mon-btn {
-    padding: 3px 10px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--bg-elevated);
-    font-size: 12px;
-    font-weight: 500;
     cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
-    color: var(--text-dim);
     white-space: nowrap;
 }
 
@@ -1011,25 +977,7 @@
 
 .ep-col-monitor { width: 60px; text-align: center; }
 
-.monitor-all-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--border);
-    background: var(--bg-elevated);
-    color: var(--text-dim);
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s, color 0.15s;
-}
 
-.monitor-all-btn:hover:not(:disabled) {
-    border-color: var(--accent);
-    color: var(--accent);
-    transform: translateY(-1px);
-}
 
 .monitor-all-btn.is-active {
     border-color: var(--accent);

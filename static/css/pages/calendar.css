@@ -271,12 +271,7 @@
 }
 
 .calendar-episode-badge {
-    padding: 2px 8px;
-    border-radius: var(--radius-pill);
-    font-size: 10px;
-    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 
 .calendar-episode-badge-monitored {

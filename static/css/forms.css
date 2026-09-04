@@ -208,21 +208,68 @@
 
 .empty-state .btn { margin-top: 16px; }
 
-.btn-icon {
-    display: flex;
+/* ── Icon buttons ─────────────────────────────────────────────────
+   One round family for every icon-only control: modal close buttons,
+   the episode-row actions and the monitor-all toggle on the series
+   page, the card delete crosses, and the library sort direction.
+   32px regular, 28px small; `-danger` turns red on hover. State
+   variants (loading, success, error, manual override, active) keep
+   their own colors in their page files. */
+.btn-icon,
+.btn-icon-sm,
+.btn-icon-danger,
+.icon-btn,
+.monitor-all-btn,
+.library-sort-dir {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 32px;
     height: 32px;
-    border: none;
-    border-radius: var(--radius);
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    color: var(--text-dim);
     cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.btn-icon-sm,
+.btn-icon-danger,
+.icon-btn,
+.monitor-all-btn {
+    width: 28px;
+    height: 28px;
+}
+
+.btn-icon:hover,
+.btn-icon-sm:hover,
+.icon-btn:hover:not(:disabled),
+.monitor-all-btn:hover:not(:disabled),
+.library-sort-dir:hover {
     color: var(--text);
-    transition: background 0.15s;
+    border-color: var(--border-accent);
+}
+
+.btn-icon-danger:hover {
+    color: var(--red);
+    border-color: rgba(var(--red-rgb), 0.5);
+    background: rgba(var(--red-rgb), 0.12);
+}
+
+.btn-icon svg,
+.btn-icon-sm svg,
+.icon-btn svg,
+.monitor-all-btn svg,
+.library-sort-dir svg {
+    display: block;
 }
 
 .btn-search-series {
     background: rgba(0,0,0,0.6);
+    border-color: transparent;
+    color: var(--text);
     backdrop-filter: blur(4px);
 }
 
@@ -230,23 +277,12 @@
 
 .btn-remove-series {
     background: rgba(0,0,0,0.6);
+    border-color: transparent;
+    color: var(--text);
     backdrop-filter: blur(4px);
 }
 
 .btn-remove-series:hover { background: var(--red); color: #fff; }
-
-.modal-header .btn-icon {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: 50%;
-    color: var(--text-dim);
-}
-
-.modal-header .btn-icon:hover {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--bg);
-}
 
 .btn-secondary {
     background: var(--bg-elevated);
@@ -277,24 +313,6 @@
     color: var(--bg);
 }
 
-.btn-icon-sm {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    border-radius: var(--radius);
-    cursor: pointer;
-    color: var(--text-dim);
-    background: transparent;
-    transition: color 0.15s, background 0.15s;
-}
-
-.btn-icon-sm:hover {
-    color: var(--text);
-    background: var(--bg-elevated);
-}
 
 @media (max-width: 640px) {
     .search-bar { flex-direction: column; }

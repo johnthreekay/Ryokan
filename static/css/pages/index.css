@@ -135,25 +135,7 @@
 
 /* Direction toggle: square button matching the sort select's height.
    The arrow SVG points down (descending); ascending rotates it. */
-.library-sort-dir {
-    box-sizing: border-box;
-    height: 32px;
-    width: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-dim);
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-}
 
-.library-sort-dir:hover {
-    color: var(--text);
-    border-color: var(--border-accent);
-}
 
 .library-sort-dir-icon {
     transition: transform 0.15s;
