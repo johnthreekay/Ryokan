@@ -58,8 +58,8 @@
         <p class="form-hint" style="margin: 0 0 12px;">Feeds polled directly, such as a SubsPlease quality feed. New episodes are picked up on every RSS sync.</p>
 
         {% if !direct_rss_feeds.is_empty() %}
-        <div class="table-scroll-wrap" style="margin-bottom: 14px;">
-        <table class="indexers-table">
+        <div class="rss-table-wrap" style="margin-bottom: 16px;">
+        <table class="rss-table">
             <thead>
                 <tr>
                     <th>Name</th>
@@ -103,7 +103,7 @@
                               data-ryokan-confirm-no="Cancel"
                               data-ryokan-confirm-danger="1">
                             <input type="hidden" name="id" value="{{ feed.id }}">
-                            <button type="submit" class="btn btn-danger btn-small">Delete</button>
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                         </form>
                     </td>
                 </tr>

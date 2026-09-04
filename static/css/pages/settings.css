@@ -5,11 +5,6 @@
         padding: 16px;
         min-width: 0;
     }
-    .table-scroll-wrap {
-        overflow-x: auto;
-        max-width: 100%;
-        -webkit-overflow-scrolling: touch;
-    }
 }
 
 fieldset {
