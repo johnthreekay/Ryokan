@@ -88,19 +88,21 @@
            disabled in the DB but become invisible on the UI. #}
         <input type="hidden" name="enabled" value="on">
 
-        <div class="form-group">
-            <label class="checkbox-label">
+        <div class="setting-rows">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Private tracker</span>
+                    <span class="setting-row-desc">Each series opts in to upgrades from private trackers on its own page.</span>
+                </span>
                 <input type="checkbox" name="is_private_tracker" {% if row.is_private_tracker %}checked{% endif %}>
-                Private tracker
             </label>
-        </div>
-
-        <div class="form-group">
-            <label class="checkbox-label">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Enable RSS auto-sync</span>
+                    <span class="setting-row-desc">Poll this indexer's feed on every RSS sync.</span>
+                </span>
                 <input type="checkbox" name="rss_enabled" {% if row.rss_enabled %}checked{% endif %}>
-                Enable RSS auto-sync
             </label>
-            <span class="form-hint">Poll this indexer's feed on every RSS sync.</span>
         </div>
 
         <div class="form-group">

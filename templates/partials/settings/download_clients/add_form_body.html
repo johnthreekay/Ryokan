@@ -69,34 +69,34 @@
                 <span class="form-hint">Where Ryokan sees the client's finished downloads. Blank if both see the same paths.</span>
             </div>
         </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label class="checkbox-label">
-                    <input type="checkbox" name="enabled" checked>
-                    Enabled
-                </label>
-                <span class="form-hint">Disable to keep the row but exclude it from grab routing.</span>
-            </div>
-            <div class="form-group">
-                <label class="checkbox-label">
-                    {# Auto-checked when no row of this protocol is the
-                       current default. Initial render targets the qBit
-                       (default kind) torrent side; the kind-relabel JS
-                       in static/js/settings.js re-evaluates on
-                       dropdown change so SAB auto-checks Default when
-                       no usenet default exists. Hint text + initial-
-                       state semantics mirror the Edit form so users
-                       see the same copy regardless of which path they
-                       arrived through. #}
-                    <input type="checkbox" name="is_default"
-                           {% if first_torrent_client %}checked{% endif %}
-                           data-dc-default-checkbox
-                           data-first-torrent="{% if first_torrent_client %}1{% else %}0{% endif %}"
-                           data-first-usenet="{% if first_usenet_client %}1{% else %}0{% endif %}">
-                    Default client
-                </label>
-                <span class="form-hint">Receives grabs from indexers without a client of their own. Torrent and usenet have separate defaults.</span>
-            </div>
+        <div class="setting-rows">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Enabled</span>
+                    <span class="setting-row-desc">Disable to keep the row but exclude it from grab routing.</span>
+                </span>
+                <input type="checkbox" name="enabled" checked>
+            </label>
+            {# Auto-checked when no row of this protocol is the
+               current default. Initial render targets the qBit
+               (default kind) torrent side; the kind-relabel JS
+               in static/js/settings.js re-evaluates on
+               dropdown change so SAB auto-checks Default when
+               no usenet default exists. Hint text + initial-
+               state semantics mirror the Edit form so users
+               see the same copy regardless of which path they
+               arrived through. #}
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Default client</span>
+                    <span class="setting-row-desc">Receives grabs from indexers without a client of their own. Torrent and usenet have separate defaults.</span>
+                </span>
+                <input type="checkbox" name="is_default"
+                       {% if first_torrent_client %}checked{% endif %}
+                       data-dc-default-checkbox
+                       data-first-torrent="{% if first_torrent_client %}1{% else %}0{% endif %}"
+                       data-first-usenet="{% if first_usenet_client %}1{% else %}0{% endif %}">
+            </label>
         </div>
     </div>
     <div class="modal-footer">

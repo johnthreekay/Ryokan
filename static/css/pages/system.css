@@ -392,13 +392,6 @@
     color: var(--blue);
 }
 
-.form-check {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 16px;
-}
-
 .debug-actions-group {
     display: flex;
     flex-wrap: wrap;
@@ -764,43 +757,11 @@
 .notif-modal-form fieldset.settings-subform > .form-hint {
     margin: -2px 0 6px;
 }
-/* Each event-toggle row: checkbox + label + per-row hint stacked
-   right of the checkbox. Override `.checkbox-row`'s inline-flex
-   so rows stack vertically inside the matrix. */
-.notif-modal-form fieldset.settings-subform > .checkbox-row {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    column-gap: 10px;
-    row-gap: 0;
-    align-items: baseline;
-    cursor: pointer;
-}
-.notif-modal-form fieldset.settings-subform > .checkbox-row > input[type="checkbox"] {
-    grid-row: 1 / span 2;
-    align-self: start;
-    margin-top: 3px;   /* visually align with the strong label baseline */
-}
-.notif-modal-form fieldset.settings-subform > .checkbox-row > strong {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    line-height: 1.3;
-}
-.notif-modal-form fieldset.settings-subform > .checkbox-row > .form-hint {
-    grid-column: 2;
-    font-size: 12px;
-    color: var(--text-dim);
-    line-height: 1.4;
-    margin: 0;
-}
 
 
 /* ── Backup tab (issue #126) ─────────────────────────────────────── */
 .backup-options {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    margin: 0.75rem 0;
+    margin: 12px 0 16px;
 }
 .backup-actions {
     display: flex;

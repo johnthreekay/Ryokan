@@ -260,13 +260,15 @@
         </div>
         <div class="modal-body">
             <p style="margin: 0 0 12px;">Remove <strong><span id="bulk-delete-count">0</span> series</strong> from your library.</p>
-            <label class="checkbox-row" style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius: var(--radius); background: var(--bg-elevated);">
-                <input type="checkbox" id="bulk-delete-files-toggle" style="margin-top: 3px;">
-                <span>
-                    <strong style="display:block; color: var(--text-bright); font-size: 14px;">{% if recycle_enabled %}Also move files to the recycle bin{% else %}Also delete files from disk{% endif %}</strong>
-                    <span class="form-hint" style="display:block; margin-top: 2px;">{% if recycle_enabled %}Each series folder moves to the recycle bin and its active torrents are removed from the download client.{% else %}Each series folder is deleted permanently and its active torrents are removed from the download client. This cannot be undone.{% endif %}</span>
-                </span>
-            </label>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">{% if recycle_enabled %}Also move files to the recycle bin{% else %}Also delete files from disk{% endif %}</span>
+                        <span class="setting-row-desc">{% if recycle_enabled %}Each series folder moves to the recycle bin and its active torrents are removed from the download client.{% else %}Each series folder is deleted permanently and its active torrents are removed from the download client. This cannot be undone.{% endif %}</span>
+                    </span>
+                    <input type="checkbox" id="bulk-delete-files-toggle">
+                </label>
+            </div>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeBulkDeleteModal(event)">Cancel</button>

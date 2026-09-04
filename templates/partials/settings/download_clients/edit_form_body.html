@@ -65,34 +65,34 @@
                 <span class="form-hint">Leave blank if Ryokan and the client see the exact same paths.</span>
             </div>
         </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label class="checkbox-label">
-                    <input type="checkbox" name="enabled" {% if row.enabled %}checked{% endif %}>
-                    Enabled
-                </label>
-                <span class="form-hint">Disable to keep the row but exclude it from grab routing.</span>
-            </div>
-            <div class="form-group">
-                <label class="checkbox-label">
-                    {# Auto-check when no row of this protocol is the
-                       current default. `row.is_default` takes
-                       precedence (the checkbox starts checked if
-                       this row is already default); otherwise the
-                       per-protocol "first" flag fills in so editing
-                       the last torrent client when no torrent
-                       default exists auto-promotes it. The kind-
-                       relabel JS in static/js/settings.js re-evaluates
-                       on dropdown change. #}
-                    <input type="checkbox" name="is_default"
-                           {% if row.is_default || (row.kind == "sabnzbd" && first_usenet_client) || (row.kind != "sabnzbd" && first_torrent_client) %}checked{% endif %}
-                           data-dc-default-checkbox
-                           data-first-torrent="{% if first_torrent_client %}1{% else %}0{% endif %}"
-                           data-first-usenet="{% if first_usenet_client %}1{% else %}0{% endif %}">
-                    Default client
-                </label>
-                <span class="form-hint">Receives grabs from indexers without a client of their own. Torrent and usenet have separate defaults.</span>
-            </div>
+        <div class="setting-rows">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Enabled</span>
+                    <span class="setting-row-desc">Disable to keep the row but exclude it from grab routing.</span>
+                </span>
+                <input type="checkbox" name="enabled" {% if row.enabled %}checked{% endif %}>
+            </label>
+            {# Auto-check when no row of this protocol is the
+               current default. `row.is_default` takes
+               precedence (the checkbox starts checked if
+               this row is already default); otherwise the
+               per-protocol "first" flag fills in so editing
+               the last torrent client when no torrent
+               default exists auto-promotes it. The kind-
+               relabel JS in static/js/settings.js re-evaluates
+               on dropdown change. #}
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Default client</span>
+                    <span class="setting-row-desc">Receives grabs from indexers without a client of their own. Torrent and usenet have separate defaults.</span>
+                </span>
+                <input type="checkbox" name="is_default"
+                       {% if row.is_default || (row.kind == "sabnzbd" && first_usenet_client) || (row.kind != "sabnzbd" && first_torrent_client) %}checked{% endif %}
+                       data-dc-default-checkbox
+                       data-first-torrent="{% if first_torrent_client %}1{% else %}0{% endif %}"
+                       data-first-usenet="{% if first_usenet_client %}1{% else %}0{% endif %}">
+            </label>
         </div>
     </div>
     <div class="modal-footer">

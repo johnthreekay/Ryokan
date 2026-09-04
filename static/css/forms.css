@@ -103,15 +103,13 @@
     margin-bottom: 16px;
 }
 
-.settings-form .form-group,
-.settings-form .setting-rows { margin-bottom: 16px; }
+.settings-form .form-group { margin-bottom: 16px; }
 
 /* The card's own padding already closes a fieldset; without this the
    last field adds its 16px on top and every card sits deeper at the
    bottom than at the top. */
 .settings-form fieldset > .form-group:last-child,
-.settings-form fieldset > .form-row:last-child,
-.settings-form fieldset > .setting-rows:last-child {
+.settings-form fieldset > .form-row:last-child {
     margin-bottom: 0;
 }
 
@@ -388,11 +386,6 @@ a.btn-grab:hover { color: var(--accent); }
 
 a.btn-ghost:hover { color: var(--text); }
 
-.form-group-checkbox {
-    margin-top: 4px;
-}
-
-.checkbox-label,
 .checkbox-row {
     display: inline-flex;
     align-items: center;
@@ -412,16 +405,18 @@ a.btn-ghost:hover { color: var(--text); }
  * between rows. The description belongs to the row instead of
  * trailing the control as a footnote, so a card of five switches
  * reads as five items rather than ten alternating lines. The whole
- * row is the label, so clicking anywhere on it toggles the box. The
- * list sits in a card-fill box with the control radius so the group
- * is one component next to the fields, and the hairlines inside it
- * separate rows the way table rows are separated. */
+ * row is the label, so clicking anywhere on it toggles the box. Each
+ * row is its own card-fill box with the control radius; a bare
+ * hairline on the page background gave almost no separation. */
 .setting-rows {
     display: flex;
     flex-direction: column;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.setting-rows:last-child {
+    margin-bottom: 0;
 }
 
 .setting-row {
@@ -430,6 +425,9 @@ a.btn-ghost:hover { color: var(--text); }
     justify-content: space-between;
     gap: 24px;
     padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     color: var(--text);
     text-transform: none;
     cursor: pointer;
@@ -447,8 +445,21 @@ a.btn-ghost:hover { color: var(--text); }
     color: var(--text);
 }
 
-.setting-row + .setting-row {
-    border-top: 1px solid var(--border);
+/* Modals are card-fill already, so a row inside one steps up a level. */
+.modal .setting-row {
+    background: var(--bg-elevated);
+}
+
+/* The field-label rule outranks the checkbox resets by one element
+   selector and turned every checkbox setting inside a form-group
+   uppercase and dim; pin the resets at higher specificity. */
+.form-group .checkbox-row,
+.form-group .setting-row {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: 0;
 }
 
 .setting-row-text {
@@ -466,7 +477,6 @@ a.btn-ghost:hover { color: var(--text); }
     max-width: 72ch;
 }
 
-.checkbox-label input[type="checkbox"],
 .checkbox-row input[type="checkbox"],
 .setting-row input[type="checkbox"],
 .calendar-toggle-filter input[type="checkbox"],
@@ -492,7 +502,6 @@ a.btn-ghost:hover { color: var(--text); }
     transition: background 0.15s, border-color 0.15s;
 }
 
-.checkbox-label input[type="checkbox"]:checked,
 .checkbox-row input[type="checkbox"]:checked,
 .setting-row input[type="checkbox"]:checked,
 .calendar-toggle-filter input[type="checkbox"]:checked,
@@ -502,7 +511,6 @@ a.btn-ghost:hover { color: var(--text); }
     border-color: var(--accent);
 }
 
-.checkbox-label input[type="checkbox"]:checked::after,
 .checkbox-row input[type="checkbox"]:checked::after,
 .setting-row input[type="checkbox"]:checked::after,
 .calendar-toggle-filter input[type="checkbox"]:checked::after,
@@ -590,8 +598,7 @@ a.btn-ghost:hover { color: var(--text); }
         min-width: 44px;
         min-height: 44px;
     }
-    .checkbox-row,
-    .checkbox-label {
+    .checkbox-row {
         padding: 8px 0;
     }
 }

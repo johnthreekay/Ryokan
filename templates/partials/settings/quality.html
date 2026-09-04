@@ -80,21 +80,21 @@
                     <option value="0" {% if !config.prefer_subs %}selected{% endif %}>Prefer Dubs (boost dual audio/dub)</option>
                 </select>
             </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" name="upgrade_search_enabled" value="1" {% if config.upgrade_search_enabled %}checked{% endif %}>
-                        Automatic Upgrade Search
-                    </label>
-                    <span class="form-hint">Look for better releases of downloaded episodes once a day. RSS upgrades happen regardless.</span>
-                </div>
-                <div class="form-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" name="seadex_enabled" value="1" {% if config.seadex_enabled %}checked{% endif %}>
-                        Enable SeaDex release boost
-                    </label>
-                    <span class="form-hint">Boost releases <a href="https://releases.moe" target="_blank" rel="noopener noreferrer">releases.moe</a> lists as best. Ignored when a SeaDex Custom Format exists.</span>
-                </div>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Automatic Upgrade Search</span>
+                        <span class="setting-row-desc">Look for better releases of downloaded episodes once a day. RSS upgrades happen regardless.</span>
+                    </span>
+                    <input type="checkbox" name="upgrade_search_enabled" value="1" {% if config.upgrade_search_enabled %}checked{% endif %}>
+                </label>
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Enable SeaDex release boost</span>
+                        <span class="setting-row-desc">Boost releases <a href="https://releases.moe" target="_blank" rel="noopener noreferrer">releases.moe</a> lists as best. Ignored when a SeaDex Custom Format exists.</span>
+                    </span>
+                    <input type="checkbox" name="seadex_enabled" value="1" {% if config.seadex_enabled %}checked{% endif %}>
+                </label>
             </div>
         </fieldset>
 

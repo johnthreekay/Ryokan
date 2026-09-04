@@ -16,28 +16,6 @@
     font-family: var(--font-mono);
 }
 
-.import-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    margin: 0 0 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--bg-elevated);
-}
-
-.import-checkbox strong {
-    display: block;
-    color: var(--text-bright);
-    font-size: 14px;
-}
-
-.import-checkbox .form-hint {
-    display: block;
-    margin-top: 2px;
-}
-
 .import-start-actions {
     margin-top: 18px;
 }

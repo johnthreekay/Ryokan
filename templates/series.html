@@ -194,36 +194,36 @@
                    prior `location.reload()` in JS). The non-HTMX path
                    still returns JSON for `toggleMonitorAll` callers
                    in series_episode_actions.js. #}
-                <select id="monitor-mode" class="folder-select monitoring-select"
-                    name="monitor_mode"
-                    hx-post="/api/library/monitoring"
-                    hx-trigger="change"
-                    hx-vals='js:{series_id: parseInt(SD.dbId)}'
-                    hx-swap="none">
-                    <option value="all" {% if monitor_mode_select_value == "all" %}selected{% endif %}>All Episodes</option>
-                    <option value="future" {% if monitor_mode_select_value == "future" %}selected{% endif %}>Future Episodes</option>
-                    <option value="missing" {% if monitor_mode_select_value == "missing" %}selected{% endif %}>Missing Episodes</option>
-                    <option value="existing" {% if monitor_mode_select_value == "existing" %}selected{% endif %}>Existing Episodes</option>
-                    <option value="none" {% if monitor_mode_select_value == "none" %}selected{% endif %}>None</option>
-                    {% if can_sync_from_external_account %}
-                    {# #62 — clearing the manual-override flag.
-                       Only visible when the series came from sync; for
-                       manually-added series the option would be a
-                       no-op. The "follow your AL/MAL list" choice
-                       lives in the same dropdown as the manual modes
-                       so the user has one control surface for "auto
-                       vs. pinned." #}
-                    <option value="sync"{% if monitor_mode_select_value == "sync" %} selected{% endif %}>Sync from {{ sync_provider_label }}</option>
-                    {% endif %}
-                </select>
-                <span class="form-hint" id="monitor-summary">{{ monitor_mode_label }} · {{ monitored_count }} monitored{% if monitor_mode_manual_override && can_sync_from_external_account %} · pinned{% endif %}</span>
-            </div>
-        </div>
-        <div class="monitoring-divider"></div>
-        <div class="monitoring-row">
-            <span class="folder-label">Upgrades:</span>
-            <div class="monitoring-controls">
-                {# Issue #166 — HTMX-driven series-level toggles. The
+                   <select id="monitor-mode" class="folder-select monitoring-select"
+                   name="monitor_mode"
+                   hx-post="/api/library/monitoring"
+                   hx-trigger="change"
+                   hx-vals='js:{series_id: parseInt(SD.dbId)}'
+                   hx-swap="none">
+                   <option value="all" {% if monitor_mode_select_value == "all" %}selected{% endif %}>All Episodes</option>
+                   <option value="future" {% if monitor_mode_select_value == "future" %}selected{% endif %}>Future Episodes</option>
+                   <option value="missing" {% if monitor_mode_select_value == "missing" %}selected{% endif %}>Missing Episodes</option>
+                   <option value="existing" {% if monitor_mode_select_value == "existing" %}selected{% endif %}>Existing Episodes</option>
+                   <option value="none" {% if monitor_mode_select_value == "none" %}selected{% endif %}>None</option>
+                   {% if can_sync_from_external_account %}
+                   {# #62 — clearing the manual-override flag.
+                   Only visible when the series came from sync; for
+                   manually-added series the option would be a
+                   no-op. The "follow your AL/MAL list" choice
+                   lives in the same dropdown as the manual modes
+                   so the user has one control surface for "auto
+                   vs. pinned." #}
+                   <option value="sync"{% if monitor_mode_select_value == "sync" %} selected{% endif %}>Sync from {{ sync_provider_label }}</option>
+                   {% endif %}
+                   </select>
+                   <span class="form-hint" id="monitor-summary">{{ monitor_mode_label }} · {{ monitored_count }} monitored{% if monitor_mode_manual_override && can_sync_from_external_account %} · pinned{% endif %}</span>
+                   </div>
+                   </div>
+                   <div class="monitoring-divider"></div>
+                   <div class="monitoring-row">
+                   <span class="folder-label">Upgrades:</span>
+                   <div class="monitoring-controls">
+                   {# Issue #166 — HTMX-driven series-level toggles. The
                    server takes form data (series_id, allow) and acks
                    with an empty 200 for the HTMX branch. `hx-swap=none`
                    keeps the rendered checkbox as the source of truth
@@ -232,27 +232,33 @@
                    rejects (4xx/5xx). The `noSwap` config in base.html
                    keeps error bodies out of the page, so the visual
                    revert is the only client work needed. #}
-                <label class="checkbox-label">
-                    <input type="checkbox" id="allow-upgrades"
-                        {% if allow_upgrades %}checked{% endif %}
-                        hx-post="/api/library/allow-upgrades"
-                        hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
-                        hx-swap="none"
-                        hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'Upgrades toggle failed', body: 'Failed to update upgrades toggle', log: true})">
-                    Allow automatic upgrades when a higher-quality release is found
-                </label>
-                {# Issue #28 — PT upgrade opt-in. Indented under the
-                   parent toggle since "PT upgrades" is a sub-decision of
-                   "upgrades at all." #}
-                <label class="checkbox-label" style="margin-top:6px;margin-left:20px">
-                    <input type="checkbox" id="allow-pt-upgrades"
-                        {% if allow_pt_upgrades %}checked{% endif %}
-                        hx-post="/api/library/allow-pt-upgrades"
-                        hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
-                        hx-swap="none"
-                        hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'PT-upgrades toggle failed', body: 'Failed to update PT-upgrades toggle', log: true})">
-                    Allow upgrades from private trackers
-                </label>
+                <div class="setting-rows">
+                    <label class="setting-row">
+                        <span class="setting-row-text">
+                            <span class="setting-row-title">Allow automatic upgrades when a higher-quality release is found</span>
+                        </span>
+                        <input type="checkbox" id="allow-upgrades"
+                               {% if allow_upgrades %}checked{% endif %}
+                               hx-post="/api/library/allow-upgrades"
+                               hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
+                               hx-swap="none"
+                               hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'Upgrades toggle failed', body: 'Failed to update upgrades toggle', log: true})">
+                    </label>
+                    {# Issue #28 — PT upgrade opt-in. Sits below the parent
+                       toggle since "PT upgrades" is a sub-decision of
+                       "upgrades at all." #}
+                    <label class="setting-row">
+                        <span class="setting-row-text">
+                            <span class="setting-row-title">Allow upgrades from private trackers</span>
+                        </span>
+                        <input type="checkbox" id="allow-pt-upgrades"
+                               {% if allow_pt_upgrades %}checked{% endif %}
+                               hx-post="/api/library/allow-pt-upgrades"
+                               hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
+                               hx-swap="none"
+                               hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'PT-upgrades toggle failed', body: 'Failed to update PT-upgrades toggle', log: true})">
+                    </label>
+                </div>
             </div>
         </div>
         {# #23 — Per-series search overrides. Both fields are blank by

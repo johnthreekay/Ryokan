@@ -59,12 +59,14 @@
         <fieldset>
             <legend>Seerr (Sonarr API Compatibility)</legend>
             <p class="form-hint" style="margin-bottom: 12px;">Lets Seerr add anime through Ryokan. In Seerr, add a Sonarr server with this address and the key below.</p>
-            <div class="form-group">
-                <label class="checkbox-row">
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Enable Sonarr API</span>
+                        <span class="setting-row-desc">Answers Sonarr API calls at <code>/api/v3/</code>.</span>
+                    </span>
                     <input type="checkbox" name="sonarr_enabled" id="sonarr_enabled" {% if config.sonarr_enabled %}checked{% endif %}>
-                    <span>Enable Sonarr API</span>
                 </label>
-                <span class="form-hint">Answers Sonarr API calls at <code>/api/v3/</code>.</span>
             </div>
             <div class="form-group">
                 <label for="sonarr_api_key">API Key</label>
@@ -81,12 +83,14 @@
         <fieldset>
             <legend>Seerr (Radarr API Compatibility)</legend>
             <p class="form-hint" style="margin-bottom: 12px;">Lets Seerr add anime movies through Ryokan. In Seerr, add a Radarr server with this address, URL base <code>/radarr</code>, and the key below.</p>
-            <div class="form-group">
-                <label class="checkbox-row">
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Enable Radarr API</span>
+                        <span class="setting-row-desc">Answers Radarr API calls at <code>/radarr/api/v3/</code>.</span>
+                    </span>
                     <input type="checkbox" name="radarr_enabled" id="radarr_enabled" {% if config.radarr_enabled %}checked{% endif %}>
-                    <span>Enable Radarr API</span>
                 </label>
-                <span class="form-hint">Answers Radarr API calls at <code>/radarr/api/v3/</code>.</span>
             </div>
             <div class="form-group">
                 <label for="radarr_api_key">API Key</label>
@@ -179,12 +183,14 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label class="checkbox-row">
+                    <div class="setting-rows">
+                        <label class="setting-row">
+                            <span class="setting-row-text">
+                                <span class="setting-row-title">Skip already-watched episodes</span>
+                                <span class="setting-row-desc">Only grab episodes past the ones you have already watched on the linked account.</span>
+                            </span>
                             <input type="checkbox" data-ext-pref="skip_already_watched" {% if acct.skip_already_watched %}checked{% endif %} onchange="saveExternalAccountPrefs()">
-                            <span>Skip already-watched episodes</span>
                         </label>
-                        <span class="form-hint">Only grab episodes past the ones you have already watched on the linked account.</span>
                     </div>
 
                     {# #62 — sync cadence. Range: 15 minutes to

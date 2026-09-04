@@ -20,14 +20,20 @@
     <div class="cf-section">
         <h3>Backup</h3>
         <p class="form-hint">A backup holds the database, the encryption key, and the activity log. Treat the file like a password export.</p>
-        <div class="backup-options">
-            <label class="checkbox-row">
+        <div class="setting-rows backup-options">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Include cached artwork</span>
+                    <span class="setting-row-desc">Makes the file much larger.</span>
+                </span>
                 <input type="checkbox" id="backup-include-artwork" data-backup-option="include_artwork">
-                <span>Include cached artwork (larger file)</span>
             </label>
-            <label class="checkbox-row">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Sanitize for support</span>
+                    <span class="setting-row-desc">Blanks passwords, keys, and tokens, keeps the last {{ crate::services::backup::SANITIZED_LOG_ROWS }} log lines, and leaves the encryption key out.</span>
+                </span>
                 <input type="checkbox" id="backup-sanitize" data-backup-option="sanitize">
-                <span>Sanitize for support (blank passwords, keys, and tokens, keep the last {{ crate::services::backup::SANITIZED_LOG_ROWS }} log lines, leave the key out)</span>
             </label>
         </div>
         <div class="backup-actions">

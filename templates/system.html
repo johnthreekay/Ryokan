@@ -402,19 +402,21 @@
                 <h3>Provider fallback</h3>
             </div>
             <p class="cf-section-desc">Skip AniList and use a fallback provider. For testing only.</p>
-            <div class="form-check">
-                <label class="checkbox-row">
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Force MAL/Tenrai fallback for search and tracked fallback entries</span>
+                        <span class="setting-row-desc">Entries without a MAL id stay on AniList.</span>
+                    </span>
                     <input type="checkbox" name="force_mal_fallback" id="force_mal_fallback" {% if force_mal_fallback %}checked{% endif %}>
-                    <span>Force MAL/Tenrai fallback for search and tracked fallback entries</span>
                 </label>
-                <span class="form-hint">Entries without a MAL id stay on AniList.</span>
-            </div>
-            <div class="form-check">
-                <label class="checkbox-row">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Force Kitsu fallback for episode titles and air dates</span>
+                        <span class="setting-row-desc">Only affects episode titles and air dates on series pages.</span>
+                    </span>
                     <input type="checkbox" name="force_kitsu_fallback" id="force_kitsu_fallback" {% if force_kitsu_fallback %}checked{% endif %}>
-                    <span>Force Kitsu fallback for episode titles and air dates</span>
                 </label>
-                <span class="form-hint">Only affects episode titles and air dates on series pages.</span>
             </div>
         </div>
 

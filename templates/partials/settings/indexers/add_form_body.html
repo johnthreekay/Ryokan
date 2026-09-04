@@ -115,26 +115,27 @@
            UI surface. #}
         <input type="hidden" name="enabled" value="on">
 
-        <div class="form-group">
-            <label class="checkbox-label">
+        <div class="setting-rows">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Private tracker</span>
+                    <span class="setting-row-desc">Each series opts in to upgrades from private trackers on its own page.</span>
+                </span>
                 <input type="checkbox" name="is_private_tracker"
                        {% if let Some(seed) = seed %}{% if seed.is_private_tracker %}checked{% endif %}{% endif %}>
-                Private tracker
             </label>
-            <span class="form-hint">Private tracker. Each series opts in to upgrades from private trackers on its own page.</span>
-        </div>
-
-        <div class="form-group">
-            <label class="checkbox-label">
-                {# PT trackers default-on for RSS — they're the
-                   primary use case for the auto-sync (new uploads,
-                   freeleech windows, etc.). Public trackers default
-                   off. #}
+            {# PT trackers default-on for RSS — they're the
+               primary use case for the auto-sync (new uploads,
+               freeleech windows, etc.). Public trackers default
+               off. #}
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Enable RSS auto-sync</span>
+                    <span class="setting-row-desc">Poll this indexer's feed on every RSS sync.</span>
+                </span>
                 <input type="checkbox" name="rss_enabled"
                        {% if let Some(seed) = seed %}{% if seed.is_private_tracker %}checked{% endif %}{% endif %}>
-                Enable RSS auto-sync
             </label>
-            <span class="form-hint">Poll this indexer's feed on every RSS sync.</span>
         </div>
 
         <div class="form-group">
