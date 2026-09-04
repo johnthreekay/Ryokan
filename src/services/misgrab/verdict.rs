@@ -12,7 +12,7 @@
 //! *us*. Files with no title signal at all (`01.mkv`, `S01E01.mkv`
 //! without a titled folder) are unverifiable, never a misgrab.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::models::grabbed_torrents::VerificationDetail;
 use crate::services::auto_search::{
@@ -277,27 +277,45 @@ fn is_structural_token(t: &str) -> bool {
 /// Audio", "10 bits"), the group name, and episode titles ("All
 /// That's Left") are real words too, and on a series whose title is a
 /// number ("86") they used to be the only Latin words in the path.
-pub(crate) fn claimed_title_tokens(path: &str) -> HashSet<String> {
+///
+/// `memo` shares the per-segment anitomy parse across files: every
+/// file in a pack sits under the same one or two folders, so a
+/// 100-file batch parses each folder name once instead of 100 times.
+pub(crate) fn claimed_title_tokens(
+    path: &str,
+    memo: &mut HashMap<String, HashSet<String>>,
+) -> HashSet<String> {
     let mut out = HashSet::new();
     for segment in path.split(['/', '\\']).filter(|s| !s.trim().is_empty()) {
-        let Some(title) = library_link::extract_anime_title(segment) else {
-            continue;
-        };
-        let normalized = normalize_title(&title);
-        // "S01E21-All That's Left": a name that opens with an episode
-        // or season marker (or a bare number) goes on to an episode
-        // title, which anitomy cannot tell from a series title. It is
-        // not a claim about which show this is.
-        if normalized
-            .split_whitespace()
-            .next()
-            .is_none_or(is_structural_token)
-        {
+        if let Some(cached) = memo.get(segment) {
+            out.extend(cached.iter().cloned());
             continue;
         }
-        out.extend(content_tokens(&normalized));
+        let tokens = segment_title_tokens(segment);
+        out.extend(tokens.iter().cloned());
+        memo.insert(segment.to_string(), tokens);
     }
     out
+}
+
+/// The title tokens one folder or file name claims.
+fn segment_title_tokens(segment: &str) -> HashSet<String> {
+    let Some(title) = library_link::extract_anime_title(segment) else {
+        return HashSet::new();
+    };
+    let normalized = normalize_title(&title);
+    // "S01E21-All That's Left": a name that opens with an episode
+    // or season marker (or a bare number) goes on to an episode
+    // title, which anitomy cannot tell from a series title. It is
+    // not a claim about which show this is.
+    if normalized
+        .split_whitespace()
+        .next()
+        .is_none_or(is_structural_token)
+    {
+        return HashSet::new();
+    }
+    content_tokens(&normalized)
 }
 
 /// Only tokens written with Latin letters count as signal. Aliases
@@ -332,26 +350,49 @@ fn alias_forms(alias: &str) -> Vec<String> {
     forms
 }
 
+/// An alias with its forms normalized and tokenized once per verdict
+/// rather than once per file: a 100-file pack against 100 sibling
+/// aliases is 10k regex normalizations otherwise.
+pub(crate) struct PreparedAlias {
+    alias: String,
+    /// `(normalized form, its token set)` for the alias and each of its
+    /// subtitle segments.
+    forms: Vec<(String, HashSet<String>)>,
+}
+
+pub(crate) fn prepare_aliases(aliases: &[String]) -> Vec<PreparedAlias> {
+    aliases
+        .iter()
+        .map(|alias| PreparedAlias {
+            alias: alias.clone(),
+            forms: alias_forms(alias)
+                .into_iter()
+                .map(|form| normalize_title(&form))
+                .filter(|normalized| !normalized.is_empty())
+                .map(|normalized| {
+                    let tokens = token_set(&normalized);
+                    (normalized, tokens)
+                })
+                .collect(),
+        })
+        .collect()
+}
+
 /// The first alias the file names, verbatim or by distinctive-token
 /// overlap. No surplus budget on purpose: a file that says our title
 /// plus more words is still our file.
 pub(crate) fn file_matches_any(
     normalized_path: &str,
     path_tokens: &HashSet<String>,
-    aliases: &[String],
+    aliases: &[PreparedAlias],
 ) -> Option<String> {
-    for alias in aliases {
-        for form in alias_forms(alias) {
-            let normalized_alias = normalize_title(&form);
-            if normalized_alias.is_empty() {
-                continue;
+    for prepared in aliases {
+        for (normalized_alias, alias_tokens) in &prepared.forms {
+            if normalized_path.contains(normalized_alias.as_str()) {
+                return Some(prepared.alias.clone());
             }
-            if normalized_path.contains(&normalized_alias) {
-                return Some(alias.clone());
-            }
-            let alias_tokens = token_set(&normalized_alias);
-            if distinctive_overlap_ratio(path_tokens, &alias_tokens) >= FILE_MATCH_RATIO {
-                return Some(alias.clone());
+            if distinctive_overlap_ratio(path_tokens, alias_tokens) >= FILE_MATCH_RATIO {
+                return Some(prepared.alias.clone());
             }
         }
     }
@@ -404,19 +445,21 @@ pub fn assess(input: &VerdictInput<'_>) -> Verdict {
         .collect();
 
     let known = alias_content_tokens(&aliases);
+    let prepared = prepare_aliases(&aliases);
+    let mut claimed_memo: HashMap<String, HashSet<String>> = HashMap::new();
     let mut any_signal = false;
     let mut shares_a_word = false;
     for file in &media {
         let normalized = normalize_path(file);
         let path_tokens = token_set(&normalized);
-        if let Some(alias) = file_matches_any(&normalized, &path_tokens, &aliases) {
+        if let Some(alias) = file_matches_any(&normalized, &path_tokens, &prepared) {
             return Verdict::Verified {
                 matched_file: (*file).clone(),
                 matched_alias: alias,
                 notes,
             };
         }
-        if has_title_signal(&claimed_title_tokens(file)) {
+        if !any_signal && has_title_signal(&claimed_title_tokens(file, &mut claimed_memo)) {
             any_signal = true;
         }
         let content = content_tokens(&normalized);

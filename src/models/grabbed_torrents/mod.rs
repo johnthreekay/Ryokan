@@ -1542,27 +1542,32 @@ impl BlocklistSnapshot {
 
 pub async fn blocklist_snapshot(db: &SqlitePool, anilist_id: i64) -> BlocklistSnapshot {
     let mut snapshot = BlocklistSnapshot::default();
-    if let Ok(rows) = sqlx::query(
-        "SELECT g.hash, g.torrent_name, s.anilist_id \
-         FROM grabbed_torrents g LEFT JOIN series s ON s.id = g.series_id \
-         WHERE g.state = 'failed'",
+    // Two indexed reads instead of one joined scan: failed hashes come
+    // off `idx_grabbed_torrents_state`, and the titles only for the
+    // series being searched through the partial
+    // `(series_id, torrent_name) WHERE state = 'failed'` index.
+    if let Ok(hashes) = sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT hash FROM grabbed_torrents WHERE state = 'failed' AND hash != ''",
     )
     .fetch_all(db)
     .await
     {
-        for row in rows {
-            let hash: String = row.get("hash");
-            if !hash.is_empty() {
-                snapshot.hashes.insert(hash.to_ascii_lowercase());
-            }
-            let series_al: Option<i64> = row.try_get("anilist_id").ok();
-            if series_al == Some(anilist_id) {
-                let title: String = row.get("torrent_name");
-                if !title.is_empty() {
-                    snapshot.titles.insert(title.to_lowercase());
-                }
-            }
-        }
+        snapshot
+            .hashes
+            .extend(hashes.into_iter().map(|h| h.to_ascii_lowercase()));
+    }
+    if let Ok(titles) = sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT g.torrent_name FROM series s \
+         JOIN grabbed_torrents g ON g.series_id = s.id AND g.state = 'failed' \
+         WHERE s.anilist_id = ? AND g.torrent_name != ''",
+    )
+    .bind(anilist_id)
+    .fetch_all(db)
+    .await
+    {
+        snapshot
+            .titles
+            .extend(titles.into_iter().map(|t| t.to_lowercase()));
     }
     snapshot
 }
