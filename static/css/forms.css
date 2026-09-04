@@ -412,10 +412,16 @@ a.btn-ghost:hover { color: var(--text); }
  * between rows. The description belongs to the row instead of
  * trailing the control as a footnote, so a card of five switches
  * reads as five items rather than ten alternating lines. The whole
- * row is the label, so clicking anywhere on it toggles the box. */
+ * row is the label, so clicking anywhere on it toggles the box. The
+ * list sits in a card-fill box with the control radius so the group
+ * is one component next to the fields, and the hairlines inside it
+ * separate rows the way table rows are separated. */
 .setting-rows {
     display: flex;
     flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
 }
 
 .setting-row {
@@ -423,21 +429,27 @@ a.btn-ghost:hover { color: var(--text); }
     align-items: center;
     justify-content: space-between;
     gap: 24px;
-    padding: 12px 0;
-    font-size: 14px;
-    font-weight: 500;
+    padding: 12px 16px;
     color: var(--text);
     text-transform: none;
-    letter-spacing: 0;
     cursor: pointer;
+}
+
+/* The field-label recipe in sentence case and the text color: same
+   size, weight, and tracking as the caption over a field, so a row
+   name and a field name read as one family. Sentence case because
+   the name is a sentence; text color because, unlike a field, the
+   row has no bright control under it to carry the contrast. */
+.setting-row-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--text);
 }
 
 .setting-row + .setting-row {
     border-top: 1px solid var(--border);
 }
-
-.setting-rows > .setting-row:first-child { padding-top: 0; }
-.setting-rows > .setting-row:last-child { padding-bottom: 0; }
 
 .setting-row-text {
     display: flex;
