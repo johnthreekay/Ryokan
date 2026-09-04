@@ -61,27 +61,41 @@ pub async fn expand_from_files(
     // routes, or widen the grab's episode coverage; the unclaimed-files
     // fallback below would otherwise route every wrong file to the
     // parent and legitimize the grab.
-    if grabbed_torrents::get_verification(db, grab_id)
+    //
+    // The verdict may already be stamped: the grab-time waiter polls
+    // the client for minutes, and the sweep can read the file list,
+    // condemn the grab, and remove the torrent in between two polls.
+    // A stamped misgrab is final whoever stamped it; only an unjudged
+    // grab is assessed here.
+    let already_misgrab = match grabbed_torrents::get_verification(db, grab_id)
         .await
-        .is_none()
-        && let Ok(Some(grab)) = grabbed_torrents::get_by_id(db, grab_id).await
+        .as_deref()
     {
-        let aliases = crate::services::misgrab::aliases_from_detail(parent_detail, filenames);
-        let verdict =
-            crate::services::misgrab::assess_and_stamp(db, &grab, filenames, &aliases).await;
-        if verdict.is_misgrab() {
-            logger::info(
-                db,
-                LogCategory::Library,
-                &format!(
-                    "Auto-expand: skipping '{}', its files name a different series",
-                    torrent_title
-                ),
-                "the misgrab sweep removes and blocklists it",
-            )
-            .await;
-            return 0;
-        }
+        Some("misgrab") => true,
+        Some(_) => false,
+        None => match grabbed_torrents::get_by_id(db, grab_id).await {
+            Ok(Some(grab)) => {
+                let aliases =
+                    crate::services::misgrab::aliases_from_detail(parent_detail, filenames);
+                crate::services::misgrab::assess_and_stamp(db, &grab, filenames, &aliases)
+                    .await
+                    .is_misgrab()
+            }
+            _ => false,
+        },
+    };
+    if already_misgrab {
+        logger::info(
+            db,
+            LogCategory::Library,
+            &format!(
+                "Auto-expand: skipping '{}', its files name a different series",
+                torrent_title
+            ),
+            "the misgrab sweep removes and blocklists it",
+        )
+        .await;
+        return 0;
     }
 
     let parent_title = if !parent_detail.title_english.is_empty() {
@@ -928,6 +942,149 @@ mod tests {
             "grab row should be corrected to cover all 12 discovered episodes"
         );
         assert_eq!(row.1, 1, "grab row should be flipped to is_batch=true");
+    }
+
+    #[tokio::test]
+    async fn expand_from_files_honors_a_verdict_the_sweep_already_stamped() {
+        // The grab-time waiter can lose the race to the sweep: by the
+        // time the client hands back the file list, the sweep has
+        // condemned the grab, removed the torrent, and blocklisted it.
+        // A stamped misgrab is final, even for a file list that would
+        // verify on its own; nothing may be written for it.
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let (parent_id, _) = series::upsert(
+            &db,
+            series::SeriesCore {
+                anilist_id: 21521,
+                mal_id: None,
+                title: "Kowaremono: Risa THE ANIMATION",
+                title_romaji: "Kowaremono: Risa THE ANIMATION",
+                title_english: "",
+                title_native: "",
+                cover_url: "",
+                format: "OVA",
+                status: "FINISHED",
+                episodes: Some(1),
+                season_year: Some(2016),
+                end_year: None,
+            },
+        )
+        .await
+        .unwrap();
+        let hash = "fedcbafedcbafedcbafedcbafedcbafedcbafedc";
+        let grab_id = grabbed_torrents::record_grab(
+            &db,
+            hash,
+            "[H-Enc] Kowaremono Risa The Animation 01-02",
+            parent_id,
+            &[1],
+            false,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        grabbed_torrents::stamp_verification(&db, grab_id, "misgrab", "{}")
+            .await
+            .unwrap();
+        grabbed_torrents::mark_failed_by_hash_with_reason(&db, hash, "misgrab")
+            .await
+            .unwrap();
+        grabbed_torrents::set_misgrab_action(&db, grab_id, "removed")
+            .await
+            .unwrap();
+        let parent_detail = empty_anime_detail(21521, "Kowaremono: Risa THE ANIMATION", Some(1));
+        // Files that name the series: a fresh verdict would say verified.
+        let filenames: Vec<String> = vec![
+            "[H-Enc] Kowaremono Risa The Animation 01-02/Kowaremono Risa The Animation - 01.mkv"
+                .to_string(),
+            "[H-Enc] Kowaremono Risa The Animation 01-02/Kowaremono Risa The Animation - 02.mkv"
+                .to_string(),
+        ];
+        let ctx = AutoExpandGrabContext {
+            classification: ClassificationResult::unknown(),
+            release_group: "H-Enc".to_string(),
+            size_bytes: 0,
+        };
+
+        let added = expand_from_files(
+            &db,
+            &filenames,
+            &parent_detail,
+            parent_id,
+            &[1],
+            grab_id,
+            "[H-Enc] Kowaremono Risa The Animation 01-02",
+            &ctx,
+        )
+        .await;
+
+        assert_eq!(added, 0);
+        let row = grabbed_torrents::get_by_id(&db, grab_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.verification.as_deref(),
+            Some("misgrab"),
+            "stamp untouched"
+        );
+        assert_eq!(row.state, "failed", "the blocklist entry survives");
+        assert_eq!(row.episode_numbers, vec![1], "coverage not widened");
+        let routes = grabbed_torrents::get_series_routes(&db, grab_id)
+            .await
+            .unwrap();
+        assert!(routes.is_empty(), "no routes: {routes:?}");
+        let history: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM episode_grab_history WHERE series_id = ?")
+                .bind(parent_id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(history, 0, "no grabbed rows for a removed download");
+        let logged: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM logs WHERE message LIKE 'Auto-expand: skipping%'",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(logged, 1);
+
+        // A stamp in the other direction is honored too: a verified
+        // grab is not judged again (no second verdict log) and the
+        // call proceeds.
+        let ok_id = grabbed_torrents::record_grab(
+            &db,
+            "0123456789012345678901234567890123456789",
+            "[H-Enc] Kowaremono Risa The Animation 01-02 v2",
+            parent_id,
+            &[1],
+            false,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        grabbed_torrents::stamp_verification(&db, ok_id, "whitelisted", "{}")
+            .await
+            .unwrap();
+        let _ = expand_from_files(
+            &db,
+            &filenames,
+            &parent_detail,
+            parent_id,
+            &[1],
+            ok_id,
+            "[H-Enc] Kowaremono Risa The Animation 01-02 v2",
+            &ctx,
+        )
+        .await;
+        let verdict_logs: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM logs WHERE message LIKE 'Grab verified as%' OR message LIKE 'Misgrab detected%'",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(verdict_logs, 0, "stamped rows are never re-judged");
     }
 
     #[tokio::test]
