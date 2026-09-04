@@ -26,6 +26,8 @@ Add torznab indexers (typically fronted by Prowlarr) and newznab indexers (typic
 
 **Indexer** here means a search source. Ryokan ships with built-in Nyaa search; everything else lands in this tab.
 
+Each indexer row has a **Categories** field. Blank means automatic: Ryokan asks for anime (5070), adds Movies (2000) for a film and XXX (6000) for an adult title, and when the indexer reports none of those it asks for what the indexer does report, so a sukebei-only or movies-only indexer is never asked for a category it does not have. A value is sent as written on every search and poll, comma separated, Sonarr-style, for torznab and newznab rows alike; the edit form lists what the indexer reports so you can pick ids.
+
 Each indexer row has an optional **download client pin** that overrides the per-protocol default for grabs from that indexer. Useful when you want one private tracker's grabs going to a specific qBit instance with stricter seed rules.
 
 Two more things live on this tab:
