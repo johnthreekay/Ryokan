@@ -215,3 +215,54 @@ async fn caps_without_the_requested_category_fall_back_to_what_the_indexer_has()
     };
     client.search(&query).await.expect("search must succeed");
 }
+
+/// Newznab rows go through the same client, so the override and the
+/// caps fallback apply to usenet indexers unchanged. Pinned separately
+/// so a future newznab-specific branch cannot drop them.
+#[tokio::test]
+async fn newznab_rows_get_the_same_category_override_and_fallback() {
+    use super::fixture::new_fixture_with_row;
+    use crate::models::indexers::KIND_NEWZNAB;
+
+    let (server, client) = new_fixture_with_row(|row| {
+        row.kind = KIND_NEWZNAB.to_string();
+        row.categories = "6000,2000".to_string();
+    })
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("cat", "6000,2000"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(SEARCH_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let query = SearchQuery {
+        q: "Test Show".to_string(),
+        categories: vec![5070],
+        limit: None,
+        offset: None,
+    };
+    client.search(&query).await.expect("search must succeed");
+    assert_eq!(client.kind(), KIND_NEWZNAB);
+
+    let caps = r#"{"categories":[{"id":2000,"name":"Movies","subcategories":[{"id":2040,"name":"HD","subcategories":[]}]}],"search_modes":[],"max_limit":null,"default_limit":null}"#;
+    let (server, client) = new_fixture_with_row(|row| {
+        row.kind = KIND_NEWZNAB.to_string();
+        row.caps_json = caps.to_string();
+    })
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("cat", "2000"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(SEARCH_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let query = SearchQuery {
+        q: "Test Show".to_string(),
+        categories: vec![5070],
+        limit: None,
+        offset: None,
+    };
+    client.search(&query).await.expect("search must succeed");
+}

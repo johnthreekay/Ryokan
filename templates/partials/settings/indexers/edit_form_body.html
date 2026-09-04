@@ -57,7 +57,7 @@
         <div class="form-group">
             <label for="indexer-edit-categories-{{ row.id }}">Categories</label>
             <input id="indexer-edit-categories-{{ row.id }}" type="text" name="categories" value="{{ row.categories }}" placeholder="automatic">
-            <span class="form-hint">Torznab category ids to ask this indexer for, comma separated. Blank asks for what each series needs and falls back to what the indexer reports.{% if !reported_categories.is_empty() %} This indexer reports: {% for c in reported_categories %}{{ c }}{% if !loop.last %}, {% endif %}{% endfor %}.{% endif %}</span>
+            <span class="form-hint">Torznab or newznab category ids to ask this indexer for, comma separated. Blank asks for what each series needs and falls back to what the indexer reports.{% if !reported_categories.is_empty() %} This indexer reports: {% for c in reported_categories %}{{ c }}{% if !loop.last %}, {% endif %}{% endfor %}.{% endif %}</span>
         </div>
 
         <div class="form-group">
