@@ -213,6 +213,13 @@ html, body {
     overflow-x: clip;
 }
 
+/* Always reserve the scrollbar's column. Without it a tab short enough
+   to need no scrollbar centers the page 7px further right than a tall
+   one, so the sidebar hops when switching tabs. */
+html {
+    scrollbar-gutter: stable;
+}
+
 body {
     background: var(--bg);
     color: var(--text);
