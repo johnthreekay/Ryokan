@@ -30,6 +30,10 @@ Once an account is linked, Ryokan checks it every 30 minutes. **Sync interval (m
 
 **Sync now** next to the linked account runs a check right away.
 
+## One account at a time
+
+Only one account can be linked. **Unlink** removes the link along with the scores and list memberships that came from it, but the series it added stay in your library with their monitoring and grab history. While an account is linked, your score for each series shows on its library card in the format your account uses.
+
 ## Common issues
 
 - **Re-link required**: the account's access has expired or been revoked. Click **Link** again. Until you do, Ryokan retries at a slower pace and logs the problem under **System → Logs** (category External Sync).

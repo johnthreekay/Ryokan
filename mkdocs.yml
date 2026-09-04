@@ -73,6 +73,7 @@ nav:
   - Guides:
     - Configuration: configuration.md
     - Configuration (cont.): system.md
+    - How releases are scored: scoring.md
     - Calendar: calendar.md
     - Importing an existing library: manual-import.md
     - Download clients: download-clients.md

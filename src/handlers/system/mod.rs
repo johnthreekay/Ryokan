@@ -160,8 +160,6 @@ pub struct DebugSettingsForm {
 
 fn normalize_system_tab(tab: Option<String>) -> String {
     match tab.as_deref() {
-        Some("scoring") => "scoring".to_string(),
-        Some("help") => "scoring".to_string(), // legacy alias
         Some("debug") => "debug".to_string(),
         Some("rss") => "rss".to_string(),
         Some("tasks") => "tasks".to_string(),

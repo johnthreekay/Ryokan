@@ -458,48 +458,6 @@
     </div>
 </div>
 
-{% else if tab == "scoring" %}
-<!-- Scoring Tab -->
-<div class="help-content">
-    <section class="help-section">
-        <h3>How Scoring Works</h3>
-        <p>Each result receives a composite score based on multiple factors. Higher scores are preferred when Ryokan automatically picks a release.</p>
-        <table class="help-table">
-            <thead><tr><th>Factor</th><th>Points</th></tr></thead>
-            <tbody>
-                <tr><td>Seeders &gt; 100</td><td>+30</td></tr>
-                <tr><td>Seeders &gt; 50</td><td>+25</td></tr>
-                <tr><td>Seeders &gt; 10</td><td>+20</td></tr>
-                <tr><td>Seeders &gt; 0</td><td>+10</td></tr>
-                <tr><td>Zero seeders</td><td>-10</td></tr>
-                <tr><td>Preferred release group (ordered)</td><td>+140 / +120 / +100 / ...</td></tr>
-                <tr><td>Non-preferred group</td><td>-15</td></tr>
-                <tr><td>Preferred resolution</td><td>+20</td></tr>
-                <tr><td>Batch release</td><td>+15</td></tr>
-                <tr><td>Trusted uploader</td><td>+10</td></tr>
-                <tr><td>10bit / x265 / BD source</td><td>+5</td></tr>
-                <tr><td>Dual audio / dub (prefer subs)</td><td>-15</td></tr>
-                <tr><td>Dual audio / dub (prefer dubs)</td><td>+15</td></tr>
-                <tr><td>Downloads &gt; 10,000</td><td>+15</td></tr>
-                <tr><td>Downloads &gt; 5,000</td><td>+10</td></tr>
-                <tr><td>Downloads &gt; 1,000</td><td>+5</td></tr>
-                <tr><td>Batch under 25 GB</td><td>+10</td></tr>
-            </tbody>
-        </table>
-    </section>
-
-    <section class="help-section">
-        <h3>Search Tips</h3>
-        <p>Use the uploader field to filter by a specific release group's Nyaa account. The category filter lets you narrow to English-translated or raw releases. "Trusted only" shows releases from verified Nyaa uploaders.</p>
-        <p>Try searching for batch releases by including "batch" in your query, e.g. "Jujutsu Kaisen batch 1080p".</p>
-    </section>
-
-    <section class="help-section">
-        <h3>Grabbing Releases</h3>
-        <p>Click the <strong>Grab</strong> button next to any result to send it to your download client. The torrent will be added with your configured scoping label (or category on qBittorrent). Make sure the client is running and the connection is configured in Settings.</p>
-    </section>
-</div>
-
 {% else if tab == "credits" %}
 <!-- Credits Tab — colophon-style attribution. Prose sections for the
      single-entry items; a lede + roster hybrid for the metadata

@@ -634,54 +634,6 @@ a:hover {
 
 .help-content { max-width: 700px; }
 
-.help-section {
-    margin-bottom: 32px;
-}
-
-.help-section h3 {
-    font-size: 17px;
-    color: var(--text-bright);
-    margin-bottom: 8px;
-}
-
-.help-section p {
-    color: var(--text);
-    margin-bottom: 12px;
-    font-size: 14px;
-    line-height: 1.7;
-}
-
-.help-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    margin-top: 8px;
-}
-
-.help-table th {
-    text-align: left;
-    padding: 8px 12px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-dim);
-    border-bottom: 1px solid var(--border);
-}
-
-.help-table td {
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-}
-
-.help-table td:last-child {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    text-align: right;
-    white-space: nowrap;
-}
-
 @media (max-width: 640px) {
     .content { padding: 20px 16px 60px; }
     .ep-filename { max-width: 180px; }
@@ -776,8 +728,6 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
     color: var(--accent);
     background: var(--bg-card);
 }
-
-
 
 @media (max-width: 640px) {
     .system-tabs {

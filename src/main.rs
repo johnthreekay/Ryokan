@@ -1244,7 +1244,6 @@ async fn main() {
             post(handlers::system::api_anibridge_reload),
         )
         .route("/api/system/tasks", get(handlers::system::api_system_tasks))
-        .route("/help", get(handlers::help::help_page))
         // Issue #116 — in-app calendar page. Cookie-auth gated
         // (rest of protected_routes); the iCal feed at
         // /api/calendar.ics is the parallel scoped-key surface

@@ -2,7 +2,6 @@ pub mod auth;
 pub mod calendar;
 pub mod downloads;
 pub mod grab;
-pub mod help;
 pub mod library;
 pub mod notifications;
 pub mod oauth;

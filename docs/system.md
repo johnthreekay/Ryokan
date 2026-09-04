@@ -1,8 +1,8 @@
 # System
 
-The **System** page is Ryokan's operational view: logs, background-task health, recent RSS activity, episodes flagged for review, notification destinations, scoring reference, and debug toggles. Settings (the things that change behavior) live under **Settings**; System is where you go to see what Ryokan has been doing or to flip a runtime toggle.
+The **System** page is Ryokan's operational view: logs, background-task health, recent RSS activity, episodes flagged for review, notification destinations, a link to these docs, and debug toggles. Settings (the things that change behavior) live under **Settings**; System is where you go to see what Ryokan has been doing or to flip a runtime toggle.
 
-The page has a left sidebar with ten entries (it collapses to a strip on narrow screens). Each gets its own section below.
+The page has a left sidebar with eleven entries (it collapses to a strip on narrow screens). Each gets its own section below.
 
 ## Logs
 
@@ -103,11 +103,9 @@ When to come here:
 
 The receiving side of `/api/webhook/autobrr` is *inbound*; that's a separate concept from these *outbound* notifications. The autobrr inbound webhook lives in **Settings → Indexers**.
 
-## Scoring
+## Docs
 
-Read-only reference. Shows the scoring weights Ryokan uses (seeders, preferred-group order, resolution match, batch bonus, dual-audio penalty/bonus, etc.) so you can predict why one release outranked another.
-
-This page doesn't change behavior; the actual scoring inputs (preferred groups, resolution / source profile, custom formats) are configured in **Settings → Preferred Quality & Releases** and **Settings → Custom Formats** ([Configuration](configuration.md) explains those tabs).
+Opens this documentation site in a new tab. The scoring reference that used to live here is now [How releases are scored](scoring.md).
 
 ## Credits
 
@@ -126,4 +124,4 @@ Toast feedback appears on this tab when a debug action succeeds or fails. Backup
 
 ---
 
-*Last updated: 2026-08-29.*
+*Last updated: 2026-09-04.*
