@@ -339,28 +339,6 @@ fieldset legend {
     }
 }
 
-.cf-section .group-source-table {
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    margin: 14px 0 0;
-    border-top: 1px solid var(--border);
-}
-
-.cf-section .group-source-table thead {
-    background: transparent;
-}
-
-.cf-section .group-source-table th:first-child,
-.cf-section .group-source-table td:first-child {
-    padding-left: 0;
-}
-
-.cf-section .group-source-table th:last-child,
-.cf-section .group-source-table td:last-child {
-    padding-right: 0;
-}
-
 .cf-count-pill {
     display: inline-block;
 }
@@ -1919,4 +1897,22 @@ fieldset legend {
 .naming-token-table code {
     color: var(--text);
     white-space: nowrap;
+}
+
+/* The rename box in the import collision table: the compact field
+   recipe, since it sits in a table row. */
+.rss-table.cf-table td input[type="text"] {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 13px;
+    font-family: var(--font-body);
+}
+
+.rss-table.cf-table td input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
 }
