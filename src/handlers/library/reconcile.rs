@@ -258,6 +258,10 @@ pub(super) async fn resolve_series_context(
         .await
         .map_err(|e| e.to_string())?;
     let mut db_series = resolved_row.clone();
+    let alt = db_series
+        .as_ref()
+        .map(|s| s.alternate_titles.clone())
+        .unwrap_or_default();
 
     if let Some(ref tracked) = db_series {
         if let Ok(Some(cached)) = metadata_cache::get_by_series_id(db, tracked.id).await {
@@ -279,26 +283,42 @@ pub(super) async fn resolve_series_context(
                     .await;
                 });
             }
-            return Ok((db_series, cached.provider_id, cached.detail));
+            return Ok((
+                db_series,
+                cached.provider_id,
+                crate::services::auto_search::with_alternate_titles(cached.detail, &alt),
+            ));
         }
         if tracked.anilist_id > 0 {
             if let Ok(Some(cached)) =
                 metadata_cache::get_by_provider_id(db, tracked.anilist_id).await
             {
-                return Ok((db_series, cached.provider_id, cached.detail));
+                return Ok((
+                    db_series,
+                    cached.provider_id,
+                    crate::services::auto_search::with_alternate_titles(cached.detail, &alt),
+                ));
             }
         } else if tracked.anilist_id < 0 {
             // MAL-sourced entry: check provider cache with the negative ID.
             if let Ok(Some(cached)) =
                 metadata_cache::get_by_provider_id(db, tracked.anilist_id).await
             {
-                return Ok((db_series, cached.provider_id, cached.detail));
+                return Ok((
+                    db_series,
+                    cached.provider_id,
+                    crate::services::auto_search::with_alternate_titles(cached.detail, &alt),
+                ));
             }
         }
     } else if provider_id != 0
         && let Ok(Some(cached)) = metadata_cache::get_by_provider_id(db, provider_id).await
     {
-        return Ok((db_series, cached.provider_id, cached.detail));
+        return Ok((
+            db_series,
+            cached.provider_id,
+            crate::services::auto_search::with_alternate_titles(cached.detail, &alt),
+        ));
     }
 
     let mal_hint = db_series.as_ref().and_then(|s| s.mal_id);
@@ -337,7 +357,14 @@ pub(super) async fn resolve_series_context(
                             &format!("cached_at={}", cached.cached_at),
                         )
                         .await;
-                        return Ok((db_series, cached.provider_id, cached.detail));
+                        return Ok((
+                            db_series,
+                            cached.provider_id,
+                            crate::services::auto_search::with_alternate_titles(
+                                cached.detail,
+                                &alt,
+                            ),
+                        ));
                     }
                     match jikan::get_anime_detail_cached(mid).await {
                         Ok(detail) => detail,
@@ -384,7 +411,14 @@ pub(super) async fn resolve_series_context(
                                 &format!("cached_at={}", cached.cached_at),
                             )
                             .await;
-                            return Ok((db_series, cached.provider_id, cached.detail));
+                            return Ok((
+                                db_series,
+                                cached.provider_id,
+                                crate::services::auto_search::with_alternate_titles(
+                                    cached.detail,
+                                    &alt,
+                                ),
+                            ));
                         }
                         // Prefer Kitsu's MAL-mapping filter when a MAL id is
                         // available — single exact-match request rather than the

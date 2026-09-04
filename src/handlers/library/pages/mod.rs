@@ -719,6 +719,10 @@ pub async fn series_detail(
         .as_ref()
         .map(|s| s.restrict_to_uploader.clone())
         .unwrap_or_default();
+    let alternate_titles = db_series
+        .as_ref()
+        .map(|s| s.alternate_titles.clone())
+        .unwrap_or_default();
     let default_custom_query_tokens = cfg
         .as_ref()
         .map(|c| c.default_custom_query_tokens.clone())
@@ -773,6 +777,7 @@ pub async fn series_detail(
         allow_pt_upgrades,
         custom_query_tokens,
         restrict_to_uploader,
+        alternate_titles,
         default_custom_query_tokens,
         default_restrict_to_uploader,
         post_processing_enabled,

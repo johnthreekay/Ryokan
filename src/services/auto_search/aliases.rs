@@ -169,6 +169,21 @@ pub fn distinctive_overlap_ratio(
     token_overlap_ratio(title_tokens, &distinctive)
 }
 
+/// Fold a series row's alternate titles into the detail's synonyms so
+/// every alias builder (search gate, RSS, misgrab verdict) sees them.
+pub fn with_alternate_titles(mut detail: AnimeDetail, raw: &str) -> AnimeDetail {
+    for title in crate::models::series::parse_alternate_titles(raw) {
+        if !detail
+            .synonyms
+            .iter()
+            .any(|s| s.eq_ignore_ascii_case(&title))
+        {
+            detail.synonyms.push(title);
+        }
+    }
+    detail
+}
+
 pub fn collect_aliases(detail: &AnimeDetail) -> Vec<String> {
     dedupe_strings(vec![
         detail.title_romaji.clone(),

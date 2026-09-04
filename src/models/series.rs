@@ -54,6 +54,11 @@ pub struct Series {
     /// that account's uploads come back. Overrides the global
     /// `config.default_restrict_to_uploader`.
     pub restrict_to_uploader: String,
+    /// Alternate titles the user added, one per line. Merged into the
+    /// metadata synonyms wherever aliases are built (search gate, RSS,
+    /// misgrab verdict), so a group's own name for the show counts as
+    /// an exact match.
+    pub alternate_titles: String,
     /// #30 — Cumulative episode count across the shortest TV-format
     /// PREQUEL chain up to this series. Zero for first-season series
     /// and for cases where no prequel data is cached. Search accepts a
@@ -147,6 +152,7 @@ fn map_series_row(row: sqlx::sqlite::SqliteRow) -> Series {
             .unwrap_or(false),
         custom_query_tokens: row.try_get("custom_query_tokens").unwrap_or_default(),
         restrict_to_uploader: row.try_get("restrict_to_uploader").unwrap_or_default(),
+        alternate_titles: row.try_get("alternate_titles").unwrap_or_default(),
         cumulative_prior_episodes: row
             .try_get::<i32, _>("cumulative_prior_episodes")
             .unwrap_or(0),
@@ -162,7 +168,7 @@ fn map_series_row(row: sqlx::sqlite::SqliteRow) -> Series {
 /// Get all tracked series, ordered by most recently added.
 pub async fn get_all(db: &SqlitePool) -> Result<Vec<Series>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series ORDER BY added_at DESC",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series ORDER BY added_at DESC",
     )
     .fetch_all(db)
     .await?;
@@ -172,7 +178,7 @@ pub async fn get_all(db: &SqlitePool) -> Result<Vec<Series>, sqlx::Error> {
 
 pub async fn get_by_id(db: &SqlitePool, id: i64) -> Result<Option<Series>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE id = ?",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(db)
@@ -186,7 +192,7 @@ pub async fn get_by_anilist_id(
     anilist_id: i64,
 ) -> Result<Option<Series>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id = ?",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id = ?",
     )
     .bind(anilist_id)
     .fetch_optional(db)
@@ -209,7 +215,7 @@ pub async fn get_by_anilist_ids(
     }
     let placeholders = vec!["?"; anilist_ids.len()].join(",");
     let sql = format!(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id IN ({placeholders})"
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id IN ({placeholders})"
     );
     let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
     for id in anilist_ids {
@@ -225,7 +231,7 @@ pub async fn get_by_anilist_ids(
 
 pub async fn get_by_mal_id(db: &SqlitePool, mal_id: i64) -> Result<Option<Series>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ?",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ?",
     )
     .bind(mal_id)
     .fetch_optional(db)
@@ -492,7 +498,7 @@ pub async fn refresh_core_metadata(
 
 pub async fn get_unreconciled_fallbacks(db: &SqlitePool) -> Result<Vec<Series>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id IS NOT NULL AND anilist_id < 0 ORDER BY added_at DESC",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id IS NOT NULL AND anilist_id < 0 ORDER BY added_at DESC",
     )
     .fetch_all(db)
     .await?;
@@ -700,10 +706,14 @@ pub async fn update_search_overrides(
     id: i64,
     custom_query_tokens: &str,
     restrict_to_uploader: &str,
+    alternate_titles: &str,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE series SET custom_query_tokens = ?, restrict_to_uploader = ? WHERE id = ?")
+    sqlx::query(
+        "UPDATE series SET custom_query_tokens = ?, restrict_to_uploader = ?, alternate_titles = ? WHERE id = ?",
+    )
         .bind(custom_query_tokens.trim())
         .bind(restrict_to_uploader.trim())
+        .bind(normalize_alternate_titles(alternate_titles))
         .bind(id)
         .execute(db)
         .await?;
@@ -715,6 +725,32 @@ pub fn default_monitor_mode(status: &str) -> MonitorMode {
     match upper.as_str() {
         "FINISHED" | "FINISHED_AIRING" | "CANCELLED" => MonitorMode::Missing,
         _ => MonitorMode::Future,
+    }
+}
+
+/// One title per line, trimmed, blank lines dropped, duplicates
+/// removed, in the order written.
+pub fn parse_alternate_titles(raw: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in raw.lines() {
+        let t = line.trim();
+        if t.is_empty() || out.iter().any(|o| o.eq_ignore_ascii_case(t)) {
+            continue;
+        }
+        out.push(t.to_string());
+    }
+    out
+}
+
+/// The stored form of the alternate-titles field: the parsed list
+/// joined with newlines.
+pub fn normalize_alternate_titles(raw: &str) -> String {
+    parse_alternate_titles(raw).join("\n")
+}
+
+impl Series {
+    pub fn alternate_title_list(&self) -> Vec<String> {
+        parse_alternate_titles(&self.alternate_titles)
     }
 }
 
@@ -833,5 +869,16 @@ mod tests {
         set_is_adult(&db, id, false).await.expect("clear");
         let row = get_by_id(&db, id).await.expect("query").expect("row");
         assert!(!row.is_adult);
+    }
+
+    #[test]
+    fn alternate_titles_parse_one_per_line_trimmed_and_deduped() {
+        let raw = "  Deluxe Show \n\nDELUXE SHOW\nOther Name\n";
+        assert_eq!(
+            parse_alternate_titles(raw),
+            vec!["Deluxe Show".to_string(), "Other Name".to_string()]
+        );
+        assert_eq!(normalize_alternate_titles(raw), "Deluxe Show\nOther Name");
+        assert!(parse_alternate_titles("   \n").is_empty());
     }
 }

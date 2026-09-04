@@ -221,6 +221,8 @@ struct SeriesTemplate {
     /// #23 — Per-series Nyaa uploader restriction. Empty string means
     /// "use the global default in config."
     restrict_to_uploader: String,
+    /// Alternate titles the user added for this series, one per line.
+    alternate_titles: String,
     /// #23 — Global defaults, surfaced as placeholder hints so the user
     /// can see what the per-series field will inherit when left blank.
     default_custom_query_tokens: String,
@@ -415,6 +417,9 @@ pub struct SetSearchOverridesForm {
     /// Nyaa uploader to restrict to (`?u=<name>`). Empty string clears.
     #[serde(default)]
     restrict_to_uploader: String,
+    /// Alternate titles, one per line. Empty string clears.
+    #[serde(default)]
+    alternate_titles: String,
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]

@@ -28,7 +28,7 @@ use aliases::{SiblingRejectPrecompute, sibling_match_rejects};
 pub use aliases::{
     classify_match, collect_aliases, collect_extended_aliases, collect_sibling_aliases,
     dedupe_strings, distinctive_overlap_ratio, is_generic_title_token, matches_target,
-    normalize_title, sequel_variant_aliases, token_overlap_ratio, token_set,
+    normalize_title, sequel_variant_aliases, token_overlap_ratio, token_set, with_alternate_titles,
 };
 pub use pack_detection::{
     TRANSITIVE_WALK_MAX_FETCHES, detect_sibling_entries_in_pack,
@@ -355,7 +355,7 @@ pub async fn find_best_for_target(
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
 ) -> Option<SearchResult> {
-    collect_scored_for_target(
+    find_best_for_target_with_diag(
         db,
         detail,
         config,
@@ -366,8 +366,35 @@ pub async fn find_best_for_target(
         indexers_cache,
     )
     .await
-    .into_iter()
-    .next()
+    .0
+}
+
+/// `find_best_for_target` plus the titles that matched the series only
+/// fuzzily and were therefore not considered, so the caller can tell
+/// the user what it saw and that an alternate title would admit it.
+#[allow(clippy::too_many_arguments)]
+pub async fn find_best_for_target_with_diag(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    target: &SearchTarget,
+    allow_batch: bool,
+    batch_episode_match: bool,
+    cfs: &[CompiledCustomFormat],
+    indexers_cache: &crate::IndexerCache,
+) -> (Option<SearchResult>, Vec<String>) {
+    let (scored, fuzzy_only) = collect_scored_for_target(
+        db,
+        detail,
+        config,
+        target,
+        allow_batch,
+        batch_episode_match,
+        cfs,
+        indexers_cache,
+    )
+    .await;
+    (scored.into_iter().next(), fuzzy_only)
 }
 
 /// Same multi-phase auto-search as `find_best_for_target`, but picks the
@@ -394,7 +421,7 @@ pub async fn find_best_batch_for_target(
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
 ) -> Option<SearchResult> {
-    collect_scored_batches_for_target(db, detail, config, target, cfs, indexers_cache)
+    collect_scored_batches_for_target(db, detail, config, target, cfs, indexers_cache, true)
         .await
         .into_iter()
         .next()
@@ -414,6 +441,7 @@ pub async fn collect_scored_batches_for_target(
     target: &SearchTarget,
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
+    require_verbatim: bool,
 ) -> Vec<SearchResult> {
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
@@ -465,8 +493,11 @@ pub async fn collect_scored_batches_for_target(
     let indexers_arc = indexers_cache.read().await.clone();
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
+    let fuzzy_rejected = std::sync::Mutex::new(Vec::new());
     let ctx = AutoQueryCtx {
         phase: MatchPhase::Primary,
+        require_verbatim,
+        fuzzy_rejected: &fuzzy_rejected,
         aliases: &aliases,
         sibling_precompute: &sibling_precompute,
         preferred_groups: &preferred_groups,
@@ -656,7 +687,8 @@ async fn collect_scored_for_target(
     batch_episode_match: bool,
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
-) -> Vec<SearchResult> {
+) -> (Vec<SearchResult>, Vec<String>) {
+    let require_verbatim = true;
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
     let queries = append_custom_tokens(
@@ -730,8 +762,11 @@ async fn collect_scored_for_target(
     let indexers_arc = indexers_cache.read().await.clone();
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
+    let fuzzy_rejected = std::sync::Mutex::new(Vec::new());
     let ctx = AutoQueryCtx {
         phase: MatchPhase::Primary,
+        require_verbatim,
+        fuzzy_rejected: &fuzzy_rejected,
         aliases: &aliases,
         sibling_precompute: &sibling_precompute,
         preferred_groups: &preferred_groups,
@@ -944,7 +979,7 @@ async fn collect_scored_for_target(
             );
         }
     }
-    scored
+    (scored, fuzzy_rejected.into_inner().unwrap_or_default())
 }
 
 /// Shared context for `run_queries` — everything that stays constant
@@ -960,6 +995,12 @@ async fn collect_scored_for_target(
 struct AutoQueryCtx<'a> {
     /// Which query pass this context runs; stamped on every candidate.
     phase: MatchPhase,
+    /// Automatic paths take only verbatim (or SeaDex-curated) matches;
+    /// a fuzzy hit is dropped and its title kept for the report. The
+    /// interactive batch list passes `false` and keeps fuzzy matches
+    /// for the person choosing.
+    require_verbatim: bool,
+    fuzzy_rejected: &'a std::sync::Mutex<Vec<String>>,
     aliases: &'a [String],
     /// Precomputed token sets for own + sibling aliases, used by
     /// [`sibling_match_rejects`] to reject a release that looks MORE
@@ -1172,7 +1213,7 @@ async fn run_queries(
             } else {
                 result.title.to_lowercase()
             };
-            if !seen.insert(dedupe_key) {
+            if seen.contains(&dedupe_key) {
                 continue;
             }
             // SeaDex trusts its AniList-ID-based curation over any
@@ -1210,10 +1251,21 @@ async fn run_queries(
                     ctx.batch_episode_match && result.is_batch,
                     ctx.absolute_offset,
                 ) {
+                    Some(m) if ctx.require_verbatim && m.kind == MatchKind::Fuzzy => {
+                        ctx.fuzzy_rejected
+                            .lock()
+                            .unwrap()
+                            .push(result.title.clone());
+                        continue;
+                    }
                     Some(m) => m.into_provenance(ctx.phase),
                     None => continue,
                 }
             };
+            // Only an accepted candidate counts as seen: a release a later
+            // pass can admit (an alternate title in the extended pass) must
+            // not be shadowed by its rejection here.
+            seen.insert(dedupe_key);
             result.match_provenance = Some(provenance);
             candidates.push(result);
         }
@@ -1230,7 +1282,7 @@ async fn run_queries(
         } else {
             result.title.to_lowercase()
         };
-        if !seen.insert(dedupe_key) {
+        if seen.contains(&dedupe_key) {
             continue;
         }
         if !ctx.allow_batch && result.is_batch {
@@ -1248,10 +1300,21 @@ async fn run_queries(
                 ctx.batch_episode_match && result.is_batch,
                 ctx.absolute_offset,
             ) {
+                Some(m) if ctx.require_verbatim && m.kind == MatchKind::Fuzzy => {
+                    ctx.fuzzy_rejected
+                        .lock()
+                        .unwrap()
+                        .push(result.title.clone());
+                    continue;
+                }
                 Some(m) => m.into_provenance(ctx.phase),
                 None => continue,
             }
         };
+        // Only an accepted candidate counts as seen: a release a later
+        // pass can admit (an alternate title in the extended pass) must
+        // not be shadowed by its rejection here.
+        seen.insert(dedupe_key);
         result.match_provenance = Some(provenance);
         candidates.push(result);
     }
@@ -2256,6 +2319,7 @@ mod tests {
             allow_pt_upgrades: false,
             custom_query_tokens: tokens.to_string(),
             restrict_to_uploader: user.to_string(),
+            alternate_titles: String::new(),
             cumulative_prior_episodes: 0,
             monitor_mode_manual_override: false,
             user_score: None,

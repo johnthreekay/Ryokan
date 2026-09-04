@@ -477,6 +477,8 @@ mod crud_ci {
             series_id,
             custom_query_tokens: "  1080p BD  ".to_string(),
             restrict_to_uploader: "TrustedUser".to_string(),
+
+            alternate_titles: String::new(),
         };
         let resp =
             set_search_overrides(State(state), axum_htmx::HxRequest(false), axum::Form(form))
@@ -511,6 +513,8 @@ mod crud_ci {
                 series_id,
                 custom_query_tokens: "initial".to_string(),
                 restrict_to_uploader: "User".to_string(),
+
+                alternate_titles: String::new(),
             }),
         )
         .await
@@ -524,6 +528,8 @@ mod crud_ci {
                 series_id,
                 custom_query_tokens: String::new(),
                 restrict_to_uploader: String::new(),
+
+                alternate_titles: String::new(),
             }),
         )
         .await
@@ -551,6 +557,8 @@ mod crud_ci {
                 series_id,
                 custom_query_tokens: "bd 1080p".to_string(),
                 restrict_to_uploader: String::new(),
+
+                alternate_titles: String::new(),
             }),
         )
         .await

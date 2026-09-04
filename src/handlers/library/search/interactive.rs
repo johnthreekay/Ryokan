@@ -600,6 +600,7 @@ pub async fn interactive_search_batches(
         &auto_search::SearchTarget::Single,
         &cfs,
         &state.indexers,
+        false,
     )
     .await;
 

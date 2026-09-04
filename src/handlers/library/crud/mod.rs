@@ -868,6 +868,7 @@ pub async fn set_search_overrides(
         form.series_id,
         &form.custom_query_tokens,
         &form.restrict_to_uploader,
+        &form.alternate_titles,
     )
     .await;
 
@@ -921,6 +922,7 @@ pub async fn set_search_overrides(
         "ok": true,
         "series_id": form.series_id,
         "custom_query_tokens": form.custom_query_tokens.trim(),
+        "alternate_titles": series::normalize_alternate_titles(&form.alternate_titles),
         "restrict_to_uploader": form.restrict_to_uploader.trim(),
     }))
     .into_response())
