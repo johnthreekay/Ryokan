@@ -901,19 +901,88 @@ pub(super) fn best_alias_match(
 /// series, and the automatic paths skip it (and report it) rather than
 /// grab it. Release-name decorations never count: bracket groups are
 /// dropped by normalization and anitomy's title excludes the rest.
+///
+/// One shape is exempt: `Title - Episode Title - 05`. anitomy folds the
+/// episode title into its series title there, so the claim reads
+/// "Kimetsu no Yaiba - The Hand Demon". When the first dash segment
+/// names the series and nothing else, a later segment is taken as an
+/// episode title unless one of its leftover words reads like a season
+/// or part marker ("Yuukaku-hen", "Part 2", "II", "The Final Season"),
+/// which is what a sequel's subtitle looks like in the same position.
 pub fn names_more_than_the_series(title: &str, aliases: &[String]) -> bool {
     let Some(claimed) = crate::services::library_link::extract_anime_title(title) else {
         return false;
     };
-    let claimed = crate::services::misgrab::verdict::content_tokens(&normalize_title(&claimed));
-    if claimed.is_empty() {
-        return false;
-    }
     let mut known: HashSet<String> = HashSet::new();
     for alias in aliases {
         known.extend(token_set(&normalize_title(alias)));
     }
-    claimed.iter().any(|t| !known.contains(t))
+    let leftover = |text: &str| -> Vec<String> {
+        crate::services::misgrab::verdict::content_tokens(&normalize_title(text))
+            .into_iter()
+            .filter(|t| !known.contains(t))
+            .collect()
+    };
+    let segments: Vec<&str> = claimed
+        .split(" - ")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if segments.len() >= 2
+        && leftover(segments[0]).is_empty()
+        && !crate::services::misgrab::verdict::content_tokens(&normalize_title(segments[0]))
+            .is_empty()
+    {
+        // Raw tokens here, not content tokens: the marker words are
+        // exactly the generic ones `content_tokens` strips.
+        return segments[1..].iter().any(|seg| {
+            token_set(&normalize_title(seg))
+                .iter()
+                .any(|t| !known.contains(t) && is_season_marker_token(t))
+        });
+    }
+    !leftover(&claimed).is_empty()
+}
+
+/// Words that mark a season, part, or arc when they follow a series
+/// title: the difference between an episode title and a sequel's
+/// subtitle in the `Title - X - 05` position.
+fn is_season_marker_token(token: &str) -> bool {
+    if matches!(
+        token,
+        "season"
+            | "seasons"
+            | "part"
+            | "cour"
+            | "arc"
+            | "hen"
+            | "chapter"
+            | "saga"
+            | "final"
+            | "movie"
+            | "film"
+            | "ova"
+            | "oad"
+            | "ona"
+            | "special"
+            | "specials"
+            | "ii"
+            | "iii"
+            | "iv"
+            | "v"
+            | "vi"
+            | "vii"
+            | "viii"
+            | "ix"
+            | "x"
+    ) {
+        return true;
+    }
+    // 2nd, 3rd, 10th
+    let digits = token.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    !digits.is_empty()
+        && digits.chars().all(|c| c.is_ascii_digit())
+        && matches!(&token[digits.len()..], "st" | "nd" | "rd" | "th")
 }
 
 pub fn classify_match(
@@ -1039,6 +1108,48 @@ mod tests {
         assert!(!names_more_than_the_series(
             "[New-raws]Dr. Stone New World - 02 [1080p] [CR].mkv",
             &with_alt
+        ));
+    }
+
+    #[test]
+    fn names_more_than_the_series_reads_a_folded_episode_title_as_the_series() {
+        // anitomy folds the episode title into its series title for the
+        // `Title - Episode Title - 05` shape (346-name Nyaa corpus). The
+        // first dash segment names the series and nothing else, so the
+        // tail is an episode title, not a sequel's subtitle.
+        let kny = vec!["Kimetsu no Yaiba".to_string()];
+        assert!(!names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - The Hand Demon - 05 [1080p].mkv",
+            &kny
+        ));
+        // The usual order was never affected.
+        assert!(!names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - 05 - The Hand Demon [1080p].mkv",
+            &kny
+        ));
+        // A subtitle in that position that reads like a season, part,
+        // or arc still names more.
+        assert!(names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - Yuukaku-hen - 05 [1080p].mkv",
+            &kny
+        ));
+        assert!(names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - Part 2 - 05 [1080p].mkv",
+            &kny
+        ));
+        assert!(names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - The Final Season - 05 [1080p].mkv",
+            &kny
+        ));
+        let mob = vec!["Mob Psycho 100".to_string()];
+        assert!(names_more_than_the_series(
+            "[Group] Mob Psycho 100 - II - 01 [1080p].mkv",
+            &mob
+        ));
+        // A colon subtitle is one segment and still names more.
+        assert!(names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba: Yuukaku-hen - 05 [1080p].mkv",
+            &kny
         ));
     }
 
