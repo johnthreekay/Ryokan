@@ -19,6 +19,7 @@ use crate::services::auto_search::{
     distinctive_overlap_ratio, is_generic_title_token, is_media_filename, normalize_title,
     parse_release_season, token_set,
 };
+use crate::services::library_link;
 
 /// A media file "names something" when this many content tokens survive
 /// the noise filters.
@@ -270,6 +271,35 @@ fn is_structural_token(t: &str) -> bool {
     false
 }
 
+/// What a path claims as its title: anitomy's title from the file name
+/// and from every folder above it, tokenized the way an alias is. Only
+/// these words may condemn a download. Descriptor words ("Dual
+/// Audio", "10 bits"), the group name, and episode titles ("All
+/// That's Left") are real words too, and on a series whose title is a
+/// number ("86") they used to be the only Latin words in the path.
+pub(crate) fn claimed_title_tokens(path: &str) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for segment in path.split(['/', '\\']).filter(|s| !s.trim().is_empty()) {
+        let Some(title) = library_link::extract_anime_title(segment) else {
+            continue;
+        };
+        let normalized = normalize_title(&title);
+        // "S01E21-All That's Left": a name that opens with an episode
+        // or season marker (or a bare number) goes on to an episode
+        // title, which anitomy cannot tell from a series title. It is
+        // not a claim about which show this is.
+        if normalized
+            .split_whitespace()
+            .next()
+            .is_none_or(is_structural_token)
+        {
+            continue;
+        }
+        out.extend(content_tokens(&normalized));
+    }
+    out
+}
+
 /// Only tokens written with Latin letters count as signal. Aliases
 /// come from AniList in romaji, English, and the native script, and a
 /// file named only in a third script (a Chinese raw group's "死神
@@ -386,10 +416,10 @@ pub fn assess(input: &VerdictInput<'_>) -> Verdict {
                 notes,
             };
         }
-        let content = content_tokens(&normalized);
-        if has_title_signal(&content) {
+        if has_title_signal(&claimed_title_tokens(file)) {
             any_signal = true;
         }
+        let content = content_tokens(&normalized);
         if content.iter().any(|t| known.contains(t)) {
             shares_a_word = true;
         }
@@ -527,6 +557,31 @@ mod tests {
             bleach,
             &[],
             &["Grisaia.Phantom.Trigger.S01E01.1080p.WEB-DL-VARYG.mkv"],
+            0,
+        );
+        assert!(matches!(v, Verdict::Misgrab { .. }), "{v:?}");
+    }
+
+    #[test]
+    fn numeric_title_batch_with_descriptor_words_is_unverifiable_not_misgrab() {
+        // Found on a real qBittorrent: EMBER's "86" batch. The only word
+        // naming the series is a number, which the tokenizer drops, and
+        // the rest of the path is descriptors, the group name, and
+        // episode titles. Those are not a claim to be another show.
+        let eighty_six = &["86 EIGHTY-SIX", "86: Eighty Six", "86－エイティシックス－"];
+        let files = &[
+            "86 S01+SP 1080p Dual Audio BDRip 10 bits DD+ x265-EMBER/86 S01P02+SP 1080p Dual Audio BDRip 10 bits DD+ x265-EMBER/S01E21-All That's Left [B97854B3].mkv",
+            "86 S01+SP 1080p Dual Audio BDRip 10 bits DD+ x265-EMBER/86 S01P01 1080p Dual Audio BDRip 10 bits DD+ x265-EMBER/S01E01-Undertaker [1A2B3C4D].mkv",
+        ];
+        let v = run(eighty_six, &[], files, 0);
+        assert!(!matches!(v, Verdict::Misgrab { .. }), "{v:?}");
+        // The same layout under a different series name is still a misgrab.
+        let v = run(
+            eighty_six,
+            &[],
+            &[
+                "Grisaia Phantom Trigger S01 1080p Dual Audio BDRip x265-EMBER/S01E01-Mothers Cradle [1A2B3C4D].mkv",
+            ],
             0,
         );
         assert!(matches!(v, Verdict::Misgrab { .. }), "{v:?}");
