@@ -1178,6 +1178,56 @@ async fn auto_search_episode_handler_skips_fuzzy_only_candidate_and_says_why() {
 }
 
 #[tokio::test]
+async fn auto_search_episode_handler_skips_a_release_that_names_more_than_the_series() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // "Auto Search Show Deluxe New World" contains the title verbatim
+    // and is a different entry (a sequel named by subtitle). The
+    // automatic path must not take it, and the report must say so.
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        99105,
+        "[Group] Auto Search Show Deluxe New World - 03 (1080p) [WEB].mkv",
+        "1.4 GiB",
+        200,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9005;
+    let state = build_state().await;
+    let _series_id = seed_series_with_cache(&state, anilist_id, "Auto Search Show Deluxe").await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert!(
+        report.grabbed.is_empty(),
+        "a release naming more than the series must not grab; report={report:?}"
+    );
+    assert!(client.add_calls().is_empty());
+    assert!(
+        report
+            .skipped
+            .iter()
+            .any(|s| s.contains("named the series exactly") && s.contains("New World")),
+        "report={report:?}"
+    );
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
 async fn auto_search_episode_handler_grabs_once_an_alternate_title_names_the_release() {
     let _gate = ENV_LOCK.lock().await;
 

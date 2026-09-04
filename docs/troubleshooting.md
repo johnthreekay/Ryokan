@@ -87,7 +87,7 @@ Ryokan's migrations are idempotent by design (each `ALTER TABLE … ADD COLUMN` 
 
 ## Auto search saw releases but grabbed none
 
-Automatic search only takes a release whose name contains one of the series' titles or synonyms as written. When the only releases on offer name the show some other way, the search toast reads "looked close but none named the series exactly" and lists examples, and System → Logs has the full list. If one of those is the right show, add that name on the series page under **Advanced search overrides**, **Alternate titles**, and search again. See [How releases are scored](scoring.md#what-automatic-search-will-and-will-not-grab).
+Automatic search only takes a release whose name contains one of the series' titles or synonyms as written and names nothing beyond it, so a sequel titled by subtitle ("Dr. Stone New World") is not mistaken for the first season. When the only releases on offer name the show some other way, the search toast reads "looked close but none named the series exactly" and lists examples, and System → Logs has the full list. If one of those is the right show, add that name on the series page under **Advanced search overrides**, **Alternate titles**, and search again. See [How releases are scored](scoring.md#what-automatic-search-will-and-will-not-grab).
 
 ## Ryokan removed a download it decided was the wrong series
 

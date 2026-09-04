@@ -28,7 +28,8 @@ use aliases::{SiblingRejectPrecompute, sibling_match_rejects};
 pub use aliases::{
     classify_match, collect_aliases, collect_extended_aliases, collect_sibling_aliases,
     dedupe_strings, distinctive_overlap_ratio, is_generic_title_token, matches_target,
-    normalize_title, sequel_variant_aliases, token_overlap_ratio, token_set, with_alternate_titles,
+    names_more_than_the_series, normalize_title, sequel_variant_aliases, token_overlap_ratio,
+    token_set, with_alternate_titles,
 };
 pub use pack_detection::{
     TRANSITIVE_WALK_MAX_FETCHES, detect_sibling_entries_in_pack,
@@ -1258,6 +1259,17 @@ async fn run_queries(
                             .push(result.title.clone());
                         continue;
                     }
+                    Some(m)
+                        if ctx.require_verbatim
+                            && m.kind == MatchKind::Verbatim
+                            && aliases::names_more_than_the_series(&result.title, ctx.aliases) =>
+                    {
+                        ctx.fuzzy_rejected
+                            .lock()
+                            .unwrap()
+                            .push(result.title.clone());
+                        continue;
+                    }
                     Some(m) => m.into_provenance(ctx.phase),
                     None => continue,
                 }
@@ -1301,6 +1313,17 @@ async fn run_queries(
                 ctx.absolute_offset,
             ) {
                 Some(m) if ctx.require_verbatim && m.kind == MatchKind::Fuzzy => {
+                    ctx.fuzzy_rejected
+                        .lock()
+                        .unwrap()
+                        .push(result.title.clone());
+                    continue;
+                }
+                Some(m)
+                    if ctx.require_verbatim
+                        && m.kind == MatchKind::Verbatim
+                        && aliases::names_more_than_the_series(&result.title, ctx.aliases) =>
+                {
                     ctx.fuzzy_rejected
                         .lock()
                         .unwrap()

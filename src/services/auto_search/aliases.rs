@@ -892,6 +892,30 @@ pub(super) fn best_alias_match(
 
 /// The auto-search title gate, reporting how the release matched.
 /// `None` means the release is not this series (or not this episode).
+/// Whether the release names something beyond the series: anitomy's
+/// title for it, minus every word of the series' own titles and
+/// synonyms and the usual structural and noise tokens, still has a
+/// word left. "Dr. Stone New World - 02" contains "Dr. STONE" verbatim
+/// and is season three; "Mob Psycho 100 II" contains "Mob Psycho 100"
+/// and is season two. A verbatim match that names more is not the
+/// series, and the automatic paths skip it (and report it) rather than
+/// grab it. Release-name decorations never count: bracket groups are
+/// dropped by normalization and anitomy's title excludes the rest.
+pub fn names_more_than_the_series(title: &str, aliases: &[String]) -> bool {
+    let Some(claimed) = crate::services::library_link::extract_anime_title(title) else {
+        return false;
+    };
+    let claimed = crate::services::misgrab::verdict::content_tokens(&normalize_title(&claimed));
+    if claimed.is_empty() {
+        return false;
+    }
+    let mut known: HashSet<String> = HashSet::new();
+    for alias in aliases {
+        known.extend(token_set(&normalize_title(alias)));
+    }
+    claimed.iter().any(|t| !known.contains(t))
+}
+
 pub fn classify_match(
     title: &str,
     aliases: &[String],
@@ -971,6 +995,52 @@ pub fn matches_target(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn names_more_than_the_series_catches_sequel_subtitles_and_roman_seasons() {
+        let dr_stone = vec!["Dr. STONE".to_string()];
+        assert!(names_more_than_the_series(
+            "[New-raws]Dr. Stone New World - 02 [1080p] [CR].mkv",
+            &dr_stone
+        ));
+        assert!(names_more_than_the_series(
+            "[Judas] Dr. Stone: Stone Wars - 02 [1080p]",
+            &dr_stone
+        ));
+        assert!(!names_more_than_the_series(
+            "[SubsPlease] Dr. Stone - 02 (1080p) [ABCD1234].mkv",
+            &dr_stone
+        ));
+        assert!(!names_more_than_the_series(
+            "Dr.Stone.S01E02.1080p.WEB.x264-GROUP",
+            &dr_stone
+        ));
+        let mob = vec!["Mob Psycho 100".to_string()];
+        assert!(names_more_than_the_series(
+            "[Erai-raws] Mob Psycho 100 II - 01 [1080p]",
+            &mob
+        ));
+        let mob_ii = vec!["Mob Psycho 100 II".to_string()];
+        assert!(!names_more_than_the_series(
+            "[Erai-raws] Mob Psycho 100 II - 01 [1080p]",
+            &mob_ii
+        ));
+        // A second alias covers the extra words.
+        let kny = vec![
+            "Kimetsu no Yaiba".to_string(),
+            "Demon Slayer: Kimetsu no Yaiba".to_string(),
+        ];
+        assert!(!names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba (Demon Slayer) - 02 [1080p]",
+            &kny
+        ));
+        // An alternate title the user added counts the same way.
+        let with_alt = vec!["Dr. STONE".to_string(), "Dr. Stone New World".to_string()];
+        assert!(!names_more_than_the_series(
+            "[New-raws]Dr. Stone New World - 02 [1080p] [CR].mkv",
+            &with_alt
+        ));
+    }
 
     // split_title_segments uses a 2-token minimum to reject segments that
     // are too generic to safely become matching aliases. These tests cover
