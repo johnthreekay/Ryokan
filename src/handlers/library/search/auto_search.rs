@@ -332,7 +332,7 @@ async fn run_auto_search_targets_with_upgrades(
             if no_indexer {
                 "No indexer is configured, and Nyaa keeps adult releases on sukebei, which Ryokan does not search, so this search finds nothing."
             } else {
-                "Nyaa keeps adult releases on sukebei, which Ryokan does not search. Only the configured indexers can find this title."
+                "Nyaa keeps adult releases on sukebei, which Ryokan does not search. The configured indexers are asked for the adult category as well as anime."
             },
         )
         .await;

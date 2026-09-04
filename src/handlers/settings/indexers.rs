@@ -82,6 +82,9 @@ impl IndexerSectionPartial {
 #[template(path = "partials/settings/indexers/edit_form_body.html")]
 struct IndexerEditFormPartial {
     row: Indexer,
+    /// What the indexer's cached caps report, `id name` per entry, so
+    /// the user can pick ids for the categories field.
+    reported_categories: Vec<String>,
     download_clients: Vec<DownloadClientRow>,
 }
 
@@ -167,6 +170,9 @@ pub struct IndexerUpsertForm {
     /// `download_clients` this indexer routes to. Empty
     /// string = NULL (use the default client at grab time).
     pub download_client_id: Option<String>,
+    /// Comma-separated torznab category ids; blank means automatic.
+    #[serde(default)]
+    pub categories: Option<String>,
     /// Multi-RSS — opt this indexer into the RSS sync
     /// fan-out. Checkbox; presence-equivalent to true.
     pub rss_enabled: Option<String>,
@@ -277,6 +283,7 @@ pub async fn settings_indexers_upsert(
         request_timeout_secs,
         download_client_id,
         rss_enabled: form.rss_enabled.is_some(),
+        categories: form.categories.as_deref().unwrap_or("").trim(),
     };
 
     let result = match form.id {
@@ -530,6 +537,7 @@ pub async fn settings_indexers_edit_form(
                 .await
                 .unwrap_or_default();
             IndexerEditFormPartial {
+                reported_categories: crate::services::indexers::reported_categories(&row.caps_json),
                 row,
                 download_clients,
             }
@@ -755,6 +763,7 @@ fn build_transient_indexer(
         rss_last_polled_at: None,
         rss_last_poll_error: String::new(),
         rss_last_item_count: 0,
+        categories: String::new(),
         caps_json: String::new(),
         caps_refreshed_at: None,
         created_at: 0,
@@ -898,6 +907,7 @@ mod tests {
                 request_timeout_secs: None,
                 download_client_id: Some(dc_id.to_string()),
                 rss_enabled: None,
+                categories: None,
             }
         }
 
@@ -1155,6 +1165,7 @@ mod tests {
                 request_timeout_secs: None,
                 download_client_id: None,
                 rss_enabled: None,
+                categories: None,
             }
         }
 
@@ -1197,6 +1208,7 @@ mod tests {
                     request_timeout_secs: None,
                     download_client_id: None,
                     rss_enabled: false,
+                    categories: "",
                 },
             )
             .await
@@ -1235,6 +1247,7 @@ mod tests {
                     request_timeout_secs: None,
                     download_client_id: None,
                     rss_enabled: false,
+                    categories: "",
                 },
             )
             .await
