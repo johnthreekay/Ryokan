@@ -933,11 +933,19 @@ input[type="file"]::file-selector-button:hover {
     border-radius: var(--radius-lg);
 }
 
-.rss-table-wrap .rss-table th {
+/* The whole header row sticks, like the Logs table, so the band spans
+   every column even where a cell is empty; the inset shadow stands in
+   for the collapsed bottom border, which does not travel with a sticky
+   cell. */
+.rss-table-wrap .rss-table thead {
     position: sticky;
     top: 0;
+    z-index: 2;
+}
+
+.rss-table-wrap .rss-table th {
     background: var(--bg-elevated);
-    z-index: 1;
+    box-shadow: inset 0 -1px 0 var(--border);
 }
 
 .rss-table th,
