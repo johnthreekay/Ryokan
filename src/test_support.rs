@@ -418,13 +418,20 @@ document.body.addEventListener('ryokan-dc-test-result', function (ev) {
 <meta charset="utf-8">
 <title>Progress-toast fixture</title>
 <script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
+</head>
+<body hx-boost:inherited="true">
+<div id="fixture-page" data-fixture-progress="{{ progress_id }}"></div>
+<a id="fixture-nav" href="/__test/progress-toast-fixture?progress_id={{ progress_id }}-hop">Boosted hop</a>
+<div id="ryokan-toast-stack"></div>
+{# Same shape as base.html: the scripts sit at the end of the body,
+   so a boosted swap re-executes them with the new body. #}
 <script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
 <script src="/static/js/page_lifecycle.js" defer></script>
 <script src="/static/js/base.js" defer></script>
-</head>
-<body>
-<div id="ryokan-toast-stack"></div>
 <script>
+// DOMContentLoaded fires once per document, so a boosted swap that
+// lands this body again does not open a second toast: the toast the
+// first visit opened is what the swap must carry over.
 window.addEventListener('DOMContentLoaded', function () {
     window.__ryokanTestToast = window.ryokanProgressToast({
         progressId: "{{ progress_id }}",
