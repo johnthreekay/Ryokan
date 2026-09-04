@@ -1103,3 +1103,9 @@
     opacity: 1;
     animation: spin-ring 0.7s linear infinite;
 }
+
+/* The sort-direction button sits between a select and a text button;
+   a circle there reads as a stray, so it takes the control radius. */
+.library-sort-dir {
+    border-radius: var(--radius);
+}

@@ -816,8 +816,16 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
 .cf-section > h3 + .form-row,
 .cf-section > h3 + .setting-rows,
 .cf-section > h3 + form,
+.cf-section > h3 + .alert,
 .cf-section > h3 + .rss-table-wrap {
     margin-top: 14px;
+}
+
+/* A hint paragraph standing on its own inside a card (the intro under
+   a title, a status line over a table) keeps the card's rhythm instead
+   of sitting flush against whatever follows it. */
+.cf-section > p.form-hint {
+    margin: 0 0 14px;
 }
 
 @media (max-width: 640px) {
