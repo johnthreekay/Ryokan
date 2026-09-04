@@ -270,8 +270,18 @@ fn is_structural_token(t: &str) -> bool {
     false
 }
 
+/// Only tokens written with Latin letters count as signal. Aliases
+/// come from AniList in romaji, English, and the native script, and a
+/// file named only in a third script (a Chinese raw group's "死神
+/// 千年血战篇 - 01" for a Japanese series) matches none of them even
+/// when it is the right show; judging it would condemn a correct
+/// download, so it is unverifiable instead.
 pub(crate) fn has_title_signal(tokens: &HashSet<String>) -> bool {
-    tokens.len() >= TITLE_SIGNAL_MIN_TOKENS
+    tokens
+        .iter()
+        .filter(|t| t.chars().any(|c| c.is_ascii_alphabetic()))
+        .count()
+        >= TITLE_SIGNAL_MIN_TOKENS
 }
 
 /// An alias plus its multi-word segments split at a colon or dash, so a
@@ -481,6 +491,45 @@ mod tests {
             0,
         );
         assert!(matches!(v, Verdict::Verified { .. }), "{v:?}");
+    }
+
+    #[test]
+    fn file_named_only_in_another_script_is_unverifiable_not_misgrab() {
+        // Found on a real qBittorrent: the re-search after a misgrab
+        // grabbed a correct BLEACH release from a Chinese raw group
+        // whose file name carries only the Chinese title. It shares no
+        // token with the romaji, English, or Japanese aliases, and the
+        // old rule condemned it as a misgrab and deleted it.
+        let bleach = &[
+            "BLEACH: Thousand-Year Blood War - The Conflict",
+            "Bleach: Sennen Kessen-hen - Soukoku-tan",
+            "BLEACH 千年血戦篇-相剋譚-",
+        ];
+        let v = run(
+            bleach,
+            &[],
+            &["[NC-Raws] 死神 千年血战篇 - 01 (B-Global 3840x2160 HEVC AAC MKV) [9C7F9E70].mkv"],
+            0,
+        );
+        assert!(matches!(v, Verdict::Unverifiable { .. }), "{v:?}");
+        // The same file with the romaji title alongside verifies.
+        let v = run(
+            bleach,
+            &[],
+            &[
+                "[NC-Raws] 死神 千年血战篇 / Bleach - Sennen Kessen-hen - 01 (B-Global 3840x2160 HEVC AAC MKV).mkv",
+            ],
+            0,
+        );
+        assert!(matches!(v, Verdict::Verified { .. }), "{v:?}");
+        // A Latin-named wrong series is still a misgrab.
+        let v = run(
+            bleach,
+            &[],
+            &["Grisaia.Phantom.Trigger.S01E01.1080p.WEB-DL-VARYG.mkv"],
+            0,
+        );
+        assert!(matches!(v, Verdict::Misgrab { .. }), "{v:?}");
     }
 
     #[test]
