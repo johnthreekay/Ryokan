@@ -952,9 +952,15 @@ input[type="file"]::file-selector-button:hover {
     gap: 20px;
 }
 
+/* `separate` with zero spacing, not `collapse`: Firefox offsets a
+   sticky header inside a collapsed-border table by the collapsed
+   border, which leaves a strip above the band where scrolled rows
+   show through. Cell borders are per-cell bottom lines, so the look
+   is identical. */
 .rss-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 13px;
 }
 
