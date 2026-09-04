@@ -264,14 +264,16 @@ fieldset legend {
     margin-top: 0;
 }
 
+/* Lives inside an `.rss-table-wrap` like every other table: a
+   `<table>` cannot clip its own corners, so the rounded border belongs
+   to the wrapper and the table only sets its type and row rhythm. */
+.group-table-wrap {
+    margin-bottom: 16px;
+}
+
 .group-source-table {
     width: 100%;
     border-collapse: collapse;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    margin-bottom: 16px;
     font-size: 13px;
 }
 
@@ -291,6 +293,7 @@ fieldset legend {
 }
 
 .group-source-table td {
+    background: transparent;
     padding: 8px 12px;
     border-bottom: 1px solid rgba(var(--border-rgb), 0.4);
     vertical-align: middle;
