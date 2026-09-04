@@ -32,33 +32,9 @@
     border-bottom: 1px solid var(--border);
 }
 
-.calendar-range-tabs {
-    display: inline-flex;
-    gap: 2px;
-    background: var(--bg-elevated);
-    padding: 3px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border);
-}
 
-.calendar-range-tab {
-    padding: 6px 12px;
-    color: var(--text-dim);
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 500;
-    border-radius: var(--radius);
-    transition: color 0.15s, background 0.15s;
-}
 
-.calendar-range-tab:hover {
-    color: var(--text);
-}
 
-.calendar-range-tab.active {
-    color: var(--accent);
-    background: var(--bg-card);
-}
 
 /* Filters row — search input + per-mode toggle pills sit to the
    right of the range tabs. On mobile they stack via the existing

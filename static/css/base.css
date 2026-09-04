@@ -732,30 +732,51 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
     to { transform: rotate(360deg); }
 }
 
-.system-tabs {
-    display: flex;
+/* Horizontal tabs are one segmented control (Downloads, Calendar);
+   the many-tab pages keep the sidebar. 32px items, same size as a
+   toolbar field or a small button. */
+.system-tabs,
+.calendar-range-tabs {
+    display: inline-flex;
     gap: 2px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--border);
+    padding: 3px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
 }
 
-.system-tab {
+.system-tabs {
+    margin-bottom: 20px;
+}
+
+.system-tab,
+.calendar-range-tab {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 10px 20px;
+    padding: 3px 12px;
+    border-radius: var(--radius);
     color: var(--text-dim);
     text-decoration: none;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
-    border-bottom: 2px solid transparent;
-    transition: color 0.15s, border-color 0.15s;
-    margin-bottom: -1px;
+    line-height: 18px;
+    white-space: nowrap;
+    transition: color 0.15s, background 0.15s;
 }
 
-.system-tab:hover { color: var(--text); }
+.system-tab:hover,
+.calendar-range-tab:hover {
+    color: var(--text);
+}
 
-.system-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.system-tab.active,
+.calendar-range-tab.active {
+    color: var(--accent);
+    background: var(--bg-card);
+}
+
+
 
 @media (max-width: 640px) {
     .system-tabs {

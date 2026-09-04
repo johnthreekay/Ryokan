@@ -386,6 +386,7 @@ a.btn-ghost:hover { color: var(--text); }
 
 .checkbox-label input[type="checkbox"],
 .checkbox-row input[type="checkbox"],
+.calendar-toggle-filter input[type="checkbox"],
 .cf-export-check input[type="checkbox"],
 .import-files input[type="checkbox"] {
     width: 16px;
@@ -410,6 +411,7 @@ a.btn-ghost:hover { color: var(--text); }
 
 .checkbox-label input[type="checkbox"]:checked,
 .checkbox-row input[type="checkbox"]:checked,
+.calendar-toggle-filter input[type="checkbox"]:checked,
 .cf-export-check input[type="checkbox"]:checked,
 .import-files input[type="checkbox"]:checked {
     background: var(--accent);
@@ -418,6 +420,7 @@ a.btn-ghost:hover { color: var(--text); }
 
 .checkbox-label input[type="checkbox"]:checked::after,
 .checkbox-row input[type="checkbox"]:checked::after,
+.calendar-toggle-filter input[type="checkbox"]:checked::after,
 .cf-export-check input[type="checkbox"]:checked::after,
 .import-files input[type="checkbox"]:checked::after {
     content: '';
@@ -584,3 +587,53 @@ select::-ms-expand {
     display: none;
 }
 
+/* ── Add tiles ────────────────────────────────────────────────────
+   The dashed "add one" card in every card grid (download clients,
+   custom formats, notification providers, API keys): card fill and
+   corners, dim until hovered, a 28px plus over a 13px label. */
+.dc-card-add,
+.cf-card-add,
+.notif-card-add,
+.api-key-card-add {
+    appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 140px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-lg);
+    color: var(--text-dim);
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.dc-card-add:hover,
+.cf-card-add:hover,
+.notif-card-add:hover,
+.api-key-card-add:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.dc-card-add-icon,
+.cf-card-add-icon,
+.notif-card-add-icon,
+.api-key-card-add-icon {
+    font-size: 28px;
+    font-weight: 300;
+    line-height: 1;
+}
+
+.dc-card-add-label,
+.cf-card-add-label,
+.notif-card-add-label,
+.api-key-card-add-label {
+    font-size: 13px;
+    font-weight: 500;
+}

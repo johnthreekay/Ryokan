@@ -555,9 +555,9 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    background: var(--bg-elevated);
+    background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     transition: border-color 0.15s, background 0.15s;
     min-height: 140px;
 }
@@ -696,20 +696,6 @@
 }
 
 .notif-card-add {
-    appearance: none;
-    background: var(--bg-elevated);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius);
-    color: var(--text-dim);
-    cursor: pointer;
-    text-align: center;
-    padding: 14px 16px;
-    min-height: 140px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.15s, border-color 0.15s, background 0.15s;
     font: inherit;
 }
 .notif-card-add:hover {
