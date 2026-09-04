@@ -3,18 +3,20 @@
             <div class="form-group">
                 <label for="media_root">Media Root Path</label>
                 <input type="text" name="media_root" id="media_root" value="{{ config.media_root }}" placeholder="/srv/media/anime">
-                <span class="form-hint">Folder that holds the series folders. Inside Docker this must be a mounted volume.</span>
+                <span class="form-hint">Inside Docker this must be a mounted volume.</span>
             </div>
         </fieldset>
 
         <fieldset>
             <legend>Post-Processing</legend>
-            <div class="form-group">
-                <label class="checkbox-row">
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Enable post-processing</span>
+                        <span class="setting-row-desc">Rename and move finished downloads into the media library and write NFO files for Jellyfin.</span>
+                    </span>
                     <input type="checkbox" name="post_processing_enabled" id="post_processing_enabled" {% if config.post_processing_enabled %}checked{% endif %}>
-                    <span>Enable post-processing</span>
                 </label>
-                <span class="form-hint">Rename and move finished downloads into the media library and write NFO files for Jellyfin.</span>
             </div>
             <div class="form-group">
                 <label for="post_processing_mode">File operation mode</label>
@@ -69,65 +71,67 @@
                     <option value="batches_only" {% if config.grab_preview_mode != "never" %}selected{% endif %}>Batches only (default)</option>
                     <option value="never" {% if config.grab_preview_mode == "never" %}selected{% endif %}>Never</option>
                 </select>
-                <span class="form-hint">Batches only opens a file picker for multi-file releases so you can drop samples and extras before the grab. Never grabs everything in one click.</span>
+                <span class="form-hint">Batches only opens a picker for multi-file releases so you can drop samples and extras first.</span>
             </div>
-            <div class="form-group">
-                <label class="checkbox-row">
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Search for monitored episodes when a series is added</span>
+                    </span>
                     <input type="checkbox" name="auto_grab_on_add" id="auto_grab_on_add" {% if config.auto_grab_on_add %}checked{% endif %}>
-                    <span>Search for monitored episodes when a series is added</span>
                 </label>
-                <span class="form-hint">Off adds the series without starting a download.</span>
-            </div>
-            <div class="form-group">
-                <label class="checkbox-row">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Search when monitoring is widened</span>
+                    </span>
                     <input type="checkbox" name="search_on_monitoring_change" id="search_on_monitoring_change" {% if config.search_on_monitoring_change %}checked{% endif %}>
-                    <span>Search when monitoring is widened</span>
                 </label>
-                <span class="form-hint">Runs a search when a series switches to monitoring more episodes.</span>
-            </div>
-            <div class="form-group">
-                <label class="checkbox-row">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Add the series to the library when grabbing from Search</span>
+                        <span class="setting-row-desc">Off sends the release to the download client without tracking the series.</span>
+                    </span>
                     <input type="checkbox" name="manual_search_auto_add" id="manual_search_auto_add" {% if config.manual_search_auto_add %}checked{% endif %}>
-                    <span>Add the series to the library when grabbing from Search</span>
                 </label>
-                <span class="form-hint">Off sends the release to the download client without tracking the series.</span>
-            </div>
-            <div class="form-group">
-                <label class="checkbox-row">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Allow non-English releases in automatic grabs</span>
+                        <span class="setting-row-desc">Auto-search and RSS use Nyaa's English-translated category by default. Interactive search always shows every category.</span>
+                    </span>
                     <input type="checkbox" name="allow_non_english" id="allow_non_english" {% if config.allow_non_english %}checked{% endif %}>
-                    <span>Allow non-English releases in automatic grabs</span>
                 </label>
-                <span class="form-hint">Auto-search and RSS use Nyaa's English-translated category by default. Interactive search always shows every category.</span>
-            </div>
-            <div class="form-group">
-                <label class="checkbox-row">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Remove and blocklist detected misgrabs</span>
+                        <span class="setting-row-desc">A download whose files name a different series is removed from the client, blocklisted, and searched again. Off keeps it in the client and lists it under System, Misgrabs.</span>
+                    </span>
                     <input type="checkbox" name="misgrab_auto_remove" id="misgrab_auto_remove" {% if config.misgrab_auto_remove %}checked{% endif %}>
-                    <span>Remove and blocklist detected misgrabs</span>
                 </label>
-                <span class="form-hint">A download whose files name a different series is removed from the client, blocklisted, and searched again. Off keeps it in the client and lists it under System, Misgrabs.</span>
             </div>
         </fieldset>
 
         <fieldset>
             <legend>RSS</legend>
-            <div class="form-group">
-                <label class="checkbox-row">
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Enable automatic RSS sync</span>
+                        <span class="setting-row-desc">Poll the Nyaa anime feed and grab matching releases automatically.</span>
+                    </span>
                     <input type="checkbox" name="rss_enabled" id="rss_enabled" {% if config.rss_enabled %}checked{% endif %}>
-                    <span>Enable automatic RSS sync</span>
                 </label>
-                <span class="form-hint">Poll the Nyaa anime feed and grab matching releases automatically.</span>
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Skip the Nyaa RSS feed</span>
+                        <span class="setting-row-desc">Only poll the indexer and direct RSS feeds you configured.</span>
+                    </span>
+                    <input type="checkbox" name="disable_nyaa_rss" id="disable_nyaa_rss" {% if config.disable_nyaa_rss %}checked{% endif %}>
+                </label>
             </div>
             <div class="form-group">
                 <label for="rss_interval_minutes">RSS Sync Interval (minutes)</label>
                 <input type="number" min="1" max="60" name="rss_interval_minutes" id="rss_interval_minutes" value="{{ config.rss_interval_minutes }}">
-                <span class="form-hint">How often every feed is polled. Run a sync by hand from System, RSS.</span>
-            </div>
-            <div class="form-group">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="disable_nyaa_rss" id="disable_nyaa_rss" {% if config.disable_nyaa_rss %}checked{% endif %}>
-                    <span>Skip the Nyaa RSS feed</span>
-                </label>
-                <span class="form-hint">Only poll the indexer and direct RSS feeds you configured.</span>
+                <span class="form-hint">Run a sync by hand from System, RSS.</span>
             </div>
         </fieldset>
 
@@ -140,7 +144,6 @@
                     <option value="romaji" {% if config.title_language == "romaji" %}selected{% endif %}>Romaji</option>
                     <option value="native" {% if config.title_language == "native" %}selected{% endif %}>Native</option>
                 </select>
-                <span class="form-hint">Used on library cards, series pages, and search results.</span>
             </div>
         </fieldset>
 
@@ -153,7 +156,7 @@
                     <option value="daily" {% if config.backup_schedule == "daily" %}selected{% endif %}>Daily</option>
                     <option value="weekly" {% if config.backup_schedule == "weekly" %}selected{% endif %}>Weekly</option>
                 </select>
-                <span class="form-hint">A backup holds the database and the encryption key. Download or restore one from <a href="/system?tab=backup">System → Backup</a>.</span>
+                <span class="form-hint">A backup holds the database and the encryption key. Download or restore one from <a href="/system?tab=backup">System, Backup</a>.</span>
             </div>
             <div class="form-group">
                 <label for="backup_directory">Backup folder</label>
@@ -165,12 +168,14 @@
                 <input type="number" min="1" max="365" name="backup_retention_count" id="backup_retention_count" value="{{ config.backup_retention_count }}">
                 <span class="form-hint">Older scheduled backups are deleted. Backups taken before a restore are kept.</span>
             </div>
-            <div class="form-group">
-                <label class="checkbox-row">
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Include cached artwork in scheduled backups</span>
+                        <span class="setting-row-desc">Makes the file much larger. Artwork is downloaded again when missing, so this only saves time after a restore.</span>
+                    </span>
                     <input type="checkbox" name="backup_include_artwork" id="backup_include_artwork" {% if config.backup_include_artwork %}checked{% endif %}>
-                    <span>Include cached artwork in scheduled backups</span>
                 </label>
-                <span class="form-hint">Makes the file much larger. Artwork is downloaded again when missing, so this only saves time after a restore.</span>
             </div>
         </fieldset>
 
@@ -179,12 +184,12 @@
             <div class="form-group">
                 <label for="recycle_bin_path">Recycle bin path</label>
                 <input type="text" name="recycle_bin_path" id="recycle_bin_path" value="{{ config.recycle_bin_path }}" placeholder="/media/anime/.recycle">
-                <span class="form-hint">Deleted files move here and can be restored from the <a href="/library/recycle">Recycle Bin</a> page. Keep it on the same filesystem as the media library. Empty disables the bin.</span>
+                <span class="form-hint">Keep it on the same filesystem as the media library. Empty disables the <a href="/library/recycle">Recycle Bin</a>.</span>
             </div>
             <div class="form-group">
                 <label for="recycle_bin_age_days">Purge after (days)</label>
                 <input type="number" min="0" max="3650" name="recycle_bin_age_days" id="recycle_bin_age_days" value="{{ config.recycle_bin_age_days }}">
-                <span class="form-hint">Recycled files older than this are deleted for good. 0 keeps them until you empty the bin.</span>
+                <span class="form-hint">0 keeps files until you empty the bin.</span>
             </div>
         </fieldset>
 

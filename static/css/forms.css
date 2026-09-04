@@ -79,8 +79,15 @@
 }
 
 .form-hint {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-dim);
+    line-height: 1.45;
+}
+
+/* A hint under a field is one sentence and reads as a caption, not a
+   paragraph: cap the measure so it never runs the card's full width. */
+.form-group > .form-hint {
+    max-width: 72ch;
 }
 
 .form-row {
@@ -96,13 +103,15 @@
     margin-bottom: 16px;
 }
 
-.settings-form .form-group { margin-bottom: 16px; }
+.settings-form .form-group,
+.settings-form .setting-rows { margin-bottom: 16px; }
 
 /* The card's own padding already closes a fieldset; without this the
    last field adds its 16px on top and every card sits deeper at the
    bottom than at the top. */
 .settings-form fieldset > .form-group:last-child,
-.settings-form fieldset > .form-row:last-child {
+.settings-form fieldset > .form-row:last-child,
+.settings-form fieldset > .setting-rows:last-child {
     margin-bottom: 0;
 }
 
@@ -396,8 +405,58 @@ a.btn-ghost:hover { color: var(--text); }
     cursor: pointer;
 }
 
+/* ─── Setting rows ────────────────────────────────────────────────
+ *
+ * A boolean setting is a row: its name with a one-line description
+ * underneath on the left, the checkbox on the right, a hairline
+ * between rows. The description belongs to the row instead of
+ * trailing the control as a footnote, so a card of five switches
+ * reads as five items rather than ten alternating lines. The whole
+ * row is the label, so clicking anywhere on it toggles the box. */
+.setting-rows {
+    display: flex;
+    flex-direction: column;
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 12px 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: 0;
+    cursor: pointer;
+}
+
+.setting-row + .setting-row {
+    border-top: 1px solid var(--border);
+}
+
+.setting-rows > .setting-row:first-child { padding-top: 0; }
+.setting-rows > .setting-row:last-child { padding-bottom: 0; }
+
+.setting-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.setting-row-desc {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-dim);
+    line-height: 1.45;
+    max-width: 72ch;
+}
+
 .checkbox-label input[type="checkbox"],
 .checkbox-row input[type="checkbox"],
+.setting-row input[type="checkbox"],
 .calendar-toggle-filter input[type="checkbox"],
 .cf-export-check input[type="checkbox"],
 .import-files input[type="checkbox"] {
@@ -423,6 +482,7 @@ a.btn-ghost:hover { color: var(--text); }
 
 .checkbox-label input[type="checkbox"]:checked,
 .checkbox-row input[type="checkbox"]:checked,
+.setting-row input[type="checkbox"]:checked,
 .calendar-toggle-filter input[type="checkbox"]:checked,
 .cf-export-check input[type="checkbox"]:checked,
 .import-files input[type="checkbox"]:checked {
@@ -432,6 +492,7 @@ a.btn-ghost:hover { color: var(--text); }
 
 .checkbox-label input[type="checkbox"]:checked::after,
 .checkbox-row input[type="checkbox"]:checked::after,
+.setting-row input[type="checkbox"]:checked::after,
 .calendar-toggle-filter input[type="checkbox"]:checked::after,
 .cf-export-check input[type="checkbox"]:checked::after,
 .import-files input[type="checkbox"]:checked::after {
