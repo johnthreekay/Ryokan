@@ -86,6 +86,13 @@ pub async fn settings_direct_rss_feeds_upsert(
         let msg = urlencoding::encode("Direct RSS feed: name and URL are required.").into_owned();
         return htmx_aware_redirect(is_htmx, &format!("/settings?tab=indexers&err={msg}"));
     }
+    // Only http(s) reaches the table; `feed::fetch_user_feed` applies
+    // the same rule on every poll, so a row that predates this check
+    // fails closed too.
+    if let Err(e) = feed::validate_feed_url(&url) {
+        let msg = urlencoding::encode(&format!("Direct RSS feed: {e}")).into_owned();
+        return htmx_aware_redirect(is_htmx, &format!("/settings?tab=indexers&err={msg}"));
+    }
 
     let download_client_id = parse_optional_i64(&form.download_client_id);
 
@@ -401,6 +408,54 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(location.contains("err="));
+    }
+
+    #[tokio::test]
+    async fn upsert_rejects_a_file_url_and_saves_nothing() {
+        let db = in_memory_pool().await;
+        let state = build_test_app_state(db.clone(), None);
+        let resp = settings_direct_rss_feeds_upsert(
+            State(state),
+            HxRequest(false),
+            Form(DirectRssFeedUpsertForm {
+                id: None,
+                name: "evil".into(),
+                url: "file:///etc/passwd".into(),
+                enabled: Some("on".into()),
+                download_client_id: None,
+                request_timeout_secs: None,
+            }),
+        )
+        .await
+        .into_response();
+        let location = resp
+            .headers()
+            .get("location")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(location.contains("err="), "{location}");
+        assert!(location.contains("http"), "{location}");
+        let rows = crate::models::direct_rss_feeds::list_all(&db)
+            .await
+            .unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_endpoint_rejects_a_file_url_without_fetching() {
+        let state = build_test_app_state(in_memory_pool().await, None);
+        let resp = settings_direct_rss_feeds_test(
+            State(state),
+            Json(DirectRssFeedTestForm {
+                id: None,
+                url: Some("file:///etc/passwd".into()),
+            }),
+        )
+        .await;
+        assert!(!resp.0.ok);
+        assert!(resp.0.error.unwrap().contains("http://"));
     }
 
     #[tokio::test]

@@ -215,6 +215,7 @@ pub(crate) async fn read_capped_body(resp: reqwest::Response) -> Result<String, 
 /// gigabytes. Streaming-with-cap rather than a Content-Length
 /// check because some servers omit the header.
 pub async fn fetch_user_feed(url: &str, source: RssSource) -> Result<Vec<RssItem>, String> {
+    let url = validate_feed_url(url)?;
     let resp = RSS_HTTP_CLIENT
         .get(url)
         .send()
@@ -231,6 +232,30 @@ pub async fn fetch_user_feed(url: &str, source: RssSource) -> Result<Vec<RssItem
         return Err(format!("RSS feed returned {status}: {preview}"));
     }
     Ok(parse_feed(&xml, source))
+}
+
+/// A direct feed URL must be plain HTTP(S) with a host. reqwest's
+/// client refuses every other scheme at send time anyway, so a
+/// `file://` feed never reads the disk, but that refusal happens
+/// after the row is saved and surfaces as a generic "request failed".
+/// Checking up front keeps `file://`, `ftp://`, and friends out of
+/// the table, and running the same check inside `fetch_user_feed`
+/// makes every poll path (sync tick, Test button, a row written
+/// straight into the DB) fail closed on one rule.
+pub fn validate_feed_url(url: &str) -> Result<reqwest::Url, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("Invalid feed URL: {e}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => {
+            return Err(format!(
+                "Feed URL must start with http:// or https://, not {other}://"
+            ));
+        }
+    }
+    if parsed.host_str().is_none_or(str::is_empty) {
+        return Err("Feed URL has no host".to_string());
+    }
+    Ok(parsed)
 }
 
 /// Fetch RSS items from all relevant Nyaa categories.
@@ -1002,5 +1027,47 @@ mod parser_tests {
         let items = parse_feed(&xml, RssSource::Nyaa);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "With attrs");
+    }
+
+    #[test]
+    fn validate_feed_url_allows_only_http_and_https_with_a_host() {
+        for ok in [
+            "http://subsplease.org/rss/?r=1080",
+            "https://x.example/feed.xml",
+        ] {
+            assert!(validate_feed_url(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "file:///etc/passwd",
+            "file://hello",
+            "file:///home/user/.ssh/id_ed25519",
+            "ftp://x.example/feed.xml",
+            "javascript:alert(1)",
+            "data:text/xml,<rss/>",
+            "http://",
+            "not a url",
+            "",
+        ] {
+            let err = validate_feed_url(bad).unwrap_err();
+            assert!(!err.is_empty(), "{bad}");
+        }
+        assert!(
+            validate_feed_url("file:///etc/passwd")
+                .unwrap_err()
+                .contains("http://"),
+            "the error names the allowed schemes"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_user_feed_refuses_a_file_url_before_any_request() {
+        let source = RssSource::UserFeed {
+            id: 1,
+            name: "evil".to_string(),
+        };
+        let err = fetch_user_feed("file:///etc/passwd", source)
+            .await
+            .unwrap_err();
+        assert!(err.contains("http://"), "{err}");
     }
 }
