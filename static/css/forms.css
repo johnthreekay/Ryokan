@@ -99,13 +99,20 @@
    don't double-up. */
 .form-row > .form-group { margin-bottom: 0; }
 
+/* One height for every variant and element. The transparent border
+   keeps `.btn-primary` (no visible border) level with the bordered
+   variants, and the explicit line-height keeps an `<a class="btn">`
+   level with a `<button>`; without them a primary sat 2px shorter
+   than its secondary neighbor and a link 3px taller. Regular = 41px,
+   `.btn-sm` = 32px. */
 .btn {
     display: inline-block;
     padding: 10px 20px;
-    border: none;
+    border: 1px solid transparent;
     border-radius: var(--radius);
     font-size: 14px;
     font-weight: 600;
+    line-height: 19px;
     cursor: pointer;
     transition: background 0.15s, opacity 0.15s;
     font-family: var(--font-body);
@@ -459,8 +466,9 @@ a.btn-ghost:hover { color: var(--text); }
 }
 
 .btn-sm {
-    padding: 5px 10px;
+    padding: 6px 10px;
     font-size: 13px;
+    line-height: 18px;
 }
 
 @media (max-width: 640px) {

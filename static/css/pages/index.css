@@ -137,8 +137,8 @@
    The arrow SVG points down (descending); ascending rotates it. */
 .library-sort-dir {
     box-sizing: border-box;
-    height: 34px;
-    width: 34px;
+    height: 32px;
+    width: 32px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -258,19 +258,13 @@
    Scoped so other pages' .folder-select sizing stays untouched. */
 .library-scope-tools .folder-select {
     box-sizing: border-box;
-    height: 34px;
+    height: 32px;
     padding: 0 28px 0 12px;
     font-size: 13px;
     width: auto;
 }
 
-/* Select toggle matches the row's compact height. */
-.library-scope-tools .bulk-select-toggle {
-    box-sizing: border-box;
-    height: 34px;
-    padding: 0 14px;
-    font-size: 13px;
-}
+/* The select toggle is a `.btn-sm`, so it shares the row's 32px. */
 
 @media (max-width: 640px) {
     .library-grid {

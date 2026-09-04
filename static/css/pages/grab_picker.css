@@ -76,8 +76,9 @@
 }
 
 .grab-picker-toolbar .btn {
-    font-size: 12px;
-    padding: 4px 10px;
+    /* Same size as `.btn-sm`. */
+    font-size: 13px;
+    padding: 6px 10px;
 }
 
 .grab-picker-toolbar-spacer {
