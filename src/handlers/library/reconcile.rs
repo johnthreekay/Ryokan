@@ -249,7 +249,25 @@ async fn maybe_reconcile_mal_entry(
     Some((refreshed, detail))
 }
 
+/// The series row (when tracked), the provider id, and the detail every
+/// search path works from. The series' alternate titles are folded into
+/// the detail's synonyms here, once, on every path the resolver takes
+/// (cache hit, live AniList fetch, MAL, Kitsu), so a title the user
+/// added a minute ago counts before the first metadata sync.
 pub(super) async fn resolve_series_context(
+    db: &SqlitePool,
+    request_id: i64,
+) -> Result<(Option<series::Series>, i64, anilist::AnimeDetail), String> {
+    let (row, provider_id, detail) = resolve_series_context_raw(db, request_id).await?;
+    let alt = row
+        .as_ref()
+        .map(|s| s.alternate_titles.as_str())
+        .unwrap_or("");
+    let detail = crate::services::auto_search::with_alternate_titles(detail, alt);
+    Ok((row, provider_id, detail))
+}
+
+async fn resolve_series_context_raw(
     db: &SqlitePool,
     request_id: i64,
 ) -> Result<(Option<series::Series>, i64, anilist::AnimeDetail), String> {

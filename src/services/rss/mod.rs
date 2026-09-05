@@ -316,12 +316,14 @@ struct PendingCandidate {
 
 impl SeriesMeta {
     fn from_series(series: &series::Series) -> Self {
-        let aliases = auto_search::dedupe_strings(vec![
+        let mut alias_input = vec![
             series.title.clone(),
             series.title_romaji.clone(),
             series.title_english.clone(),
             series.title_native.clone(),
-        ]);
+        ];
+        alias_input.extend(series.alternate_title_list());
+        let aliases = auto_search::dedupe_strings(alias_input);
 
         let season_num = aliases
             .iter()
@@ -769,6 +771,45 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             .await;
             continue;
         };
+
+        // Automatic paths take a release only when its title names the
+        // series (a title or alias contained verbatim, or the same words);
+        // a token-overlap match is left for interactive search.
+        //
+        // The check reads the winner `best_series_match` picked by its
+        // season- and episode-adjusted score, on purpose. When that
+        // winner is inexact and an exact match sits lower, the exact one
+        // is the series the release fits worse (a season-less entry for
+        // a `S2` release, a wrong episode range); grabbing it there would
+        // be the wrong-season misgrab the adjustments exist to prevent.
+        // Dropping the item is the safe answer, and the sequel-variant
+        // aliases (`SeriesMeta::from_series`) keep the right season exact
+        // in the common case.
+        if found.alias_score < 1.0 {
+            skipped += 1;
+            let reason = format!(
+                "Title does not name the series exactly | {}",
+                build_match_diag(&item, Some(&found), 0)
+            );
+            let _ = rss::record_decision(
+                &state.db,
+                rss::DecisionRecord {
+                    item_key: &item_key,
+                    title: &item.title,
+                    link: &item.link,
+                    series_id: Some(found.series.id),
+                    series_title: &found.series.title,
+                    group_name: &item.group,
+                    is_batch: item.is_batch,
+                    decision: "rejected",
+                    reason: &reason,
+                    source: src_str,
+                    source_id: src_id,
+                },
+            )
+            .await;
+            continue;
+        }
 
         matched += 1;
 

@@ -158,9 +158,14 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
         }
 
         // We need an AnimeDetail for find_best_for_target. Use the metadata cache
-        // to avoid hitting external APIs during background tasks.
+        // to avoid hitting external APIs during background tasks. The
+        // series' alternate titles ride along: the exact title gate is
+        // verbatim-only, so a show that only auto-searches through an
+        // alternate title would otherwise never upgrade.
         let detail = match metadata_cache::get_by_series_id(&state.db, row.id).await {
-            Ok(Some(cached)) => cached.detail,
+            Ok(Some(cached)) => {
+                auto_search::with_alternate_titles(cached.detail, &row.alternate_titles)
+            }
             _ => {
                 logger::debug(
                     &state.db,

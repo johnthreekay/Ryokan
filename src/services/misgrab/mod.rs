@@ -86,16 +86,24 @@ pub async fn aliases_for_grab(
     grab: &GrabbedTorrent,
     filenames: &[String],
 ) -> Option<AliasSet> {
+    let row = series::get_by_id(db, grab.series_id).await.ok().flatten();
+    let alt = row
+        .as_ref()
+        .map(|r| r.alternate_titles.clone())
+        .unwrap_or_default();
     if let Ok(Some(cached)) = metadata_cache::get_by_series_id(db, grab.series_id).await {
-        return Some(aliases_from_detail(&cached.detail, filenames));
+        let detail = auto_search::with_alternate_titles(cached.detail, &alt);
+        return Some(aliases_from_detail(&detail, filenames));
     }
-    let row = series::get_by_id(db, grab.series_id).await.ok().flatten()?;
-    let own = auto_search::dedupe_strings(vec![
+    let row = row?;
+    let mut own = vec![
         row.title.clone(),
         row.title_romaji.clone(),
         row.title_english.clone(),
         row.title_native.clone(),
-    ]);
+    ];
+    own.extend(row.alternate_title_list());
+    let own = auto_search::dedupe_strings(own);
     Some(AliasSet {
         own,
         siblings: Vec::new(),

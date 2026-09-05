@@ -201,7 +201,7 @@ pub async fn search_batch_releases(
     // post-filtered, which returned None whenever the top-scored result
     // was a single-episode weekly release (i.e. almost every popular show
     // with active weekly seeders).
-    let best = auto_search::find_best_batch_for_target(
+    let (best, looked_close) = auto_search::find_best_batch_for_target_with_diag(
         &state.db,
         &detail,
         &cfg,
@@ -237,14 +237,28 @@ pub async fn search_batch_releases(
 
     match best {
         None => {
+            // Same hint as the episode path: a batch the exact title
+            // gate turned away is worth telling the user about, since
+            // an alternate title on the series page admits it.
+            let message = if looked_close.is_empty() {
+                "No batch release found".to_string()
+            } else {
+                let sample = looked_close
+                    .iter()
+                    .take(2)
+                    .map(|t| format!("\"{t}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "{} batch release(s) looked close but none named the series exactly, for example {}. Add an alternate title on the series page if one of them is right.",
+                    looked_close.len(),
+                    sample
+                )
+            };
             if let Some(h) = &progress_handle {
-                h.emit("done", "warn", "No batch release found", None, true)
-                    .await;
+                h.emit("done", "warn", &message, None, true).await;
             }
-            Err((
-                axum::http::StatusCode::NOT_FOUND,
-                "No batch release found".to_string(),
-            ))
+            Err((axum::http::StatusCode::NOT_FOUND, message))
         }
         Some(result) => {
             // Per-release client routing: resolve through the indexer
@@ -600,6 +614,7 @@ pub async fn interactive_search_batches(
         &auto_search::SearchTarget::Single,
         &cfs,
         &state.indexers,
+        false,
     )
     .await;
 

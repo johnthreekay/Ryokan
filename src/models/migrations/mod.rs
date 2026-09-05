@@ -2017,6 +2017,14 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(db)
         .await
         .ok();
+    // Per-series alternate titles, one per line: the names release
+    // groups use that AniList does not list. Automatic search and RSS
+    // only grab a release that names the series exactly, and this is
+    // where the user closes that gap for one show.
+    sqlx::query("ALTER TABLE series ADD COLUMN alternate_titles TEXT NOT NULL DEFAULT ''")
+        .execute(db)
+        .await
+        .ok();
 
     // Rename `*_to_group` → `*_to_uploader` with full recovery for the
     // DBs that landed in a half-migrated state from PR #37's first-

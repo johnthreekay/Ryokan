@@ -291,6 +291,11 @@
                         placeholder="{% if !default_restrict_to_uploader.is_empty() %}global: {{ default_restrict_to_uploader }}{% else %}(none){% endif %}">
                     <span class="form-hint">Only show releases from this Nyaa account for this series. Blank uses the global default.</span>
                 </div>
+                <div class="form-group" style="margin:0">
+                    <label for="series-alternate-titles">Alternate titles</label>
+                    <textarea name="alternate_titles" id="series-alternate-titles" rows="2" placeholder="One per line">{{ alternate_titles }}</textarea>
+                    <span class="form-hint">Other names release groups use for this series, one per line. Automatic search and RSS only take a release that names the series exactly, so this is where a group's own name for it goes.</span>
+                </div>
                 <div style="display:flex;gap:8px;align-items:center">
                     <button type="submit" class="btn btn-primary">Save</button>
                     <span class="form-hint" id="series-search-overrides-status"></span>

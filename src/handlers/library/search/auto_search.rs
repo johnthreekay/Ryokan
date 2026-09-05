@@ -417,7 +417,7 @@ async fn run_auto_search_targets_with_upgrades(
             false,
         )
         .await;
-        match auto_search::find_best_for_target(
+        let (best_pick, fuzzy_only) = auto_search::find_best_for_target_with_diag(
             &state.db,
             &detail,
             &cfg,
@@ -427,8 +427,8 @@ async fn run_auto_search_targets_with_upgrades(
             &cfs,
             &state.indexers,
         )
-        .await
-        {
+        .await;
+        match best_pick {
             Some(result) => {
                 // Classify up front so both upgrade-verification and log labels
                 // read the same result.
@@ -857,7 +857,33 @@ async fn run_auto_search_targets_with_upgrades(
                     "",
                 )
                 .await;
-                skipped.push(format!("{}: no matching release found", label));
+                if fuzzy_only.is_empty() {
+                    skipped.push(format!("{}: no matching release found", label));
+                } else {
+                    let sample = fuzzy_only
+                        .iter()
+                        .take(2)
+                        .map(|t| format!("\"{t}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    skipped.push(format!(
+                        "{}: {} release(s) looked close but none named the series exactly, for example {}. Add an alternate title on the series page if one of them is right.",
+                        label,
+                        fuzzy_only.len(),
+                        sample
+                    ));
+                    logger::info(
+                        &state.db,
+                        LogCategory::AutoSearch,
+                        &format!(
+                            "Skipped {} release(s) that did not name the series exactly for {}",
+                            fuzzy_only.len(),
+                            label
+                        ),
+                        &fuzzy_only.join(" | "),
+                    )
+                    .await;
+                }
             }
         }
     }

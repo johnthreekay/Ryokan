@@ -89,6 +89,10 @@ Ryokan's migrations are idempotent by design (each `ALTER TABLE … ADD COLUMN` 
 2. Back up the DB: `cp /srv/docker/ryokan/ryokan.db /srv/docker/ryokan/ryokan.db.backup` (path is wherever you put `/data` in your compose).
 3. Check integrity: `sqlite3 /srv/docker/ryokan/ryokan.db "PRAGMA integrity_check;"`. If it returns `ok`, the DB itself is fine and the migration error is something else (network during migration? unusual). If it returns anything other than `ok`, the DB is corrupt; restore from your backup or accept losing the DB and starting fresh (delete the file, restart Ryokan, the first-run setup runs again).
 
+## Auto search saw releases but grabbed none
+
+Automatic search only takes a release whose name contains one of the series' titles as written, or an alternate title you added, and names nothing beyond it, so a sequel titled by subtitle ("Dr. Stone New World") is not mistaken for the first season. When the only releases on offer name the show some other way, the search toast reads "looked close but none named the series exactly" and lists examples, and System → Logs has the full list. If one of those is the right show, add that name on the series page under **Advanced search overrides**, **Alternate titles**, and search again. See [How releases are scored](scoring.md#what-automatic-search-will-and-will-not-grab).
+
 ## Ryokan removed a download it decided was the wrong series
 
 Ryokan compares the files inside every download with the series it was grabbed for. When the file names clearly belong to a different show, it removes the download, blocklists the release, and searches again. Open System, Misgrabs to see what was caught and why: the row shows the file names Ryokan looked at.

@@ -169,6 +169,21 @@ pub fn distinctive_overlap_ratio(
     token_overlap_ratio(title_tokens, &distinctive)
 }
 
+/// Fold a series row's alternate titles into the detail's synonyms so
+/// every alias builder (search gate, RSS, misgrab verdict) sees them.
+pub fn with_alternate_titles(mut detail: AnimeDetail, raw: &str) -> AnimeDetail {
+    for title in crate::models::series::parse_alternate_titles(raw) {
+        if !detail
+            .synonyms
+            .iter()
+            .any(|s| s.eq_ignore_ascii_case(&title))
+        {
+            detail.synonyms.push(title);
+        }
+    }
+    detail
+}
+
 pub fn collect_aliases(detail: &AnimeDetail) -> Vec<String> {
     dedupe_strings(vec![
         detail.title_romaji.clone(),
@@ -877,6 +892,99 @@ pub(super) fn best_alias_match(
 
 /// The auto-search title gate, reporting how the release matched.
 /// `None` means the release is not this series (or not this episode).
+/// Whether the release names something beyond the series: anitomy's
+/// title for it, minus every word of the series' own titles and
+/// synonyms and the usual structural and noise tokens, still has a
+/// word left. "Dr. Stone New World - 02" contains "Dr. STONE" verbatim
+/// and is season three; "Mob Psycho 100 II" contains "Mob Psycho 100"
+/// and is season two. A verbatim match that names more is not the
+/// series, and the automatic paths skip it (and report it) rather than
+/// grab it. Release-name decorations never count: bracket groups are
+/// dropped by normalization and anitomy's title excludes the rest.
+///
+/// One shape is exempt: `Title - Episode Title - 05`. anitomy folds the
+/// episode title into its series title there, so the claim reads
+/// "Kimetsu no Yaiba - The Hand Demon". When the first dash segment
+/// names the series and nothing else, a later segment is taken as an
+/// episode title unless one of its leftover words reads like a season
+/// or part marker ("Yuukaku-hen", "Part 2", "II", "The Final Season"),
+/// which is what a sequel's subtitle looks like in the same position.
+pub fn names_more_than_the_series(title: &str, aliases: &[String]) -> bool {
+    let Some(claimed) = crate::services::library_link::extract_anime_title(title) else {
+        return false;
+    };
+    let mut known: HashSet<String> = HashSet::new();
+    for alias in aliases {
+        known.extend(token_set(&normalize_title(alias)));
+    }
+    let leftover = |text: &str| -> Vec<String> {
+        crate::services::misgrab::verdict::content_tokens(&normalize_title(text))
+            .into_iter()
+            .filter(|t| !known.contains(t))
+            .collect()
+    };
+    let segments: Vec<&str> = claimed
+        .split(" - ")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if segments.len() >= 2
+        && leftover(segments[0]).is_empty()
+        && !crate::services::misgrab::verdict::content_tokens(&normalize_title(segments[0]))
+            .is_empty()
+    {
+        // Raw tokens here, not content tokens: the marker words are
+        // exactly the generic ones `content_tokens` strips.
+        return segments[1..].iter().any(|seg| {
+            token_set(&normalize_title(seg))
+                .iter()
+                .any(|t| !known.contains(t) && is_season_marker_token(t))
+        });
+    }
+    !leftover(&claimed).is_empty()
+}
+
+/// Words that mark a season, part, or arc when they follow a series
+/// title: the difference between an episode title and a sequel's
+/// subtitle in the `Title - X - 05` position.
+fn is_season_marker_token(token: &str) -> bool {
+    if matches!(
+        token,
+        "season"
+            | "seasons"
+            | "part"
+            | "cour"
+            | "arc"
+            | "hen"
+            | "chapter"
+            | "saga"
+            | "final"
+            | "movie"
+            | "film"
+            | "ova"
+            | "oad"
+            | "ona"
+            | "special"
+            | "specials"
+            | "ii"
+            | "iii"
+            | "iv"
+            | "v"
+            | "vi"
+            | "vii"
+            | "viii"
+            | "ix"
+            | "x"
+    ) {
+        return true;
+    }
+    // 2nd, 3rd, 10th
+    let digits = token.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    !digits.is_empty()
+        && digits.chars().all(|c| c.is_ascii_digit())
+        && matches!(&token[digits.len()..], "st" | "nd" | "rd" | "th")
+}
+
 pub fn classify_match(
     title: &str,
     aliases: &[String],
@@ -956,6 +1064,94 @@ pub fn matches_target(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn names_more_than_the_series_catches_sequel_subtitles_and_roman_seasons() {
+        let dr_stone = vec!["Dr. STONE".to_string()];
+        assert!(names_more_than_the_series(
+            "[New-raws]Dr. Stone New World - 02 [1080p] [CR].mkv",
+            &dr_stone
+        ));
+        assert!(names_more_than_the_series(
+            "[Judas] Dr. Stone: Stone Wars - 02 [1080p]",
+            &dr_stone
+        ));
+        assert!(!names_more_than_the_series(
+            "[SubsPlease] Dr. Stone - 02 (1080p) [ABCD1234].mkv",
+            &dr_stone
+        ));
+        assert!(!names_more_than_the_series(
+            "Dr.Stone.S01E02.1080p.WEB.x264-GROUP",
+            &dr_stone
+        ));
+        let mob = vec!["Mob Psycho 100".to_string()];
+        assert!(names_more_than_the_series(
+            "[Erai-raws] Mob Psycho 100 II - 01 [1080p]",
+            &mob
+        ));
+        let mob_ii = vec!["Mob Psycho 100 II".to_string()];
+        assert!(!names_more_than_the_series(
+            "[Erai-raws] Mob Psycho 100 II - 01 [1080p]",
+            &mob_ii
+        ));
+        // A second alias covers the extra words.
+        let kny = vec![
+            "Kimetsu no Yaiba".to_string(),
+            "Demon Slayer: Kimetsu no Yaiba".to_string(),
+        ];
+        assert!(!names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba (Demon Slayer) - 02 [1080p]",
+            &kny
+        ));
+        // An alternate title the user added counts the same way.
+        let with_alt = vec!["Dr. STONE".to_string(), "Dr. Stone New World".to_string()];
+        assert!(!names_more_than_the_series(
+            "[New-raws]Dr. Stone New World - 02 [1080p] [CR].mkv",
+            &with_alt
+        ));
+    }
+
+    #[test]
+    fn names_more_than_the_series_reads_a_folded_episode_title_as_the_series() {
+        // anitomy folds the episode title into its series title for the
+        // `Title - Episode Title - 05` shape (346-name Nyaa corpus). The
+        // first dash segment names the series and nothing else, so the
+        // tail is an episode title, not a sequel's subtitle.
+        let kny = vec!["Kimetsu no Yaiba".to_string()];
+        assert!(!names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - The Hand Demon - 05 [1080p].mkv",
+            &kny
+        ));
+        // The usual order was never affected.
+        assert!(!names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - 05 - The Hand Demon [1080p].mkv",
+            &kny
+        ));
+        // A subtitle in that position that reads like a season, part,
+        // or arc still names more.
+        assert!(names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - Yuukaku-hen - 05 [1080p].mkv",
+            &kny
+        ));
+        assert!(names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - Part 2 - 05 [1080p].mkv",
+            &kny
+        ));
+        assert!(names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba - The Final Season - 05 [1080p].mkv",
+            &kny
+        ));
+        let mob = vec!["Mob Psycho 100".to_string()];
+        assert!(names_more_than_the_series(
+            "[Group] Mob Psycho 100 - II - 01 [1080p].mkv",
+            &mob
+        ));
+        // A colon subtitle is one segment and still names more.
+        assert!(names_more_than_the_series(
+            "[Group] Kimetsu no Yaiba: Yuukaku-hen - 05 [1080p].mkv",
+            &kny
+        ));
+    }
 
     // split_title_segments uses a 2-token minimum to reject segments that
     // are too generic to safely become matching aliases. These tests cover
