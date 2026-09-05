@@ -1122,3 +1122,33 @@ window.ryokanCopyInput = function (inputId, btn) {
     }
     setInterval(refresh, 30000);
 })();
+
+// ── Click outside a modal dismisses it ────────────────────────────
+// Every modal is a `.modal-backdrop` with the dialog box inside it, so
+// a click whose target is the backdrop itself landed outside the box.
+// Dismiss through the modal's own close control when it has one (the
+// header × or a `data-modal-close` button), so any teardown that
+// control runs (cancelling a grab preview, resetting a form) still
+// happens; hide the backdrop directly only when there is no control.
+// Backdrops that carry their own `onclick` already handle this.
+// The mousedown check keeps a text selection that starts inside the
+// box and ends on the backdrop from counting as a dismiss.
+(function () {
+    if (window.__ryokanBackdropDismiss) return;
+    window.__ryokanBackdropDismiss = true;
+    var pressedOn = null;
+    document.addEventListener('mousedown', function (ev) { pressedOn = ev.target; }, true);
+    document.addEventListener('click', function (ev) {
+        var el = ev.target;
+        if (!el || !el.classList || !el.classList.contains('modal-backdrop')) return;
+        if (pressedOn !== el) return;
+        if (el.hasAttribute('onclick')) return;
+        if (el.style.display === 'none' || el.hidden) return;
+        var close = el.querySelector('[data-modal-close], .modal-header .btn-icon[aria-label="Close"], .modal-header .btn-icon');
+        if (close) {
+            close.click();
+        } else {
+            el.style.display = 'none';
+        }
+    });
+})();

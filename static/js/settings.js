@@ -662,13 +662,56 @@ function bindIndexerKindCopyToForm(form) {
         applyIndexerKindCopy(form, kindSelect.value);
     });
 }
+// ── Indexer modal: category chips ─────────────────────────────────
+//
+// The Edit form folds what the indexer's caps report under the
+// Categories field as chips. A chip toggles its id in the comma list
+// and reads as on while the list holds it, so the field stays a plain
+// text input (paste a list, type an id the indexer does not report)
+// and the chips are a shortcut, not the source of truth.
+function indexerCategoryIds(input) {
+    return input.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+}
+function paintIndexerCategoryChips(form) {
+    const input = form.querySelector('[data-indexer-categories-input]');
+    if (!input) return;
+    const ids = indexerCategoryIds(input);
+    form.querySelectorAll('.cat-chip[data-cat-id]').forEach(function(chip) {
+        chip.classList.toggle('is-on', ids.indexOf(chip.dataset.catId) !== -1);
+    });
+}
+function bindIndexerCategoryChips(form) {
+    if (!form || form.dataset.indexerChipsBound === '1') return;
+    form.dataset.indexerChipsBound = '1';
+    const input = form.querySelector('[data-indexer-categories-input]');
+    if (!input) return;
+    form.addEventListener('click', function(ev) {
+        const chip = ev.target.closest('.cat-chip[data-cat-id]');
+        if (!chip) return;
+        ev.preventDefault();
+        const id = chip.dataset.catId;
+        let ids = indexerCategoryIds(input);
+        if (ids.indexOf(id) === -1) {
+            ids.push(id);
+        } else {
+            ids = ids.filter(function(x) { return x !== id; });
+        }
+        input.value = ids.join(', ');
+        paintIndexerCategoryChips(form);
+    });
+    input.addEventListener('input', function() { paintIndexerCategoryChips(form); });
+    paintIndexerCategoryChips(form);
+}
 // One-shot guard — see top of file for rationale.
 if (!window.__ryokanSettingsIndexerModalListener) {
     window.__ryokanSettingsIndexerModalListener = true;
     document.body.addEventListener('htmx:after:settle', function(ev) {
         if (ev.target && ev.target.id === 'indexer-modal-body') {
             const form = ev.target.querySelector('form');
-            if (form) bindIndexerKindCopyToForm(form);
+            if (form) {
+                bindIndexerKindCopyToForm(form);
+                bindIndexerCategoryChips(form);
+            }
             // Pick up focus the body-clear-on-open dance left
             // pending — `openIndexerModal` ran before the swap
             // landed, so its querySelector found nothing.
@@ -1715,8 +1758,8 @@ if (window.__ryokanSettingsRelativeTimeTimer) {
             +   '</dl>'
             +   '<div class="api-key-reveal-row" data-api-key-id="' + view.id + '">'
             +     '<input type="text" class="api-key-reveal-input" data-api-key-reveal-input value="••••••••••••••••••••••••••••••••" readonly aria-label="API key (hidden, click Show to reveal)">'
-            +     '<button type="button" class="btn btn-ghost btn-sm api-key-show-btn" data-api-key-id="' + view.id + '" data-api-key-name="' + escHtml(view.name) + '" title="Reveal the plaintext key">Show</button>'
-            +     '<button type="button" class="btn btn-ghost btn-sm api-key-copy-btn" data-api-key-id="' + view.id + '" data-api-key-name="' + escHtml(view.name) + '" title="Copy the plaintext key">Copy</button>'
+            +     '<button type="button" class="btn btn-ghost btn-sm api-key-show-btn" data-api-key-id="' + view.id + '" data-api-key-name="' + escHtml(view.name) + '" title="Show key">Show</button>'
+            +     '<button type="button" class="btn btn-ghost btn-sm api-key-copy-btn" data-api-key-id="' + view.id + '" data-api-key-name="' + escHtml(view.name) + '" title="Copy key">Copy</button>'
             +   '</div>'
             +   '<div class="api-key-card-footer">'
             +     '<label class="api-key-switch">'

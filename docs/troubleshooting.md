@@ -89,6 +89,16 @@ Ryokan's migrations are idempotent by design (each `ALTER TABLE … ADD COLUMN` 
 2. Back up the DB: `cp /srv/docker/ryokan/ryokan.db /srv/docker/ryokan/ryokan.db.backup` (path is wherever you put `/data` in your compose).
 3. Check integrity: `sqlite3 /srv/docker/ryokan/ryokan.db "PRAGMA integrity_check;"`. If it returns `ok`, the DB itself is fine and the migration error is something else (network during migration? unusual). If it returns anything other than `ok`, the DB is corrupt; restore from your backup or accept losing the DB and starting fresh (delete the file, restart Ryokan, the first-run setup runs again).
 
+## Ryokan removed a download it decided was the wrong series
+
+Ryokan compares the files inside every download with the series it was grabbed for. When the file names clearly belong to a different show, it removes the download, blocklists the release, and searches again. Open System, Misgrabs to see what was caught and why: the row shows the file names Ryokan looked at.
+
+If the release was actually correct, click **Restore**. Ryokan adds it back to the download client and never flags that release again. If a series keeps producing misgrabs, its AniList titles probably do not match how groups name it; check the series page's title and any synonyms, and check which indexers you have configured, since any-word search on some indexers returns unrelated releases.
+
+Ryokan stops searching again automatically after three misgrabs for the same series in a day. Fix the cause, then search from the series page.
+
+If you would rather decide yourself, turn off "Remove and blocklist detected misgrabs" under Settings, General. Downloads are then held in the client and listed on the Misgrabs tab until you restore or dismiss them.
+
 ## I deleted an episode or series by accident
 
 If a recycle bin path is configured under Settings → General, nothing is gone yet: open the Library page and click the recycle-bin icon in the toolbar (it appears once the bin has items), or go to `/library/recycle`. Each deleted episode (with its NFO, subtitles, and thumbnail) or series folder is listed by the day it was deleted with a **Restore** button that puts it back exactly where it came from. Restoring a series folder brings the files back but not the library entry. Re-add the series from Search afterwards and Ryokan will pick the files up on disk. Entries purge automatically after the configured number of days (14 by default), so restore before then. If the path was empty at the time of the delete, the files were removed permanently. If the path was set but not writable, the delete was refused and the file is still where it was.

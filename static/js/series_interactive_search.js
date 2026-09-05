@@ -226,7 +226,8 @@ function grabInteractiveResult(epNum, btn) {
             resolution: result.resolution,
             info_hash: result.info_hash,
             size_bytes: result.size_bytes || 0,
-            indexer_id: result.indexer_id ?? null
+            indexer_id: result.indexer_id ?? null,
+            match_provenance: result.match_provenance ?? null
         })
     })
     .then(async r => {
@@ -343,7 +344,8 @@ function grabInteractiveBatchResult(btn) {
             resolution: result.resolution,
             info_hash: result.info_hash,
             size_bytes: result.size_bytes || 0,
-            indexer_id: result.indexer_id ?? null
+            indexer_id: result.indexer_id ?? null,
+            match_provenance: result.match_provenance ?? null
         })
     })
     .then(async r => {

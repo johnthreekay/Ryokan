@@ -104,7 +104,7 @@
             <tr class="log-row log-level-{{ entry.level }}" data-id="{{ entry.id }}">
                 <td class="log-col-time" title="{{ entry.timestamp }}">{{ entry.timestamp }}</td>
                 <td class="log-col-level"><span class="log-badge log-badge-{{ entry.level }}">{{ entry.level }}</span></td>
-                <td class="log-col-cat">{{ entry.category }}</td>
+                <td class="log-col-cat">{{ entry.category_label }}</td>
                 <td class="log-col-msg">
                     <span class="log-message">{{ entry.message }}</span>
                     {% if !entry.detail.is_empty() %}
@@ -234,11 +234,7 @@
            and there's nothing else in the section header to anchor.
            Section gets a one-liner hint instead so the page has a
            reason to start where it does. #}
-        <p class="form-hint" style="margin:0 0 12px">
-            Background jobs Ryokan schedules. Cadence + last run state for each.
-            Use <strong>Run now</strong> to trigger a job out-of-band — useful for
-            picking up new metadata or RSS items immediately after a settings change.
-        </p>
+        <p class="form-hint" style="margin:0 0 12px">Background jobs and when they last ran. Run now starts one right away.</p>
         {% if scheduled_tasks.is_empty() %}
         <div class="logs-empty">No scheduled task definitions registered yet.</div>
         {% else %}
@@ -249,9 +245,8 @@
                         <th>Task</th>
                         <th>Schedule</th>
                         <th>Enabled</th>
-                        <th>Last status</th>
-                        <th>Last started</th>
-                        <th>Last finished</th>
+                        <th class="nowrap">Last status</th>
+                        <th class="nowrap">Last run</th>
                         <th>Detail</th>
                         <th></th>
                     </tr>
@@ -259,22 +254,15 @@
                 <tbody>
                     {% for task in scheduled_tasks %}
                     <tr>
-                        <td>
-                            <div>{{ task.display_name }}</div>
-                            <div class="rss-release-meta">{{ task.task_key }}</div>
-                        </td>
+                        <td title="{{ task.task_key }}">{{ task.display_name }}</td>
                         <td>{{ task.schedule_label }}</td>
                         <td>{% if task.enabled %}<span class="log-badge log-badge-info">enabled</span>{% else %}<span class="log-badge log-badge-warn">disabled</span>{% endif %}</td>
                         <td>{% if task.last_status == "ok" %}<span class="log-badge log-badge-info">ok</span>{% else if task.last_status == "warn" %}<span class="log-badge log-badge-warn">warn</span>{% else if task.last_status == "error" %}<span class="log-badge log-badge-error">error</span>{% else if task.last_status == "running" %}<span class="log-badge log-badge-debug">running</span>{% else %}<span class="log-badge">{{ task.last_status }}</span>{% endif %}</td>
-                        {# Render the absolute timestamp directly (no
-                           data-ts) so the time formatter doesn't flash
-                           the relative-time replacement on page load.
-                           For run-state info the exact time is more
-                           useful than "5m ago" anyway — users want to
-                           correlate with other events. #}
-                        <td>{% if let Some(started) = task.last_started_at %}<span class="task-time">{{ started }}</span>{% else %}—{% endif %}</td>
-                        <td>{% if let Some(finished) = task.last_finished_at %}<span class="task-time">{{ finished }}</span>{% else %}—{% endif %}</td>
-                        <td class="task-detail-cell"><div class="task-detail-text">{{ task.last_detail }}</div></td>
+                        {# One relative time; the exact UTC stamp is the
+                           tooltip. A task that has started but not
+                           finished shows when it started. #}
+                        <td>{% if let Some(finished) = task.last_finished_at %}<span class="task-time nowrap" title="Finished {{ finished }} UTC">{{ crate::services::relative_time::humanize_sqlite_short_now(finished) }}</span>{% else if let Some(started) = task.last_started_at %}<span class="task-time nowrap" title="Started {{ started }} UTC">running since {{ crate::services::relative_time::humanize_sqlite_short_now(started) }}</span>{% else %}<span class="task-time">never</span>{% endif %}</td>
+                        <td class="task-detail-cell" title="{{ task.last_detail }}"><div class="task-detail-text">{{ task.last_detail }}</div></td>
                         <td><button type="button" class="btn btn-secondary btn-sm task-run-btn" onclick="forceRunTask(this, '{{ task.task_key }}')">Run now</button></td>
                     </tr>
                     {% endfor %}
@@ -294,7 +282,7 @@
            the source of truth for the copy. #}
         <div class="logs-empty" id="review-empty-state" {% if !review_entries.is_empty() %}hidden{% endif %}>
             <p>No episodes currently flagged for review.</p>
-            <p class="form-hint">This view fills up when the classifier lands on a low-confidence verdict: either no single layer was strong enough, or two strong layers disagreed. Manual overrides and post-download ffprobe checks usually keep it empty.</p>
+            <p class="form-hint">Episodes land here when Ryokan is unsure of a file's source or resolution. Pick the right tag and apply it.</p>
         </div>
         {% if !review_entries.is_empty() %}
         {# Bulk bar always visible — rows are pre-selected by default,
@@ -387,57 +375,41 @@
         {% endif %}
     </div>
 </div>
+{% else if tab == "misgrabs" %}
+{%~ include "partials/system/misgrabs.html" ~%}
 {% else if tab == "notifications" %}
 {%~ include "partials/system/notifications.html" ~%}
 {% else if tab == "backup" %}
 {%~ include "partials/system/backup.html" ~%}
 {% else if tab == "debug" %}
 <div class="debug-panel">
-    {# The form wraps just the two checkbox cards. Maintenance and RSS
+    {# The form wraps just the provider-fallback card. Maintenance and RSS
        cards live outside the form since each of their buttons posts to
-       its own endpoint. The Save button at the bottom uses the HTML5
-       `form="debug-settings-form"` attribute to submit the form from
-       outside, so visually it sits at the end of the debug tab. #}
+       its own endpoint, and Save sits inside the one card it saves. #}
     <form id="debug-settings-form" method="post" action="/system" class="settings-form">
         <div class="cf-section">
             <div class="cf-section-header">
                 <h3>Provider fallback</h3>
             </div>
-            <p class="cf-section-desc">Force specific metadata providers for testing the fallback chain.</p>
-            <div class="form-check">
-                <label class="checkbox-row">
+            <p class="cf-section-desc">Skip AniList and use a fallback provider. For testing only.</p>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Force MAL/Tenrai fallback for search and tracked fallback entries</span>
+                        <span class="setting-row-desc">Entries without a MAL id stay on AniList.</span>
+                    </span>
                     <input type="checkbox" name="force_mal_fallback" id="force_mal_fallback" {% if force_mal_fallback %}checked{% endif %}>
-                    <span>Force MAL/Tenrai fallback for search and tracked fallback entries</span>
                 </label>
-                <span class="form-hint">Debug option for testing the fallback path after AniList comes back. AniList-only entries without a MAL ID cannot be forced into fallback mode.</span>
-            </div>
-            <div class="form-check">
-                <label class="checkbox-row">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Force Kitsu fallback for episode titles and air dates</span>
+                        <span class="setting-row-desc">Only affects episode titles and air dates on series pages.</span>
+                    </span>
                     <input type="checkbox" name="force_kitsu_fallback" id="force_kitsu_fallback" {% if force_kitsu_fallback %}checked{% endif %}>
-                    <span>Force Kitsu fallback for episode titles and air dates</span>
                 </label>
-                <span class="form-hint">Debug option for testing Kitsu episode metadata even when Tenrai (MAL) returns titles. This only affects series episode metadata on the detail page.</span>
             </div>
-        </div>
-
-        <div class="cf-section">
-            <div class="cf-section-header">
-                <h3>Grab behavior</h3>
-            </div>
-            <p class="cf-section-desc">Control when and how Ryokan auto-grabs releases.</p>
-            <div class="form-check">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="auto_grab_on_add" id="auto_grab_on_add" {% if auto_grab_on_add %}checked{% endif %}>
-                    <span>Auto-grab monitored episodes when adding a new series</span>
-                </label>
-                <span class="form-hint">When enabled (default), Ryokan automatically searches for and grabs all monitored episodes after you add a series to the library. Disable to add series without triggering an immediate download.</span>
-            </div>
-            <div class="form-check">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="allow_non_english" id="allow_non_english" {% if allow_non_english %}checked{% endif %}>
-                    <span>Allow non-English releases in auto grabs</span>
-                </label>
-                <span class="form-hint">When disabled (default), auto-search and RSS use Nyaa's English-translated category. Enable to search all anime categories instead. Interactive search always searches all categories.</span>
+            <div class="settings-inline-actions" style="margin-top: 16px">
+                <button type="submit" class="btn btn-primary">Save</button>
             </div>
         </div>
     </form>
@@ -446,19 +418,19 @@
         <div class="cf-section-header">
             <h3>Maintenance actions</h3>
         </div>
-        <p class="cf-section-desc">One-shot operations against the library and metadata cache. Each runs immediately, independent of the Save button below.</p>
+        <p class="cf-section-desc">Each action runs right away.</p>
         <div class="debug-actions-group">
             <div class="debug-action-row">
                 <button type="button" class="btn btn-secondary" onclick="rebuildAniListCache(this)">Rebuild metadata cache</button>
-                <span class="form-hint">Re-fetch AniList (and MAL/Kitsu fallback) metadata for every tracked series. Use when you've noticed stale titles, wrong episode counts, or missing relations after a provider outage or schema change.</span>
+                <span class="form-hint">Fetch fresh metadata for every series.</span>
             </div>
             <div class="debug-action-row">
                 <button type="button" class="btn btn-secondary" onclick="reconcileFallbacks(this)">Reconcile fallback entries</button>
-                <span class="form-hint">Look at every series that was added under a MAL or Kitsu fallback ID and try to upgrade it to its AniList entry. Safe to click repeatedly; only upgrades entries that now resolve on AniList.</span>
+                <span class="form-hint">Move series added under a MAL or Kitsu id to their AniList entry when one exists.</span>
             </div>
             <div class="debug-action-row">
                 <button type="button" class="btn btn-secondary" onclick="classifyLibrary(this)">Classify imported files</button>
-                <span class="form-hint">Walk every tracked series folder and run the source/resolution classifier on files that don't yet have a structured tag. Useful after migrating from another PVR or dropping files in manually.</span>
+                <span class="form-hint">Tag files that have no source and resolution tag yet. Useful after copying a library in by hand.</span>
             </div>
         </div>
     </div>
@@ -467,57 +439,12 @@
         <div class="cf-section-header">
             <h3>RSS grab history</h3>
         </div>
-        <p class="cf-section-desc">Clear the RSS grab history so previously grabbed episodes can be re-evaluated on the next sync. Use this if you deleted a file from disk and want Ryokan to re-grab it.</p>
+        <p class="cf-section-desc">Forget which episodes the RSS poller already grabbed so it can grab them again.</p>
         <div class="debug-action-row">
             <button type="button" class="btn btn-secondary" onclick="clearRssHistory(this)">Clear grab history</button>
         </div>
     </div>
 
-    <div class="settings-inline-actions" style="margin-top:16px">
-        <button type="submit" form="debug-settings-form" class="btn btn-primary">Save Debug Settings</button>
-    </div>
-</div>
-
-{% else if tab == "scoring" %}
-<!-- Scoring Tab -->
-<div class="help-content">
-    <section class="help-section">
-        <h3>How Scoring Works</h3>
-        <p>Each result receives a composite score based on multiple factors. Higher scores are preferred when Ryokan automatically picks a release.</p>
-        <table class="help-table">
-            <thead><tr><th>Factor</th><th>Points</th></tr></thead>
-            <tbody>
-                <tr><td>Seeders &gt; 100</td><td>+30</td></tr>
-                <tr><td>Seeders &gt; 50</td><td>+25</td></tr>
-                <tr><td>Seeders &gt; 10</td><td>+20</td></tr>
-                <tr><td>Seeders &gt; 0</td><td>+10</td></tr>
-                <tr><td>Zero seeders</td><td>-10</td></tr>
-                <tr><td>Preferred release group (ordered)</td><td>+140 / +120 / +100 / ...</td></tr>
-                <tr><td>Non-preferred group</td><td>-15</td></tr>
-                <tr><td>Preferred resolution</td><td>+20</td></tr>
-                <tr><td>Batch release</td><td>+15</td></tr>
-                <tr><td>Trusted uploader</td><td>+10</td></tr>
-                <tr><td>10bit / x265 / BD source</td><td>+5</td></tr>
-                <tr><td>Dual audio / dub (prefer subs)</td><td>-15</td></tr>
-                <tr><td>Dual audio / dub (prefer dubs)</td><td>+15</td></tr>
-                <tr><td>Downloads &gt; 10,000</td><td>+15</td></tr>
-                <tr><td>Downloads &gt; 5,000</td><td>+10</td></tr>
-                <tr><td>Downloads &gt; 1,000</td><td>+5</td></tr>
-                <tr><td>Batch under 25 GB</td><td>+10</td></tr>
-            </tbody>
-        </table>
-    </section>
-
-    <section class="help-section">
-        <h3>Search Tips</h3>
-        <p>Use the uploader field to filter by a specific release group's Nyaa account. The category filter lets you narrow to English-translated or raw releases. "Trusted only" shows releases from verified Nyaa uploaders.</p>
-        <p>Try searching for batch releases by including "batch" in your query, e.g. "Jujutsu Kaisen batch 1080p".</p>
-    </section>
-
-    <section class="help-section">
-        <h3>Grabbing Releases</h3>
-        <p>Click the <strong>Grab</strong> button next to any result to send it to your download client. The torrent will be added with your configured scoping label (or category on qBittorrent). Make sure the client is running and the connection is configured in Settings.</p>
-    </section>
 </div>
 
 {% else if tab == "credits" %}
@@ -539,7 +466,7 @@
     <section class="credits-section">
         <h3>Where the releases come from</h3>
         <p>
-            Every search result comes from <a href="https://nyaa.si" target="_blank" rel="noopener noreferrer">Nyaa</a>, at least until torznab support ships. Public indexer, no gatekeeping, curated by community tags and the honor system.
+            Ryokan's built-in search reads <a href="https://nyaa.si" target="_blank" rel="noopener noreferrer">Nyaa</a> directly: a public indexer, no gatekeeping, curated by community tags and the honor system. Private trackers and Usenet arrive through the torznab and newznab indexers you add from <a href="https://prowlarr.com" target="_blank" rel="noopener noreferrer">Prowlarr</a> or <a href="https://github.com/Jackett/Jackett" target="_blank" rel="noopener noreferrer">Jackett</a>, direct RSS feeds such as <a href="https://subsplease.org" target="_blank" rel="noopener noreferrer">SubsPlease</a>'s, and announces pushed by <a href="https://autobrr.com" target="_blank" rel="noopener noreferrer">autobrr</a>. Every source merges into one ranked list.
         </p>
     </section>
 
@@ -560,7 +487,14 @@
     <section class="credits-section">
         <h3>Custom formats</h3>
         <p>
-            On a fresh install, Ryokan ships 28 Custom Formats already baked in. They come from <a href="https://trash-guides.info" target="_blank" rel="noopener noreferrer">TRaSH Guides</a>, the de-facto quality-profile reference for the whole *arr ecosystem. You can edit them, delete them, or reset to defaults from Settings → Custom Formats. MIT-licensed (<a href="/static/licenses/trash-guides-LICENSE.txt" target="_blank" rel="noopener noreferrer">license text</a>).
+            On a fresh install, Ryokan ships eight Custom Formats already baked in. Their shape and their release-group tiers follow <a href="https://trash-guides.info" target="_blank" rel="noopener noreferrer">TRaSH Guides</a>, the de-facto quality reference for the whole *arr ecosystem, and any TRaSH Custom Format pastes straight in. You can edit them, delete them, or reset to defaults from Settings → Custom Formats. MIT-licensed (<a href="/static/licenses/trash-guides-LICENSE.txt" target="_blank" rel="noopener noreferrer">license text</a>).
+        </p>
+    </section>
+
+    <section class="credits-section">
+        <h3>Under the hood</h3>
+        <p>
+            Every page is driven by <a href="https://htmx.org" target="_blank" rel="noopener noreferrer">htmx</a>, vendored so Ryokan never loads a script from a CDN. Release names are tokenized by <a href="https://github.com/erengy/anitomy" target="_blank" rel="noopener noreferrer">anitomy</a>, compiled in through its Rust bindings under the Mozilla Public License 2.0. Every Rust crate Ryokan ships with is listed, with its license text, in the <a href="https://github.com/johnthreekay/Ryokan/blob/main/licenses/THIRD_PARTY_LICENSES.html" target="_blank" rel="noopener noreferrer">third-party notices</a> in the repository.
         </p>
     </section>
 
@@ -580,5 +514,6 @@
 
 {% block page_js %}
 {% if tab == "review" %}<script src="/static/js/needs_review.js" defer></script>{% endif %}
+{% if tab == "misgrabs" %}<script src="/static/js/misgrabs.js" defer></script>{% endif %}
 <script src="/static/js/system.js" defer></script>
 {% endblock %}

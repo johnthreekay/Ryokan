@@ -207,6 +207,10 @@ pub async fn grab_batch_result(
         .await
         .ok()
         .flatten();
+        // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+        if let Some(gid) = grab_id {
+            let _ = crate::models::grabbed_torrents::set_source_url(&state.db, gid, &url).await;
+        }
         if let Some(gid) = grab_id {
             let _ = crate::models::grabbed_torrents::set_download_client(
                 &state.db,
@@ -336,6 +340,12 @@ pub async fn grab_interactive_result(
     // frontend round-trips it on grab so the dispatch routes through
     // the indexer's pin (or Nyaa pin for Nyaa-direct).
     let indexer_id: Option<i64> = body["indexer_id"].as_i64();
+    // Misgrab guardrails: the interactive table round-trips the match
+    // provenance the search stamped on the row so the grab history and
+    // the log say how this release matched. Absent or malformed means
+    // an older page or a hand-built request; the grab still proceeds.
+    let match_provenance: Option<auto_search::MatchProvenance> =
+        serde_json::from_value(body["match_provenance"].clone()).ok();
 
     if url.is_empty() {
         return Err((
@@ -443,11 +453,12 @@ pub async fn grab_interactive_result(
         LogCategory::Grab,
         &format!("Interactive grab: {}", title),
         &format!(
-            "episode={}, group={}, tier={}{}",
+            "episode={}, group={}, tier={}{}{}",
             episode_number,
             group,
             classification.label(),
-            selective_suffix
+            selective_suffix,
+            auto_search::MatchProvenance::log_suffix(match_provenance.as_ref())
         ),
     )
     .await;
@@ -465,6 +476,10 @@ pub async fn grab_interactive_result(
         .await
         .ok()
         .flatten();
+        // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+        if let Some(gid) = grab_id {
+            let _ = crate::models::grabbed_torrents::set_source_url(&state.db, gid, &url).await;
+        }
         if let Some(gid) = grab_id {
             let _ = crate::models::grabbed_torrents::set_download_client(
                 &state.db,
@@ -491,7 +506,7 @@ pub async fn grab_interactive_result(
             )
             .await;
         }
-        let _ = episode_tags::record_grab(
+        let _ = episode_tags::record_grab_with_match(
             &state.db,
             sid,
             episode_number,
@@ -500,6 +515,7 @@ pub async fn grab_interactive_result(
             &group,
             size_bytes,
             false,
+            match_provenance.as_ref(),
         )
         .await;
     }

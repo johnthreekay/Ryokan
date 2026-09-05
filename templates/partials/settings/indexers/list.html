@@ -1,24 +1,13 @@
-{# Indexers section — mirrors the Download Clients card pattern.
-   Catalog seed cards (Add Indexer) on top, configured-indexer
-   cards below. Both surfaces open a shared modal: seed cards
-   fetch the Add form pre-filled with the seed's defaults; per-
-   indexer cards fetch the Edit form pre-filled with the row.
-
-   The whole section IS `#indexer-section` — the id sits on the
-   <fieldset> root, NOT on an inner <div>, so when an HTMX upsert
-   or delete returns this same partial via `hx-swap="outerHTML"`
-   the response replaces the fieldset 1:1. A previous version put
-   the id on an inner <div class="dc-section">; the outerHTML
-   swap then nested a fresh `<fieldset><legend>Indexers>` inside
-   the prior fieldset (the inner div was the swap target, but the
-   response was wrapped in the parent fieldset+legend), producing
-   a duplicate "Indexers" heading after the first save. The
-   `dc-section` class stays on the same node so the existing CSS
-   rules + the modal-rebind logic in `static/js/settings.js` that
-   listens for `htmx:after:swap` on `#indexer-section` keep
-   working unchanged. #}
-<fieldset id="indexer-section" class="dc-section">
-    <legend>Indexers</legend>
+{# `id="indexer-section"` sits on the card root, NOT on an inner
+   element, so when an HTMX upsert or delete returns this same
+   partial via `hx-swap="outerHTML"` the response replaces the card
+   1:1. A previous version put the id on an inner wrapper; the
+   outerHTML swap then nested a fresh card inside the old one and
+   produced a duplicate "Indexers" heading after the first save. The
+   modal-rebind logic in `static/js/settings.js` listens for
+   `htmx:after:swap` on `#indexer-section`. #}
+<div class="cf-section" id="indexer-section">
+    <h3>Indexers</h3>
         <h3 class="settings-subheading" style="margin-top:0;">Add Indexer</h3>
 
         {# Catalog grid — each tile opens the shared modal with the
@@ -74,7 +63,7 @@
                         <div class="dc-card-title">
                             <strong class="dc-card-name">{{ idx.name }}</strong>
                             {% if idx.is_private_tracker %}
-                            <span class="dc-default-pill" style="background: rgba(243, 139, 168, 0.18); color: var(--red, #f38ba8);" title="Private tracker">PT</span>
+                            <span class="dc-default-pill" style="background: rgba(var(--red-rgb), 0.18); color: var(--red);" title="Private tracker">PT</span>
                             {% endif %}
                         </div>
                         {# Status pill — server-rendered from the row.
@@ -85,13 +74,13 @@
                         {% if !idx.enabled %}
                         <span class="dc-status-pill dc-status-pill-disabled">Disabled</span>
                         {% else if !idx.rss_enabled %}
-                        <span class="dc-status-pill dc-status-pill-ok" title="Search-only; RSS auto-sync off for this indexer">Enabled</span>
+                        <span class="dc-status-pill dc-status-pill-ok" title="RSS off">Enabled</span>
                         {% else if !idx.rss_last_poll_error.is_empty() %}
                         <span class="dc-status-pill dc-status-pill-err" title="{{ idx.rss_last_poll_error }}">RSS error</span>
                         {% else if let Some(_) = idx.rss_last_polled_at %}
                         <span class="dc-status-pill dc-status-pill-ok" title="Last poll returned {{ idx.rss_last_item_count }} item{% if idx.rss_last_item_count == 1 %}{% else %}s{% endif %}">&#10003; RSS ({{ idx.rss_last_item_count }})</span>
                         {% else %}
-                        <span class="dc-status-pill dc-status-pill-loading" title="RSS enabled but not yet polled; first sync runs on the next interval">RSS idle</span>
+                        <span class="dc-status-pill dc-status-pill-loading" title="Not polled yet">RSS idle</span>
                         {% endif %}
                     </div>
                     <dl class="dc-card-meta">
@@ -166,4 +155,4 @@
                 <div id="indexer-modal-body"></div>
             </div>
         </div>
-</fieldset>
+</div>

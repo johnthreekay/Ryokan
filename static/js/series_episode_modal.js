@@ -142,7 +142,7 @@ function renderGrabHistory(entries, epNum) {
             : '';
         html += `<tr>
             <td>${escHtml(e.quality_tag)}</td>
-            <td class="grab-history-ellipsis" title="${escHtml(e.release_title)}">${escHtml(e.release_title)}</td>
+            <td class="grab-history-ellipsis" title="${escHtml(e.release_title)}">${escHtml(e.release_title)}${e.grab_match_summary ? `<div style="color:var(--text-dim);font-size:10px;white-space:normal">${escHtml(e.grab_match_summary)}</div>` : ''}</td>
             <td class="grab-history-ellipsis" title="${escHtml(fileName)}">${fileCell}</td>
             <td>${escHtml(e.release_group)}</td>
             <td style="white-space:nowrap;color:var(--text-dim)">${sizeCell}</td>

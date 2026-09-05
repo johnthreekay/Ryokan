@@ -76,6 +76,7 @@
 }
 
 :root {
+    /* Surfaces */
     --bg: #0f0f13;
     --bg-card: #16161d;
     --bg-elevated: #1e1e28;
@@ -84,28 +85,63 @@
     --text: #d4d4e0;
     --text-bright: #e8e8f0;
     --text-dim: #7a7a96;
+    /* Palette. Every colored surface in the app derives from these;
+       nothing else in static/css names a hex or rgb value except the
+       black / white overlays used for scrims, shadows, and hairlines. */
     --accent: #cba6f7;
     --accent-hover: #d9bfff;
     --green: #7dd393;
-    --green-bg: rgba(125, 211, 147, 0.1);
     --blue: #7daed3;
-    --blue-bg: rgba(125, 174, 211, 0.1);
     --purple: #cba6f7;
-    --purple-bg: rgba(203, 166, 247, 0.1);
     --red: #d37d7d;
+    --red-hover: #c46a6a;
     --orange: #d3b07d;
     --yellow: #e0c97d;
     --mauve: #cba6f7;
-    --mauve-bg: rgba(203, 166, 247, 0.12);
     --lavender: #b4a0ff;
+    /* The same colors as bare channel triples, for tints: write
+       `rgba(var(--accent-rgb), 0.12)` instead of restating the hex. */
+    --bg-rgb: 15, 15, 19;
+    --bg-card-rgb: 22, 22, 29;
+    --border-rgb: 42, 42, 58;
+    --text-bright-rgb: 232, 232, 240;
+    --text-dim-rgb: 122, 122, 150;
+    --accent-rgb: 203, 166, 247;
+    --green-rgb: 125, 211, 147;
+    --blue-rgb: 125, 174, 211;
+    --red-rgb: 211, 125, 125;
+    --orange-rgb: 211, 176, 125;
+    --yellow-rgb: 224, 201, 125;
+    --lavender-rgb: 180, 160, 255;
+    /* Standard tint backgrounds for pills and badges. */
+    --green-bg: rgba(var(--green-rgb), 0.1);
+    --blue-bg: rgba(var(--blue-rgb), 0.1);
+    --purple-bg: rgba(var(--accent-rgb), 0.1);
+    --mauve-bg: rgba(var(--accent-rgb), 0.12);
+    --red-bg: rgba(var(--red-rgb), 0.12);
+    --orange-bg: rgba(var(--orange-rgb), 0.12);
+    --yellow-bg: rgba(var(--yellow-rgb), 0.12);
+    --dim-bg: rgba(var(--text-dim-rgb), 0.15);
+    /* Saturated signal colors for the library card's completeness
+       bar only: the pastel palette is tuned for text on dark and
+       washes out as a 4px strip. Not for text or pills. */
+    --signal-green: #2fce5f;
+    --signal-red: #e5484d;
+    --signal-accent: #a06cf5;
+    --signal-accent-rgb: 160, 108, 245;
     --font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
     /* Murecho is used for the three display surfaces: nav-brand,
      * page-header h2, and series detail-title. See @font-face block
      * at top of this file. */
     --font-display: 'Murecho', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    /* Radii: sm for tags and badges, the default for inputs and
+       buttons, md for tiles, lg for cards and modals, pill for pills. */
+    --radius-sm: 4px;
     --radius: 6px;
+    --radius-md: 8px;
     --radius-lg: 10px;
+    --radius-pill: 999px;
     
     --bp-phone: 640px;
     --bp-tablet: 900px;
@@ -175,6 +211,13 @@
  * keeps its stronger `hidden` form. */
 html, body {
     overflow-x: clip;
+}
+
+/* Always reserve the scrollbar's column. Without it a tab short enough
+   to need no scrollbar centers the page 7px further right than a tall
+   one, so the sidebar hops when switching tabs. */
+html {
+    scrollbar-gutter: stable;
 }
 
 body {
@@ -268,10 +311,11 @@ a:hover {
 
 .page-header { margin-bottom: 28px; }
 
+.tabbed-page-header h2,
 .page-header h2 {
     font-family: var(--font-display);
     font-weight: 700;
-    font-size: 24px;
+    font-size: 22px;
     letter-spacing: -0.005em;
     color: var(--text-bright);
     margin-bottom: 4px;
@@ -289,7 +333,7 @@ a:hover {
     font-weight: 600;
     letter-spacing: 0.5px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
 }
 
 .empty-state {
@@ -362,7 +406,7 @@ a:hover {
     color: var(--text-dim);
     background: var(--bg-elevated);
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
 }
 
 .relations-grid {
@@ -385,7 +429,7 @@ a:hover {
     flex-shrink: 0;
     width: 56px;
     height: 80px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--bg-elevated);
 }
@@ -469,7 +513,7 @@ a:hover {
     flex-shrink: 0;
     width: 120px;
     height: 68px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--bg-elevated);
 }
@@ -513,7 +557,7 @@ a:hover {
 }
 
 .folder-select {
-    padding: 5px 10px;
+    padding: 6px 10px;
     /* Longhand `background-color` (not the `background:` shorthand)
      * so the global `select { background-image: ...chevron... }` rule
      * in forms.css survives the cascade. The shorthand resets
@@ -524,7 +568,7 @@ a:hover {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
-    font-size: 12px;
+    font-size: 13px;
     font-family: var(--font-body);
     max-width: 260px;
 }
@@ -590,52 +634,19 @@ a:hover {
 
 .help-content { max-width: 700px; }
 
-.help-section {
-    margin-bottom: 32px;
-}
-
-.help-section h3 {
-    font-size: 17px;
-    color: var(--text-bright);
-    margin-bottom: 8px;
-}
-
-.help-section p {
-    color: var(--text);
-    margin-bottom: 12px;
-    font-size: 14px;
-    line-height: 1.7;
-}
-
-.help-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    margin-top: 8px;
-}
-
-.help-table th {
-    text-align: left;
+/* A block of literal text the user copies out (a webhook body, a
+   path): mono on the elevated fill with the control radius. */
+.code-block {
+    margin: 0;
     padding: 8px 12px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-dim);
-    border-bottom: 1px solid var(--border);
-}
-
-.help-table td {
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-}
-
-.help-table td:last-child {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     font-family: var(--font-mono);
-    font-size: 12px;
-    text-align: right;
-    white-space: nowrap;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    overflow-x: auto;
 }
 
 @media (max-width: 640px) {
@@ -689,30 +700,49 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
     to { transform: rotate(360deg); }
 }
 
-.system-tabs {
-    display: flex;
+/* Horizontal tabs are one segmented control (Downloads, Calendar);
+   the many-tab pages keep the sidebar. 32px items, same size as a
+   toolbar field or a small button. */
+.system-tabs,
+.calendar-range-tabs {
+    display: inline-flex;
     gap: 2px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--border);
+    padding: 3px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
 }
 
-.system-tab {
+.system-tabs {
+    margin-bottom: 20px;
+}
+
+.system-tab,
+.calendar-range-tab {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 10px 20px;
+    padding: 3px 12px;
+    border-radius: var(--radius);
     color: var(--text-dim);
     text-decoration: none;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
-    border-bottom: 2px solid transparent;
-    transition: color 0.15s, border-color 0.15s;
-    margin-bottom: -1px;
+    line-height: 18px;
+    white-space: nowrap;
+    transition: color 0.15s, background 0.15s;
 }
 
-.system-tab:hover { color: var(--text); }
+.system-tab:hover,
+.calendar-range-tab:hover {
+    color: var(--text);
+}
 
-.system-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.system-tab.active,
+.calendar-range-tab.active {
+    color: var(--accent);
+    background: var(--bg-card);
+}
 
 @media (max-width: 640px) {
     .system-tabs {
@@ -749,6 +779,18 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
     margin: 0 0 6px;
 }
 
+/* Card titles: the same 15px whether the h3 sits in a header wrapper
+   (Custom Formats, Debug) or directly in the card (Backup, Misgrabs,
+   Release Groups), and for the API Keys and Import page titles. */
+.cf-section > h3:not(.settings-subheading),
+.settings-section-title,
+.import-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin: 0 0 6px;
+}
+
 .cf-section-header h3 {
     font-size: 15px;
     font-weight: 600;
@@ -768,15 +810,41 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
 
 .cf-section > *:last-child { margin-bottom: 0; }
 
+/* A card title followed straight by a field (no description) needs
+   more air than the 6px the title keeps for its description. */
+.cf-section > h3 + .form-group,
+.cf-section > h3 + .form-row,
+.cf-section > h3 + .setting-rows,
+.cf-section > h3 + form,
+.cf-section > h3 + .alert,
+.cf-section > h3 + .rss-table-wrap {
+    margin-top: 14px;
+}
+
+/* A hint paragraph standing on its own inside a card (the intro under
+   a title, a status line over a table) keeps the card's rhythm instead
+   of sitting flush against whatever follows it. */
+.cf-section > p.form-hint {
+    margin: 0 0 14px;
+}
+
+@media (max-width: 640px) {
+    .cf-section { padding: 16px; }
+}
+
 .cf-section > form:last-child > :last-child { margin-bottom: 0; }
 
-input[type="file"] {
-    background: var(--bg-elevated);
+/* A file field is the regular 41px field with the picker button
+   inside it; `.form-group` gives it the same padding as here so the
+   two sites (Backup, Custom Formats import) match. */
+input[type="file"],
+.form-group input[type="file"] {
+    background: var(--bg);
     color: var(--text-dim);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 6px 10px;
-    font-size: 13px;
+    padding: 6px 12px;
+    font-size: 14px;
     max-width: 100%;
 }
 
@@ -784,10 +852,10 @@ input[type="file"]::file-selector-button {
     background: var(--bg-card);
     color: var(--text-bright);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 4px 12px;
+    border-radius: var(--radius);
+    padding: 5px 12px;
     margin-right: 10px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -843,7 +911,7 @@ input[type="file"]::file-selector-button:hover {
 .cf-origin-badge {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -859,15 +927,15 @@ input[type="file"]::file-selector-button:hover {
 .cf-parse-error {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 11px;
     font-weight: 600;
-    background: rgba(211, 125, 125, 0.12);
+    background: rgba(var(--red-rgb), 0.12);
     color: var(--red);
 }
 
 @keyframes log-flash {
-    0%   { background: rgba(203, 166, 247, 0.12); }
+    0%   { background: rgba(var(--accent-rgb), 0.12); }
     100% { background: transparent; }
 }
 
@@ -884,9 +952,15 @@ input[type="file"]::file-selector-button:hover {
     gap: 20px;
 }
 
+/* `separate` with zero spacing, not `collapse`: Firefox offsets a
+   sticky header inside a collapsed-border table by the collapsed
+   border, which leaves a strip above the band where scrolled rows
+   show through. Cell borders are per-cell bottom lines, so the look
+   is identical. */
 .rss-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 13px;
 }
 
@@ -897,11 +971,19 @@ input[type="file"]::file-selector-button:hover {
     border-radius: var(--radius-lg);
 }
 
-.rss-table-wrap .rss-table th {
+/* The whole header row sticks, like the Logs table, so the band spans
+   every column even where a cell is empty; the inset shadow stands in
+   for the collapsed bottom border, which does not travel with a sticky
+   cell. */
+.rss-table-wrap .rss-table thead {
     position: sticky;
     top: 0;
+    z-index: 2;
+}
+
+.rss-table-wrap .rss-table th {
     background: var(--bg-elevated);
-    z-index: 1;
+    box-shadow: inset 0 -1px 0 var(--border);
 }
 
 .rss-table th,
@@ -916,12 +998,15 @@ input[type="file"]::file-selector-button:hover {
     background: var(--bg-card);
 }
 
-.rss-table td a {
+/* `:not(.btn)`: an anchor styled as a button inside a table cell
+   (Backup's per-file Download) keeps its `.btn-*` colors instead of
+   turning into an underlined accent link on hover. */
+.rss-table td a:not(.btn) {
     color: var(--accent);
     text-decoration: none;
 }
 
-.rss-table td a:hover {
+.rss-table td a:not(.btn):hover {
     color: var(--accent-hover);
     text-decoration: underline;
 }
@@ -940,13 +1025,25 @@ input[type="file"]::file-selector-button:hover {
     margin: 0 0 12px;
 }
 
+/* Same palette as `.settings-input` and `.folder-select`; this used to
+   carry its own navy rgba fill and lavender border, which made the
+   Downloads → History and System → RSS controls the odd ones out. */
 .rss-table-controls input,
 .rss-table-controls select {
-    background: rgba(18, 21, 33, 0.9);
-    border: 1px solid rgba(178, 160, 255, 0.16);
-    color: var(--text-primary);
-    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
     padding: 10px 12px;
+    font-size: 14px;
+    font-family: var(--font-body);
+    transition: border-color 0.15s;
+}
+
+.rss-table-controls input:focus,
+.rss-table-controls select:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 .rss-table-controls input {
@@ -968,14 +1065,14 @@ input[type="file"]::file-selector-button:hover {
     flex: 1;
     height: 6px;
     background: var(--bg-elevated);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
 }
 
 .dl-progress-fill {
     height: 100%;
     background: var(--accent);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     transition: width 0.3s ease;
 }
 
@@ -994,3 +1091,5 @@ input[type="file"]::file-selector-button:hover {
     margin-top: 4px;
 }
 
+/* Keep a short inline token (a JSON example, a flag) on one line. */
+.nowrap { white-space: nowrap; }

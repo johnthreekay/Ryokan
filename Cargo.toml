@@ -91,6 +91,11 @@ path = "tests/rss_user_feed_e2e.rs"
 required-features = ["test-support"]
 
 [[test]]
+name = "rss_sync_blocklist_e2e"
+path = "tests/rss_sync_blocklist_e2e.rs"
+required-features = ["test-support"]
+
+[[test]]
 name = "nyaa_filename_corpus"
 path = "tests/nyaa_filename_corpus.rs"
 required-features = ["test-support"]

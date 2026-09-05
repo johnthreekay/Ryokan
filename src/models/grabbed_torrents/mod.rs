@@ -22,6 +22,17 @@ pub struct GrabbedTorrent {
     /// Post-processing routes `list_scoped` / `get_files` against the
     /// recorded client; falls back to the current default when NULL.
     pub download_client_id: Option<i64>,
+    /// Misgrab guardrails: NULL until the file list has been checked;
+    /// then `verified`, `misgrab`, `whitelisted`, or `unverifiable`.
+    pub verification: Option<String>,
+    /// What the sweep did about a misgrab: `removed`,
+    /// `removed_no_delete` (seed rules kept the torrent), or `flagged`.
+    pub misgrab_action: Option<String>,
+    /// The magnet or .torrent URL the grab was added with, so Restore
+    /// can re-add it. Empty for paths that never had one.
+    pub source_url: String,
+    pub indexer_id: Option<i64>,
+    pub respect_seed_rules: bool,
 }
 
 /// Record a torrent grab for post-processing.
@@ -336,8 +347,11 @@ pub async fn get_is_batch_by_name(
 pub async fn get_all_pending(db: &SqlitePool) -> Result<Vec<GrabbedTorrent>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT id, hash, torrent_name, series_id, episode_numbers, grabbed_at, \
-                COALESCE(is_batch, 0) AS is_batch, download_client_id \
-         FROM grabbed_torrents WHERE state = 'pending' ORDER BY grabbed_at ASC",
+                COALESCE(is_batch, 0) AS is_batch, download_client_id, verification, \
+                misgrab_action, source_url, indexer_id, respect_seed_rules \
+         FROM grabbed_torrents \
+         WHERE state = 'pending' AND COALESCE(verification, '') != 'misgrab' \
+         ORDER BY grabbed_at ASC",
     )
     .fetch_all(db)
     .await?;
@@ -349,6 +363,24 @@ pub async fn get_all_pending(db: &SqlitePool) -> Result<Vec<GrabbedTorrent>, sql
             let episode_numbers: Vec<i32> = serde_json::from_str(&eps_json).unwrap_or_default();
             let is_batch_i: i64 = row.get("is_batch");
             GrabbedTorrent {
+                verification: row
+                    .try_get::<Option<String>, _>("verification")
+                    .ok()
+                    .flatten(),
+                misgrab_action: row
+                    .try_get::<Option<String>, _>("misgrab_action")
+                    .ok()
+                    .flatten(),
+                source_url: row
+                    .try_get::<Option<String>, _>("source_url")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default(),
+                indexer_id: row.try_get::<Option<i64>, _>("indexer_id").ok().flatten(),
+                respect_seed_rules: row
+                    .try_get::<i64, _>("respect_seed_rules")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
                 id: row.get("id"),
                 hash: row.get("hash"),
                 torrent_name: row.get("torrent_name"),
@@ -967,6 +999,24 @@ pub async fn find_imported_for_episode(
             let episode_numbers: Vec<i32> = serde_json::from_str(&eps_json).unwrap_or_default();
             let is_batch_i: i64 = row.get("is_batch");
             GrabbedTorrent {
+                verification: row
+                    .try_get::<Option<String>, _>("verification")
+                    .ok()
+                    .flatten(),
+                misgrab_action: row
+                    .try_get::<Option<String>, _>("misgrab_action")
+                    .ok()
+                    .flatten(),
+                source_url: row
+                    .try_get::<Option<String>, _>("source_url")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default(),
+                indexer_id: row.try_get::<Option<i64>, _>("indexer_id").ok().flatten(),
+                respect_seed_rules: row
+                    .try_get::<i64, _>("respect_seed_rules")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
                 id: row.get("id"),
                 hash: row.get("hash"),
                 torrent_name: row.get("torrent_name"),
@@ -1036,6 +1086,24 @@ pub async fn find_pending_for_episode(
             let episode_numbers: Vec<i32> = serde_json::from_str(&eps_json).unwrap_or_default();
             let is_batch_i: i64 = row.get("is_batch");
             GrabbedTorrent {
+                verification: row
+                    .try_get::<Option<String>, _>("verification")
+                    .ok()
+                    .flatten(),
+                misgrab_action: row
+                    .try_get::<Option<String>, _>("misgrab_action")
+                    .ok()
+                    .flatten(),
+                source_url: row
+                    .try_get::<Option<String>, _>("source_url")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default(),
+                indexer_id: row.try_get::<Option<i64>, _>("indexer_id").ok().flatten(),
+                respect_seed_rules: row
+                    .try_get::<i64, _>("respect_seed_rules")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
                 id: row.get("id"),
                 hash: row.get("hash"),
                 torrent_name: row.get("torrent_name"),
@@ -1200,3 +1268,411 @@ impl GrabbedTorrentWithSeries {
 
 #[cfg(test)]
 mod tests;
+
+// ── Misgrab guardrails ───────────────────────────────────────────────
+
+/// What the file-list check saw, stored as JSON in
+/// `grabbed_torrents.verification_detail` and shown on the Misgrabs tab.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct VerificationDetail {
+    /// A sample of the media file names (at most a handful).
+    #[serde(default)]
+    pub files: Vec<String>,
+    /// How many media files the list held in total, so the tab can say
+    /// "24 files, first 5 shown" instead of counting the sample.
+    #[serde(default)]
+    pub file_count: usize,
+    /// The file that matched an alias, when one did.
+    #[serde(default)]
+    pub matched: Option<String>,
+    /// One-line reason for the verdict.
+    #[serde(default)]
+    pub reason: String,
+    /// Advisory notes (for example a season mismatch that did not
+    /// change the verdict).
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+const GRAB_COLS: &str = "id, hash, torrent_name, series_id, episode_numbers, state, grabbed_at, \
+     COALESCE(is_batch, 0) AS is_batch, download_client_id, verification, misgrab_action, \
+     COALESCE(source_url, '') AS source_url, indexer_id, COALESCE(respect_seed_rules, 0) AS respect_seed_rules";
+
+fn row_to_grab(row: &sqlx::sqlite::SqliteRow) -> GrabbedTorrent {
+    let eps_json: String = row.get("episode_numbers");
+    let episode_numbers: Vec<i32> = serde_json::from_str(&eps_json).unwrap_or_default();
+    let is_batch_i: i64 = row.get("is_batch");
+    GrabbedTorrent {
+        id: row.get("id"),
+        hash: row.get("hash"),
+        torrent_name: row.get("torrent_name"),
+        series_id: row.get("series_id"),
+        episode_numbers,
+        state: row.get("state"),
+        grabbed_at: row.get("grabbed_at"),
+        is_batch: is_batch_i != 0,
+        download_client_id: row
+            .try_get::<Option<i64>, _>("download_client_id")
+            .ok()
+            .flatten(),
+        verification: row
+            .try_get::<Option<String>, _>("verification")
+            .ok()
+            .flatten(),
+        misgrab_action: row
+            .try_get::<Option<String>, _>("misgrab_action")
+            .ok()
+            .flatten(),
+        source_url: row.try_get::<String, _>("source_url").unwrap_or_default(),
+        indexer_id: row.try_get::<Option<i64>, _>("indexer_id").ok().flatten(),
+        respect_seed_rules: row
+            .try_get::<i64, _>("respect_seed_rules")
+            .map(|v| v != 0)
+            .unwrap_or(false),
+    }
+}
+
+pub async fn get_by_id(db: &SqlitePool, id: i64) -> Result<Option<GrabbedTorrent>, sqlx::Error> {
+    let row = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SELECT {GRAB_COLS} FROM grabbed_torrents WHERE id = ?"
+    )))
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
+    Ok(row.as_ref().map(row_to_grab))
+}
+
+/// Record the file-list verdict once. Returns false when the row was
+/// already stamped (a grab-time spawn and the sweep can race; the first
+/// writer wins and the verdict never flips on its own).
+pub async fn stamp_verification(
+    db: &SqlitePool,
+    id: i64,
+    verdict: &str,
+    detail_json: &str,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        "UPDATE grabbed_torrents \
+         SET verification = ?, verified_at = CURRENT_TIMESTAMP, verification_detail = ? \
+         WHERE id = ? AND verification IS NULL",
+    )
+    .bind(verdict)
+    .bind(detail_json)
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn get_verification_detail(db: &SqlitePool, id: i64) -> VerificationDetail {
+    sqlx::query_scalar::<_, String>(
+        "SELECT COALESCE(verification_detail, '') FROM grabbed_torrents WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|json| serde_json::from_str(&json).ok())
+    .unwrap_or_default()
+}
+
+pub async fn get_verification(db: &SqlitePool, id: i64) -> Option<String> {
+    sqlx::query_scalar::<_, Option<String>>(
+        "SELECT verification FROM grabbed_torrents WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .flatten()
+}
+
+/// True when any row for the hash was whitelisted by Restore, so a
+/// re-added torrent (a new row) is never flagged again.
+pub async fn is_whitelisted_hash(db: &SqlitePool, hash: &str) -> bool {
+    if hash.is_empty() {
+        return false;
+    }
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM grabbed_torrents WHERE hash = ? AND verification = 'whitelisted'",
+    )
+    .bind(hash)
+    .fetch_one(db)
+    .await
+    .map(|n| n > 0)
+    .unwrap_or(false)
+}
+
+pub async fn whitelist_by_hash(db: &SqlitePool, hash: &str) -> Result<u64, sqlx::Error> {
+    if hash.is_empty() {
+        return Ok(0);
+    }
+    let result = sqlx::query(
+        "UPDATE grabbed_torrents \
+         SET verification = 'whitelisted', reviewed_at = CURRENT_TIMESTAMP \
+         WHERE hash = ?",
+    )
+    .bind(hash)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+/// Pending grabs whose file list has not been checked yet, old enough
+/// that the grab-time spawn has had its chance.
+pub async fn list_unverified_pending(
+    db: &SqlitePool,
+    min_age_secs: i64,
+) -> Result<Vec<GrabbedTorrent>, sqlx::Error> {
+    let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SELECT {GRAB_COLS} FROM grabbed_torrents \
+         WHERE state = 'pending' AND verification IS NULL AND hash != '' \
+           AND grabbed_at <= datetime('now', ? || ' seconds') \
+         ORDER BY grabbed_at ASC"
+    )))
+    .bind(format!("-{min_age_secs}"))
+    .fetch_all(db)
+    .await?;
+    Ok(rows.iter().map(row_to_grab).collect())
+}
+
+/// Misgrabs the sweep has not acted on yet.
+pub async fn list_unhandled_misgrabs(db: &SqlitePool) -> Result<Vec<GrabbedTorrent>, sqlx::Error> {
+    let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SELECT {GRAB_COLS} FROM grabbed_torrents \
+         WHERE verification = 'misgrab' AND misgrab_action IS NULL \
+         ORDER BY verified_at ASC"
+    )))
+    .fetch_all(db)
+    .await?;
+    Ok(rows.iter().map(row_to_grab).collect())
+}
+
+/// Blocklist every active row for the hash (the grab and any sibling
+/// rows auto-expand wrote) with a reason the Downloads page can show.
+pub async fn mark_failed_by_hash_with_reason(
+    db: &SqlitePool,
+    hash: &str,
+    reason: &str,
+) -> Result<u64, sqlx::Error> {
+    if hash.is_empty() {
+        return Ok(0);
+    }
+    let result = sqlx::query(
+        "UPDATE grabbed_torrents SET state = 'failed', failure_reason = ? \
+         WHERE hash = ? AND state IN ('pending', 'imported')",
+    )
+    .bind(reason)
+    .bind(hash)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+pub async fn set_misgrab_action(db: &SqlitePool, id: i64, action: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE grabbed_torrents SET misgrab_action = ? WHERE id = ?")
+        .bind(action)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+pub async fn mark_misgrab_reviewed(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE grabbed_torrents SET reviewed_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+pub async fn set_source_url(db: &SqlitePool, id: i64, url: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE grabbed_torrents SET source_url = ? WHERE id = ?")
+        .bind(url)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+/// Blocklist check by hash (any series) or by exact release title for
+/// this series. The failed row written by a misgrab, an import
+/// failure, or the user's "mark failed" is the blocklist entry.
+pub async fn is_blocklisted_release(
+    db: &SqlitePool,
+    series_id: i64,
+    hash: &str,
+    title: &str,
+) -> bool {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM grabbed_torrents \
+         WHERE state = 'failed' \
+           AND ((? != '' AND hash = ?) OR (series_id = ? AND torrent_name = ?))",
+    )
+    .bind(hash)
+    .bind(hash)
+    .bind(series_id)
+    .bind(title)
+    .fetch_one(db)
+    .await
+    .map(|n| n > 0)
+    .unwrap_or(false)
+}
+
+/// One read of the blocklist for a whole search: every failed hash, plus
+/// the failed release titles of the series being searched.
+#[derive(Debug, Default, Clone)]
+pub struct BlocklistSnapshot {
+    pub hashes: std::collections::HashSet<String>,
+    pub titles: std::collections::HashSet<String>,
+}
+
+impl BlocklistSnapshot {
+    pub fn rejects(&self, hash: &str, title: &str) -> bool {
+        (!hash.is_empty() && self.hashes.contains(&hash.to_ascii_lowercase()))
+            || self.titles.contains(&title.to_lowercase())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.hashes.is_empty() && self.titles.is_empty()
+    }
+}
+
+pub async fn blocklist_snapshot(db: &SqlitePool, anilist_id: i64) -> BlocklistSnapshot {
+    let mut snapshot = BlocklistSnapshot::default();
+    // Two indexed reads instead of one joined scan: failed hashes come
+    // off `idx_grabbed_torrents_state`, and the titles only for the
+    // series being searched through the partial
+    // `(series_id, torrent_name) WHERE state = 'failed'` index.
+    if let Ok(hashes) = sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT hash FROM grabbed_torrents WHERE state = 'failed' AND hash != ''",
+    )
+    .fetch_all(db)
+    .await
+    {
+        snapshot
+            .hashes
+            .extend(hashes.into_iter().map(|h| h.to_ascii_lowercase()));
+    }
+    if let Ok(titles) = sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT g.torrent_name FROM series s \
+         JOIN grabbed_torrents g ON g.series_id = s.id AND g.state = 'failed' \
+         WHERE s.anilist_id = ? AND g.torrent_name != ''",
+    )
+    .bind(anilist_id)
+    .fetch_all(db)
+    .await
+    {
+        snapshot
+            .titles
+            .extend(titles.into_iter().map(|t| t.to_lowercase()));
+    }
+    snapshot
+}
+
+/// Misgrabs detected for the series within the window; the re-search
+/// loop breaker.
+pub async fn count_recent_misgrabs(db: &SqlitePool, series_id: i64, hours: i64) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM grabbed_torrents \
+         WHERE series_id = ? AND verification = 'misgrab' \
+           AND verified_at >= datetime('now', ? || ' hours')",
+    )
+    .bind(series_id)
+    .bind(format!("-{hours}"))
+    .fetch_one(db)
+    .await
+    .unwrap_or(0)
+}
+
+/// A row on the System > Misgrabs tab.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MisgrabEntry {
+    pub id: i64,
+    pub hash: String,
+    pub torrent_name: String,
+    pub series_id: i64,
+    pub anilist_id: i64,
+    pub series_title: String,
+    pub cover_url: String,
+    pub episode_numbers: Vec<i32>,
+    pub state: String,
+    pub misgrab_action: String,
+    pub verified_at: String,
+    pub files_sample: Vec<String>,
+    /// Total media files in the release (0 for rows stamped before the
+    /// count was recorded; the template then falls back to the sample).
+    pub file_count: usize,
+    pub notes: Vec<String>,
+}
+
+impl MisgrabEntry {
+    /// Total media files, falling back to the sample size for rows
+    /// written before the count existed.
+    pub fn total_files(&self) -> usize {
+        self.file_count.max(self.files_sample.len())
+    }
+
+    /// True when the sample does not show every file.
+    pub fn files_truncated(&self) -> bool {
+        self.total_files() > self.files_sample.len()
+    }
+
+    /// Human wording for the Status column.
+    pub fn status_label(&self) -> &'static str {
+        match self.misgrab_action.as_str() {
+            "removed" => "Removed and blocklisted",
+            "removed_no_delete" => "Removed, kept seeding",
+            "flagged" => "Held in client, not imported",
+            _ => "Detected, action pending",
+        }
+    }
+}
+
+/// Detected misgrabs the user has not restored or dismissed.
+pub async fn list_misgrabs(
+    db: &SqlitePool,
+    title_language: &str,
+) -> Result<Vec<MisgrabEntry>, sqlx::Error> {
+    let sql = format!(
+        r#"SELECT g.id, g.hash, g.torrent_name, g.series_id, g.episode_numbers, g.state,
+                  COALESCE(g.misgrab_action, '') AS misgrab_action,
+                  COALESCE(g.verified_at, '') AS verified_at,
+                  COALESCE(g.verification_detail, '') AS verification_detail,
+                  {title_expr},
+                  COALESCE(s.anilist_id, 0) AS anilist_id,
+                  COALESCE(s.cover_url, '') AS cover_url
+           FROM grabbed_torrents g
+           LEFT JOIN series s ON s.id = g.series_id
+           WHERE g.verification = 'misgrab' AND g.reviewed_at IS NULL
+           ORDER BY g.verified_at DESC"#,
+        title_expr = title_select_expr(title_language),
+    );
+    let rows = sqlx::query(sqlx::AssertSqlSafe(sql)).fetch_all(db).await?;
+    Ok(rows
+        .iter()
+        .map(|row| {
+            let eps_json: String = row.get("episode_numbers");
+            let detail_json: String = row.get("verification_detail");
+            let detail: VerificationDetail = serde_json::from_str(&detail_json).unwrap_or_default();
+            MisgrabEntry {
+                id: row.get("id"),
+                hash: row.get("hash"),
+                torrent_name: row.get("torrent_name"),
+                series_id: row.get("series_id"),
+                anilist_id: row.get("anilist_id"),
+                series_title: row.get("series_title"),
+                cover_url: row.get("cover_url"),
+                episode_numbers: serde_json::from_str(&eps_json).unwrap_or_default(),
+                state: row.get("state"),
+                misgrab_action: row.get("misgrab_action"),
+                verified_at: row.get("verified_at"),
+                files_sample: detail.files,
+                file_count: detail.file_count,
+                notes: detail.notes,
+            }
+        })
+        .collect())
+}

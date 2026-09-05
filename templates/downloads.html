@@ -27,7 +27,7 @@
 <div class="rss-panel">
     <div id="queue-container">
         {% if !queue_error.is_empty() %}
-        <div class="logs-empty">{{ queue_error }}</div>
+        <div class="alert alert-warn" role="status">{{ queue_error }}</div>
         {% else if queue.is_empty() %}
         <div class="logs-empty">
             <p>No active downloads.</p>
@@ -96,9 +96,9 @@
                     <td>
                         <div class="dl-torrent-name" title="{{ entry.torrent_name }}">{{ entry.torrent_name }}</div>
                         {% if entry.state == "replaced" && !entry.replaced_by_torrent_name.is_empty() %}
-                        <div class="dl-replaced-note" title="Superseded by upgrade: {{ entry.replaced_by_torrent_name }}">↪ replaced by <span class="dl-replaced-target">{{ entry.replaced_by_torrent_name }}</span></div>
+                        <div class="dl-replaced-note" title="Replaced by {{ entry.replaced_by_torrent_name }}">↪ replaced by <span class="dl-replaced-target">{{ entry.replaced_by_torrent_name }}</span></div>
                         {% else if entry.replaces_count > 0 %}
-                        <div class="dl-replaced-note dl-replaced-note-upgrade" title="This grab superseded {{ entry.replaces_count }} earlier grab{% if entry.replaces_count != 1 %}s{% endif %} for the same episode(s)">↑ upgraded {{ entry.replaces_count }} earlier grab{% if entry.replaces_count != 1 %}s{% endif %}</div>
+                        <div class="dl-replaced-note dl-replaced-note-upgrade" title="Replaced {{ entry.replaces_count }} earlier grab{% if entry.replaces_count != 1 %}s{% endif %}">↑ upgraded {{ entry.replaces_count }} earlier grab{% if entry.replaces_count != 1 %}s{% endif %}</div>
                         {% endif %}
                     </td>
                     <td>{% for ep in entry.episode_numbers %}{% if !loop.first %}, {% endif %}{{ ep }}{% endfor %}</td>

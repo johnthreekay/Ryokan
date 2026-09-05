@@ -83,14 +83,14 @@
 
         <div class="form-group">
             <label for="indexer-add-categories">Categories</label>
-            <input id="indexer-add-categories" type="text" name="categories" value="" placeholder="automatic">
-            <span class="form-hint">Torznab or newznab category ids to ask this indexer for, comma separated (5070 anime, 2000 movies, 6000 adult). Blank asks for what each series needs and falls back to what the indexer reports.</span>
+            <input id="indexer-add-categories" type="text" name="categories" value="" placeholder="automatic" data-indexer-categories-input>
+            <span class="form-hint">Comma separated ids, such as 5070 for anime or 6000 for adult. Blank asks for what each series needs. After saving, the edit form lists what the indexer offers.</span>
         </div>
 
         <div class="form-group">
             <label for="indexer-add-timeout">Request Timeout (seconds)</label>
             <input id="indexer-add-timeout" type="number" name="request_timeout_secs" min="1" max="600" placeholder="30">
-            <span class="form-hint">Per-indexer override. Blank uses the default (30s).</span>
+            <span class="form-hint">Blank uses the default of 30 seconds.</span>
         </div>
 
         <div class="form-row">
@@ -121,26 +121,27 @@
            UI surface. #}
         <input type="hidden" name="enabled" value="on">
 
-        <div class="form-group">
-            <label class="checkbox-label">
+        <div class="setting-rows">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Private tracker</span>
+                    <span class="setting-row-desc">Each series opts in to upgrades from private trackers on its own page.</span>
+                </span>
                 <input type="checkbox" name="is_private_tracker"
                        {% if let Some(seed) = seed %}{% if seed.is_private_tracker %}checked{% endif %}{% endif %}>
-                Private tracker
             </label>
-            <span class="form-hint">Marks this indexer as PT for the per-series upgrade opt-in.</span>
-        </div>
-
-        <div class="form-group">
-            <label class="checkbox-label">
-                {# PT trackers default-on for RSS — they're the
-                   primary use case for the auto-sync (new uploads,
-                   freeleech windows, etc.). Public trackers default
-                   off. #}
+            {# PT trackers default-on for RSS — they're the
+               primary use case for the auto-sync (new uploads,
+               freeleech windows, etc.). Public trackers default
+               off. #}
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Enable RSS auto-sync</span>
+                    <span class="setting-row-desc">Poll this indexer's feed on every RSS sync.</span>
+                </span>
                 <input type="checkbox" name="rss_enabled"
                        {% if let Some(seed) = seed %}{% if seed.is_private_tracker %}checked{% endif %}{% endif %}>
-                Enable RSS auto-sync
             </label>
-            <span class="form-hint">When enabled, RSS sync will poll this indexer's RSS feed for newly-uploaded releases on every interval.</span>
         </div>
 
         <div class="form-group">
@@ -154,7 +155,7 @@
                 </option>
                 {% endfor %}
             </select>
-            <span class="form-hint">Pin grabs from this indexer to a specific download client. Leave on <em>(use default)</em> to route through whichever client has the default flag. Torznab indexers can only be pinned to torrent clients; newznab indexers to usenet clients (SABnzbd).</span>
+            <span class="form-hint">Send this indexer's grabs to one client. Torznab indexers take torrent clients, newznab indexers take usenet clients.</span>
         </div>
     </div>
     <div class="modal-footer">

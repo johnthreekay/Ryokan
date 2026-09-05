@@ -111,8 +111,8 @@
 
 .library-chip.active {
     color: var(--accent);
-    border-color: rgba(203, 166, 247, 0.45);
-    background: rgba(203, 166, 247, 0.08);
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.08);
 }
 
 .library-chip-count {
@@ -135,25 +135,7 @@
 
 /* Direction toggle: square button matching the sort select's height.
    The arrow SVG points down (descending); ascending rotates it. */
-.library-sort-dir {
-    box-sizing: border-box;
-    height: 34px;
-    width: 34px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-dim);
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-}
 
-.library-sort-dir:hover {
-    color: var(--text);
-    border-color: var(--border-accent);
-}
 
 .library-sort-dir-icon {
     transition: transform 0.15s;
@@ -173,7 +155,7 @@
     min-width: 16px;
     height: 16px;
     padding: 0 4px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--accent);
     color: var(--bg);
     font-size: 10px;
@@ -194,7 +176,7 @@
     border: 1px solid var(--border);
     padding: 4px 10px;
     font-size: 12px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
 }
 
 .btn-pill:hover { color: var(--text); border-color: var(--accent); }
@@ -223,7 +205,7 @@
    space for it so typed text doesn't run under the icon. */
 .library-search-input {
     box-sizing: border-box;
-    height: 42px;
+    height: 41px;
     padding: 0 12px 0 38px;
     background-color: var(--bg);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237a7a96' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
@@ -233,7 +215,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
-    font-size: 13px;
+    font-size: 14px;
     font-family: var(--font-body);
     /* Row 1's single flexible element: 300px when space allows,
        shrinking to 150px before anything else in the row moves. */
@@ -258,19 +240,13 @@
    Scoped so other pages' .folder-select sizing stays untouched. */
 .library-scope-tools .folder-select {
     box-sizing: border-box;
-    height: 34px;
+    height: 32px;
     padding: 0 28px 0 12px;
     font-size: 13px;
     width: auto;
 }
 
-/* Select toggle matches the row's compact height. */
-.library-scope-tools .bulk-select-toggle {
-    box-sizing: border-box;
-    height: 34px;
-    padding: 0 14px;
-    font-size: 13px;
-}
+/* The select toggle is a `.btn-sm`, so it shares the row's 32px. */
 
 @media (max-width: 640px) {
     .library-grid {
@@ -299,7 +275,7 @@
     /* Mauve-tinted shadow ring on hover — matches the accent palette
      * so the lift registers as more than a generic shadow. */
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35),
-                0 0 0 1px rgba(203, 166, 247, 0.18);
+                0 0 0 1px rgba(var(--accent-rgb), 0.18);
 }
 
 .series-card:hover .series-title { color: var(--accent); }
@@ -330,9 +306,9 @@
        as a 5px strip. A status bar is signage — it gets traffic-light
        saturation, scoped here so the rest of the page keeps the
        muted palette. */
-    --bar-green: #2fce5f;
-    --bar-red: #e5484d;
-    --bar-accent: #a06cf5;
+    --bar-green: var(--signal-green);
+    --bar-red: var(--signal-red);
+    --bar-accent: var(--signal-accent);
     display: block;
     height: 4px;
     background: rgba(255, 255, 255, 0.1);
@@ -353,7 +329,7 @@
    "something is in flight" matters more than the exact fraction here
    (the tooltip and the series page carry the numbers). */
 .card-progress-downloading {
-    background: rgba(160, 108, 245, 0.35);
+    background: rgba(var(--signal-accent-rgb), 0.35);
 }
 
 .card-progress-downloading .card-progress-fill {
@@ -386,7 +362,7 @@
    bar's red so the two surfaces read as one signal. */
 .tag-progress-missing {
     color: var(--red);
-    background: rgba(211, 125, 125, 0.12);
+    background: rgba(var(--red-rgb), 0.12);
 }
 
 /* Hover vignette — bottom band only. One linear gradient fading up
@@ -399,7 +375,7 @@
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.25s ease-out;
-    background: linear-gradient(to top, rgba(15, 15, 19, 0.55) 0%, transparent 30%);
+    background: linear-gradient(to top, rgba(var(--bg-rgb), 0.55) 0%, transparent 30%);
 }
 
 .series-card:hover .series-cover::after { opacity: 1; }
@@ -428,10 +404,19 @@
    row heights would visibly jump. Fixed height + overflow:hidden
    gives every card the same outer dimension regardless of content,
    and the grid stays still through filter changes. */
+/* Fixed height keeps the grid rows even. 108px fits the common worst
+   case (two-line title, tag row plus a wrapped status pill) with the
+   bottom padding intact; at 100px that padding was clipped and the
+   pill sat 5px from the edge while the title had 14px above it. The
+   column layout pins the tags to the bottom so cards with a one-line
+   title line up with their neighbors. */
 .series-info {
-    height: 100px;
+    height: 108px;
     padding: 10px 12px 12px;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 .series-title {
@@ -483,7 +468,7 @@
     width: 48px;
     height: 68px;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
 }
 
@@ -553,7 +538,7 @@
 
 .btn-add.btn-error {
     background: var(--red);
-    color: #fff;
+    color: var(--bg);
 }
 
 .loading-text {
@@ -592,7 +577,7 @@
 
 .monitor-option-btn.active {
     border-color: var(--accent);
-    background: rgba(203, 166, 247, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
     box-shadow: inset 3px 0 0 var(--accent);
     padding-left: 17px;
 }
@@ -646,11 +631,11 @@
        of cover-art brightness. backdrop-filter blurs the bit of cover
        behind the indicator, giving it a frosted-glass quality that
        matches the rest of the dark UI. */
-    background: rgba(15, 15, 19, 0.55);
+    background: rgba(var(--bg-rgb), 0.55);
     backdrop-filter: blur(8px) saturate(120%);
     -webkit-backdrop-filter: blur(8px) saturate(120%);
-    border: 1.5px solid rgba(232, 232, 240, 0.35);
-    border-radius: 7px;
+    border: 1.5px solid rgba(var(--text-bright-rgb), 0.35);
+    border-radius: var(--radius);
 
     transition:
         background 0.18s ease-out,
@@ -690,14 +675,14 @@
    `:not(:checked)` is kept too as belt-and-suspenders for paths
    where `:checked` latches but `.selected` somehow didn't. */
 .library-grid.selecting .series-card:not(.selected):hover .series-card-select:not(:checked) {
-    border-color: rgba(232, 232, 240, 0.75);
-    background: rgba(15, 15, 19, 0.75);
+    border-color: rgba(var(--text-bright-rgb), 0.75);
+    background: rgba(var(--bg-rgb), 0.75);
 }
 
 .series-card-select:focus-visible {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(203, 166, 247, 0.35);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35);
 }
 
 /* Checked visual. Driven by BOTH `:checked` (the form-element state)
@@ -713,8 +698,8 @@
     background: var(--accent);
     border-color: var(--accent);
     box-shadow:
-        0 0 0 2px rgba(15, 15, 19, 0.6),
-        0 2px 8px rgba(203, 166, 247, 0.4);
+        0 0 0 2px rgba(var(--bg-rgb), 0.6),
+        0 2px 8px rgba(var(--accent-rgb), 0.4);
     /* Inline SVG check mark — using #0f0f13 (page bg) as the stroke
        color so the check reads as "carved out" rather than "drawn on
        top of." */
@@ -741,8 +726,8 @@
     border-color: var(--accent);
     box-shadow:
         0 0 0 1px var(--accent),
-        0 8px 24px -4px rgba(203, 166, 247, 0.35),
-        0 2px 8px rgba(203, 166, 247, 0.18);
+        0 8px 24px -4px rgba(var(--accent-rgb), 0.35),
+        0 2px 8px rgba(var(--accent-rgb), 0.18);
     transform: translateY(-2px);
 }
 .series-card.selected:hover {
@@ -846,16 +831,16 @@
     bottom: 24px;
     left: 50%;
     transform: translateX(-50%) translateY(140%);
-    background: rgba(22, 22, 29, 0.92);
+    background: rgba(var(--bg-card-rgb), 0.92);
     backdrop-filter: blur(16px) saturate(140%);
     -webkit-backdrop-filter: blur(16px) saturate(140%);
-    border: 1px solid rgba(203, 166, 247, 0.3);
-    border-radius: 12px;
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    border-radius: var(--radius-lg);
     padding: 8px 12px;
     box-shadow:
         0 12px 32px -8px rgba(0, 0, 0, 0.6),
-        0 0 0 1px rgba(203, 166, 247, 0.12),
-        0 0 24px -4px rgba(203, 166, 247, 0.25);
+        0 0 0 1px rgba(var(--accent-rgb), 0.12),
+        0 0 24px -4px rgba(var(--accent-rgb), 0.25);
     z-index: 50;
     transition:
         transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -878,7 +863,7 @@
 /* Count badge: mauve text, bold, with a thin separator pipe. The
    number gets the display-font treatment so it pulls focus naturally. */
 .bulk-action-count {
-    font-family: 'Murecho', system-ui, sans-serif;
+    font-family: var(--font-display);
     font-size: 14px;
     font-weight: 700;
     color: var(--text-bright);
@@ -906,7 +891,7 @@
     font-weight: 600;
     font-family: inherit;
     line-height: 1.2;
-    border-radius: 7px;
+    border-radius: var(--radius);
     border: 1px solid transparent;
     cursor: pointer;
     transition: background 0.15s ease-out, transform 0.1s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
@@ -936,12 +921,12 @@
     background: var(--bg-card);
 }
 .bulk-action-btn-danger {
-    background: rgba(211, 125, 125, 0.15);
+    background: rgba(var(--red-rgb), 0.15);
     color: var(--red);
-    border-color: rgba(211, 125, 125, 0.3);
+    border-color: rgba(var(--red-rgb), 0.3);
 }
 .bulk-action-btn-danger:hover {
-    background: rgba(211, 125, 125, 0.25);
+    background: rgba(var(--red-rgb), 0.25);
     border-color: var(--red);
 }
 .bulk-action-btn:disabled {
@@ -977,7 +962,7 @@
         right: 0;
         max-width: none;
         transform: translateY(100%);
-        background: rgba(15, 15, 19, 0.96);
+        background: rgba(var(--bg-rgb), 0.96);
         backdrop-filter: blur(12px) saturate(140%);
         -webkit-backdrop-filter: blur(12px) saturate(140%);
         border: none;
@@ -1070,7 +1055,7 @@
         color: var(--text-bright);
     }
     .bulk-action-btn-danger:hover {
-        background: rgba(211, 125, 125, 0.12);
+        background: rgba(var(--red-rgb), 0.12);
         color: var(--red);
     }
     .bulk-action-btn:active {
@@ -1104,7 +1089,7 @@
     width: 14px;
     height: 14px;
     margin-top: -7px;
-    border: 2px solid rgba(203, 166, 247, 0.25);
+    border: 2px solid rgba(var(--accent-rgb), 0.25);
     border-top-color: var(--accent);
     border-radius: 50%;
     opacity: 0;
@@ -1117,4 +1102,10 @@
 .htmx-request.anilist-search-spinner {
     opacity: 1;
     animation: spin-ring 0.7s linear infinite;
+}
+
+/* The sort-direction button sits between a select and a text button;
+   a circle there reads as a stray, so it takes the control radius. */
+.library-sort-dir {
+    border-radius: var(--radius);
 }

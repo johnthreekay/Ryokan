@@ -35,7 +35,7 @@
     {% if results.is_empty() %}
         <div class="empty-state">
             <p>No results for &ldquo;{{ query }}&rdquo;.</p>
-            <p class="form-hint">Try a shorter query, drop the "Trusted only" filter, or switch the category to Anime&nbsp;All to include raws. Nyaa tokenizes loosely, so exact punctuation rarely helps.</p>
+            <p class="form-hint">Try a shorter query, turn off Trusted only, or switch the category to Anime All.</p>
         </div>
     {% else %}
         <p class="results-count" id="results-count">{{ results.len() }} results</p>
@@ -57,7 +57,7 @@
                 <tr class="{% if r.is_batch && r.is_trusted %}is-batch is-trusted{% else if r.is_batch %}is-batch{% else if r.is_trusted %}is-trusted{% endif %}" data-score="{{ r.score }}" data-name="{{ r.title }}" data-size="{{ r.size_bytes }}" data-size-human="{{ r.size }}" data-date="{{ r.upload_date }}" data-seeders="{{ r.seeders }}" data-leechers="{{ r.leechers }}" data-downloads="{{ r.downloads }}" data-info-hash="{{ r.info_hash }}" data-group="{{ r.group }}"{% if let Some(idx) = r.indexer_id %} data-indexer-id="{{ idx }}"{% endif %}>
                     <td class="col-score">
                         <details class="score-details" name="score-breakdown">
-                            <summary class="score-badge {% if r.score >= 60 %}score-high{% else if r.score >= 30 %}score-mid{% else %}score-low{% endif %}" title="Click to see breakdown">{{ r.score }}</summary>
+                            <summary class="score-badge {% if r.score >= 60 %}score-high{% else if r.score >= 30 %}score-mid{% else %}score-low{% endif %}" title="Score breakdown">{{ r.score }}</summary>
                             <div class="score-components">
                                 <div class="score-components-title">Base score breakdown</div>
                                 {% if r.score_breakdown.is_empty() %}
@@ -72,7 +72,7 @@
                                     </li>
                                     {% endfor %}
                                 </ul>
-                                <div class="form-hint">CF contributions shown here are evaluated against the release's classification alone. SeaDex-based CFs need a tracked AniList series to resolve, so they never fire on the manual search page; open the series page's interactive search for the full breakdown.</div>
+                                <div class="form-hint">SeaDex formats cannot match here. Open a series page's interactive search for the full breakdown.</div>
                                 {% endif %}
                             </div>
                         </details>

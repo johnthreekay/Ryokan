@@ -44,14 +44,20 @@
             <option value="move"{% if form.mode == "move" %} selected{% endif %}>Move</option>
         </select>
     </div>
-    <label class="checkbox-row import-checkbox">
-        <input type="checkbox" name="follow_symlinks" value="1"{% if form.follow_symlinks %} checked{% endif %}>
-        <span><strong>Follow symlinks</strong></span>
-    </label>
-    <label class="checkbox-row import-checkbox">
-        <input type="checkbox" name="include_hidden" value="1"{% if form.include_hidden %} checked{% endif %}>
-        <span><strong>Include hidden files and folders</strong></span>
-    </label>
+    <div class="setting-rows">
+        <label class="setting-row">
+            <span class="setting-row-text">
+                <span class="setting-row-title">Follow symlinks</span>
+            </span>
+            <input type="checkbox" name="follow_symlinks" value="1"{% if form.follow_symlinks %} checked{% endif %}>
+        </label>
+        <label class="setting-row">
+            <span class="setting-row-text">
+                <span class="setting-row-title">Include hidden files and folders</span>
+            </span>
+            <input type="checkbox" name="include_hidden" value="1"{% if form.include_hidden %} checked{% endif %}>
+        </label>
+    </div>
     <div class="import-start-actions">
         <button type="submit" class="btn btn-primary"{% if media_root.is_empty() %} disabled{% endif %}>Scan folder</button>
     </div>
@@ -81,7 +87,7 @@
     <div class="import-spinner" aria-hidden="true"></div>
     <div class="import-scanning-text">
         <strong>Scanning <code>{{ root }}</code></strong>
-        <p class="form-hint">Reading filenames and matching each series against AniList and MAL. Large libraries take a few minutes because the providers allow about thirty lookups a minute. This page updates itself when the preview is ready.</p>
+        <p class="form-hint">Matching each series against AniList and MAL. Large libraries take a few minutes. This page updates itself when the preview is ready.</p>
     </div>
     <div class="import-scanning-actions">
         <a href="/system/import?session={{ session_id }}" class="btn btn-secondary btn-sm">Refresh</a>
@@ -97,7 +103,7 @@
     <div class="import-spinner" aria-hidden="true"></div>
     <div class="import-scanning-text">
         <strong>Importing from <code>{{ root }}</code></strong>
-        <p class="form-hint">Files are being {{ mode_past }} into the media root, then each series is classified and given its artwork and NFO files. Cancel stops after the file in progress; everything already imported stays. This page updates itself when the import is done.</p>
+        <p class="form-hint">Files are being {{ mode_past }} into the media library. Cancel stops after the current file and keeps what was already imported. This page updates itself when the import is done.</p>
     </div>
     <div class="import-scanning-actions">
         <a href="/system/import?session={{ session_id }}" class="btn btn-secondary btn-sm">Refresh</a>

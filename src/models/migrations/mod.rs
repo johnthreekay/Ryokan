@@ -2806,6 +2806,41 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .await
         .ok();
 
+    // Misgrab guardrails (search side): how the title match that
+    // produced each grab was made, so a later misgrab is diagnosable
+    // from the history. `NOT NULL DEFAULT` keeps the raw INSERTs in
+    // older tests valid; legacy rows read back as empty strings.
+    for sql in [
+        "ALTER TABLE episode_grab_history ADD COLUMN match_kind TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_grab_history ADD COLUMN match_phase TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_grab_history ADD COLUMN matched_alias TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_grab_history ADD COLUMN match_ratio REAL NOT NULL DEFAULT 0",
+    ] {
+        sqlx::query(sql).execute(db).await.ok();
+    }
+
+    // Misgrab guardrails (download side). `verification` is NULL until
+    // the grab's file list has been checked against the series aliases
+    // (verified / misgrab / whitelisted / unverifiable); `misgrab_action`
+    // records what the sweep did about a misgrab (removed /
+    // removed_no_delete / flagged); `failure_reason` tells a misgrab
+    // apart from a disk-full or client error on the blocklist;
+    // `source_url` lets Restore re-add a removed grab.
+    for sql in [
+        "ALTER TABLE grabbed_torrents ADD COLUMN verification TEXT",
+        "ALTER TABLE grabbed_torrents ADD COLUMN verified_at TEXT",
+        "ALTER TABLE grabbed_torrents ADD COLUMN verification_detail TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE grabbed_torrents ADD COLUMN failure_reason TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE grabbed_torrents ADD COLUMN misgrab_action TEXT",
+        "ALTER TABLE grabbed_torrents ADD COLUMN reviewed_at TEXT",
+        "ALTER TABLE grabbed_torrents ADD COLUMN source_url TEXT NOT NULL DEFAULT ''",
+        "CREATE INDEX IF NOT EXISTS idx_grabbed_torrents_verification ON grabbed_torrents (verification) WHERE verification IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_grabbed_torrents_failed_name ON grabbed_torrents (series_id, torrent_name) WHERE state = 'failed'",
+        "ALTER TABLE config ADD COLUMN misgrab_auto_remove INTEGER NOT NULL DEFAULT 1",
+    ] {
+        sqlx::query(sql).execute(db).await.ok();
+    }
+
     Ok(())
 }
 

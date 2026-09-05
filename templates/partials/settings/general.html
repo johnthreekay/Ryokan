@@ -1,43 +1,22 @@
-        <fieldset>
-            <legend>Media Library</legend>
+        <div class="cf-section">
+            <h3>Media Library</h3>
             <div class="form-group">
                 <label for="media_root">Media Root Path</label>
                 <input type="text" name="media_root" id="media_root" value="{{ config.media_root }}" placeholder="/srv/media/anime">
-                <span class="form-hint">Root directory where anime series folders are stored. Inside Docker, this must be a mounted volume.</span>
+                <span class="form-hint">Inside Docker this must be a mounted volume.</span>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>RSS</legend>
-            <div class="form-group">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="rss_enabled" id="rss_enabled" {% if config.rss_enabled %}checked{% endif %}>
-                    <span>Enable automatic RSS sync</span>
-                </label>
-                <span class="form-hint">Poll the official Nyaa anime RSS feed on the interval below and auto-grab matching releases.</span>
-            </div>
-            <div class="form-group">
-                <label for="rss_interval_minutes">RSS Sync Interval (minutes)</label>
-                <input type="number" min="1" max="60" name="rss_interval_minutes" id="rss_interval_minutes" value="{{ config.rss_interval_minutes }}">
-                <span class="form-hint">Used by the background RSS poller. Manual sync is available on the System page.</span>
-            </div>
-            <div class="form-group">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="disable_nyaa_rss" id="disable_nyaa_rss" {% if config.disable_nyaa_rss %}checked{% endif %}>
-                    <span>Skip the Nyaa RSS feed</span>
-                </label>
-                <span class="form-hint">When checked, the background RSS poller skips Nyaa entirely. Indexer-RSS feeds (torznab/newznab) and direct RSS feeds you've configured still run on the same interval. Use this if you only want releases from your configured indexers, not from Nyaa's public feed.</span>
-            </div>
-        </fieldset>
-
-        <fieldset>
-            <legend>Post-Processing</legend>
-            <div class="form-group">
-                <label class="checkbox-row">
+        <div class="cf-section">
+            <h3>Post-Processing</h3>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Enable post-processing</span>
+                        <span class="setting-row-desc">Rename and move finished downloads into the media library and write NFO files for Jellyfin.</span>
+                    </span>
                     <input type="checkbox" name="post_processing_enabled" id="post_processing_enabled" {% if config.post_processing_enabled %}checked{% endif %}>
-                    <span>Enable post-processing</span>
                 </label>
-                <span class="form-hint">When enabled, Ryokan will rename and move completed downloads into your media library and write NFO sidecar files for Jellyfin. No external metadata providers are queried; data already in the database is used. Requires a configured media root and a download client.</span>
             </div>
             <div class="form-group">
                 <label for="post_processing_mode">File operation mode</label>
@@ -46,12 +25,12 @@
                     <option value="copy" {% if config.post_processing_mode == "copy" %}selected{% endif %}>Copy (safe across filesystems, uses extra disk space)</option>
                     <option value="move" {% if config.post_processing_mode == "move" %}selected{% endif %}>Move (frees download space, breaks seeding)</option>
                 </select>
-                <span class="form-hint">Hardlink is instant and uses no extra disk space, but only works when the download client and the media root are on the same filesystem. Copy is used automatically as a fallback if hardlinking fails.</span>
+                <span class="form-hint">Hardlink needs the download client and the media library on the same filesystem. Ryokan falls back to copy when a hardlink fails.</span>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset id="naming-settings">
-            <legend>File naming</legend>
+        <div class="cf-section" id="naming-settings">
+            <h3>File naming</h3>
             {% for f in naming.fields %}
             <div class="form-group naming-field">
                 <label for="{{ f.input_name }}">{{ f.label }}</label>
@@ -82,76 +61,82 @@
                     </tbody>
                 </table>
             </details>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Backups</legend>
+        <div class="cf-section">
+            <h3>Grabbing</h3>
             <div class="form-group">
-                <label for="backup_schedule">Scheduled backups</label>
-                <select name="backup_schedule" id="backup_schedule">
-                    <option value="disabled" {% if config.backup_schedule == "disabled" %}selected{% endif %}>Off</option>
-                    <option value="daily" {% if config.backup_schedule == "daily" %}selected{% endif %}>Daily</option>
-                    <option value="weekly" {% if config.backup_schedule == "weekly" %}selected{% endif %}>Weekly</option>
+                <label for="grab_preview_mode">Interactive file picker</label>
+                <select name="grab_preview_mode" id="grab_preview_mode">
+                    <option value="batches_only" {% if config.grab_preview_mode != "never" %}selected{% endif %}>Batches only (default)</option>
+                    <option value="never" {% if config.grab_preview_mode == "never" %}selected{% endif %}>Never</option>
                 </select>
-                <span class="form-hint">Writes a backup of the database and encryption key on that cadence. Download one at any time from <a href="/system?tab=backup">System → Backup</a>, which is also where restores happen.</span>
+                <span class="form-hint">Batches only opens a picker for multi-file releases so you can drop samples and extras first.</span>
             </div>
-            <div class="form-group">
-                <label for="backup_directory">Backup folder</label>
-                <input type="text" name="backup_directory" id="backup_directory" value="{{ config.backup_directory }}" placeholder="/data/backups">
-                <span class="form-hint">Empty keeps backups in a <code>backups</code> folder next to the database. The value is the path inside Ryokan's container. A folder on another disk or a mounted share is the point of a backup.</span>
-            </div>
-            <div class="form-group">
-                <label for="backup_retention_count">Backups to keep</label>
-                <input type="number" min="1" max="365" name="backup_retention_count" id="backup_retention_count" value="{{ config.backup_retention_count }}">
-                <span class="form-hint">Older scheduled backups are deleted after each new one. Backups taken automatically before a restore are never deleted by this.</span>
-            </div>
-            <div class="form-group">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="backup_include_artwork" id="backup_include_artwork" {% if config.backup_include_artwork %}checked{% endif %}>
-                    <span>Include cached artwork in scheduled backups</span>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Search for monitored episodes when a series is added</span>
+                    </span>
+                    <input type="checkbox" name="auto_grab_on_add" id="auto_grab_on_add" {% if config.auto_grab_on_add %}checked{% endif %}>
                 </label>
-                <span class="form-hint">Artwork is downloaded again from the metadata providers when missing, so this only saves time after a restore at the cost of a much larger file.</span>
-            </div>
-        </fieldset>
-
-        <fieldset>
-            <legend>Recycle Bin</legend>
-            <div class="form-group">
-                <label for="recycle_bin_path">Recycle bin path</label>
-                <input type="text" name="recycle_bin_path" id="recycle_bin_path" value="{{ config.recycle_bin_path }}" placeholder="/media/anime/.recycle">
-                <span class="form-hint">Leave empty to disable. When set, deleting an episode or a series folder (and replacing a file during an upgrade) moves it here instead of deleting it permanently, and you can restore it from the <a href="/library/recycle">Recycle Bin</a> page. Put it on the same filesystem as the media root so moves are instant and keep seeding hardlinks intact. The value is the path inside Ryokan's container. Clearing the path leaves anything already recycled where it is; empty the bin first if you want it gone.</span>
-            </div>
-            <div class="form-group">
-                <label for="recycle_bin_age_days">Purge after (days)</label>
-                <input type="number" min="0" max="3650" name="recycle_bin_age_days" id="recycle_bin_age_days" value="{{ config.recycle_bin_age_days }}">
-                <span class="form-hint">Recycled items older than this are deleted permanently by the hourly cleanup task. 0 keeps everything until you empty the bin yourself.</span>
-            </div>
-        </fieldset>
-
-        <fieldset>
-            <legend>Monitoring</legend>
-            <div class="form-group">
-                <label class="checkbox-row">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Search when monitoring is widened</span>
+                    </span>
                     <input type="checkbox" name="search_on_monitoring_change" id="search_on_monitoring_change" {% if config.search_on_monitoring_change %}checked{% endif %}>
-                    <span>Auto-search when monitoring changes</span>
                 </label>
-                <span class="form-hint">When you change a series's monitoring mode (e.g. <code>none</code> → <code>all</code>), Ryokan will run a background auto-search for the newly-monitored aired episodes. Off by default; turn on if you want monitoring changes to immediately start grabbing. Narrowing transitions (<code>all</code> → <code>missing</code>, <code>any</code> → <code>none</code>) are a no-op.</span>
-            </div>
-        </fieldset>
-
-        <fieldset>
-            <legend>Manual search</legend>
-            <div class="form-group">
-                <label class="checkbox-row">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Add the series to the library when grabbing from Search</span>
+                        <span class="setting-row-desc">Off sends the release to the download client without tracking the series.</span>
+                    </span>
                     <input type="checkbox" name="manual_search_auto_add" id="manual_search_auto_add" {% if config.manual_search_auto_add %}checked{% endif %}>
-                    <span>Auto-add series to library on grab</span>
                 </label>
-                <span class="form-hint">When you grab a release from the manual search page, Ryokan resolves the release title via anitomy and AniList to find the matching series. If it isn't already in your library, the series is added automatically and the grab is linked to it. Off keeps the legacy behavior: the grab succeeds in the download client but no library row is created.</span>
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Allow non-English releases in automatic grabs</span>
+                        <span class="setting-row-desc">Auto-search and RSS use Nyaa's English-translated category by default. Interactive search always shows every category.</span>
+                    </span>
+                    <input type="checkbox" name="allow_non_english" id="allow_non_english" {% if config.allow_non_english %}checked{% endif %}>
+                </label>
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Remove and blocklist detected misgrabs</span>
+                        <span class="setting-row-desc">A download whose files name a different series is removed from the client, blocklisted, and searched again. Off keeps it in the client and lists it under System → Misgrabs.</span>
+                    </span>
+                    <input type="checkbox" name="misgrab_auto_remove" id="misgrab_auto_remove" {% if config.misgrab_auto_remove %}checked{% endif %}>
+                </label>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Display</legend>
+        <div class="cf-section">
+            <h3>RSS</h3>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Enable automatic RSS sync</span>
+                        <span class="setting-row-desc">Poll the Nyaa anime feed and grab matching releases automatically.</span>
+                    </span>
+                    <input type="checkbox" name="rss_enabled" id="rss_enabled" {% if config.rss_enabled %}checked{% endif %}>
+                </label>
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Skip the Nyaa RSS feed</span>
+                        <span class="setting-row-desc">Only poll the indexer and direct RSS feeds you configured.</span>
+                    </span>
+                    <input type="checkbox" name="disable_nyaa_rss" id="disable_nyaa_rss" {% if config.disable_nyaa_rss %}checked{% endif %}>
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="rss_interval_minutes">RSS Sync Interval (minutes)</label>
+                <input type="number" min="1" max="60" name="rss_interval_minutes" id="rss_interval_minutes" value="{{ config.rss_interval_minutes }}">
+                <span class="form-hint">Run a sync by hand from System → RSS.</span>
+            </div>
+        </div>
+
+        <div class="cf-section">
+            <h3>Display</h3>
             <div class="form-group">
                 <label for="title_language">Preferred Title Language</label>
                 <select name="title_language" id="title_language" onchange="syncTitleLanguagePreview(this.value)">
@@ -159,13 +144,58 @@
                     <option value="romaji" {% if config.title_language == "romaji" %}selected{% endif %}>Romaji</option>
                     <option value="native" {% if config.title_language == "native" %}selected{% endif %}>Native</option>
                 </select>
-                <span class="form-hint">Used on library cards, detail pages, and AniList search results.</span>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>About</legend>
+        <div class="cf-section">
+            <h3>Backups</h3>
+            <div class="form-group">
+                <label for="backup_schedule">Scheduled backups</label>
+                <select name="backup_schedule" id="backup_schedule">
+                    <option value="disabled" {% if config.backup_schedule == "disabled" %}selected{% endif %}>Off</option>
+                    <option value="daily" {% if config.backup_schedule == "daily" %}selected{% endif %}>Daily</option>
+                    <option value="weekly" {% if config.backup_schedule == "weekly" %}selected{% endif %}>Weekly</option>
+                </select>
+                <span class="form-hint">A backup holds the database and the encryption key. Download or restore one from <a href="/system?tab=backup">System → Backup</a>.</span>
+            </div>
+            <div class="form-group">
+                <label for="backup_directory">Backup folder</label>
+                <input type="text" name="backup_directory" id="backup_directory" value="{{ config.backup_directory }}" placeholder="/data/backups">
+                <span class="form-hint">Path inside Ryokan's container. Empty keeps backups next to the database.</span>
+            </div>
+            <div class="form-group">
+                <label for="backup_retention_count">Backups to keep</label>
+                <input type="number" min="1" max="365" name="backup_retention_count" id="backup_retention_count" value="{{ config.backup_retention_count }}">
+                <span class="form-hint">Older scheduled backups are deleted. Backups taken before a restore are kept.</span>
+            </div>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Include cached artwork in scheduled backups</span>
+                        <span class="setting-row-desc">Makes the file much larger. Artwork is downloaded again when missing, so this only saves time after a restore.</span>
+                    </span>
+                    <input type="checkbox" name="backup_include_artwork" id="backup_include_artwork" {% if config.backup_include_artwork %}checked{% endif %}>
+                </label>
+            </div>
+        </div>
+
+        <div class="cf-section">
+            <h3>Recycle Bin</h3>
+            <div class="form-group">
+                <label for="recycle_bin_path">Recycle bin path</label>
+                <input type="text" name="recycle_bin_path" id="recycle_bin_path" value="{{ config.recycle_bin_path }}" placeholder="/media/anime/.recycle">
+                <span class="form-hint">Keep it on the same filesystem as the media library. Empty disables the <a href="/library/recycle">Recycle Bin</a>.</span>
+            </div>
+            <div class="form-group">
+                <label for="recycle_bin_age_days">Purge after (days)</label>
+                <input type="number" min="0" max="3650" name="recycle_bin_age_days" id="recycle_bin_age_days" value="{{ config.recycle_bin_age_days }}">
+                <span class="form-hint">0 keeps files until you empty the bin.</span>
+            </div>
+        </div>
+
+        <div class="cf-section">
+            <h3>About</h3>
             <div class="form-group">
                 <span class="settings-version">Ryokan v{{ version }}</span>
             </div>
-        </fieldset>
+        </div>

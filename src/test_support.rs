@@ -159,6 +159,11 @@ pub async fn seed_grabbed_torrent(
         episode_numbers
     };
     let eps_json = serde_json::to_string(eps).expect("serialize episode_numbers");
+    // The id comes off the insert's own connection: a separate
+    // `SELECT last_insert_rowid()` can land on another pool connection
+    // and answer 0, which silently turns every follow-up UPDATE by id
+    // into a no-op (a flaky test that passes when the pool happens to
+    // reuse the connection).
     sqlx::query(
         "INSERT INTO grabbed_torrents (series_id, hash, torrent_name, episode_numbers, state) \
          VALUES (?, ?, ?, ?, 'pending')",
@@ -169,11 +174,8 @@ pub async fn seed_grabbed_torrent(
     .bind(eps_json)
     .execute(db)
     .await
-    .expect("seed grabbed_torrent");
-    sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
-        .fetch_one(db)
-        .await
-        .expect("fetch grab id")
+    .expect("seed grabbed_torrent")
+    .last_insert_rowid()
 }
 
 /// Count `grabbed_torrents` rows for a given series — quick helper
@@ -703,6 +705,14 @@ window.addEventListener('DOMContentLoaded', function () {
             .route(
                 "/api/downloads/blocklist/remove",
                 post(crate::handlers::downloads::api_blocklist_remove),
+            )
+            .route(
+                "/api/library/misgrabs/{id}/restore",
+                post(crate::handlers::library::misgrabs::restore_misgrab),
+            )
+            .route(
+                "/api/library/misgrabs/{id}/dismiss",
+                post(crate::handlers::library::misgrabs::dismiss_misgrab),
             )
             .route(
                 "/api/jellyfin/test",

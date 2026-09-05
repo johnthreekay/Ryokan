@@ -137,10 +137,14 @@ pub const SEEDED: &[SeededIndexer] = &[
         url_placeholder: "https://prowlarr.local/{N}/api",
         is_generic: false,
     },
+    // Sukebei is Nyaa's adult side; Ryokan's built-in Nyaa search
+    // never touches it, so this tile is how an adult title (the
+    // series page's 18+ banner) gets an indexer at all. Prowlarr and
+    // Jackett both ship a definition for it.
     SeededIndexer {
-        slug: "animetosho",
-        display_name: "AnimeTosho",
-        blurb: "Public anime indexer",
+        slug: "sukebei",
+        display_name: "Sukebei",
+        blurb: "Adult anime tracker",
         notes: "",
         is_private_tracker: false,
         default_priority: 35,
@@ -200,9 +204,8 @@ pub const SEEDED: &[SeededIndexer] = &[
         is_generic: true,
     },
     // Generic newznab fall-through for indexers not in the
-    // curated list (NZB.cat, NZBPlanet, DrunkenSlug, …). AnimeTosho's
-    // newznab mirror was dropped from the catalog because the site's
-    // shutting down in May 2026.
+    // curated list (NZB.cat, NZBPlanet, DrunkenSlug, …). AnimeTosho
+    // left the catalog entirely when the site shut down in 2026.
     SeededIndexer {
         slug: "generic-newznab",
         display_name: "Generic Newznab",

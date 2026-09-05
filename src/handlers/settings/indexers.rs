@@ -82,9 +82,9 @@ impl IndexerSectionPartial {
 #[template(path = "partials/settings/indexers/edit_form_body.html")]
 struct IndexerEditFormPartial {
     row: Indexer,
-    /// What the indexer's cached caps report, `id name` per entry, so
-    /// the user can pick ids for the categories field.
-    reported_categories: Vec<String>,
+    /// What the indexer's cached caps report, rendered as chips under
+    /// the categories field so the user can pick ids by clicking.
+    reported_categories: Vec<crate::services::indexers::ReportedCategory>,
     download_clients: Vec<DownloadClientRow>,
 }
 

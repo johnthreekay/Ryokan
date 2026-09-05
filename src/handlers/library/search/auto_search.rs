@@ -328,17 +328,17 @@ async fn run_auto_search_targets_with_upgrades(
         logger::warn(
             &state.db,
             LogCategory::AutoSearch,
-            &format!("{} is marked adult on AniList", title),
+            &format!("{} is marked adult", title),
             if no_indexer {
-                "Nyaa lists adult releases on sukebei, which Ryokan does not search, and no indexer is configured. This search will find nothing."
+                "No indexer is configured, and Nyaa keeps adult releases on sukebei, which Ryokan does not search, so this search finds nothing."
             } else {
-                "Nyaa lists adult releases on sukebei, which Ryokan does not search. The configured torznab or newznab indexers are asked for the adult category as well as anime."
+                "Nyaa keeps adult releases on sukebei, which Ryokan does not search. The configured indexers are asked for the adult category as well as anime."
             },
         )
         .await;
         if no_indexer {
             notes.push(
-                "This title is marked adult on AniList and no indexer is configured. Nyaa lists adult releases on sukebei, which Ryokan does not search."
+                "This title is marked adult and no indexer is configured. Nyaa keeps adult releases on sukebei, which Ryokan does not search."
                     .to_string(),
             );
         }
@@ -614,13 +614,16 @@ async fn run_auto_search_targets_with_upgrades(
                             LogCategory::Grab,
                             &format!("Grabbed: {}", result.title),
                             &format!(
-                                "target={}, group={}, score={}, tier={}, batch={}{}",
+                                "target={}, group={}, score={}, tier={}, batch={}{}{}",
                                 label,
                                 result.group,
                                 result.score,
                                 incoming_classification.label(),
                                 result.is_batch,
-                                selective_suffix
+                                selective_suffix,
+                                crate::services::auto_search::MatchProvenance::log_suffix(
+                                    result.match_provenance.as_ref()
+                                )
                             ),
                         )
                         .await;
@@ -669,6 +672,13 @@ async fn run_auto_search_targets_with_upgrades(
                             .await
                             .ok()
                             .flatten();
+                            // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+                            if let Some(gid) = grab_id {
+                                let _ = crate::models::grabbed_torrents::set_source_url(
+                                    &state.db, gid, &url,
+                                )
+                                .await;
+                            }
                             // Issue #28 — apply per-indexer
                             // seed rules + stamp attribution.
                             // Nyaa grabs (indexer_id None) take the
@@ -729,7 +739,7 @@ async fn run_auto_search_targets_with_upgrades(
                                 .await;
                             }
                             for ep_num in &ep_nums {
-                                let _ = episode_tags::record_grab(
+                                let _ = episode_tags::record_grab_with_match(
                                     &state.db,
                                     sid,
                                     *ep_num,
@@ -738,6 +748,7 @@ async fn run_auto_search_targets_with_upgrades(
                                     &result.group,
                                     result.size_bytes,
                                     result.is_batch,
+                                    result.match_provenance.as_ref(),
                                 )
                                 .await;
                             }

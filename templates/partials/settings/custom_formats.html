@@ -9,9 +9,6 @@
     <div class="alert alert-error" data-ryokan-toast="error" data-ryokan-toast-title="Custom Formats">{{ err }}</div>
     {% endif %}
 
-    <p class="cf-section-desc" style="max-width: 820px; margin-bottom: 20px;">
-        Sonarr v4-compatible Custom Formats. Every matching spec contributes its score to the release total during auto-search. Paste JSON exports from Sonarr or <a href="https://trash-guides.info" target="_blank" rel="noopener">Trash Guides</a>, or build your own from scratch.
-    </p>
 
     {# ── Test box (#18) ─────────────────────────────────────────────
        Paste a release filename, see which CFs match and what score
@@ -22,9 +19,7 @@
         <div class="cf-section-header">
             <h3>Test a release title</h3>
         </div>
-        <p class="cf-section-desc">
-            Paste a release filename to see which Custom Formats match it and what score it would receive. Useful when authoring or tuning a CF. <strong>Title-based specs only</strong> — <code>Size</code> and <code>SeaDexBest</code> specs require a torrent size or an AniList ID, so CFs that depend on them will report as not matched here.
-        </p>
+        <p class="cf-section-desc">Paste a release name to see which Custom Formats match it and the score it would get. Size and SeaDex specs cannot match here.</p>
         <div class="form-group" style="max-width: 820px;">
             <input type="text" id="cf-test-input" placeholder="[SubsPlease] Sousou no Frieren - 01 (1080p) [F02B9CEE].mkv" autocomplete="off">
         </div>
@@ -174,11 +169,7 @@
                (invalid HTML) or colliding on submit. #}
             <form id="cf-upsert-form" method="post" action="/settings/custom-formats/upsert" class="settings-form cf-editor-form">
                 <div class="modal-body" style="padding:16px 24px">
-                    <p class="cf-section-desc" style="margin-top:0">
-                        Full Sonarr v4 CF object. Supported spec implementations:
-                        <code>ReleaseTitleSpecification</code>, <code>ReleaseGroupSpecification</code>, <code>SizeSpecification</code>, <code>ResolutionSpecification</code>, <code>SourceSpecification</code>, <code>Ryokan.SeaDexBestSpecification</code>.
-                        The compiler runs before saving, so invalid JSON is rejected with an error message.
-                    </p>
+                    <p class="cf-section-desc" style="margin-top:0">A full Sonarr v4 Custom Format object. Invalid JSON is rejected on save.</p>
                     {% if let Some(edit) = custom_format_edit %}
                     <input type="hidden" name="id" value="{{ edit.row.id }}">
                     {% if let Some(desc) = edit.trash_description.as_ref() %}
@@ -267,10 +258,7 @@
         {% if let Some(review) = custom_format_import_review %}
         <div class="cf-import-review">
             <h4 style="margin-top:0">Preview</h4>
-            <p class="form-hint">
-                {{ review.entries.len() }} entry in the import payload.
-                Entries marked <strong>new</strong> will import as-is; entries marked <strong>collision</strong> need a per-row action below; entries marked <strong>invalid</strong> failed to parse and are skipped regardless.
-            </p>
+            <p class="form-hint">{{ review.entries.len() }} found. New ones import as they are. Collisions need a choice below. Invalid ones are skipped.</p>
             <div class="cf-import-preview">
                 {% for e in review.entries %}
                 <div class="cf-import-preview-row cf-import-status-{{ e.status }}">
@@ -299,8 +287,8 @@
                 <input type="hidden" name="decisions" id="cf_import_resolve_decisions" value="">
                 <input type="hidden" name="renames" id="cf_import_resolve_renames" value="">
                 {% if !review.collisions.is_empty() %}
-                <div class="table-scroll-wrap">
-                <table class="group-source-table cf-table">
+                <div class="rss-table-wrap">
+                <table class="rss-table group-source-table cf-table">
                     <thead>
                         <tr>
                             <th>Existing name</th>
@@ -327,9 +315,7 @@
                 </div>
                 {% endif %}
                 {% if review.has_invalid %}
-                <p class="form-hint" style="color:var(--orange); margin-top:12px">
-                    <strong>Heads up:</strong> invalid entries above are silently skipped on apply. Fix the JSON and re-paste if you need those CFs — they won't be reported as failures after import.
-                </p>
+                <p class="form-hint" style="color:var(--orange); margin-top:12px">Invalid entries are skipped on apply. Fix the JSON and paste it again if you need them.</p>
                 {% endif %}
                 <div class="settings-inline-actions" style="margin-top: 16px;">
                     <button type="submit" class="btn btn-primary">Apply &amp; Import</button>
@@ -339,9 +325,7 @@
         </div>
         {% else %}
         <form method="post" action="/settings/custom-formats/import" class="settings-form">
-            <p class="cf-section-desc" style="margin-top:0">
-                Paste a Sonarr v4 CF export or upload a .json file. Accepts a single object, an array, or <code>{"custom_formats":[…]}</code> wrapper. Every entry runs through the same compiler as the create form. Invalid entries are flagged for review before any are written.
-            </p>
+            <p class="cf-section-desc" style="margin-top:0">Paste a Sonarr v4 export or upload a .json file. A single object, an array, or a <code class="nowrap">{"custom_formats": [...]}</code> wrapper all work. Nothing is written until you review the preview.</p>
             <div class="form-group">
                 <label for="cf_import_file">Upload JSON file <span class="form-hint">(optional; fills the textarea below)</span></label>
                 <input type="file" id="cf_import_file" accept="application/json,.json"
@@ -366,10 +350,7 @@
         <div class="cf-section-header">
             <h3>Export</h3>
         </div>
-        <p class="cf-section-desc">
-            <strong>Ryokan (native)</strong> keeps every selected CF verbatim (including Ryokan-only specs like <code>Ryokan.SeaDexBestSpecification</code>) and round-trips into another Ryokan instance.
-            <strong>Sonarr-safe</strong> drops selected CFs that contain Ryokan-only specs so the file imports into a vanilla Sonarr v4 instance. Dropped CF names are written to the <a href="/system?tab=logs&amp;category=system">System log</a>.
-        </p>
+        <p class="cf-section-desc"><strong>Ryokan</strong> keeps every selected format, including the SeaDex spec. <strong>Sonarr-safe</strong> leaves out formats Sonarr cannot read and lists them in the System log.</p>
 
         <div class="cf-export-mode-row">
             <label class="cf-export-mode">
@@ -416,9 +397,7 @@
         <div class="cf-section-header">
             <h3>Minimum Score</h3>
         </div>
-        <p class="cf-section-desc">
-            Auto-search drops any release whose summed CF score falls below this floor. Interactive search still shows everything. Leave blank to disable the floor entirely.
-        </p>
+        <p class="cf-section-desc">Auto-search skips releases whose Custom Format score is below this. Interactive search still shows them. Blank means no floor.</p>
         <form method="post" action="/settings/custom-formats/minimum-score" class="settings-form cf-min-score-form">
             <div class="form-group cf-min-score-group">
                 <input type="number" name="minimum_score" id="cf_min_score"
@@ -435,12 +414,8 @@
         <div class="cf-section-header">
             <h3>Bundled Defaults</h3>
         </div>
-        <p class="cf-section-desc">
-            <strong>Install Defaults</strong> adds the bundled anime-tuned Custom Formats (SeaDex best, Tier S BD groups, BD source, WEB groups, 10-bit / x265, FLAC / Opus, plus an 8-bit mp4 penalty). Repeat clicks are safe: existing names are skipped.
-        </p>
-        <p class="cf-section-desc">
-            <strong>Reset to Defaults</strong> drops every row with Source = <em>default</em> and re-installs the bundled set from scratch. Useful if you edited a default CF and want the original back. Manual and imported CFs are untouched.
-        </p>
+        <p class="cf-section-desc"><strong>Install Defaults</strong> adds the bundled anime formats and skips any name that already exists.</p>
+        <p class="cf-section-desc"><strong>Reset to Defaults</strong> reinstalls the bundled formats from scratch. Your own and imported formats are untouched.</p>
         <div class="settings-inline-actions">
             <form method="post" action="/settings/custom-formats/install-defaults"
                   data-ryokan-confirm-title="Install bundled defaults"

@@ -160,6 +160,7 @@ pub fn total_cf_score_for_release(
     seadex_hashes: &std::collections::HashSet<String>,
 ) -> i32 {
     let result = super::SearchResult {
+        match_provenance: None,
         title: title.to_string(),
         group: group.to_string(),
         size_bytes,

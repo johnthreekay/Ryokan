@@ -196,6 +196,25 @@ async fn find_all_for_target_returns_matching_release_from_nyaa() {
     let r = &results[0];
     assert_eq!(r.seeders, 50);
     assert_eq!(r.size, "1.4 GiB");
+    let provenance = r
+        .match_provenance
+        .as_ref()
+        .expect("collector stamps provenance on every gated candidate");
+    assert_eq!(
+        provenance.kind,
+        ryokan::services::auto_search::MatchKind::Verbatim
+    );
+    assert_eq!(
+        provenance.phase,
+        ryokan::services::auto_search::MatchPhase::Primary
+    );
+    assert_eq!(provenance.alias, "Test Show");
+    let confidence = r
+        .score_breakdown
+        .iter()
+        .find(|c| c.label == "Title Match Confidence")
+        .expect("breakdown always lists the confidence line");
+    assert_eq!(confidence.delta, 0);
     assert!(
         r.info_hash.starts_with("0123456789abcdef"),
         "info_hash must round-trip from the magnet"
@@ -1024,4 +1043,589 @@ async fn auto_search_episode_handler_returns_400_when_no_download_client_configu
         }
         Ok(_) => panic!("missing-client must surface as 400, not Ok"),
     }
+}
+
+#[tokio::test]
+async fn auto_search_episode_handler_prefers_verbatim_over_fuzzy_and_records_provenance() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // Row A matches the title verbatim with few seeders; row B has the
+    // same words in a different order (fuzzy at ratio 1.0) and ten
+    // times the seeders. Without the confidence penalty B wins on the
+    // seeder tier; with it A wins.
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&format!(
+        "{}{}",
+        nyaa_row(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            99101,
+            "[Group] Auto Search Show Deluxe - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            20,
+        ),
+        nyaa_row(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            99102,
+            "[Group] Deluxe Auto Search Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            200,
+        )
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9002;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Auto Search Show Deluxe").await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert_eq!(report.grabbed.len(), 1, "report={report:?}");
+
+    let calls = client.add_calls();
+    assert_eq!(calls.len(), 1);
+    assert!(
+        calls[0].1.starts_with("aaaaaaaa"),
+        "the verbatim candidate must win despite fewer seeders; grabbed hash {}",
+        calls[0].1
+    );
+
+    let row: (String, String, String, f64) = sqlx::query_as(
+        "SELECT match_kind, match_phase, matched_alias, match_ratio FROM episode_grab_history WHERE series_id = ? AND episode_number = 3",
+    )
+    .bind(series_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "verbatim");
+    assert_eq!(row.1, "primary");
+    assert_eq!(row.2, "Auto Search Show Deluxe");
+    assert_eq!(row.3, 1.0);
+
+    let detail: String = sqlx::query_scalar(
+        "SELECT detail FROM logs WHERE message LIKE 'Grabbed: %' ORDER BY id DESC LIMIT 1",
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert!(
+        detail
+            .contains("match=verbatim phase=primary alias=\"Auto Search Show Deluxe\" ratio=1.00"),
+        "{detail}"
+    );
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn auto_search_episode_handler_still_grabs_fuzzy_only_candidate() {
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "cccccccccccccccccccccccccccccccccccccccc",
+        99103,
+        "[Group] Deluxe Auto Search Show - 03 (1080p) [WEB].mkv",
+        "1.4 GiB",
+        200,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9003;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Auto Search Show Deluxe").await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert_eq!(
+        report.grabbed.len(),
+        1,
+        "a fuzzy-only pool still grabs; report={report:?}"
+    );
+    assert_eq!(client.add_calls().len(), 1);
+
+    let row: (String, f64) = sqlx::query_as(
+        "SELECT match_kind, match_ratio FROM episode_grab_history WHERE series_id = ? AND episode_number = 3",
+    )
+    .bind(series_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "fuzzy");
+    assert_eq!(row.1, 1.0);
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn auto_search_episode_skips_blocklisted_hash_and_grabs_next_candidate() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // Row A would win on seeders, but its hash is on the blocklist (a
+    // misgrab the sweep removed, or a grab the user failed). Row B is the
+    // next best and must be the one grabbed.
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&format!(
+        "{}{}",
+        nyaa_row(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            99201,
+            "[Group] Blocklist Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            500,
+        ),
+        nyaa_row(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            99202,
+            "[Other] Blocklist Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            5,
+        )
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9004;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Blocklist Show").await;
+    ryokan::test_support::seed_grabbed_torrent(
+        &state.db,
+        series_id,
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "[Group] Blocklist Show - 03 (1080p) [WEB].mkv",
+        &[3],
+    )
+    .await;
+    sqlx::query(
+        "UPDATE grabbed_torrents SET state = 'failed', failure_reason = 'misgrab' WHERE hash = ?",
+    )
+    .bind("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert_eq!(report.grabbed.len(), 1, "report={report:?}");
+    let calls = client.add_calls();
+    assert_eq!(calls.len(), 1);
+    assert!(
+        calls[0].1.starts_with("bbbbbbbb"),
+        "the blocklisted hash must be skipped; grabbed {}",
+        calls[0].1
+    );
+    let url: String =
+        sqlx::query_scalar("SELECT source_url FROM grabbed_torrents WHERE hash LIKE 'bbbbbbbb%'")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+    assert!(
+        url.starts_with("magnet:?xt="),
+        "source_url recorded for Restore: {url}"
+    );
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn auto_search_episode_makes_no_add_call_when_only_candidate_is_blocklisted_by_title() {
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "cccccccccccccccccccccccccccccccccccccccc",
+        99203,
+        "[Group] Blocklist Show - 04 (1080p) [WEB].mkv",
+        "1.4 GiB",
+        50,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9005;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Blocklist Show").await;
+    // A failed row with no hash: blocklisted by title for this series only.
+    sqlx::query(
+        "INSERT INTO grabbed_torrents (hash, torrent_name, series_id, episode_numbers, state, failure_reason) \
+         VALUES ('', ?, ?, '[4]', 'failed', 'misgrab')",
+    )
+    .bind("[Group] Blocklist Show - 04 (1080p) [WEB].mkv")
+    .bind(series_id)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 4_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert!(report.grabbed.is_empty(), "report={report:?}");
+    assert!(
+        client.add_calls().is_empty(),
+        "no add call for a blocklisted title"
+    );
+
+    unset_nyaa_base();
+}
+
+// ─── Misgrab re-search ───────────────────────────────────────────
+
+/// Poll the recording client until it has seen an add call or the
+/// budget runs out. The re-search runs as a detached task after the
+/// sweep returns, so the test has to wait for it.
+async fn wait_for_add_calls(
+    client: &AutoSearchRecordingClient,
+    want: usize,
+) -> Vec<(String, String)> {
+    for _ in 0..200 {
+        let calls = client.add_calls();
+        if calls.len() >= want {
+            return calls;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    client.add_calls()
+}
+
+/// Every log row, for assertion messages.
+async fn dump_logs(db: &sqlx::SqlitePool) -> String {
+    let rows: Vec<(String, String, String)> =
+        sqlx::query_as("SELECT level, message, detail FROM logs ORDER BY id")
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+    rows.iter()
+        .map(|(l, m, d)| format!("[{l}] {m} | {d}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+async fn wait_for_log_like(db: &sqlx::SqlitePool, pattern: &str) -> i64 {
+    for _ in 0..200 {
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM logs WHERE message LIKE ?")
+            .bind(pattern)
+            .fetch_one(db)
+            .await
+            .unwrap();
+        if n > 0 {
+            return n;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    0
+}
+
+/// A grab the verdict already condemned but the sweep has not acted on.
+async fn seed_unhandled_misgrab(
+    state: &AppState,
+    series_id: i64,
+    hash: &str,
+    title: &str,
+    episodes: &[i32],
+    is_batch: bool,
+) -> i64 {
+    let id =
+        ryokan::test_support::seed_grabbed_torrent(&state.db, series_id, hash, title, episodes)
+            .await;
+    sqlx::query("UPDATE grabbed_torrents SET is_batch = ? WHERE id = ?")
+        .bind(is_batch as i64)
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    ryokan::models::grabbed_torrents::stamp_verification(&state.db, id, "misgrab", "{}")
+        .await
+        .unwrap();
+    id
+}
+
+const WRONG_HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const RIGHT_HASH: &str = "cccccccccccccccccccccccccccccccccccccccc";
+
+fn research_results_page() -> String {
+    nyaa_results_page(&format!(
+        "{}{}",
+        nyaa_row(
+            WRONG_HASH,
+            99301,
+            "[Wrong] Research Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            500,
+        ),
+        nyaa_row(
+            RIGHT_HASH,
+            99302,
+            "[Right] Research Show - 03 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            5,
+        )
+    ))
+}
+
+#[tokio::test]
+async fn misgrab_sweep_re_searches_a_single_episode_and_grabs_the_next_candidate() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // The condemned release still tops the Nyaa page on seeders; the
+    // re-search must skip it (it is blocklisted by the remediation)
+    // and take the runner-up for the same slot.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(research_results_page()))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9006;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Research Show").await;
+    let grab_id = seed_unhandled_misgrab(
+        &state,
+        series_id,
+        WRONG_HASH,
+        "[Wrong] Research Show - 03 (1080p) [WEB].mkv",
+        &[3],
+        false,
+    )
+    .await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let summary = ryokan::services::misgrab::sweep_once(&state)
+        .await
+        .expect("sweep runs");
+    assert_eq!(
+        summary.remediated,
+        1,
+        "{summary:?}\n{}",
+        dump_logs(&state.db).await
+    );
+
+    let calls = wait_for_add_calls(&client, 1).await;
+    assert_eq!(calls.len(), 1, "the re-search grabs exactly one release");
+    assert!(
+        calls[0].1.starts_with("cccccccc"),
+        "the condemned hash is blocklisted, the runner-up fills the slot; grabbed {}",
+        calls[0].1
+    );
+    assert_eq!(
+        wait_for_log_like(
+            &state.db,
+            "Re-search after misgrab '[Wrong] Research Show%grabbed 1 release(s)"
+        )
+        .await,
+        1
+    );
+
+    // The old row is failed and blocklisted; the new one is pending
+    // for the same episode.
+    let old = ryokan::models::grabbed_torrents::get_by_id(&state.db, grab_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(old.state, "failed");
+    assert_eq!(old.misgrab_action.as_deref(), Some("removed"));
+    let pending = ryokan::models::grabbed_torrents::get_all_pending(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].hash, RIGHT_HASH);
+    assert_eq!(pending[0].episode_numbers, vec![3]);
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn misgrab_sweep_re_searches_the_whole_series_for_a_batch_grab() {
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(research_results_page()))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9007;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Research Show").await;
+    // The series search takes its targets from the monitoring rows.
+    sqlx::query("UPDATE series SET episodes = 12, monitor_mode = 'all' WHERE id = ?")
+        .bind(series_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let series_row = ryokan::models::series::get_by_id(&state.db, series_id)
+        .await
+        .unwrap()
+        .unwrap();
+    ryokan::services::monitoring::ensure_series_monitoring_rows(&state.db, &series_row)
+        .await
+        .unwrap();
+    seed_unhandled_misgrab(
+        &state,
+        series_id,
+        WRONG_HASH,
+        "[Wrong] Research Show - 01-12 (1080p) [WEB]",
+        &[1, 2, 3],
+        true,
+    )
+    .await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let summary = ryokan::services::misgrab::sweep_once(&state)
+        .await
+        .expect("sweep runs");
+    assert_eq!(
+        summary.remediated,
+        1,
+        "{summary:?}\n{}",
+        dump_logs(&state.db).await
+    );
+
+    // A batch grab re-searches the series, not one slot: the sweep
+    // takes whatever the series search can fill (here episode 3, the
+    // only release the page offers) and never the blocklisted hash.
+    let calls = wait_for_add_calls(&client, 1).await;
+    assert!(!calls.is_empty(), "the series re-search grabs something");
+    assert!(
+        calls.iter().all(|(_, hash)| !hash.starts_with("aaaaaaaa")),
+        "the condemned hash is never re-grabbed: {calls:?}"
+    );
+    assert_eq!(
+        wait_for_log_like(
+            &state.db,
+            "Re-search after misgrab '[Wrong] Research Show - 01-12%grabbed % release(s)"
+        )
+        .await,
+        1
+    );
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn misgrab_sweep_stops_re_searching_after_the_loop_breaker() {
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(research_results_page()))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9008;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Research Show").await;
+    // Three misgrabs already handled today for this series ...
+    for (i, hash) in [
+        "1111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222",
+        "3333333333333333333333333333333333333333",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let id = seed_unhandled_misgrab(
+            &state,
+            series_id,
+            hash,
+            &format!("[Wrong{i}] Research Show - 03 (1080p) [WEB].mkv"),
+            &[3],
+            false,
+        )
+        .await;
+        sqlx::query(
+            "UPDATE grabbed_torrents SET state = 'failed', misgrab_action = 'removed' WHERE id = ?",
+        )
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+    // ... and a fourth the sweep is about to act on.
+    let fourth = seed_unhandled_misgrab(
+        &state,
+        series_id,
+        WRONG_HASH,
+        "[Wrong] Research Show - 03 (1080p) [WEB].mkv",
+        &[3],
+        false,
+    )
+    .await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let summary = ryokan::services::misgrab::sweep_once(&state)
+        .await
+        .expect("sweep runs");
+    assert_eq!(
+        summary.remediated,
+        1,
+        "removal still happens; {summary:?}\n{}",
+        dump_logs(&state.db).await
+    );
+    assert_eq!(
+        wait_for_log_like(&state.db, "Not re-searching after misgrab%").await,
+        1,
+        "the loop breaker logs why\n{}",
+        dump_logs(&state.db).await
+    );
+    // Give a stray re-search every chance to show up before asserting
+    // it never did.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(
+        client.add_calls().is_empty(),
+        "no re-search after {} misgrabs in a day",
+        ryokan::services::misgrab::RESEARCH_LOOP_BREAKER
+    );
+    let old = ryokan::models::grabbed_torrents::get_by_id(&state.db, fourth)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(old.state, "failed");
+
+    unset_nyaa_base();
 }

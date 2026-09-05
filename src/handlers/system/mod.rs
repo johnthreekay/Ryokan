@@ -83,8 +83,6 @@ struct SystemTemplate {
     tab: String,
     force_mal_fallback: bool,
     force_kitsu_fallback: bool,
-    auto_grab_on_add: bool,
-    allow_non_english: bool,
     debug_message: Option<String>,
     debug_error: Option<String>,
     logs: Vec<log::LogEntry>,
@@ -116,6 +114,9 @@ struct SystemTemplate {
     /// populated when `tab == "review"`; empty on every other tab so
     /// the serial fan-out stays cheap.
     review_entries: Vec<episode_tags::NeedsReviewEntry>,
+    /// Misgrab guardrails: detected misgrabs awaiting Restore or Dismiss;
+    /// populated only when `tab == "misgrabs"`.
+    misgrab_entries: Vec<crate::models::grabbed_torrents::MisgrabEntry>,
     title_language: String,
     /// Issue gh-121 — notification provider rows for the System →
     /// Notifications tab. Empty until the user adds the first one.
@@ -155,18 +156,15 @@ pub struct SystemQuery {
 pub struct DebugSettingsForm {
     force_mal_fallback: Option<String>,
     force_kitsu_fallback: Option<String>,
-    auto_grab_on_add: Option<String>,
-    allow_non_english: Option<String>,
 }
 
 fn normalize_system_tab(tab: Option<String>) -> String {
     match tab.as_deref() {
-        Some("scoring") => "scoring".to_string(),
-        Some("help") => "scoring".to_string(), // legacy alias
         Some("debug") => "debug".to_string(),
         Some("rss") => "rss".to_string(),
         Some("tasks") => "tasks".to_string(),
         Some("review") => "review".to_string(),
+        Some("misgrabs") => "misgrabs".to_string(),
         Some("credits") => "credits".to_string(),
         Some("notifications") => "notifications".to_string(),
         Some("backup") => "backup".to_string(),
@@ -270,6 +268,21 @@ pub async fn system_page(
             Vec::new()
         }
     };
+    let misgrab_entries_fut = async {
+        if tab == "misgrabs" {
+            let title_language = crate::models::config::get_config(&state.db)
+                .await
+                .ok()
+                .flatten()
+                .map(|c| c.title_language)
+                .unwrap_or_else(|| "romaji".to_string());
+            crate::models::grabbed_torrents::list_misgrabs(&state.db, &title_language)
+                .await
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
     let review_entries_fut = async {
         if tab == "review" {
             let mut entries = episode_tags::get_needs_review(&state.db)
@@ -311,6 +324,7 @@ pub async fn system_page(
         scheduled_tasks,
         log_count_res,
         review_entries,
+        misgrab_entries,
         (notification_providers, notification_event_toggles),
     ) = tokio::join!(
         logs_fut,
@@ -320,6 +334,7 @@ pub async fn system_page(
         scheduled_tasks_fut,
         log::count(&state.db),
         review_entries_fut,
+        misgrab_entries_fut,
         notification_payload_fut,
     );
     let cfg = cfg_res.ok().flatten();
@@ -333,11 +348,6 @@ pub async fn system_page(
     let force_kitsu_fallback = cfg
         .as_ref()
         .map(|cfg| cfg.force_kitsu_fallback)
-        .unwrap_or(false);
-    let auto_grab_on_add = cfg.as_ref().map(|cfg| cfg.auto_grab_on_add).unwrap_or(true);
-    let allow_non_english = cfg
-        .as_ref()
-        .map(|cfg| cfg.allow_non_english)
         .unwrap_or(false);
     let rss_enabled = cfg.as_ref().map(|cfg| cfg.rss_enabled).unwrap_or(false);
     let rss_interval_minutes = cfg
@@ -389,8 +399,6 @@ pub async fn system_page(
         tab,
         force_mal_fallback,
         force_kitsu_fallback,
-        auto_grab_on_add,
-        allow_non_english,
         recycle_unwritable,
         backup: backup_view,
         debug_message: params.message,
@@ -411,6 +419,7 @@ pub async fn system_page(
         rss_recent,
         scheduled_tasks,
         review_entries,
+        misgrab_entries,
         title_language,
         notification_providers,
         notification_event_toggles,
@@ -430,8 +439,6 @@ pub async fn debug_settings_submit(
 
     cfg.force_mal_fallback = form.force_mal_fallback.is_some();
     cfg.force_kitsu_fallback = form.force_kitsu_fallback.is_some();
-    cfg.allow_non_english = form.allow_non_english.is_some();
-    cfg.auto_grab_on_add = form.auto_grab_on_add.is_some();
 
     let result = config::save_config(&state.db, &cfg).await;
     let (message, error) = match result {
@@ -490,8 +497,6 @@ pub async fn debug_settings_submit(
         tab: "debug".to_string(),
         force_mal_fallback: cfg.force_mal_fallback,
         force_kitsu_fallback: cfg.force_kitsu_fallback,
-        auto_grab_on_add: cfg.auto_grab_on_add,
-        allow_non_english: cfg.allow_non_english,
         recycle_unwritable,
         backup: None,
         debug_message: message,
@@ -531,6 +536,7 @@ pub async fn debug_settings_submit(
         rss_recent: Vec::new(),
         scheduled_tasks: scheduled_tasks::list(&state.db).await.unwrap_or_default(),
         review_entries: Vec::new(),
+        misgrab_entries: Vec::new(),
         title_language: cfg.title_language.clone(),
         notification_providers: Vec::new(),
         notification_event_toggles: Vec::new(),

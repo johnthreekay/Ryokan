@@ -626,7 +626,7 @@ fn should_persist_detail_cache_real_anilist_id_requires_match() {
 
 #[test]
 fn normalize_system_tab_known_tabs_pass_through() {
-    for tab in ["scoring", "debug", "rss", "tasks", "review", "credits"] {
+    for tab in ["debug", "rss", "tasks", "review", "credits"] {
         assert_eq!(
             crate::handlers::system::normalize_system_tab_for_test(Some(tab.into())),
             tab
@@ -635,15 +635,17 @@ fn normalize_system_tab_known_tabs_pass_through() {
 }
 
 #[test]
-fn normalize_system_tab_help_alias_resolves_to_scoring() {
-    // Legacy alias from when scoring rules used to live on a
-    // dedicated /system?tab=help page. Pinning the aliasing so
-    // the redirect-via-tab convention can't drift away from
-    // existing bookmarks.
-    assert_eq!(
-        crate::handlers::system::normalize_system_tab_for_test(Some("help".into())),
-        "scoring"
-    );
+fn normalize_system_tab_retired_help_and_scoring_fall_back_to_the_default() {
+    // The scoring reference and the help page moved to the docs site;
+    // an old bookmark lands on the default tab instead of a blank one.
+    let default = crate::handlers::system::normalize_system_tab_for_test(None);
+    for old in ["help", "scoring"] {
+        assert_eq!(
+            crate::handlers::system::normalize_system_tab_for_test(Some(old.into())),
+            default,
+            "{old}"
+        );
+    }
 }
 
 #[test]
@@ -705,5 +707,13 @@ fn normalize_system_tab_unknown_or_missing_defaults_to_logs() {
     assert_eq!(
         crate::handlers::system::normalize_system_tab_for_test(Some("".into())),
         "logs"
+    );
+}
+
+#[test]
+fn misgrabs_tab_is_recognized() {
+    assert_eq!(
+        crate::handlers::system::normalize_system_tab_for_test(Some("misgrabs".into())),
+        "misgrabs"
     );
 }

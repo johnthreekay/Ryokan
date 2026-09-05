@@ -1,18 +1,3 @@
-        <fieldset>
-            <legend>Grab behavior</legend>
-            <div class="form-group">
-                <label for="grab_preview_mode">Interactive file picker</label>
-                <select name="grab_preview_mode" id="grab_preview_mode">
-                    <option value="batches_only" {% if config.grab_preview_mode != "never" %}selected{% endif %}>Batches only (default)</option>
-                    <option value="never" {% if config.grab_preview_mode == "never" %}selected{% endif %}>Never</option>
-                </select>
-                <span class="form-hint">When set to <em>Batches only</em>, multi-file torrents open a modal where you can uncheck files (samples, NCOPs, extras) before the grab commits. Single-file torrents always skip the modal. Set to <em>Never</em> for 1.3.0-style one-click grabs.</span>
-            </div>
-            <p class="form-hint">
-                Configure download clients on the <a href="/settings?tab=downloads" class="link-accent">Download Clients</a> tab.
-            </p>
-        </fieldset>
-
         {# Hidden inputs preserve the legacy single-slot config columns
            through the bulk Settings POST so the parser doesn't drop the
            values. Multi-client routing reads from `download_clients` /
@@ -40,8 +25,8 @@
         <input type="hidden" name="rtorrent_label" value="{{ config.rtorrent_label }}">
         <input type="hidden" name="rtorrent_download_path" value="{{ config.rtorrent_download_path }}">
 
-        <fieldset>
-            <legend>Jellyfin <span id="jellyfin-health" class="form-hint"></span></legend>
+        <div class="cf-section">
+            <h3>Jellyfin <span id="jellyfin-health" class="form-hint"></span></h3>
             <div class="form-group">
                 <label for="jellyfin_url">URL</label>
                 <input type="text" name="jellyfin_url" id="jellyfin_url" value="{{ config.jellyfin_url }}" placeholder="http://192.168.68.61:8096">
@@ -69,20 +54,19 @@
                         hx-disable="this">Refresh Library</button>
                 <span id="jellyfin-test-result" class="form-hint" aria-live="polite"></span>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Seerr (Sonarr API Compatibility)</legend>
-            <p class="form-hint" style="margin-bottom: 12px;">
-                Exposes a Sonarr-compatible API so Seerr can add and manage anime through Ryokan.
-                In Seerr, add a new Sonarr server pointing to this Ryokan instance's address with the API key below.
-            </p>
-            <div class="form-group">
-                <label class="checkbox-row">
+        <div class="cf-section">
+            <h3>Seerr (Sonarr API Compatibility)</h3>
+            <p class="form-hint" style="margin-bottom: 12px;">Lets Seerr add anime through Ryokan. In Seerr, add a Sonarr server with this address and the key below.</p>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Enable Sonarr API</span>
+                        <span class="setting-row-desc">Answers Sonarr API calls at <code>/api/v3/</code>.</span>
+                    </span>
                     <input type="checkbox" name="sonarr_enabled" id="sonarr_enabled" {% if config.sonarr_enabled %}checked{% endif %}>
-                    <span>Enable Sonarr API</span>
                 </label>
-                <span class="form-hint">When enabled, Ryokan accepts Sonarr v3 API calls at <code>/api/v3/</code> authenticated with the key below.</span>
             </div>
             <div class="form-group">
                 <label for="sonarr_api_key">API Key</label>
@@ -92,22 +76,21 @@
                     <button type="button" class="btn btn-secondary" onclick="copyApiKey('sonarr_api_key', this)" style="white-space:nowrap">Copy</button>
                     <button type="button" class="btn btn-secondary" onclick="generateApiKey()" style="white-space:nowrap">Generate</button>
                 </div>
-                <span class="form-hint">Use this key as the API key when adding Ryokan as a Sonarr server in Seerr.</span>
+                
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset>
-            <legend>Seerr (Radarr API Compatibility)</legend>
-            <p class="form-hint" style="margin-bottom: 12px;">
-                Exposes a Radarr-compatible API so Seerr can add and manage anime movies through Ryokan.
-                In Seerr, add a new Radarr server pointing to this Ryokan instance with URL Base set to <code>/radarr</code> and the API key below.
-            </p>
-            <div class="form-group">
-                <label class="checkbox-row">
+        <div class="cf-section">
+            <h3>Seerr (Radarr API Compatibility)</h3>
+            <p class="form-hint" style="margin-bottom: 12px;">Lets Seerr add anime movies through Ryokan. In Seerr, add a Radarr server with this address, URL base <code>/radarr</code>, and the key below.</p>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Enable Radarr API</span>
+                        <span class="setting-row-desc">Answers Radarr API calls at <code>/radarr/api/v3/</code>.</span>
+                    </span>
                     <input type="checkbox" name="radarr_enabled" id="radarr_enabled" {% if config.radarr_enabled %}checked{% endif %}>
-                    <span>Enable Radarr API</span>
                 </label>
-                <span class="form-hint">When enabled, Ryokan accepts Radarr v3 API calls at <code>/radarr/api/v3/</code> authenticated with the key below.</span>
             </div>
             <div class="form-group">
                 <label for="radarr_api_key">API Key</label>
@@ -117,9 +100,9 @@
                     <button type="button" class="btn btn-secondary" onclick="copyApiKey('radarr_api_key', this)" style="white-space:nowrap">Copy</button>
                     <button type="button" class="btn btn-secondary" onclick="generateRadarrApiKey()" style="white-space:nowrap">Generate</button>
                 </div>
-                <span class="form-hint">Use this key as the API key when adding Ryokan as a Radarr server in Seerr.</span>
+                
             </div>
-        </fieldset>
+        </div>
 
         {# Issue #62 — External account linkage. Same fieldset
            + form-group + settings-inline-actions vocabulary as every
@@ -129,7 +112,7 @@
            identity → sync state → banners → prefs → skip-watched →
            interval → actions — but rebuilt entirely from the
            connections-tab primitives. No bespoke card surface. #}
-        <fieldset>
+        <div class="cf-section">
             {# Legend health badge — same visual primitive
                qBittorrent / Jellyfin / Deluge / Transmission /
                rTorrent use. Server-rendered (we have the data; JS
@@ -139,7 +122,7 @@
                  • green (.log-badge-info)  → linked + auth healthy
                  • red   (.log-badge-error) → linked + re-link required
                  • neutral (.log-badge)     → not linked #}
-            <legend>
+            <h3>
                 External Accounts
                 {% match external_account %}
                     {% when Some with (acct) %}
@@ -150,7 +133,7 @@
                     {% when None %}
                         <span class="form-hint"><span class="log-badge">Not linked</span></span>
                 {% endmatch %}
-            </legend>
+            </h3>
             {% match external_account %}
                 {% when Some with (acct) %}
                     {# Banners — sticky flags cleared on the next
@@ -200,12 +183,14 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label class="checkbox-row">
+                    <div class="setting-rows">
+                        <label class="setting-row">
+                            <span class="setting-row-text">
+                                <span class="setting-row-title">Skip already-watched episodes</span>
+                                <span class="setting-row-desc">Only grab episodes past the ones you have already watched on the linked account.</span>
+                            </span>
                             <input type="checkbox" data-ext-pref="skip_already_watched" {% if acct.skip_already_watched %}checked{% endif %} onchange="saveExternalAccountPrefs()">
-                            <span>Skip already-watched episodes</span>
                         </label>
-                        <span class="form-hint">When on, new imports honor the <code>progress</code> field and grab only episodes past what you've already watched. Default off; airing series + a caught-up user would otherwise skip everything.</span>
                     </div>
 
                     {# #62 — sync cadence. Range: 15 minutes to
@@ -261,9 +246,9 @@
                         <label>Provider</label>
                         <div class="settings-inline-actions">
                             <button type="button" class="btn btn-primary" onclick="startExternalAccountLink('anilist')">Link AniList</button>
-                            <button type="button" class="btn btn-primary" onclick="startExternalAccountLink('mal')">Link MyAnimeList</button>
+                            <button type="button" class="btn btn-secondary" onclick="startExternalAccountLink('mal')">Link MyAnimeList</button>
                         </div>
                     </div>
             {% endmatch %}
-        </fieldset>
+        </div>
 

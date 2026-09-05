@@ -53,7 +53,7 @@
             <span class="tag tag-user-score" title="Your score on AL/MAL">You: {{ you_score.render_html()|safe }}</span>
             {% endif %}
             {# Issue #219 — last in the row, beside the scores. #}
-            {% if detail.is_adult %}<span class="tag tag-adult" title="AniList marks this title adult. Nyaa lists adult releases on sukebei, which Ryokan does not search.">18+</span>{% endif %}
+            {% if detail.is_adult %}<span class="tag tag-adult" title="Adult title. Nyaa keeps these on sukebei, which Ryokan does not search.">18+</span>{% endif %}
         </div>
 
         <div class="detail-genres">
@@ -105,8 +105,8 @@
            adult-capable indexer; say so where the user is looking. #}
         {% if adult_without_indexers %}
         <div class="alert alert-warn adult-indexer-banner" role="status">
-            <strong>This title is marked adult on AniList, and no indexer is configured.</strong>
-            Nyaa lists adult releases on sukebei, which Ryokan does not search, so every search for this series will come back empty. Add an indexer that carries adult releases, such as sukebei through Prowlarr or Jackett, under <a href="/settings?tab=indexers">Settings &rarr; Indexers</a>. Ryokan asks indexers for the adult category for this title.
+            <strong>This title is marked adult, and no indexer is configured.</strong>
+            Nyaa keeps adult releases on sukebei, which Ryokan does not search, so searches for this series will come back empty until you add an indexer that carries them under <a href="/settings?tab=indexers">Settings &rarr; Indexers</a>.
         </div>
         {% endif %}
 
@@ -194,36 +194,36 @@
                    prior `location.reload()` in JS). The non-HTMX path
                    still returns JSON for `toggleMonitorAll` callers
                    in series_episode_actions.js. #}
-                <select id="monitor-mode" class="folder-select monitoring-select"
-                    name="monitor_mode"
-                    hx-post="/api/library/monitoring"
-                    hx-trigger="change"
-                    hx-vals='js:{series_id: parseInt(SD.dbId)}'
-                    hx-swap="none">
-                    <option value="all" {% if monitor_mode_select_value == "all" %}selected{% endif %}>All Episodes</option>
-                    <option value="future" {% if monitor_mode_select_value == "future" %}selected{% endif %}>Future Episodes</option>
-                    <option value="missing" {% if monitor_mode_select_value == "missing" %}selected{% endif %}>Missing Episodes</option>
-                    <option value="existing" {% if monitor_mode_select_value == "existing" %}selected{% endif %}>Existing Episodes</option>
-                    <option value="none" {% if monitor_mode_select_value == "none" %}selected{% endif %}>None</option>
-                    {% if can_sync_from_external_account %}
-                    {# #62 — clearing the manual-override flag.
-                       Only visible when the series came from sync; for
-                       manually-added series the option would be a
-                       no-op. The "follow your AL/MAL list" choice
-                       lives in the same dropdown as the manual modes
-                       so the user has one control surface for "auto
-                       vs. pinned." #}
-                    <option value="sync"{% if monitor_mode_select_value == "sync" %} selected{% endif %}>Sync from {{ sync_provider_label }}</option>
-                    {% endif %}
-                </select>
-                <span class="form-hint" id="monitor-summary">{{ monitor_mode_label }} · {{ monitored_count }} monitored{% if monitor_mode_manual_override && can_sync_from_external_account %} · pinned{% endif %}</span>
-            </div>
-        </div>
-        <div class="monitoring-divider"></div>
-        <div class="monitoring-row">
-            <span class="folder-label">Upgrades:</span>
-            <div class="monitoring-controls">
-                {# Issue #166 — HTMX-driven series-level toggles. The
+                   <select id="monitor-mode" class="folder-select monitoring-select"
+                   name="monitor_mode"
+                   hx-post="/api/library/monitoring"
+                   hx-trigger="change"
+                   hx-vals='js:{series_id: parseInt(SD.dbId)}'
+                   hx-swap="none">
+                   <option value="all" {% if monitor_mode_select_value == "all" %}selected{% endif %}>All Episodes</option>
+                   <option value="future" {% if monitor_mode_select_value == "future" %}selected{% endif %}>Future Episodes</option>
+                   <option value="missing" {% if monitor_mode_select_value == "missing" %}selected{% endif %}>Missing Episodes</option>
+                   <option value="existing" {% if monitor_mode_select_value == "existing" %}selected{% endif %}>Existing Episodes</option>
+                   <option value="none" {% if monitor_mode_select_value == "none" %}selected{% endif %}>None</option>
+                   {% if can_sync_from_external_account %}
+                   {# #62 — clearing the manual-override flag.
+                   Only visible when the series came from sync; for
+                   manually-added series the option would be a
+                   no-op. The "follow your AL/MAL list" choice
+                   lives in the same dropdown as the manual modes
+                   so the user has one control surface for "auto
+                   vs. pinned." #}
+                   <option value="sync"{% if monitor_mode_select_value == "sync" %} selected{% endif %}>Sync from {{ sync_provider_label }}</option>
+                   {% endif %}
+                   </select>
+                   <span class="form-hint" id="monitor-summary">{{ monitor_mode_label }} · {{ monitored_count }} monitored{% if monitor_mode_manual_override && can_sync_from_external_account %} · pinned{% endif %}</span>
+                   </div>
+                   </div>
+                   <div class="monitoring-divider"></div>
+                   <div class="monitoring-row">
+                   <span class="folder-label">Upgrades:</span>
+                   <div class="monitoring-controls">
+                   {# Issue #166 — HTMX-driven series-level toggles. The
                    server takes form data (series_id, allow) and acks
                    with an empty 200 for the HTMX branch. `hx-swap=none`
                    keeps the rendered checkbox as the source of truth
@@ -232,27 +232,33 @@
                    rejects (4xx/5xx). The `noSwap` config in base.html
                    keeps error bodies out of the page, so the visual
                    revert is the only client work needed. #}
-                <label class="checkbox-label">
-                    <input type="checkbox" id="allow-upgrades"
-                        {% if allow_upgrades %}checked{% endif %}
-                        hx-post="/api/library/allow-upgrades"
-                        hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
-                        hx-swap="none"
-                        hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'Upgrades toggle failed', body: 'Failed to update upgrades toggle', log: true})">
-                    Allow automatic upgrades when a higher-quality release is found
-                </label>
-                {# Issue #28 — PT upgrade opt-in. Indented under the
-                   parent toggle since "PT upgrades" is a sub-decision of
-                   "upgrades at all." #}
-                <label class="checkbox-label" style="margin-top:6px;margin-left:20px">
-                    <input type="checkbox" id="allow-pt-upgrades"
-                        {% if allow_pt_upgrades %}checked{% endif %}
-                        hx-post="/api/library/allow-pt-upgrades"
-                        hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
-                        hx-swap="none"
-                        hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'PT-upgrades toggle failed', body: 'Failed to update PT-upgrades toggle', log: true})">
-                    Allow upgrades from private trackers
-                </label>
+                <div class="setting-rows">
+                    <label class="setting-row">
+                        <span class="setting-row-text">
+                            <span class="setting-row-title">Allow automatic upgrades when a higher-quality release is found</span>
+                        </span>
+                        <input type="checkbox" id="allow-upgrades"
+                               {% if allow_upgrades %}checked{% endif %}
+                               hx-post="/api/library/allow-upgrades"
+                               hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
+                               hx-swap="none"
+                               hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'Upgrades toggle failed', body: 'Failed to update upgrades toggle', log: true})">
+                    </label>
+                    {# Issue #28 — PT upgrade opt-in. Sits below the parent
+                       toggle since "PT upgrades" is a sub-decision of
+                       "upgrades at all." #}
+                    <label class="setting-row">
+                        <span class="setting-row-text">
+                            <span class="setting-row-title">Allow upgrades from private trackers</span>
+                        </span>
+                        <input type="checkbox" id="allow-pt-upgrades"
+                               {% if allow_pt_upgrades %}checked{% endif %}
+                               hx-post="/api/library/allow-pt-upgrades"
+                               hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
+                               hx-swap="none"
+                               hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'PT-upgrades toggle failed', body: 'Failed to update PT-upgrades toggle', log: true})">
+                    </label>
+                </div>
             </div>
         </div>
         {# #23 — Per-series search overrides. Both fields are blank by
@@ -277,13 +283,13 @@
                     <label for="series-custom-query-tokens">Custom query tokens</label>
                     <input type="text" name="custom_query_tokens" id="series-custom-query-tokens" value="{{ custom_query_tokens }}"
                         placeholder="{% if !default_custom_query_tokens.is_empty() %}global: {{ default_custom_query_tokens }}{% else %}e.g. bd 1080p{% endif %}">
-                    <span class="form-hint">Extra keywords appended to every search for this series (Nyaa and configured torznab / newznab indexers). Leave blank to inherit the global default.</span>
+                    <span class="form-hint">Keywords added to every search for this series. Blank uses the global default.</span>
                 </div>
                 <div class="form-group" style="margin:0">
                     <label for="series-restrict-to-group">Restrict to Nyaa uploader <span class="form-hint" style="font-weight:normal">(Nyaa only)</span></label>
                     <input type="text" name="restrict_to_uploader" id="series-restrict-to-group" value="{{ restrict_to_uploader }}"
                         placeholder="{% if !default_restrict_to_uploader.is_empty() %}global: {{ default_restrict_to_uploader }}{% else %}(none){% endif %}">
-                    <span class="form-hint">Per-series override of the global default. Ryokan sets <code>?u=&lt;name&gt;</code> on every Nyaa search for this show so only this uploader's releases come back. Torznab / newznab indexers ignore this. Leave blank to inherit the global default.</span>
+                    <span class="form-hint">Only show releases from this Nyaa account for this series. Blank uses the global default.</span>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center">
                     <button type="submit" class="btn btn-primary">Save</button>
@@ -327,7 +333,7 @@
             <button class="icon-btn btn-search-batch" type="button"
                 id="btn-search-batch"
                 onclick="searchBatchReleases(this)"
-                title="Auto-grab the best batch release"
+                title="Grab the best batch"
                 aria-label="Auto batch search">
                 <span class="icon-btn-inner">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -336,7 +342,7 @@
             <button class="icon-btn btn-search-batch-interactive" type="button"
                 id="btn-search-batch-interactive"
                 onclick="openInteractiveBatchSearch(this)"
-                title="Browse batch releases and pick one manually"
+                title="Pick a batch release"
                 aria-label="Interactive batch search">
                 <span class="icon-btn-inner">
                     {# List-with-search: stack of batch rows on the left,
@@ -350,7 +356,7 @@
             <button class="monitor-all-btn {% if all_monitored %}is-active{% endif %}" type="button"
                 id="btn-monitor-all"
                 onclick="toggleMonitorAll({{ id }}, {{ all_monitored }})"
-                title="{% if all_monitored %}All monitored. Click to unmonitor all{% else %}Click to monitor all episodes{% endif %}"
+                title="{% if all_monitored %}Unmonitor all{% else %}Monitor all{% endif %}"
                 aria-label="Toggle monitor all episodes">
                 {% if all_monitored %}
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
@@ -414,7 +420,7 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                         </span>
                         {% else if ep.downloaded %}
-                        <span class="ep-status-icon ep-have" title="Downloaded (post-processing disabled; file not in library root)">
+                        <span class="ep-status-icon ep-have" title="Downloaded, not imported">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                         </span>
                         {% else if ep.unaired %}
@@ -506,7 +512,7 @@
                         <span class="ep-missing-label">Missing</span>
                         {% endif %}
                         {% if ep.needs_review && !ep.manual_override %}
-                        <span class="tag tag-needs-review" title="Classifier wasn't confident; click override to tag manually">⚠ review</span>
+                        <span class="tag tag-needs-review" title="Low-confidence tag">⚠ review</span>
                         {% endif %}
                     </td>
                     <td class="ep-col-actions">
@@ -525,7 +531,7 @@
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="12" y2="6"/><line x1="3" y1="12" x2="10" y2="12"/><line x1="3" y1="18" x2="9" y2="18"/><circle cx="17" cy="15" r="3"/><line x1="19.2" y1="17.2" x2="21" y2="19"/></svg>
                             </span>
                         </button>
-                        <button class="icon-btn btn-episode-override{% if ep.manual_override %} is-manual-override{% endif %}" type="button" onclick="openManualOverride({{ ep.number }}, '{{ ep.class_source }}', '{{ ep.class_resolution }}', {{ ep.class_is_remux }}, {{ ep.class_is_bdmv }}, '{{ ep.class_web_kind }}')" title="{% if ep.manual_override %}Edit pinned source/resolution tag{% else %}Override source/resolution tag{% endif %}" aria-label="{% if ep.manual_override %}Edit pinned source/resolution tag for episode {{ ep.number }}{% else %}Override source/resolution tag for episode {{ ep.number }}{% endif %}">
+                        <button class="icon-btn btn-episode-override{% if ep.manual_override %} is-manual-override{% endif %}" type="button" onclick="openManualOverride({{ ep.number }}, '{{ ep.class_source }}', '{{ ep.class_resolution }}', {{ ep.class_is_remux }}, {{ ep.class_is_bdmv }}, '{{ ep.class_web_kind }}')" title="{% if ep.manual_override %}Edit pinned tag{% else %}Override tag{% endif %}" aria-label="{% if ep.manual_override %}Edit pinned source/resolution tag for episode {{ ep.number }}{% else %}Override source/resolution tag for episode {{ ep.number }}{% endif %}">
                             <span class="icon-btn-inner">
                                 {# Vertical sliders (Lucide sliders-vertical):
                                    reads as "adjust these values" — matches
@@ -620,9 +626,7 @@
             </button>
         </div>
         <div class="modal-body" style="padding:16px 24px">
-            <p class="form-hint" style="margin-top:0">
-                Pin a source/resolution tag for this episode. The pin survives re-classification, so automatic post-download checks won't touch it. Clear the override to let Ryokan classify again.
-            </p>
+            <p class="form-hint" style="margin-top:0">Pin the source and resolution for this episode. Clear the override to let Ryokan classify it again.</p>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
                 <label class="form-row">
                     <span class="form-label">Source</span>
@@ -673,7 +677,7 @@
                 hx-target="#override-status"
                 hx-swap="innerHTML"
                 hx-on::after:request="if (event.detail.ctx.response.status < 400) setTimeout(function(){ window.location.reload(); }, 600)"
-                title="Re-run the full-pipeline classifier against this episode's on-disk file. Useful after editing Release Groups or Custom Formats; skips the 6-hour sweep. Pinned rows are rejected; clear the override first.">Re-classify</button>
+                title="Classify this file again">Re-classify</button>
             {# Clear + Apply both POST to manual-override; the server
                returns `HX-Refresh: true` so htmx triggers a full page
                reload, equivalent to the prior JS `location.reload()`. #}

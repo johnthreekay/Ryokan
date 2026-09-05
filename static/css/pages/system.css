@@ -23,7 +23,7 @@
     .log-table tr.log-row {
         display: block;
         padding: 10px 12px;
-        border-bottom: 1px solid rgba(42, 42, 58, 0.4);
+        border-bottom: 1px solid rgba(var(--border-rgb), 0.4);
         background: var(--bg-card);
     }
     .log-table td {
@@ -84,7 +84,7 @@
      * `.folder-select` in base.css for the rationale. The shorthand
      * resets `background-image` to none, clobbering the global chevron
      * rule from forms.css. */
-    background-color: var(--bg-elevated);
+    background-color: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -106,7 +106,7 @@
 }
 
 .log-filter-input {
-    background: var(--bg-elevated);
+    background: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -206,7 +206,7 @@
     height: 16px;
     background: var(--bg);
     border: 2px solid var(--border-accent);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     box-sizing: border-box;
     cursor: pointer;
     position: relative;
@@ -247,7 +247,8 @@
 
 .log-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 13px;
     font-family: var(--font-mono);
     table-layout: fixed;
@@ -274,7 +275,7 @@
 
 .log-table td {
     padding: 5px 10px;
-    border-bottom: 1px solid rgba(42, 42, 58, 0.4);
+    border-bottom: 1px solid rgba(var(--border-rgb), 0.4);
     vertical-align: top;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -285,7 +286,7 @@
 
 .log-col-level { width: 70px; }
 
-.log-col-cat { width: 100px; color: var(--text-dim); font-size: 12px; }
+.log-col-cat { width: 140px; color: var(--text-dim); font-size: 12px; white-space: nowrap; }
 
 .log-col-msg { }
 
@@ -302,18 +303,18 @@
     max-width: 100%;
 }
 
-.log-badge-trace { background: rgba(110, 110, 136, 0.15); color: var(--text-dim); }
+.log-badge-trace { background: rgba(var(--text-dim-rgb), 0.15); color: var(--text-dim); }
 
-.log-level-error { background: rgba(211, 125, 125, 0.04); }
+.log-level-error { background: rgba(var(--red-rgb), 0.04); }
 
-.log-level-warn { background: rgba(211, 176, 125, 0.03); }
+.log-level-warn { background: rgba(var(--orange-rgb), 0.03); }
 
 .log-row-new {
     animation: log-flash 2s ease-out;
 }
 
 .log-row:hover {
-    background: rgba(203, 166, 247, 0.04);
+    background: rgba(var(--accent-rgb), 0.04);
 }
 
 .log-row:hover .log-detail {
@@ -376,26 +377,19 @@
 }
 
 .rss-decision-grabbed {
-    background: rgba(125, 211, 147, 0.14);
+    background: rgba(var(--green-rgb), 0.14);
     color: var(--green);
 }
 
 .rss-decision-rejected,
 .rss-decision-error {
-    background: rgba(211, 125, 125, 0.12);
+    background: rgba(var(--red-rgb), 0.12);
     color: var(--red);
 }
 
 .rss-decision-skipped {
-    background: rgba(125, 174, 211, 0.12);
+    background: rgba(var(--blue-rgb), 0.12);
     color: var(--blue);
-}
-
-.form-check {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 16px;
 }
 
 .debug-actions-group {
@@ -410,6 +404,9 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
+    /* Equal tiles so the three actions line up now that their hints are
+       one line each. */
+    flex: 1 1 260px;
 }
 
 .debug-action-row > .btn {
@@ -428,6 +425,12 @@
 .task-detail-text {
     overflow-wrap: anywhere;
     word-break: break-word;
+    /* A backup path or a long error can run to 15 lines in this column;
+       show three and keep the whole text on the cell's tooltip. */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 .task-run-btn {
     white-space: nowrap;
@@ -446,7 +449,7 @@
     align-items: center;
     padding: 10px 14px;
     margin-bottom: 12px;
-    background: var(--panel);
+    background: var(--bg-card);
     border: 1px solid var(--accent);
     border-radius: var(--radius);
 }
@@ -521,7 +524,7 @@
     font-family: var(--font-mono);
     font-size: 12px;
     padding: 1px 5px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     color: var(--text);
@@ -546,9 +549,9 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    background: var(--bg-elevated);
+    background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     transition: border-color 0.15s, background 0.15s;
     min-height: 140px;
 }
@@ -640,34 +643,23 @@
 
 /* Status pill — binary enabled/disabled, no live probe path. */
 .notif-status-pill {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.2px;
-    padding: 3px 9px;
-    border-radius: 999px;
     flex-shrink: 0;
     white-space: nowrap;
-    line-height: 1.4;
 }
-.notif-status-pill-ok       { background: rgba(166, 227, 161, 0.18); color: var(--green, #a6e3a1); }
-.notif-status-pill-disabled { background: rgba(108, 112, 134, 0.18); color: var(--text-dim); }
+.notif-status-pill-ok       { background: rgba(var(--green-rgb), 0.18); color: var(--green); }
+.notif-status-pill-disabled { background: rgba(var(--text-dim-rgb), 0.18); color: var(--text-dim); }
 
 /* Kind badge — webhook / discord. Faint background tint so the
    badge reads as "tag" not "alert" — reserved alert colors stay
    for the status pill. */
 .notif-kind-pill {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
     text-transform: uppercase;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: rgba(108, 112, 134, 0.18);
+    background: rgba(var(--text-dim-rgb), 0.18);
     color: var(--text-dim);
     flex-shrink: 0;
 }
-.notif-kind-pill-discord { background: rgba(88, 101, 242, 0.18); color: #8b95f8; }
-.notif-kind-pill-webhook { background: rgba(203, 166, 247, 0.16); color: var(--accent); }
+.notif-kind-pill-discord { background: rgba(var(--blue-rgb), 0.18); color: var(--blue); }
+.notif-kind-pill-webhook { background: rgba(var(--accent-rgb), 0.16); color: var(--accent); }
 
 /* Corner × delete action. Test is modal-only; both DC and
    notifications expose connection-test inside the edit modal so
@@ -685,39 +677,17 @@
     font-size: 12px;
     color: var(--text-dim);
 }
-.notif-modal-test-result.ok  { color: var(--green, #a6e3a1); }
-.notif-modal-test-result.err { color: var(--red, #f38ba8); }
+.notif-modal-test-result.ok  { color: var(--green); }
+.notif-modal-test-result.err { color: var(--red); }
 
-.notif-empty {
-    grid-column: 1 / -1;
-    padding: 18px 20px;
-    background: var(--bg-elevated);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius);
-    text-align: center;
-}
 
 .notif-card-add {
-    appearance: none;
-    background: var(--bg-elevated);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius);
-    color: var(--text-dim);
-    cursor: pointer;
-    text-align: center;
-    padding: 14px 16px;
-    min-height: 140px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.15s, border-color 0.15s, background 0.15s;
     font: inherit;
 }
 .notif-card-add:hover {
     color: var(--accent);
     border-color: var(--accent);
-    background: rgba(203, 166, 247, 0.04);
+    background: rgba(var(--accent-rgb), 0.04);
 }
 .notif-card-add-icon {
     font-size: 28px;
@@ -779,43 +749,11 @@
 .notif-modal-form fieldset.settings-subform > .form-hint {
     margin: -2px 0 6px;
 }
-/* Each event-toggle row: checkbox + label + per-row hint stacked
-   right of the checkbox. Override `.checkbox-row`'s inline-flex
-   so rows stack vertically inside the matrix. */
-.notif-modal-form fieldset.settings-subform > .checkbox-row {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    column-gap: 10px;
-    row-gap: 0;
-    align-items: baseline;
-    cursor: pointer;
-}
-.notif-modal-form fieldset.settings-subform > .checkbox-row > input[type="checkbox"] {
-    grid-row: 1 / span 2;
-    align-self: start;
-    margin-top: 3px;   /* visually align with the strong label baseline */
-}
-.notif-modal-form fieldset.settings-subform > .checkbox-row > strong {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    line-height: 1.3;
-}
-.notif-modal-form fieldset.settings-subform > .checkbox-row > .form-hint {
-    grid-column: 2;
-    font-size: 12px;
-    color: var(--text-dim);
-    line-height: 1.4;
-    margin: 0;
-}
 
 
 /* ── Backup tab (issue #126) ─────────────────────────────────────── */
 .backup-options {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    margin: 0.75rem 0;
+    margin: 12px 0 16px;
 }
 .backup-actions {
     display: flex;
@@ -847,4 +785,61 @@
 }
 #restore-file {
     max-width: 100%;
+}
+
+/* System → Misgrabs. Same `.rss-table` shell as Downloads → Blocklist,
+   with a fixed column layout (the template's colgroup) so an expanded
+   file list or a long release name wraps inside its column instead of
+   pushing the status and actions past the card edge. */
+.misgrab-table {
+    table-layout: fixed;
+}
+/* Below the sidebar-plus-content breakpoint the card is too narrow for
+   six fixed shares; fall back to natural widths and let the wrap scroll
+   sideways, as the Backup and Blocklist tables do. */
+@media (max-width: 1200px) {
+    .misgrab-table {
+        table-layout: auto;
+        min-width: 760px;
+    }
+    .misgrab-table .dl-torrent-name {
+        max-width: 320px;
+    }
+}
+.misgrab-table th,
+.misgrab-when {
+    white-space: nowrap;
+}
+.misgrab-table .dl-torrent-name {
+    max-width: none;
+}
+.misgrab-files summary {
+    cursor: pointer;
+    color: var(--accent);
+    user-select: none;
+}
+.misgrab-files summary:hover {
+    color: var(--accent-hover);
+}
+.misgrab-files ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    color: var(--text-dim);
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.misgrab-files li + li {
+    margin-top: 4px;
+}
+/* Buttons sit side by side and fall onto a second line when the column
+   is too narrow. The confirm-bridge forms wrap single buttons; `contents`
+   lets the buttons be the flex items (same trick as the Backup rows). */
+.misgrab-actions-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.misgrab-actions .inline-form {
+    display: contents;
 }

@@ -172,6 +172,11 @@ pub struct Config {
     /// Default `true` so the search-page Grab button "just works"
     /// without a manual library-add round-trip.
     pub manual_search_auto_add: bool,
+    /// Misgrab guardrails: when the files inside a grab clearly name a
+    /// different series, remove the download from the client, blocklist
+    /// the release, notify, and search again. Off keeps the download in
+    /// the client and only flags it on System > Misgrabs.
+    pub misgrab_auto_remove: bool,
     /// Recycle bin root (#123). Empty = recycle disabled, every library
     /// delete is a permanent unlink. When set, episode / series-folder
     /// deletes and upgrade-replaced files move to
@@ -260,6 +265,7 @@ impl Default for Config {
             external_sync_interval_minutes: 30,
             nyaa_download_client_id: None,
             manual_search_auto_add: true,
+            misgrab_auto_remove: true,
             recycle_bin_path: String::new(),
             recycle_bin_age_days: 14,
             series_folder_format: crate::services::naming::DEFAULT_SERIES_FOLDER_FORMAT.to_string(),
@@ -334,6 +340,7 @@ struct ConfigRow {
     external_sync_interval_minutes: i64,
     nyaa_download_client_id: Option<i64>,
     manual_search_auto_add: i64,
+    misgrab_auto_remove: i64,
     recycle_bin_path: String,
     recycle_bin_age_days: i64,
     series_folder_format: String,
@@ -402,7 +409,7 @@ pub async fn get_naming_prefs(db: &SqlitePool) -> NamingPrefs {
 
 pub async fn get_config(db: &SqlitePool) -> Result<Option<Config>, sqlx::Error> {
     let row: Option<ConfigRow> = sqlx::query_as(
-        "SELECT active_client, qbit_url, qbit_user, qbit_pass, qbit_category, qbit_download_path, deluge_url, deluge_password, deluge_label, deluge_download_path, transmission_url, transmission_user, transmission_password, transmission_label, transmission_download_path, rtorrent_url, rtorrent_user, rtorrent_password, rtorrent_label, rtorrent_download_path, jellyfin_url, jellyfin_api_key, preferred_groups, blocked_groups, preferred_resolution, preferred_source, cutoff_source, cutoff_resolution, quality_profile, quality_cutoff, finished_series_quality, media_root, title_language, force_mal_fallback, rss_enabled, rss_interval_minutes, rss_master_enabled, disable_nyaa_rss, force_kitsu_fallback, post_processing_enabled, post_processing_mode, auto_grab_on_add, search_on_monitoring_change, prefer_subs, allow_non_english, sonarr_enabled, sonarr_api_key, radarr_enabled, radarr_api_key, autobrr_api_key, upgrade_search_enabled, custom_format_minimum_score, seadex_enabled, default_custom_query_tokens, default_restrict_to_uploader, grab_preview_mode, external_sync_interval_minutes, nyaa_download_client_id, manual_search_auto_add, recycle_bin_path, recycle_bin_age_days, series_folder_format, season_folder_format, episode_file_format, backup_schedule, backup_directory, backup_retention_count, backup_include_artwork FROM config WHERE id = 1",
+        "SELECT active_client, qbit_url, qbit_user, qbit_pass, qbit_category, qbit_download_path, deluge_url, deluge_password, deluge_label, deluge_download_path, transmission_url, transmission_user, transmission_password, transmission_label, transmission_download_path, rtorrent_url, rtorrent_user, rtorrent_password, rtorrent_label, rtorrent_download_path, jellyfin_url, jellyfin_api_key, preferred_groups, blocked_groups, preferred_resolution, preferred_source, cutoff_source, cutoff_resolution, quality_profile, quality_cutoff, finished_series_quality, media_root, title_language, force_mal_fallback, rss_enabled, rss_interval_minutes, rss_master_enabled, disable_nyaa_rss, force_kitsu_fallback, post_processing_enabled, post_processing_mode, auto_grab_on_add, search_on_monitoring_change, prefer_subs, allow_non_english, sonarr_enabled, sonarr_api_key, radarr_enabled, radarr_api_key, autobrr_api_key, upgrade_search_enabled, custom_format_minimum_score, seadex_enabled, default_custom_query_tokens, default_restrict_to_uploader, grab_preview_mode, external_sync_interval_minutes, nyaa_download_client_id, manual_search_auto_add, recycle_bin_path, recycle_bin_age_days, series_folder_format, season_folder_format, episode_file_format, backup_schedule, backup_directory, backup_retention_count, backup_include_artwork, misgrab_auto_remove FROM config WHERE id = 1",
     )
     .fetch_optional(db)
     .await?;
@@ -467,6 +474,7 @@ pub async fn get_config(db: &SqlitePool) -> Result<Option<Config>, sqlx::Error> 
         external_sync_interval_minutes: r.external_sync_interval_minutes as i32,
         nyaa_download_client_id: r.nyaa_download_client_id,
         manual_search_auto_add: r.manual_search_auto_add != 0,
+        misgrab_auto_remove: r.misgrab_auto_remove != 0,
         recycle_bin_path: r.recycle_bin_path,
         recycle_bin_age_days: r.recycle_bin_age_days,
         series_folder_format: r.series_folder_format,
@@ -483,8 +491,8 @@ pub async fn get_config(db: &SqlitePool) -> Result<Option<Config>, sqlx::Error> 
 pub async fn save_config(db: &SqlitePool, config: &Config) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
-        INSERT INTO config (id, active_client, qbit_url, qbit_user, qbit_pass, qbit_category, qbit_download_path, deluge_url, deluge_password, deluge_label, deluge_download_path, transmission_url, transmission_user, transmission_password, transmission_label, transmission_download_path, rtorrent_url, rtorrent_user, rtorrent_password, rtorrent_label, rtorrent_download_path, jellyfin_url, jellyfin_api_key, preferred_groups, blocked_groups, preferred_resolution, preferred_source, cutoff_source, cutoff_resolution, quality_profile, quality_cutoff, finished_series_quality, media_root, title_language, force_mal_fallback, rss_enabled, rss_interval_minutes, rss_master_enabled, disable_nyaa_rss, force_kitsu_fallback, post_processing_enabled, post_processing_mode, auto_grab_on_add, search_on_monitoring_change, prefer_subs, allow_non_english, sonarr_enabled, sonarr_api_key, radarr_enabled, radarr_api_key, autobrr_api_key, upgrade_search_enabled, custom_format_minimum_score, seadex_enabled, default_custom_query_tokens, default_restrict_to_uploader, grab_preview_mode, external_sync_interval_minutes, manual_search_auto_add, recycle_bin_path, recycle_bin_age_days, series_folder_format, season_folder_format, episode_file_format, backup_schedule, backup_directory, backup_retention_count, backup_include_artwork)
-        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO config (id, active_client, qbit_url, qbit_user, qbit_pass, qbit_category, qbit_download_path, deluge_url, deluge_password, deluge_label, deluge_download_path, transmission_url, transmission_user, transmission_password, transmission_label, transmission_download_path, rtorrent_url, rtorrent_user, rtorrent_password, rtorrent_label, rtorrent_download_path, jellyfin_url, jellyfin_api_key, preferred_groups, blocked_groups, preferred_resolution, preferred_source, cutoff_source, cutoff_resolution, quality_profile, quality_cutoff, finished_series_quality, media_root, title_language, force_mal_fallback, rss_enabled, rss_interval_minutes, rss_master_enabled, disable_nyaa_rss, force_kitsu_fallback, post_processing_enabled, post_processing_mode, auto_grab_on_add, search_on_monitoring_change, prefer_subs, allow_non_english, sonarr_enabled, sonarr_api_key, radarr_enabled, radarr_api_key, autobrr_api_key, upgrade_search_enabled, custom_format_minimum_score, seadex_enabled, default_custom_query_tokens, default_restrict_to_uploader, grab_preview_mode, external_sync_interval_minutes, manual_search_auto_add, recycle_bin_path, recycle_bin_age_days, series_folder_format, season_folder_format, episode_file_format, backup_schedule, backup_directory, backup_retention_count, backup_include_artwork, misgrab_auto_remove)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             active_client = excluded.active_client,
             qbit_url = excluded.qbit_url,
@@ -552,7 +560,8 @@ pub async fn save_config(db: &SqlitePool, config: &Config) -> Result<(), sqlx::E
             backup_schedule = excluded.backup_schedule,
             backup_directory = excluded.backup_directory,
             backup_retention_count = excluded.backup_retention_count,
-            backup_include_artwork = excluded.backup_include_artwork
+            backup_include_artwork = excluded.backup_include_artwork,
+            misgrab_auto_remove = excluded.misgrab_auto_remove
         "#,
     )
     .bind(&config.active_client)
@@ -634,6 +643,7 @@ pub async fn save_config(db: &SqlitePool, config: &Config) -> Result<(), sqlx::E
     } else {
         0_i64
     })
+    .bind(if config.misgrab_auto_remove { 1_i64 } else { 0_i64 })
     .execute(db)
     .await?;
 

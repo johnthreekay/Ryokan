@@ -347,8 +347,13 @@ pub async fn search_batch_releases(
                 LogCategory::Grab,
                 &format!("Grabbed batch: {}", result.title),
                 &format!(
-                    "group={}, score={}, tier={}",
-                    result.group, result.score, tier_label
+                    "group={}, score={}, tier={}{}",
+                    result.group,
+                    result.score,
+                    tier_label,
+                    crate::services::auto_search::MatchProvenance::log_suffix(
+                        result.match_provenance.as_ref()
+                    )
                 ),
             )
             .await;
@@ -380,6 +385,11 @@ pub async fn search_batch_releases(
                 .await
                 .ok()
                 .flatten();
+                // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+                if let Some(gid) = grab_id {
+                    let _ =
+                        crate::models::grabbed_torrents::set_source_url(&state.db, gid, &url).await;
+                }
                 // Stamp the resolved download_client_id on the grab
                 // row so per-grab delete routing
                 // (`state.resolve_grab_client`) sends the eventual
@@ -411,7 +421,7 @@ pub async fn search_batch_releases(
                     .await;
                 }
                 for ep_num in &ep_nums {
-                    let _ = episode_tags::record_grab(
+                    let _ = episode_tags::record_grab_with_match(
                         &state.db,
                         sid,
                         *ep_num,
@@ -420,6 +430,7 @@ pub async fn search_batch_releases(
                         &result.group,
                         result.size_bytes,
                         result.is_batch,
+                        result.match_provenance.as_ref(),
                     )
                     .await;
                 }

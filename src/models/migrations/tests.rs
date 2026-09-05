@@ -1231,3 +1231,22 @@ async fn migrate_creates_partial_unique_index_for_series_mal_id() {
         "series mal_id partial UNIQUE index missing"
     );
 }
+
+#[tokio::test]
+async fn episode_grab_history_gains_match_provenance_columns() {
+    let db = fresh_migrated_pool().await;
+    for col in ["match_kind", "match_phase", "matched_alias", "match_ratio"] {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_table_info('episode_grab_history') WHERE name = ?",
+        )
+        .bind(col)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(n, 1, "column {col} missing");
+    }
+    // Running the migration again must be a no-op.
+    crate::models::migrations::migrate(&db)
+        .await
+        .expect("second migrate is idempotent");
+}

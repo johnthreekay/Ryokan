@@ -115,7 +115,7 @@ function pollLogs() {
                 tr.innerHTML = `
                     <td class="log-col-time" title="${escapeHtml(e.timestamp)}">${escapeHtml(e.timestamp)}</td>
                     <td class="log-col-level"><span class="log-badge log-badge-${e.level}">${escapeHtml(e.level)}</span></td>
-                    <td class="log-col-cat">${escapeHtml(e.category)}</td>
+                    <td class="log-col-cat">${escapeHtml(e.category_label || e.category)}</td>
                     <td class="log-col-msg">
                         <span class="log-message">${escapeHtml(e.message)}</span>
                         ${e.detail ? `<span class="log-detail" title="${escapeHtml(e.detail)}">${escapeHtml(e.detail)}</span>` : ''}

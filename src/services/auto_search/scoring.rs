@@ -20,9 +20,20 @@ use crate::services::seadex;
 use crate::services::source::{self, ClassificationResult, Resolution, Source};
 
 use super::{
-    SearchTarget, normalize_title, parse_release_numbers, season_mismatch, token_overlap_ratio,
-    token_set,
+    MatchKind, SearchTarget, distinctive_overlap_ratio, normalize_title, parse_release_numbers,
+    season_mismatch, token_set,
 };
+
+/// Misgrab guardrails: a fuzzy title match loses to an otherwise-equal
+/// verbatim one, and so does anything the fallback passes (extended
+/// aliases, franchise roots) surfaced. Sized to beat the popularity
+/// tiebreakers (seeder tiers spread 20, trusted 10) and lose to every
+/// quality signal (source step 40, resolution step 60, preferred group
+/// 30 per rank, episode match 40), so a fuzzy 1080p still outranks a
+/// verbatim 720p and a fuzzy-only pool still grabs. The CF floor only
+/// looks at the CF subtotal, so these can never drop a candidate.
+pub(super) const FUZZY_MATCH_PENALTY: i32 = -25;
+pub(super) const FALLBACK_PHASE_PENALTY: i32 = -10;
 
 /// Apply the Custom Format + SeaDex overlay to a base score.
 ///
@@ -265,7 +276,9 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
             if normalized_title.contains(&normalized_alias) {
                 1.0
             } else {
-                token_overlap_ratio(&title_tokens, &token_set(&normalized_alias))
+                // Same ratio the title gate uses (#219), so the breakdown
+                // and the gate agree on what "matched" means.
+                distinctive_overlap_ratio(&title_tokens, &token_set(&normalized_alias))
             }
         })
         .fold(0.0f32, f32::max);
@@ -279,6 +292,30 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
             best_overlap * 100.0
         )),
     );
+
+    // Misgrab guardrails: how the title matched. Always listed, even at
+    // zero delta, so every breakdown says whether the match was
+    // verbatim or fuzzy and which pass produced it.
+    if let Some(p) = &result.match_provenance {
+        let delta = match p.kind {
+            MatchKind::Fuzzy => FUZZY_MATCH_PENALTY,
+            MatchKind::Verbatim | MatchKind::SeadexCurated => 0,
+        } + if p.phase.is_fallback() {
+            FALLBACK_PHASE_PENALTY
+        } else {
+            0
+        };
+        let detail = Some(p.summary());
+        if delta == 0 {
+            parts.push(ScoreComponent {
+                label: "Title Match Confidence".to_string(),
+                delta: 0,
+                detail,
+            });
+        } else {
+            add(&mut parts, "Title Match Confidence", delta, detail);
+        }
+    }
 
     // Season mismatch penalty (explicit season markers like S03, "3rd Season")
     if season_mismatch(&result.title, expected_season) {
@@ -790,5 +827,212 @@ mod tests {
             .find(|p| p.label == "Season Mismatch")
             .expect("season-mismatch penalty");
         assert_eq!(pen.delta, -100);
+    }
+
+    // ----- Title Match Confidence (misgrab guardrails) -----
+
+    fn stamped(
+        title: &str,
+        kind: MatchKind,
+        phase: crate::services::auto_search::MatchPhase,
+    ) -> SearchResult {
+        let mut r = candidate(title, "h1");
+        r.score = 100;
+        r.is_batch = false;
+        r.match_provenance = Some(crate::services::auto_search::MatchProvenance {
+            phase,
+            kind,
+            alias: "Show".to_string(),
+            ratio: 1.0,
+        });
+        r
+    }
+
+    fn confidence_delta(parts: &[ScoreComponent]) -> i32 {
+        parts
+            .iter()
+            .find(|p| p.label == "Title Match Confidence")
+            .expect("confidence line is always present for a stamped candidate")
+            .delta
+    }
+
+    #[test]
+    fn verbatim_candidate_outranks_equal_fuzzy_candidate() {
+        use crate::services::auto_search::MatchPhase;
+        let c = cls(Source::Web, Resolution::R1080p);
+        let title = "[GroupX] Show - 05 [1080p].mkv";
+        let verbatim = stamped(title, MatchKind::Verbatim, MatchPhase::Primary);
+        let fuzzy = stamped(title, MatchKind::Fuzzy, MatchPhase::Primary);
+        let run = |r: &SearchResult| {
+            rescore(
+                r,
+                &c,
+                &SearchTarget::Episode(5),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                0,
+                false,
+            )
+        };
+        let (score_v, parts_v) = run(&verbatim);
+        let (score_f, parts_f) = run(&fuzzy);
+        assert_eq!(
+            score_v - score_f,
+            -FUZZY_MATCH_PENALTY,
+            "gap must be the fuzzy penalty"
+        );
+        assert_eq!(confidence_delta(&parts_v), 0);
+        assert_eq!(confidence_delta(&parts_f), FUZZY_MATCH_PENALTY);
+        let detail = parts_f
+            .iter()
+            .find(|p| p.label == "Title Match Confidence")
+            .and_then(|p| p.detail.clone())
+            .unwrap_or_default();
+        assert!(detail.starts_with("Fuzzy alias match"), "{detail}");
+    }
+
+    #[test]
+    fn fallback_phase_penalty_stacks_with_fuzzy() {
+        use crate::services::auto_search::MatchPhase;
+        let c = cls(Source::Web, Resolution::R1080p);
+        let title = "[GroupX] Show - 05 [1080p].mkv";
+        let run = |r: &SearchResult| {
+            rescore(
+                r,
+                &c,
+                &SearchTarget::Episode(5),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                0,
+                false,
+            )
+            .1
+        };
+        assert_eq!(
+            confidence_delta(&run(&stamped(
+                title,
+                MatchKind::Fuzzy,
+                MatchPhase::Extended
+            ))),
+            FUZZY_MATCH_PENALTY + FALLBACK_PHASE_PENALTY
+        );
+        assert_eq!(
+            confidence_delta(&run(&stamped(
+                title,
+                MatchKind::Verbatim,
+                MatchPhase::Franchise
+            ))),
+            FALLBACK_PHASE_PENALTY
+        );
+        assert_eq!(
+            confidence_delta(&run(&stamped(
+                title,
+                MatchKind::Verbatim,
+                MatchPhase::BdProbe
+            ))),
+            0
+        );
+    }
+
+    #[test]
+    fn seadex_curated_gets_no_confidence_penalty() {
+        use crate::services::auto_search::MatchPhase;
+        let c = cls(Source::Web, Resolution::R1080p);
+        let r = stamped(
+            "[GroupX] Show - 05 [1080p].mkv",
+            MatchKind::SeadexCurated,
+            MatchPhase::SeadexSeed,
+        );
+        let (_, parts) = rescore(
+            &r,
+            &c,
+            &SearchTarget::Episode(5),
+            false,
+            quality::FinishedSeriesMode::SameAsAiring,
+            0,
+            false,
+        );
+        assert_eq!(confidence_delta(&parts), 0);
+    }
+
+    #[test]
+    fn unstamped_candidate_has_no_confidence_line() {
+        let mut r = candidate("[GroupX] Show - 05 [1080p].mkv", "h1");
+        r.score = 100;
+        let c = cls(Source::Web, Resolution::R1080p);
+        let (_, parts) = rescore(
+            &r,
+            &c,
+            &SearchTarget::Episode(5),
+            false,
+            quality::FinishedSeriesMode::SameAsAiring,
+            0,
+            false,
+        );
+        assert!(parts.iter().all(|p| p.label != "Title Match Confidence"));
+    }
+
+    #[test]
+    fn breakdown_deltas_sum_to_the_score_change() {
+        use crate::services::auto_search::MatchPhase;
+        let c = cls(Source::Web, Resolution::R1080p);
+        let r = stamped(
+            "[GroupX] Show - 05 [1080p].mkv",
+            MatchKind::Fuzzy,
+            MatchPhase::Extended,
+        );
+        let (score, parts) = rescore(
+            &r,
+            &c,
+            &SearchTarget::Episode(5),
+            false,
+            quality::FinishedSeriesMode::SameAsAiring,
+            0,
+            false,
+        );
+        let sum: i32 = parts.iter().map(|p| p.delta).sum();
+        assert_eq!(score - r.score, sum, "{parts:?}");
+    }
+
+    #[test]
+    fn alias_overlap_uses_distinctive_tokens() {
+        // Issue #219 in miniature: "the animation" overlaps the alias
+        // but carries no identity. The raw token ratio gave this +26;
+        // the distinctive ratio gives nothing, so the component is
+        // omitted (zero deltas are not listed).
+        let c = cls(Source::Web, Resolution::R1080p);
+        let aliases = ["Risa THE ANIMATION".to_string()];
+        let score_for = |title: &str| {
+            let mut r = candidate(title, "h1");
+            r.score = 0;
+            rescore_for_auto_search_with_breakdown(
+                &r,
+                &c,
+                &default_config(),
+                &aliases,
+                &SearchTarget::Single,
+                1,
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                Source::Web,
+                Resolution::R1080p,
+                Source::Hdtv,
+                Resolution::R720p,
+                0,
+                false,
+            )
+            .1
+        };
+        let generic = score_for("[GroupX] Other Show The Animation - 01 [1080p].mkv");
+        assert!(
+            generic.iter().all(|p| p.label != "Title Alias Match"),
+            "{generic:?}"
+        );
+        let distinctive = score_for("[GroupX] Risa Something - 01 [1080p].mkv");
+        let alias_part = distinctive
+            .iter()
+            .find(|p| p.label == "Title Alias Match")
+            .expect("the distinctive token alone is a full match");
+        assert_eq!(alias_part.delta, 40);
     }
 }

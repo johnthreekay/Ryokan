@@ -11,7 +11,6 @@ Third-party services Ryokan talks to.
 - **AniList / MyAnimeList accounts**: OAuth-linked for watch-list sync. When linked, anime you mark "watching" (or "planning", "completed", etc.) on AniList or MAL get auto-added to your Ryokan library on the next sync tick. Setup walkthrough: [External accounts](external-accounts.md).
 - **Sync interval (minutes)**: how often the watch-list sync runs. Default 30 minutes; minimum 15, maximum 10080 (7 days). The form won't let you type anything below 15. If a value somehow ends up outside that range, it falls back to 30.
 - **Jellyfin**: server URL and API key. Lets Ryokan trigger a Jellyfin library refresh after each import and validate that imported files actually landed on disk. URL is `http://jellyfin:8096` when Ryokan and Jellyfin share a Docker compose; if they're on different hosts or in separate composes, use your host's LAN IP and the host-mapped port.
-- **Grab behavior → Interactive file picker**: whether the grab-picker modal opens for multi-file releases. **Batches only** (default) opens it for batches and one-clicks single-file releases; **Never** is one-click everywhere.
 - **Sonarr / Radarr API shim (anibridge)**: exposes a Sonarr-compatible and Radarr-compatible API so request frontends like Seerr can ask Ryokan for anime the same way they'd ask Sonarr for TV. The Sonarr side lives at `/api/v3/...`, the Radarr side at `/radarr/api/v3/...`. Each has its own API key.
 
 ## Download Clients
@@ -26,16 +25,16 @@ Add torznab indexers (typically fronted by Prowlarr) and newznab indexers (typic
 
 **Indexer** here means a search source. Ryokan ships with built-in Nyaa search; everything else lands in this tab.
 
-Each indexer row has a **Categories** field. Blank means automatic: Ryokan asks for anime (5070), adds Movies (2000) for a film and XXX (6000) for an adult title, and when the indexer reports none of those it asks for what the indexer does report, so a sukebei-only or movies-only indexer is never asked for a category it does not have. A value is sent as written on every search and poll, comma separated, Sonarr-style, for torznab and newznab rows alike; the edit form lists what the indexer reports so you can pick ids.
+Each indexer row has a **Categories** field. Blank means automatic: Ryokan asks for anime (5070), adds Movies (2000) for a film and XXX (6000) for an adult title, and when the indexer reports none of those it asks for what the indexer does report, so a sukebei-only or movies-only indexer is never asked for a category it does not have. A value is sent as written on every search and poll, comma separated, Sonarr-style, for torznab and newznab rows alike. The edit form folds what the indexer offers under the field; click an entry to add or remove its id.
 
 Each indexer row has an optional **download client pin** that overrides the per-protocol default for grabs from that indexer. Useful when you want one private tracker's grabs going to a specific qBit instance with stricter seed rules.
 
 Two more things live on this tab:
 
 - **autobrr webhook**: accepts inbound webhooks at `/api/webhook/autobrr`. [autobrr](https://autobrr.com) is a separate self-hosted tool that watches IRC announce channels for new releases and pushes matches as HTTP webhooks; this is the receiving side. The webhook has its own API key with a dedicated regenerate button, so an accidental tab POST can't silently rotate or wipe it.
-- **Nyaa search** pin: Ryokan's built-in Nyaa search is not an indexer row, so this fieldset is where you pin it to a specific torrent client. **(use default)** routes Nyaa grabs to the torrent default.
+- **Nyaa search** pin: Ryokan's built-in Nyaa search is not an indexer row, so this section is where you pin it to a specific torrent client. **(use default)** routes Nyaa grabs to the torrent default.
 
-## Preferred Quality & Releases
+## Quality & Releases
 
 The scoring inputs that decide which release wins when several match the same episode.
 
@@ -101,12 +100,16 @@ Day-to-day knobs.
 - **Backups to keep**: older scheduled backups are deleted after each new one. Default 7. Backups taken automatically before a restore are never pruned.
 - **Recycle bin path**: empty by default, which means deletes are permanent. Set it to a directory (inside the container, like the media root) and deleting an episode, removing a series with its files, or replacing a file during an upgrade moves the files there instead. Each entry keeps the video plus its `.nfo`, subtitles, and thumbnail, and the Library page's Recycle Bin view can restore or permanently delete it. Keep it on the same filesystem as the media root so the move is an instant rename that preserves seeding hardlinks. On a different filesystem Ryokan copies, verifies the size, then deletes. If the path is set but Ryokan cannot write to it, deletes are refused until you fix it or clear the path. Restore puts the files back and re-tags the episode, but a torrent that was removed from the download client at delete time is not re-added, and files that crossed filesystems come back with a new modification time. Clearing the path leaves anything already recycled where it is.
 - **Purge after (days)**: how long recycled items survive before the hourly cleanup task deletes them for good. Default 14. `0` keeps everything until you empty the bin manually.
-- **Auto-search when monitoring changes**: when a series' monitoring mode widens (for example none → all), run a background auto-search for the newly monitored aired episodes. Off by default; narrowing changes never search.
-- **Auto-add series to library on grab**: grabbing from the manual search page resolves the release title through anitomy and AniList and adds the series if it isn't in the library yet. On by default; off keeps the old behavior where the grab lands in the client with no library row.
+- **Search when monitoring is widened**: when a series switches to monitoring more episodes (for example none → all), run a search for the newly monitored ones. Off by default.
+- **Add the series to the library when grabbing from Search**: on by default. Off sends the release to the download client without tracking the series.
+- **Interactive file picker**: whether the file picker opens for multi-file releases. **Batches only** (default) opens it for batches and one-clicks single-file releases; **Never** is one-click everywhere.
+- **Search for monitored episodes when a series is added**: on by default. Off adds the series without starting a download.
+- **Allow non-English releases in automatic grabs**: when off, auto-search and RSS use Nyaa's English-translated category. When on, they search every anime category, including untranslated and multi-sub releases. Interactive search always shows every category.
+- **Remove and blocklist detected misgrabs**: when the files inside a download clearly name a different series, Ryokan removes the download from the client, blocklists the release, notifies you, and searches again. On by default. Off keeps the download in the client, never imports it, and lists it under System, Misgrabs for you to restore or dismiss.
 
 ## On the System page (not Settings)
 
-A few runtime toggles live on the **System** page rather than under Settings, including **Allow non-English releases** and the **Force MAL / Kitsu fallback** switches. See [System → Debug](system.md#debug) for the full list and what each does.
+The **Force MAL / Kitsu fallback** switches live on the **System** page rather than under Settings. See [System → Debug](system.md#debug).
 
 ## Reset / wipe state
 

@@ -6,18 +6,22 @@
     <div class="alert alert-error" data-ryokan-toast="error" data-ryokan-toast-title="Release Groups">{{ err }}</div>
     {% endif %}
 
-    <fieldset>
-        <legend>Release Group Source Map</legend>
-        <p class="form-hint">Maps release groups to their known source. Used by Layer 3 of the classification pipeline when the filename alone doesn't carry source keywords (e.g. SubsPlease is WEB, VCB-Studio is BD). Seeded rows are restored on startup; user-edited rows are preserved.</p>
+    {# A `.cf-section` card, not a <div class="cf-section">: Firefox paints rows
+       scrolling under a sticky table header over the band when the
+       scroll box sits inside a fieldset, and this tab holds the one
+       scrolling table on Settings. #}
+    <div class="cf-section">
+        <h3>Release Group Source Map</h3>
+        <p class="form-hint">Tells Ryokan which source a release group usually uses, for files whose names do not say (SubsPlease is WEB, VCB-Studio is BD). Your edits are kept across restarts.</p>
 
         {% if !suggestions.is_empty() %}
         {# Suggested mappings — promoted to the top so the user sees
            what's actionable without scrolling past the (long)
            current-entries table. #}
-        <h3 class="settings-subheading">Suggested Mappings ({{ suggestions.len() }})</h3>
-        <p class="form-hint">Inferred from your manual classification overrides. When you've pinned multiple episodes from the same release group to the same source, Ryokan surfaces it here so you can teach the identity table.</p>
-        <div class="table-scroll-wrap">
-        <table class="group-source-table">
+        <div class="settings-label">Suggested mappings ({{ suggestions.len() }})</div>
+        <p class="form-hint">Suggested from your own overrides. Accept one to add it to the table.</p>
+        <div class="rss-table-wrap group-table-wrap">
+        <table class="rss-table group-source-table">
             <thead>
                 <tr>
                     <th>Group</th>
@@ -35,7 +39,7 @@
                     <td>{{ s.episode_count }} episode{% if s.episode_count != 1 %}s{% endif %}</td>
                     <td>
                         {% if let Some(existing) = s.existing_source %}
-                        <span class="log-badge tag-src-{{ existing.as_str()|lowercase }}" title="Accepting will overwrite the existing mapping">conflicts: {{ existing.as_str() }}</span>
+                        <span class="log-badge tag-src-{{ existing.as_str()|lowercase }}" title="Overwrites the existing mapping">conflicts: {{ existing.as_str() }}</span>
                         {% else %}
                         <span class="form-hint">(new)</span>
                         {% endif %}
@@ -62,9 +66,9 @@
            visual flow + hiding the bulk of the data behind a long
            scroll. Now the data is the prominent content; Add lives
            at the bottom where it doesn't interrupt scanning. #}
-        <h3 class="settings-subheading">Current Entries ({{ groups.len() }})</h3>
-        <div class="table-scroll-wrap">
-        <table class="group-source-table">
+        <div class="settings-label">Current entries ({{ groups.len() }})</div>
+        <div class="rss-table-wrap group-table-wrap">
+        <table class="rss-table group-source-table">
             <thead>
                 <tr>
                     <th>Group</th>
@@ -89,7 +93,9 @@
                               hx-target="closest tr"
                               hx-swap="outerHTML">
                             <input type="hidden" name="group_name" value="{{ group.group_name }}">
-                            <button type="submit" class="btn btn-danger">Delete</button>
+                            <button type="submit" class="btn btn-ghost btn-sm" title="Delete {{ group.group_name }}" aria-label="Delete {{ group.group_name }}">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                            </button>
                         </form>
                     </td>
                 </tr>
@@ -97,8 +103,10 @@
             </tbody>
         </table>
         </div>
+    </div>
 
-        <h3 class="settings-subheading">Add or Update Group</h3>
+    <div class="cf-section">
+        <h3>Add or Update Group</h3>
         <form method="post" action="/settings/groups" class="settings-form group-upsert-form">
             <div class="form-group">
                 <label for="new_group_name">Group Name</label>
@@ -126,4 +134,4 @@
             </div>
             <button type="submit" class="btn btn-primary">Save Group</button>
         </form>
-    </fieldset>
+    </div>
