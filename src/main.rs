@@ -102,7 +102,8 @@ use services::{
         handlers::settings::download_clients::settings_download_clients_edit_form,
         handlers::settings::download_clients::settings_download_clients_add_form,
         handlers::settings::download_clients::settings_download_clients_status,
-        handlers::settings::download_clients::settings_indexers_nyaa_pin,
+        handlers::settings::indexers::settings_indexers_nyaa_form,
+        handlers::settings::indexers::settings_indexers_nyaa_save,
         // Settings — autobrr API key rotation (issue #28)
         handlers::settings::autobrr_key::settings_autobrr_regenerate_key,
         // Webhooks (issue #28)
@@ -205,7 +206,7 @@ use services::{
         handlers::settings::download_clients::DownloadClientUpsertForm,
         handlers::settings::download_clients::DownloadClientIdForm,
         handlers::settings::download_clients::DownloadClientTestForm,
-        handlers::settings::download_clients::NyaaPinForm,
+        handlers::settings::indexers::NyaaSettingsForm,
         handlers::settings::custom_formats::CustomFormatUpsertForm,
         handlers::settings::custom_formats::CfTestRequest,
         handlers::settings::custom_formats::CustomFormatDeleteForm,
@@ -1059,8 +1060,12 @@ async fn main() {
             get(handlers::settings::indexers::settings_indexers_edit_form),
         )
         .route(
-            "/settings/indexers/nyaa-pin",
-            post(handlers::settings::download_clients::settings_indexers_nyaa_pin),
+            "/settings/indexers/nyaa",
+            post(handlers::settings::indexers::settings_indexers_nyaa_save),
+        )
+        .route(
+            "/settings/indexers/nyaa/edit-form",
+            get(handlers::settings::indexers::settings_indexers_nyaa_form),
         )
         .route(
             "/settings/indexers/test-rss",

@@ -565,7 +565,9 @@ pub(super) fn seadex_gates(
     cfs: &[CompiledCustomFormat],
 ) -> (bool /* needs_lookup */, bool /* boost_enabled */) {
     let has_cf = custom_formats::has_seadex_cf(cfs);
-    let needs_lookup = config.seadex_enabled || has_cf;
+    // SeaDex picks are Nyaa torrents; with the built-in search off
+    // they must not seed the pool through the side door.
+    let needs_lookup = config.nyaa_enabled && (config.seadex_enabled || has_cf);
     let boost_enabled = config.seadex_enabled && !has_cf;
     (needs_lookup, boost_enabled)
 }
@@ -704,5 +706,25 @@ mod tests {
         // Clean up so other tests aren't affected.
         SEADEX_INFLIGHT.lock().unwrap().remove(&anilist_id);
         assert!(!seadex_inflight_contains(anilist_id));
+    }
+}
+
+#[cfg(test)]
+mod nyaa_gate_tests {
+    use super::*;
+
+    #[test]
+    fn seadex_seed_is_off_when_the_built_in_nyaa_search_is_off() {
+        let mut config = Config {
+            seadex_enabled: true,
+            ..Default::default()
+        };
+        assert_eq!(seadex_gates(&config, &[]), (true, true));
+        config.nyaa_enabled = false;
+        assert_eq!(
+            seadex_gates(&config, &[]),
+            (false, true),
+            "no lookup: SeaDex picks are Nyaa torrents"
+        );
     }
 }

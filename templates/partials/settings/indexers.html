@@ -16,37 +16,6 @@
        openIndexerAddModal. #}
 {%~ include "partials/settings/indexers/list.html" ~%}
 
-    {# Built-in Nyaa search routes through whichever download
-       client this row points at. Empty selection = use the default
-       client. Standalone form (not nested in any other) — POSTs
-       to `/settings/indexers/nyaa-pin`, which writes
-       `config.nyaa_download_client_id`. #}
-    <div class="cf-section settings-form">
-        <h3>Nyaa search</h3>
-        <p class="cf-section-desc">Choose which torrent client receives grabs from the built-in Nyaa search.</p>
-        <form method="post" action="/settings/indexers/nyaa-pin" class="settings-form settings-subform">
-            <div class="form-group">
-                <label for="nyaa-dc">Download Client</label>
-                <select id="nyaa-dc" name="download_client_id">
-                    <option value="">(use default)</option>
-                    {# Filter to torrent-shaped clients only (skip SAB).
-                       Nyaa items are torrents; pinning to a usenet
-                       client would resolve at grab time and fail at
-                       the client's add path. #}
-                    {% for dc in download_clients %}
-                    {% if dc.kind != "sabnzbd" %}
-                    <option value="{{ dc.id }}"
-                        {% if let Some(pin) = config.nyaa_download_client_id %}{% if *pin == dc.id %}selected{% endif %}{% endif %}>
-                        {{ dc.name }}{% if dc.is_default %} (default){% endif %}
-                    </option>
-                    {% endif %}
-                    {% endfor %}
-                </select>
-            </div>
-            <button type="submit" class="btn btn-primary">Save Nyaa pin</button>
-        </form>
-    </div>
-
     {# Multi-RSS — user-supplied direct RSS feeds (e.g.
        SubsPlease's per-quality feeds). Distinct from the per-indexer
        RSS toggle above: those poll torznab/newznab indexers via

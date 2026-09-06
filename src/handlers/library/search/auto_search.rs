@@ -343,6 +343,25 @@ async fn run_auto_search_targets_with_upgrades(
             );
         }
     }
+    // The built-in Nyaa card is switched off and nothing else is
+    // configured: say so, the same way, rather than reporting an
+    // empty pool as if the release did not exist.
+    if !cfg.nyaa_enabled {
+        let indexer_count = state.indexers.read().await.len();
+        if crate::handlers::library::search_has_no_source(cfg.nyaa_enabled, indexer_count) {
+            logger::warn(
+                &state.db,
+                LogCategory::AutoSearch,
+                &format!("No search source for {}", title),
+                "Nyaa search is turned off on the Indexers tab and no indexer is configured, so this search finds nothing.",
+            )
+            .await;
+            notes.push(
+                "Nyaa search is turned off and no indexer is configured, so this search finds nothing."
+                    .to_string(),
+            );
+        }
+    }
     progress::emit(
         "search",
         "info",

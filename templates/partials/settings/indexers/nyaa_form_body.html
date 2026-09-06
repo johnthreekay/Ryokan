@@ -1,0 +1,71 @@
+{# Modal body for the built-in Nyaa card. Returned by `GET /settings/
+   indexers/nyaa/edit-form` and swapped into `#indexer-modal-body`
+   when the user clicks the Nyaa card. Posts to `/settings/indexers/
+   nyaa`, the one writer for the Nyaa-only config columns; a
+   successful save re-renders `#indexer-section`, which closes the
+   modal the same way an indexer save does. #}
+<form method="post" action="/settings/indexers/nyaa"
+      class="dc-modal-form"
+      hx-post="/settings/indexers/nyaa"
+      hx-target="#indexer-section"
+      hx-swap="outerHTML">
+    <div class="modal-body">
+        <p class="form-hint">Ryokan's built-in search of nyaa.si. It cannot be removed, only turned off.</p>
+
+        <div class="setting-rows">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Enabled</span>
+                    <span class="setting-row-desc">Off skips Nyaa in automatic and interactive searches and stops its feed. The Search page still works.</span>
+                </span>
+                <input type="checkbox" name="enabled" {% if config.nyaa_enabled %}checked{% endif %}>
+            </label>
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Enable RSS auto-sync</span>
+                    <span class="setting-row-desc">Poll the Nyaa anime feed on every RSS sync.</span>
+                </span>
+                <input type="checkbox" name="rss_enabled" {% if config.rss_enabled && !config.disable_nyaa_rss %}checked{% endif %}>
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label for="nyaa-categories">Categories</label>
+            <select id="nyaa-categories" name="categories">
+                <option value="english" {% if !config.allow_non_english %}selected{% endif %}>English-translated</option>
+                <option value="all" {% if config.allow_non_english %}selected{% endif %}>All anime</option>
+            </select>
+            <span class="form-hint">Automatic search and RSS search this category. Interactive search always shows every category.</span>
+        </div>
+
+        <div class="form-group">
+            <label for="nyaa-dc">Download Client</label>
+            <select id="nyaa-dc" name="download_client_id">
+                <option value="">(use default)</option>
+                {# Torrent clients only: Nyaa items are torrents, so a
+                   usenet pin would fail at the client's add path. The
+                   handler refuses one too. #}
+                {% for dc in download_clients %}
+                {% if dc.kind != "sabnzbd" %}
+                <option value="{{ dc.id }}"
+                    {% if let Some(pin) = config.nyaa_download_client_id %}{% if *pin == dc.id %}selected{% endif %}{% endif %}>
+                    {{ dc.name }}{% if dc.is_default %} (default){% endif %}
+                </option>
+                {% endif %}
+                {% endfor %}
+            </select>
+            <span class="form-hint">Blank sends Nyaa grabs to the default torrent client.</span>
+        </div>
+
+        <div class="form-group">
+            <label for="nyaa-uploader">Restrict to Uploader</label>
+            <input id="nyaa-uploader" type="text" name="default_restrict_to_uploader" value="{{ config.default_restrict_to_uploader }}" placeholder="SubsPlease" autocomplete="off">
+            <span class="form-hint">Only take releases from this Nyaa account. A series can override this on its own page.</span>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <span style="margin-right:auto"></span>
+        <button type="button" class="btn btn-secondary" onclick="closeIndexerModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save changes</button>
+    </div>
+</form>

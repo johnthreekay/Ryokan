@@ -2859,6 +2859,15 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         "ALTER TABLE config ADD COLUMN import_stall_hours INTEGER NOT NULL DEFAULT 24",
     ] {
         sqlx::query(sql).execute(db).await.ok();
+
+        // Built-in Nyaa card on the Indexers tab: the one switch that turns
+        // the built-in search off entirely (auto-search, interactive search,
+        // the SeaDex seed, and the Nyaa RSS feed). Default on, so an
+        // upgrade changes nothing.
+        sqlx::query("ALTER TABLE config ADD COLUMN nyaa_enabled INTEGER NOT NULL DEFAULT 1")
+            .execute(db)
+            .await
+            .ok();
     }
 
     // Issue #228 — remove finished downloads from the client. The
