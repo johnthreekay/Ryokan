@@ -4,7 +4,7 @@ use sqlx::SqlitePool;
 
 use crate::models::log::LogCategory;
 use crate::models::{config, local_metadata, metadata_cache, series};
-use crate::services::{anilist, artwork, jikan, kitsu, logger};
+use crate::services::{anilist, anime_relations, artwork, jikan, kitsu, logger};
 
 const MAX_RELATION_TREE_NODES: usize = 64;
 
@@ -380,6 +380,81 @@ async fn cache_provider_detail(
     Ok(())
 }
 
+/// #206 — One `AniList` info line when a series takes its
+/// absolute-numbering offset from the vendored anime-relations file
+/// and the stored value changes, so System → Logs shows why a `- 105`
+/// release imports as episode 7.
+pub async fn log_rule_offset(
+    db: &SqlitePool,
+    tracked: &series::Series,
+    rule: &anime_relations::Offset,
+) {
+    logger::info(
+        db,
+        LogCategory::AniList,
+        &format!(
+            "Absolute-numbering offset for {} set from anime-relations: {}",
+            tracked.title, rule.episodes
+        ),
+        &format!(
+            "series_id={}, anilist_id={}, mal_id={:?}, source_anilist_id={:?}, source_mal_id={:?}",
+            tracked.id, tracked.anilist_id, tracked.mal_id, rule.source.anilist, rule.source.mal
+        ),
+    )
+    .await;
+}
+
+/// #206 — Make sure a rule's source entry sits in
+/// `provider_metadata_cache`, so the search path can read its titles
+/// (`anime_relations::source_titles`) without touching AniList. The
+/// source is usually already there as a cached PREQUEL, but the rules
+/// exist precisely for the entries AniList does not link (Dragon Ball
+/// Kai for Kai 2014), so this is the one place a missing source is
+/// fetched. Soft-fails: a rate-limited AniList just means no franchise
+/// aliases until the next refresh.
+pub async fn hydrate_rule_source(
+    db: &SqlitePool,
+    series_provider_id: i64,
+    rule: &anime_relations::Offset,
+    force_kitsu_fallback: bool,
+) {
+    let Some(source_id) = rule.source.anilist else {
+        return;
+    };
+    if source_id == series_provider_id {
+        return;
+    }
+    match metadata_cache::get_by_provider_id(db, source_id).await {
+        Ok(Some(_)) => return,
+        Ok(None) => {}
+        Err(e) => {
+            tracing::debug!(
+                target: "ryokan::metadata_sync",
+                "anime-relations source {source_id} cache read failed: {e}"
+            );
+            return;
+        }
+    }
+    match anilist::get_anime_detail(source_id).await {
+        Ok(detail) => {
+            if let Err(e) =
+                cache_provider_detail(db, source_id, &detail, force_kitsu_fallback).await
+            {
+                tracing::debug!(
+                    target: "ryokan::metadata_sync",
+                    "anime-relations source {source_id} cache write failed: {e}"
+                );
+            }
+        }
+        Err(e) => {
+            tracing::debug!(
+                target: "ryokan::metadata_sync",
+                "anime-relations source {source_id} fetch failed: {e}"
+            );
+        }
+    }
+}
+
 async fn hydrate_relation_tree(
     db: &SqlitePool,
     root_provider_id: i64,
@@ -654,8 +729,15 @@ async fn refresh_series_metadata_inner(
         // absolute-numbered Nyaa titles against relative-numbered AL
         // episodes. Must run AFTER hydrate_relation_tree so the cache
         // covers the whole chain, not just the immediate neighbors.
-        let cumulative =
-            local_metadata::compute_cumulative_prior_episodes(db, stored_anilist_id).await;
+        //
+        // #206 — A curated anime-relations rule for this entry wins
+        // over the walk; see `services::anime_relations`.
+        let (cumulative, offset_source) = anime_relations::cumulative_prior_episodes(
+            db,
+            stored_anilist_id,
+            detail.id_mal.or(tracked.mal_id),
+        )
+        .await;
         if let Err(err) = series::update_cumulative_prior_episodes(db, tracked.id, cumulative).await
         {
             tracing::warn!(
@@ -663,6 +745,11 @@ async fn refresh_series_metadata_inner(
                 series_id = tracked.id,
                 "failed to persist cumulative_prior_episodes: {err}"
             );
+        } else if let anime_relations::OffsetSource::Rule(rule) = offset_source {
+            if cumulative != tracked.cumulative_prior_episodes {
+                log_rule_offset(db, tracked, &rule).await;
+            }
+            hydrate_rule_source(db, stored_anilist_id, &rule, force_kitsu_fallback).await;
         }
 
         if !authoritative_detail {

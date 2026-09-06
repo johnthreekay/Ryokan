@@ -22,7 +22,7 @@ use sqlx::SqlitePool;
 
 use crate::models::log::LogCategory;
 use crate::models::{config, metadata_cache, series};
-use crate::services::{anilist, jikan, kitsu, logger, metadata_sync};
+use crate::services::{anilist, anime_relations, jikan, kitsu, logger, metadata_sync};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ReconcileReport {
@@ -89,6 +89,28 @@ pub(super) async fn maybe_hydrate_cumulative_offset(
     let t = tracked?;
     if t.cumulative_prior_episodes != 0 {
         return Some(t);
+    }
+    // #206 — A curated anime-relations rule answers without the
+    // AniList walk, and it fires even when AniList lists no TV
+    // prequel (that gap is what the rules are for). The rule's source
+    // entry is cached so the search can read franchise aliases.
+    if let Some(rule) = anime_relations::offset_for(t.anilist_id, t.mal_id) {
+        return match series::update_cumulative_prior_episodes(db, t.id, rule.episodes).await {
+            Ok(()) => {
+                metadata_sync::log_rule_offset(db, &t, &rule).await;
+                let force_kitsu = force_kitsu_fallback_enabled(db).await;
+                metadata_sync::hydrate_rule_source(db, t.anilist_id, &rule, force_kitsu).await;
+                series::get_by_id(db, t.id).await.ok().flatten().or(Some(t))
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "ryokan::library",
+                    series_id = t.id,
+                    "failed to persist anime-relations offset: {e}"
+                );
+                Some(t)
+            }
+        };
     }
     let has_tv_prequel = detail
         .relations

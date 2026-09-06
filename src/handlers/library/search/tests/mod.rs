@@ -530,6 +530,63 @@ async fn cumulative_hydration_skips_already_populated_series() {
     );
 }
 
+/// #206 — A curated anime-relations rule sets the offset without any
+/// AniList walk, and it fires even when the detail lists no TV prequel
+/// (Kai 2014's only prequel is a SPECIAL; that gap is what the rules
+/// are for). The rule's source entry is already cached here, so the
+/// hydration touches no network.
+#[tokio::test]
+async fn cumulative_hydration_takes_the_anime_relations_rule_first() {
+    let db = SqlitePool::connect("sqlite::memory:")
+        .await
+        .expect("in-memory sqlite");
+    crate::models::migrate(&db).await.expect("migrate");
+
+    // Attack on Titan Season 2: `16498:26-37 -> 20958:1-12`.
+    let (series_id, _) = series::upsert(
+        &db,
+        series::SeriesCore {
+            anilist_id: 20958,
+            mal_id: Some(25777),
+            title: "Attack on Titan Season 2",
+            title_romaji: "Shingeki no Kyojin Season 2",
+            title_english: "Attack on Titan Season 2",
+            title_native: "",
+            cover_url: "",
+            format: "TV",
+            status: "FINISHED",
+            episodes: Some(12),
+            season_year: Some(2017),
+            end_year: Some(2017),
+        },
+    )
+    .await
+    .expect("upsert");
+    crate::models::metadata_cache::upsert_provider(
+        &db,
+        16498,
+        Some(16498),
+        &empty_anime_detail(16498, "Attack on Titan"),
+    )
+    .await
+    .expect("cache the rule source");
+
+    let tracked = series::get_by_id(&db, series_id)
+        .await
+        .expect("get_by_id")
+        .expect("series exists");
+    assert_eq!(tracked.cumulative_prior_episodes, 0);
+
+    // No relations at all: the TV-prequel gate alone would skip this.
+    let detail = empty_anime_detail(20958, "Attack on Titan Season 2");
+    let result = maybe_hydrate_cumulative_offset(&db, Some(tracked), &detail).await;
+    let after = result.expect("series still returned");
+    assert_eq!(
+        after.cumulative_prior_episodes, 25,
+        "rule offset persisted without a TV prequel"
+    );
+}
+
 /// Issue #45: full-scale JoJo Part 3 case. 48-episode BD megapack
 /// with absolute continuous numbering (no per-cour arc markers in
 /// the filenames) and Egypt-hen as a sibling of Stardust Crusaders
