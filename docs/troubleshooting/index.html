@@ -971,6 +971,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#finished-downloads-stay-in-the-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Finished downloads stay in the client
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#series-page-state-is-stale" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1166,6 +1177,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#finished-downloads-stay-in-the-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Finished downloads stay in the client
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#series-page-state-is-stale" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1281,6 +1303,14 @@
 <ul>
 <li><strong>Post-processing is disabled</strong> in Settings → General. Ryokan correctly leaves the file at the download client's path; the row shouldn't be showing "Importing…" in this state. If it is, force-refresh the page (Ctrl+Shift+R); there's a known race where the per-row state can lag the global toggle.</li>
 <li><strong>Post-processing is on but the import is failing.</strong> Check System → Logs filtered to <code>PostProcess</code>. Common causes: <code>media_root</code> isn't writable by the runtime user, the media filesystem is full, or Ryokan can't see the download client's complete path (per-client <code>download_path</code> mismatch; see <a href="../download-clients/#per-client-download-paths">Download clients → Per-client download paths</a>).</li>
+</ul>
+<h2 id="finished-downloads-stay-in-the-client">Finished downloads stay in the client<a class="headerlink" href="#finished-downloads-stay-in-the-client" title="Anchor link">&para;</a></h2>
+<p>Since 1.9.3 Ryokan removes a download from its client once the download is imported and nothing is left to seed. If one is still there:</p>
+<ul>
+<li><strong>The client's box is off.</strong> Settings → Connections → Downloads, edit the client, and check <strong>Remove completed downloads</strong>.</li>
+<li><strong>The client has not finished seeding it.</strong> In hardlink or copy mode a torrent leaves only when the client itself stops it at a ratio, seeding-time, or inactivity limit. Give the client a limit, and make sure its action when the limit is reached is to pause or stop the torrent, not delete it (Ryokan deletes after the import). rTorrent needs a ratio group in <code>.rtorrent.rc</code> with its default action, which closes the item and marks it. A torrent you paused or stopped by hand is left alone on purpose.</li>
+<li><strong>The import was partial or failed.</strong> Those stay in the client so you can look at them.</li>
+<li><strong>It just finished.</strong> The check runs every five minutes. System → Logs, category PostProcess, shows a "Removed ... from the download client" line for each one that went.</li>
 </ul>
 <h2 id="series-page-state-is-stale">Series-page state is stale<a class="headerlink" href="#series-page-state-is-stale" title="Anchor link">&para;</a></h2>
 <p>Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. If something looks wrong:</p>

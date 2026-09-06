@@ -860,6 +860,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#seeding-rules-and-removal-after-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Seeding rules and removal after import
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#if-test-connection-fails" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1039,6 +1050,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#seeding-rules-and-removal-after-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Seeding rules and removal after import
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#if-test-connection-fails" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1198,6 +1220,17 @@
 </div>
 </div>
 </div>
+<h2 id="seeding-rules-and-removal-after-import">Seeding rules and removal after import<a class="headerlink" href="#seeding-rules-and-removal-after-import" title="Anchor link">&para;</a></h2>
+<p>An indexer row can carry a <strong>Seed Ratio</strong> and a <strong>Seed Time</strong> (minutes). Ryokan passes them to the download client when it adds a grab from that indexer, and its own delete actions (deleting an episode, replacing it with an upgrade) leave such a torrent in the client so the client's rules decide when seeding ends. The one exception is a torrent imported in Move mode, which cannot seed once its file has moved. What the client does with the rules, and what "finished seeding" means to it, differs per client:</p>
+<ul>
+<li><strong>qBittorrent</strong>: both rules become per-torrent share limits. A rule you leave empty keeps qBittorrent's global limit for that dimension (before 1.9.3 it switched the limit off for the torrent). Finished means qBittorrent stopped the torrent at its ratio, seeding-time, or inactivity limit. If qBittorrent is set to remove torrents itself when a limit is reached, that works too.</li>
+<li><strong>Transmission</strong>: the ratio becomes a per-torrent ratio limit. Transmission has no total seeding-time limit, so Seed Time becomes its idle limit: the torrent stops after that many minutes without upload activity, which is never earlier than the same number of minutes of seeding and can be later while peers are still pulling. Finished means Transmission stopped the torrent at its ratio or idle limit.</li>
+<li><strong>Deluge</strong>: the ratio becomes a per-torrent stop ratio. Deluge has no seeding-time limit, so Seed Time is ignored. Finished means Deluge paused the torrent at its stop ratio.</li>
+<li><strong>rTorrent</strong>: has no per-torrent limits at all, so neither rule is applied and Ryokan logs a warning for each such grab. Configure a ratio group in <code>.rtorrent.rc</code> instead; the group's rules apply to every item in it. Finished means the ratio group closed the item. A torrent you stopped in ruTorrent stays open and is left alone.</li>
+<li><strong>SABnzbd</strong>: nothing seeds. A job leaves SAB's history as soon as Ryokan has imported it.</li>
+</ul>
+<p>Each client row has a <strong>Remove completed downloads</strong> box, on by default. With it on, a torrent is removed from that client, files included, once it has been imported and the client reports it finished; usenet jobs and Move-mode torrents go right after import. Ryokan checks every five minutes. The library keeps its own copy in every mode. Partial and failed imports, and torrents you paused by hand, stay.</p>
+<p>For this to work the client has to keep finished downloads long enough for Ryokan to import them, the same requirement Sonarr and Radarr have: SABnzbd should keep completed jobs in its history (its History Retention setting), and a torrent client should pause or stop a torrent when its limit is reached rather than delete it. Ryokan does the deleting once the import is done. If the client removes a download first, Ryokan never sees it finish.</p>
 <h2 id="if-test-connection-fails">If "Test connection" fails<a class="headerlink" href="#if-test-connection-fails" title="Anchor link">&para;</a></h2>
 <p>The most common causes:</p>
 <ul>
@@ -1223,7 +1256,7 @@
 </ol>
 <p>At grab time the chosen client ID is stamped on the <code>grabbed_torrents</code> row, so post-processing routes back through the same client even if you change defaults later.</p>
 <hr />
-<p><em>Last updated: 2026-05-07.</em></p>
+<p><em>Last updated: 2026-09-06.</em></p>
 
 
 
