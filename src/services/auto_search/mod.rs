@@ -1837,8 +1837,24 @@ async fn resolve_search_overrides_from_row_async(
 ) -> SeriesSearchCtx {
     let mut ctx = resolve_search_overrides_from_row(series, config);
     if ctx.absolute_offset > 0 && series.anilist_id != 0 {
-        ctx.franchise_aliases =
-            crate::models::local_metadata::resolve_franchise_aliases(db, series.anilist_id).await;
+        // #206 — When the offset came from an anime-relations rule the
+        // rule names the entry whose title absolute-numbered releases
+        // carry, which is not always the PREQUEL-chain root. Its titles
+        // come from the provider cache (the metadata refresh hydrates
+        // them); an uncached source falls back to the walk so this is
+        // never worse than before.
+        let mut aliases = Vec::new();
+        if let Some(rule) =
+            crate::services::anime_relations::offset_for(series.anilist_id, series.mal_id)
+        {
+            aliases = crate::services::anime_relations::source_titles(db, &rule).await;
+        }
+        if aliases.is_empty() {
+            aliases =
+                crate::models::local_metadata::resolve_franchise_aliases(db, series.anilist_id)
+                    .await;
+        }
+        ctx.franchise_aliases = aliases;
     }
     ctx
 }

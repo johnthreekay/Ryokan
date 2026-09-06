@@ -1,5 +1,6 @@
 pub mod airing_refresh;
 pub mod anilist;
+pub mod anime_relations;
 pub mod calendar;
 pub mod crypto;
 pub mod download_client;
