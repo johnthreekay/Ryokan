@@ -408,39 +408,15 @@ pub async fn get_all_pending(db: &SqlitePool) -> Result<Vec<GrabbedTorrent>, sql
 /// finished-seed sweep's work list; rows leave it through
 /// `stamp_client_removed`.
 pub async fn list_imported_in_client(db: &SqlitePool) -> Result<Vec<GrabbedTorrent>, sqlx::Error> {
-    let rows = sqlx::query(
-        "SELECT id, hash, torrent_name, series_id, episode_numbers, grabbed_at, \
-                COALESCE(is_batch, 0) AS is_batch, download_client_id \
-         FROM grabbed_torrents \
+    let sql = format!(
+        "SELECT {GRAB_COLS} FROM grabbed_torrents \
          WHERE state = 'imported' AND imported_at IS NOT NULL \
            AND COALESCE(import_mode, '') != 'partial' \
            AND client_removed_at IS NULL AND hash != '' \
-         ORDER BY grabbed_at ASC",
-    )
-    .fetch_all(db)
-    .await?;
-    Ok(rows
-        .iter()
-        .map(|row| {
-            let eps_json: String = row.get("episode_numbers");
-            let episode_numbers: Vec<i32> = serde_json::from_str(&eps_json).unwrap_or_default();
-            let is_batch_i: i64 = row.get("is_batch");
-            GrabbedTorrent {
-                id: row.get("id"),
-                hash: row.get("hash"),
-                torrent_name: row.get("torrent_name"),
-                series_id: row.get("series_id"),
-                episode_numbers,
-                state: "imported".to_string(),
-                grabbed_at: row.get("grabbed_at"),
-                is_batch: is_batch_i != 0,
-                download_client_id: row
-                    .try_get::<Option<i64>, _>("download_client_id")
-                    .ok()
-                    .flatten(),
-            }
-        })
-        .collect())
+         ORDER BY grabbed_at ASC"
+    );
+    let rows = sqlx::query(sqlx::AssertSqlSafe(sql)).fetch_all(db).await?;
+    Ok(rows.iter().map(row_to_grab).collect())
 }
 
 /// Issue #228: the item left its download client (Ryokan removed it,
