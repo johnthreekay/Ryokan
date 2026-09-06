@@ -25,6 +25,14 @@ pub use state::{grab_is_stale, scan_library_for_unclassified, scan_series_for_un
 /// client error or a misgrab.
 pub const IMPORT_STALLED_REASON: &str = "import_stalled";
 
+/// How long after boot the #205 stall timer stays quiet, in seconds.
+/// `completed_seen_at` is wall-clock, so a grab stamped before a long
+/// shutdown reads as stalled on the very first tick after boot, before
+/// this process has retried it even once; a download mount that comes up
+/// after Ryokan in boot order is the usual shape. Measured against
+/// `AppState.start_time`.
+pub const IMPORT_STALL_BOOT_GRACE_SECS: i64 = 15 * 60;
+
 pub(crate) static POST_PROC_LOCK: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
 
@@ -2674,13 +2682,22 @@ pub async fn run_once(state: &AppState) {
 ///
 /// Measured from `completed_seen_at`, never `grabbed_at`: a slow
 /// download is not a stall. `0` hours disables the timer, keeping the
-/// pre-#205 retry-forever behavior.
+/// pre-#205 retry-forever behavior. Nothing escalates during the first
+/// [`IMPORT_STALL_BOOT_GRACE_SECS`] after boot, so a grab that sat
+/// through a shutdown gets its retries in this process before it is
+/// judged.
 async fn escalate_if_stalled(
     state: &AppState,
     cfg: &config::Config,
     grab: &grabbed_torrents::GrabbedTorrent,
 ) {
     if cfg.import_stall_hours <= 0 {
+        return;
+    }
+    let uptime_secs = chrono::Utc::now()
+        .signed_duration_since(state.start_time)
+        .num_seconds();
+    if uptime_secs < IMPORT_STALL_BOOT_GRACE_SECS {
         return;
     }
     let Some(seen) = grabbed_torrents::completed_seen_at(&state.db, grab.id).await else {
@@ -2702,19 +2719,6 @@ async fn escalate_if_stalled(
         return;
     }
     let stuck_hours = age_secs / 3600;
-    logger::warn(
-        &state.db,
-        LogCategory::PostProcess,
-        &format!(
-            "Import gave up on '{}': complete for {}h with no importable video files",
-            grab.torrent_name, stuck_hours
-        ),
-        &format!(
-            "series_id={} hash={} completed_seen_at={} limit_hours={}; marked failed and blocklisted, remove it from Downloads > Blocklist to allow it again",
-            grab.series_id, grab.hash, seen, cfg.import_stall_hours
-        ),
-    )
-    .await;
     if let Err(e) =
         grabbed_torrents::mark_failed_with_reason(&state.db, grab.id, IMPORT_STALLED_REASON).await
     {
@@ -2730,6 +2734,22 @@ async fn escalate_if_stalled(
         .await;
         return;
     }
+    // After the write, so the line is true when it lands and fires once:
+    // a failed UPDATE leaves the grab pending and this tick's error line
+    // is the only record.
+    logger::warn(
+        &state.db,
+        LogCategory::PostProcess,
+        &format!(
+            "Import gave up on '{}': complete for {}h with no importable video files",
+            grab.torrent_name, stuck_hours
+        ),
+        &format!(
+            "series_id={} hash={} completed_seen_at={} limit_hours={}; marked failed and blocklisted, remove it from Downloads > Blocklist to allow it again",
+            grab.series_id, grab.hash, seen, cfg.import_stall_hours
+        ),
+    )
+    .await;
     // Parent series only: an auto-expanded batch's sibling routes keep
     // their `grabbed` tags, the same limit the misgrab remediation has.
     let _ =

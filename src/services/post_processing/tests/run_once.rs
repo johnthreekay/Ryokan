@@ -1291,18 +1291,35 @@ async fn state_and_reason(db: &sqlx::SqlitePool, id: i64) -> (String, String, Op
     .unwrap()
 }
 
+/// One `run_once` tick against a client that reports `hash` complete.
+/// `build_test_app_state` pins `start_time` to 2024, so the boot grace
+/// never applies here; `run_with_complete_torrent_booted_at` opts in.
 async fn run_with_complete_torrent(db: &sqlx::SqlitePool, hash: &str) {
     let state = build_test_app_state(db.clone(), None);
+    run_tick_with_complete_torrent(&state, hash).await;
+}
+
+async fn run_with_complete_torrent_booted_at(
+    db: &sqlx::SqlitePool,
+    hash: &str,
+    start_time: chrono::DateTime<chrono::Utc>,
+) {
+    let mut state = build_test_app_state(db.clone(), None);
+    state.start_time = start_time;
+    run_tick_with_complete_torrent(&state, hash).await;
+}
+
+async fn run_tick_with_complete_torrent(state: &crate::AppState, hash: &str) {
     let client = Arc::new(RecordingClient::new(vec![fake_torrent(
         hash,
         DownloadItemState::Seeding,
     )]));
     install_pool(
-        &state,
+        state,
         vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
     )
     .await;
-    post_processing::run_once(&state).await;
+    post_processing::run_once(state).await;
 }
 
 #[tokio::test]
@@ -1390,4 +1407,30 @@ async fn run_once_measures_the_stall_from_completion_not_from_the_grab() {
     let (state, _, seen) = state_and_reason(&db, g).await;
     assert_eq!(state, "pending");
     assert!(seen.is_some());
+}
+
+#[tokio::test]
+async fn run_once_holds_the_stall_timer_during_the_boot_grace() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // Ryokan was off for longer than the window with this grab already
+    // stamped: the stamp is 25h old, but this process has retried it zero
+    // times. The first tick after boot must not be the one that fails it.
+    let db = in_memory_pool().await;
+    let g = seed_stalled_grab(&db, "stallboot").await;
+    backdate_completed_seen(&db, g, 25).await;
+
+    run_with_complete_torrent_booted_at(&db, "stallboot", chrono::Utc::now()).await;
+
+    let (state, reason, _) = state_and_reason(&db, g).await;
+    assert_eq!(state, "pending", "no escalation inside the boot grace");
+    assert_eq!(reason, "");
+
+    // Once the grace is over the same grab fails on the next tick.
+    let booted = chrono::Utc::now()
+        - chrono::Duration::seconds(post_processing::IMPORT_STALL_BOOT_GRACE_SECS + 1);
+    run_with_complete_torrent_booted_at(&db, "stallboot", booted).await;
+
+    let (state, reason, _) = state_and_reason(&db, g).await;
+    assert_eq!(state, "failed", "past the grace the 25h stall is judged");
+    assert_eq!(reason, post_processing::IMPORT_STALLED_REASON);
 }

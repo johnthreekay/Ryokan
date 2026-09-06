@@ -89,6 +89,11 @@ pub fn is_temp_file_name(name: &str) -> bool {
 pub struct TempCandidate {
     pub path: PathBuf,
     pub kind: TempKind,
+    /// The top-level folder under the media root the file sits in (the
+    /// series folder for anything the import paths write); empty for a
+    /// file directly in the root. Names the recycle-bin entry for a
+    /// `.ryokan-new`, which has no series row to point at.
+    pub series_folder: String,
 }
 
 #[derive(Debug, Default)]
@@ -98,8 +103,9 @@ pub struct TempSweepReport {
     /// How many of `removed` went to the recycle bin rather than being
     /// unlinked.
     pub recycled: usize,
-    /// Bytes reclaimed. A file whose inode has other links (a hardlinked
-    /// `.ryokan-new`) frees nothing and counts nothing.
+    /// Bytes freed. A `.ryokan-new` moved to the recycle bin still
+    /// occupies the disk there and counts nothing; neither does a file
+    /// whose inode has other links (a hardlinked `.ryokan-new`).
     pub bytes: u64,
     /// Temp files left alone because they are younger than the floor.
     pub kept_recent: usize,
@@ -185,7 +191,7 @@ pub async fn sweep_orphaned_temp_files(
                 match still_eligible(&c.path, min_age, now) {
                     Ok(true) => match c.kind {
                         TempKind::PartialCopy => partials.push(c.path),
-                        TempKind::UpgradeStaging => stagings.push(c.path),
+                        TempKind::UpgradeStaging => stagings.push((c.path, c.series_folder)),
                     },
                     Ok(false) => {}
                     Err(e) => errors.push(e),
@@ -209,12 +215,12 @@ pub async fn sweep_orphaned_temp_files(
         report.bytes += bytes;
         report.removed.push(path);
     }
-    for path in stagings {
+    for (path, series_folder) in stagings {
         let bytes = reclaimable_bytes(&path);
-        match recycle::recycle(db, &bin, RecycleKind::Episode, None, "", &path).await {
+        match recycle::recycle(db, &bin, RecycleKind::Episode, None, &series_folder, &path).await {
+            // The bytes moved with the file: nothing was freed.
             Ok(RecycleOutcome::Recycled { .. }) => {
                 report.recycled += 1;
-                report.bytes += bytes;
                 report.removed.push(path);
             }
             Ok(RecycleOutcome::DirectDeleted) => {
@@ -298,9 +304,18 @@ pub(crate) fn find_candidates(
             scan.kept_recent += 1;
             continue;
         }
+        let series_folder = entry
+            .path()
+            .strip_prefix(&root)
+            .ok()
+            .and_then(Path::parent)
+            .and_then(|rel| rel.components().next())
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .unwrap_or_default();
         scan.candidates.push(TempCandidate {
             path: entry.path().to_path_buf(),
             kind,
+            series_folder,
         });
     }
     errors.truncate(MAX_REPORTED_ERRORS);
@@ -397,6 +412,11 @@ mod tests {
         assert_eq!(found.len(), 2, "{found:?}");
         assert!(found.contains(&old_tmp.as_path()));
         assert!(found.contains(&old_new.as_path()));
+        assert!(
+            scan.candidates.iter().all(|c| c.series_folder == "Show"),
+            "the series folder names the bin entry: {:?}",
+            scan.candidates
+        );
         assert_eq!(scan.kept_recent, 1, "the fresh tmp is a copy in progress");
         assert!(scan.errors.is_empty(), "{:?}", scan.errors);
         assert!(old_tmp.exists(), "the walk removes nothing");
@@ -463,13 +483,24 @@ mod tests {
         assert!(!report.skipped_busy);
         assert_eq!(report.removed.len(), 2, "{:?}", report.removed);
         assert_eq!(report.recycled, 1, "the staging file goes through the bin");
-        assert_eq!(report.bytes, 14);
+        assert_eq!(
+            report.bytes, 7,
+            "only the unlinked partial is freed; the recycled file still sits in the bin"
+        );
         assert_eq!(report.kept_recent, 1);
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert!(!old_tmp.exists() && !old_new.exists());
         assert!(fresh_new.exists());
         let bin_entries = fs::read_dir(bin.path()).unwrap().count();
         assert_eq!(bin_entries, 1, "one date bucket in the bin");
+        let entries = recycle::list_entries(bin.path().to_str().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].manifest.series_title, "Show",
+            "the recycle page names the entry by its series folder"
+        );
     }
 
     #[tokio::test]
@@ -489,6 +520,7 @@ mod tests {
 
         assert_eq!(report.removed, vec![old_new.clone()]);
         assert_eq!(report.recycled, 0);
+        assert_eq!(report.bytes, 7, "a direct delete frees the bytes");
         assert!(!old_new.exists());
     }
 

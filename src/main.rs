@@ -2074,20 +2074,36 @@ async fn main() {
                                             .take(10)
                                             .map(|p| p.display().to_string())
                                             .collect();
-                                        let recycled_note = if report.recycled > 0 {
-                                            format!(", {} moved to the recycle bin", report.recycled)
-                                        } else {
+                                        // `bytes` is what was freed: a file moved
+                                        // to the bin still occupies the disk there,
+                                        // so an all-recycled pass reports the move
+                                        // and no size.
+                                        let mut notes = Vec::new();
+                                        if report.bytes > 0 {
+                                            notes.push(format!(
+                                                "{} freed",
+                                                services::recycle::human_bytes(report.bytes)
+                                            ));
+                                        }
+                                        if report.recycled > 0 {
+                                            notes.push(format!(
+                                                "{} moved to the recycle bin",
+                                                report.recycled
+                                            ));
+                                        }
+                                        let notes = if notes.is_empty() {
                                             String::new()
+                                        } else {
+                                            format!(" ({})", notes.join(", "))
                                         };
                                         services::logger::info(
                                             &cleanup_db,
                                             models::log::LogCategory::PostProcess,
                                             &format!(
-                                                "Removed {} leftover temporary file{} from the media library ({}{})",
+                                                "Removed {} leftover temporary file{} from the media library{}",
                                                 report.removed.len(),
                                                 if report.removed.len() == 1 { "" } else { "s" },
-                                                services::recycle::human_bytes(report.bytes),
-                                                recycled_note
+                                                notes
                                             ),
                                             &format!(
                                                 "left by an import that stopped mid-copy; older than {}h; kept_recent={} files={}{}",
