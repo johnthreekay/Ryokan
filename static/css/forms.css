@@ -730,3 +730,44 @@ select::-ms-expand {
     font-size: 13px;
     font-weight: 500;
 }
+
+/* ── File field ──────────────────────────────────────────────────────
+   The native <input type="file"> paints the browser's own button,
+   which matches none of the control recipes. The input is kept (it
+   owns the OS dialog and keyboard focus) but hidden visually; a
+   `.btn` label is the visible trigger and the chosen file name sits
+   beside it in caption style. Focus on the hidden input outlines the
+   label so tabbing still shows where you are. */
+.file-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+.file-field-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+    opacity: 0;
+}
+.file-field-input:focus-visible + .btn {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+.file-field-name {
+    font-size: 13px;
+    color: var(--text-dim);
+    max-width: 36ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.file-field-name.has-file {
+    color: var(--text);
+}

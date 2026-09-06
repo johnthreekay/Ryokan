@@ -641,6 +641,20 @@ var bindBackupTab = function () {
     const button = document.getElementById('restore-upload');
     const out = document.getElementById('restore-result');
     if (!fileInput || !button || !out) return;
+    // The upload button sleeps until a file is chosen; a staged
+    // restore (data-pending) keeps it asleep either way.
+    const nameEl = document.getElementById('restore-file-name');
+    const pending = button.getAttribute('data-pending') === '1';
+    const syncFile = () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (nameEl) {
+            nameEl.textContent = file ? file.name : 'No file chosen';
+            nameEl.classList.toggle('has-file', !!file);
+        }
+        button.disabled = pending || !file;
+    };
+    fileInput.addEventListener('change', syncFile);
+    syncFile();
     // Server strings (error bodies, manifest fields) are rendered as
     // text nodes, never markup, so nothing from an uploaded archive
     // can reach innerHTML.
