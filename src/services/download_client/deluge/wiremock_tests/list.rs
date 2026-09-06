@@ -162,3 +162,34 @@ async fn list_scoped_empty_dict_returns_empty_vec() {
     let items = client.list_scoped().await.expect("list_scoped");
     assert!(items.is_empty());
 }
+
+#[tokio::test]
+async fn list_scoped_reports_seeding_done_from_the_ratio_stop_keys() {
+    // Issue #228: `core.get_torrents_status` with an empty key list
+    // returns every key, including `stop_at_ratio`, `stop_ratio`, and
+    // `ratio`, which decide `seeding_done`.
+    let (server, client) = new_fixture().await;
+    install_rpc(
+        &server,
+        "core.get_torrents_status",
+        json!({
+            "done000000000000": {
+                "hash": "done000000000000", "name": "Done", "total_size": 10, "progress": 100.0,
+                "download_payload_rate": 0, "state": "Paused", "eta": 0, "save_path": "/dl",
+                "is_finished": true, "label": "ryokan-test",
+                "stop_at_ratio": true, "stop_ratio": 2.0, "ratio": 2.1
+            },
+            "seed000000000000": {
+                "hash": "seed000000000000", "name": "Seeding", "total_size": 10, "progress": 100.0,
+                "download_payload_rate": 0, "state": "Seeding", "eta": 0, "save_path": "/dl",
+                "is_finished": true, "label": "ryokan-test",
+                "stop_at_ratio": true, "stop_ratio": 2.0, "ratio": 1.0
+            }
+        }),
+    )
+    .await;
+    let items = client.list_scoped().await.expect("list_scoped");
+    let done = |h: &str| items.iter().find(|i| i.hash == h).unwrap().seeding_done;
+    assert!(done("done000000000000"));
+    assert!(!done("seed000000000000"));
+}

@@ -139,43 +139,9 @@ async fn path_has_inode(_path: &str, _inode: u64) -> bool {
     false
 }
 
-/// Remove each path in `sources` (best-effort) and prune the
-/// **immediate parent directory only** if it became empty as a
-/// result. Used by `delete_episode_file` and the series-remove path
-/// to clean up the source-side files Ryokan imported FROM — stamped
-/// at import time so we know exact paths regardless of how the
-/// download client reports its layout.
-///
-/// The single-level prune cap is critical: removing `complete/job/file.mkv`
-/// leaves `complete/job/` empty, which we want gone (the SAB job
-/// folder); but we must NEVER ascend further to `complete/` itself,
-/// or we'd nuke the user's configured complete root and all sibling
-/// jobs in it. Earlier versions walked up unbounded — for users
-/// whose `complete/` happened to contain only this one job, that
-/// removed the entire complete dir.
-pub(super) async fn remove_stamped_source_paths(sources: &[String]) -> Vec<std::path::PathBuf> {
-    let owned: Vec<std::path::PathBuf> = sources.iter().map(std::path::PathBuf::from).collect();
-    tokio::task::spawn_blocking(move || {
-        let mut removed = Vec::new();
-        for p in &owned {
-            if std::fs::remove_file(p).is_ok() {
-                removed.push(p.clone());
-            }
-        }
-        // Single-level parent prune: try once per removed file. If
-        // the directory is non-empty (other files we didn't touch)
-        // or rmdir fails (permission, etc.), we leave it alone. We
-        // deliberately do NOT walk further up — see fn doc.
-        for p in &removed {
-            if let Some(dir) = p.parent() {
-                let _ = std::fs::remove_dir(dir);
-            }
-        }
-        removed
-    })
-    .await
-    .unwrap_or_default()
-}
+/// Shared with the post-import removal (issue #228); lives in
+/// `services::post_processing::client_cleanup`.
+pub(super) use crate::services::post_processing::remove_stamped_source_paths;
 
 #[utoipa::path(
     post,

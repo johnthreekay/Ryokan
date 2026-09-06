@@ -112,3 +112,40 @@ async fn malformed_json_surfaces_parse_error() {
         "unexpected error: {err}"
     );
 }
+
+#[tokio::test]
+async fn seeding_done_reads_the_effective_share_limits() {
+    // Issue #228: a torrent qBit stopped at its ratio limit reports
+    // `seeding_done`; one still uploading past the limit, or stopped
+    // below it, does not. The fields are the effective per-torrent
+    // values qBit resolves against its global limits.
+    let (server, client) = new_fixture().await;
+    let body = serde_json::json!([
+        {
+            "hash": "done", "name": "Done", "size": 1, "progress": 1.0, "dlspeed": 0,
+            "state": "stoppedUP", "category": "ryokan-test", "eta": 0,
+            "ratio": 2.5, "max_ratio": 2.0, "seeding_time": 100, "max_seeding_time": -1,
+            "max_inactive_seeding_time": -1, "last_activity": 1_700_000_000_i64
+        },
+        {
+            "hash": "seeding", "name": "Seeding", "size": 1, "progress": 1.0, "dlspeed": 0,
+            "state": "uploading", "category": "ryokan-test", "eta": 0,
+            "ratio": 2.5, "max_ratio": 2.0
+        },
+        {
+            "hash": "paused", "name": "Paused by hand", "size": 1, "progress": 1.0, "dlspeed": 0,
+            "state": "pausedUP", "category": "ryokan-test", "eta": 0,
+            "ratio": 0.4, "max_ratio": 2.0, "seeding_time": 60, "max_seeding_time": 600
+        }
+    ]);
+    Mock::given(method("GET"))
+        .and(path("/api/v2/torrents/info"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(body))
+        .mount(&server)
+        .await;
+    let items = client.list_scoped().await.expect("list_scoped");
+    let done = |h: &str| items.iter().find(|i| i.hash == h).unwrap().seeding_done;
+    assert!(done("done"));
+    assert!(!done("seeding"));
+    assert!(!done("paused"));
+}

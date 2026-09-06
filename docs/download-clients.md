@@ -103,6 +103,20 @@ Pick the tab for your client. Each one covers preparation steps inside the clien
     !!! tip "Disappearing downloads"
         If grabs "vanish" from Ryokan but you can see them downloading in SAB, the category Ryokan was configured to use probably doesn't exist in SAB. Click Test connection to auto-create it; the [troubleshooting page](troubleshooting.md#sab-downloads-disappear-from-ryokan-but-still-download-in-sab) has the full diagnosis.
 
+## Seeding rules and removal after import
+
+An indexer row can carry a **Seed Ratio** and a **Seed Time** (minutes). Ryokan passes them to the download client when it adds a grab from that indexer, and its own delete actions (deleting an episode, replacing it with an upgrade) leave such a torrent in the client so the client's rules decide when seeding ends. The one exception is a torrent imported in Move mode, which cannot seed once its file has moved. What the client does with the rules, and what "finished seeding" means to it, differs per client:
+
+- **qBittorrent**: both rules become per-torrent share limits. A rule you leave empty keeps qBittorrent's global limit for that dimension (before 1.9.3 it switched the limit off for the torrent). Finished means qBittorrent stopped the torrent at its ratio, seeding-time, or inactivity limit. If qBittorrent is set to remove torrents itself when a limit is reached, that works too.
+- **Transmission**: the ratio becomes a per-torrent ratio limit. Transmission has no total seeding-time limit, so Seed Time becomes its idle limit: the torrent stops after that many minutes without upload activity, which is never earlier than the same number of minutes of seeding and can be later while peers are still pulling. Finished means Transmission stopped the torrent at its ratio or idle limit.
+- **Deluge**: the ratio becomes a per-torrent stop ratio. Deluge has no seeding-time limit, so Seed Time is ignored. Finished means Deluge paused the torrent at its stop ratio.
+- **rTorrent**: has no per-torrent limits at all, so neither rule is applied and Ryokan logs a warning for each such grab. Configure a ratio group in `.rtorrent.rc` instead; the group's rules apply to every item in it. Finished means the ratio group closed the item. A torrent you stopped in ruTorrent stays open and is left alone.
+- **SABnzbd**: nothing seeds. A job leaves SAB's history as soon as Ryokan has imported it.
+
+Each client row has a **Remove completed downloads** box, on by default. With it on, a torrent is removed from that client, files included, once it has been imported and the client reports it finished; usenet jobs and Move-mode torrents go right after import. Ryokan checks every five minutes. The library keeps its own copy in every mode. Partial and failed imports, and torrents you paused by hand, stay.
+
+For this to work the client has to keep finished downloads long enough for Ryokan to import them, the same requirement Sonarr and Radarr have: SABnzbd should keep completed jobs in its history (its History Retention setting), and a torrent client should pause or stop a torrent when its limit is reached rather than delete it. Ryokan does the deleting once the import is done. If the client removes a download first, Ryokan never sees it finish.
+
 ## If "Test connection" fails
 
 The most common causes:
@@ -135,4 +149,4 @@ At grab time the chosen client ID is stamped on the `grabbed_torrents` row, so p
 
 ---
 
-*Last updated: 2026-05-07.*
+*Last updated: 2026-09-06.*

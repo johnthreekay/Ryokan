@@ -189,31 +189,32 @@ pub trait DownloadClient: Send + Sync {
     /// the client enforces the rule on its own (Ryokan doesn't
     /// poll seed state to decide when to stop).
     ///
-    /// Per-impl wire mapping:
+    /// Per-impl wire mapping (issue #228 corrected two of these):
     /// - **qBit**: `POST /torrents/setShareLimits` with
-    ///   `ratioLimit` (`-2` = no limit, `-1` = use global, float =
-    ///   set) and `seedingTimeLimit` (`-2`/`-1`/minutes).
+    ///   `ratioLimit` (`-2` = use the global limit, `-1` = no limit,
+    ///   float = set) and `seedingTimeLimit` (`-2`/`-1`/minutes).
     /// - **Deluge**: `core.set_torrent_options` with
     ///   `stop_at_ratio: true` + `stop_ratio` for ratio; idle-time
     ///   stop is not supported by Deluge core, time_minutes is a
     ///   no-op there with a debug log.
     /// - **Transmission**: `torrent-set` with `seedRatioLimit` +
     ///   `seedRatioMode: 1` (override global) for ratio,
-    ///   `seedIdleLimit` + `seedIdleMode: 1` for idle minutes.
-    /// - **rTorrent**: `d.ratio.min.set` / `d.ratio.max.set` /
-    ///   `d.ratio.upload.set` for ratio (ratio group convention);
-    ///   no native idle-time stop, time_minutes is a no-op with a
-    ///   debug log.
+    ///   `seedIdleLimit` + `seedIdleMode: 1` for `time_minutes`,
+    ///   which Transmission reads as minutes of inactivity.
+    /// - **rTorrent**: not supported. Its only per-item ratio
+    ///   command is the read-only `d.ratio`; ratios are configured
+    ///   per group in `.rtorrent.rc`. The impl returns `Err` without
+    ///   a wire call so the gap is logged per grab.
     ///
     /// `Option`-wrapped fields mean "no rule configured for this
     /// dimension." Per-impl handling diverges:
-    /// - **Deluge / Transmission / rTorrent** leave the per-torrent
-    ///   setting untouched on `None` — they only write the field
-    ///   they were given.
+    /// - **Deluge / Transmission** leave the per-torrent setting
+    ///   untouched on `None` — they only write the field they were
+    ///   given.
     /// - **qBit's `setShareLimits` always writes BOTH `ratioLimit`
     ///   and `seedingTimeLimit`** in one call (the API takes them
-    ///   as a pair); `None` is translated to `-1` (use global
-    ///   default), which means a previously-set per-torrent ratio
+    ///   as a pair); `None` is translated to `-2` (use the global
+    ///   limit), which means a previously-set per-torrent ratio
     ///   would be reset to global if `set_seed_rules` is later
     ///   called with `ratio: None`.
     ///
@@ -377,6 +378,15 @@ pub struct DownloadItem {
     /// normalized vocabulary rather than any client's native strings.
     #[serde(default)]
     pub state_kind: DownloadItemState,
+    /// The client has stopped this item because its own seeding rules
+    /// are met (issue #228): qBit paused or stopped it at its effective
+    /// ratio, seeding-time, or inactivity limit; Transmission reports
+    /// `isFinished`; Deluge paused it at `stop_ratio`; rTorrent closed
+    /// a complete item. `false` while seeding, for a user pause the
+    /// client can tell apart, and always for usenet. Post-processing's
+    /// finished-seed sweep removes an imported item once this is true.
+    #[serde(default)]
+    pub seeding_done: bool,
 }
 
 /// One file inside a torrent.
@@ -1017,6 +1027,7 @@ mod tests {
             save_path: "/downloads".to_string(),
             content_path: "/downloads/Some.Release.mkv".to_string(),
             state_kind: DownloadItemState::SeedingStalled,
+            seeding_done: false,
         };
         let v = serde_json::to_value(&item).unwrap();
         assert_eq!(v["state_kind"], "seeding-stalled");

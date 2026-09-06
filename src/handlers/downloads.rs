@@ -612,6 +612,7 @@ mod tests {
                 save_path: String::new(),
                 content_path: String::new(),
                 state_kind: v,
+                seeding_done: false,
             };
             let view = torrent_to_view(&item);
             assert_eq!(view.is_paused, expected_paused, "is_paused for {v:?}");

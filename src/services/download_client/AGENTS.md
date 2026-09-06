@@ -58,6 +58,20 @@ There are two ways to add a torrent and pick a subset of files. Don't conflate t
 
 Distinct from `services::auto_expand` (sibling-series detection inside a batch pack — different problem, different code path).
 
+## Seed rules and `seeding_done` (#28, #228)
+
+`set_seed_rules(hash, SeedRules { ratio, time_minutes })` is called by `apply_indexer_seed_rules` right after an add from an indexer row that has a Seed Ratio / Seed Time; `grabbed_torrents.respect_seed_rules` is set whenever rules were *attempted*, wire success or not, and every Ryokan-initiated client delete (episode delete, series remove, upgrade replace) skips a torrent carrying it. The #228 removal paths are the deliberate exception: `seeding_done` means the client's own rule is satisfied, and a move-mode import has nothing left to seed. What each impl can honor:
+
+| Client | ratio | time_minutes | `seeding_done` |
+|---|---|---|---|
+| qBit | `setShareLimits ratioLimit` | `seedingTimeLimit` (minutes) | `pausedUP` / `stoppedUP` **and** `ratio >= max_ratio`, `seeding_time >= max_seeding_time*60`, or `now - last_activity >= max_inactive_seeding_time*60`; the `max_*` fields are the *effective* limits (-1 = none) |
+| Transmission | `seedRatioMode=1` + `seedRatioLimit` | `seedIdleMode=1` + `seedIdleLimit`, which is **inactivity** minutes, not total seed time (never stops earlier than N minutes, can stop later) | `isFinished` (requested in the `torrent-get` field list), **or** stopped + complete + `uploadRatio` at the effective ratio limit (`seedRatioMode` 1 → `seedRatioLimit`, 0 → the daemon's `seedRatioLimit` from a best-effort `session-get`, 2 → never). 4.x sets `finished` for idle **or** ratio stops; 3.x only for idle, hence the ratio arithmetic (`tx_seeding_done`) |
+| Deluge | `stop_at_ratio=true` + `stop_ratio` | not supported (debug log) | `Paused` + `is_finished` + `stop_at_ratio` + `ratio >= stop_ratio`; Deluge copies the global `stop_seed_*` config into each torrent's options at add time so these are effective values |
+| rTorrent | **not supported**: the only per-item ratio command is the read-only `d.ratio`; ratio handling is per group in `.rtorrent.rc` (`group.seeding.ratio.enable`, `group2.seeding.ratio.max.set`, action in `group.seeding.ratio.command`). `set_seed_rules` returns `Err` without an RPC call (the earlier `d.ratio.max.set` did not exist and faulted on every grab) | same | `d.complete && !d.is_open && !d.is_active && d.ignore_commands && d.message == ""`: the default group action is `d.try_close= ; d.ignore_commands.set=1`, and the ignore flag is what tells a ratio close from a ruTorrent Stop (open) or a restart (closed, no flag); an item with a message is the errored shape. `d.ignore_commands=` is the optional 14th multicall column |
+| SAB | n/a | n/a | always `false`; usenet leaves at import |
+
+`DownloadItem::seeding_done` is what post-processing's finished-seed sweep acts on; it must only be true when the client itself ended seeding, never for a plain user pause or stop, because the sweep deletes the item with files. The switch is per client: `download_clients.remove_completed` (default on), set through `set_remove_completed` rather than the upsert form.
+
 ## qBit quirks (`qbittorrent/mod.rs`)
 
 - `content_path` is exposed natively (≥2.6.1) — no common-prefix computation.
@@ -66,6 +80,7 @@ Distinct from `services::auto_expand` (sibling-series detection inside a batch p
 - **qBit 5.x duplicate-add returns `200 "Fails."`** indistinguishable from the body it uses for a malformed magnet. `add_torrent` disambiguates by probing `/torrents/info?hashes=<hash>` after a `Fails.` and reports `AddOutcome::AlreadyPresent` when the hash is in the session. Without this, every re-grab of an already-present torrent (RSS re-emissions, upgrade-sweep collisions, post-crash regrabs) hard-fails.
 - `list_scoped` uses a 2s coalescing cache with single-flight election via `AtomicBool` + `Notify` + RAII `FetchFlightGuard`. The guard clears the in-flight flag on drop including the panic path so a panic inside the fetcher can't wedge the flag forever.
 - Re-auth on 403 via session cookie.
+- **`setShareLimits` sentinels are `-2` = use the global limit, `-1` = no limit** (per the WebUI API docs). Before #228 the impl sent `-1` for every unset dimension, which switched off the user's global seeding-time and inactivity limits on each grab from a ratio-only indexer. `torrents/info` also carries `ratio`, `max_ratio`, `seeding_time` (seconds), `max_seeding_time` and `max_inactive_seeding_time` (minutes), `last_activity` (unix); all `#[serde(default)]` to "no limit" for old builds.
 - **When grabs vanish silently**: qBit's `POST /torrents/add` returns `Ok.` and fetches the `.torrent` async server-side. A silent fetch failure (tracker timeout, 404, etc.) masquerades as a Ryokan bug — check qBit's own logs first.
 
 ## Deluge quirks (`deluge/mod.rs`)
@@ -76,6 +91,7 @@ Distinct from `services::auto_expand` (sibling-series detection inside a batch p
 - Duplicate-add detection is substring-matching on `"Torrent already in session"` / `"Torrent already being added"` (deluge-dev/#3507 — error code fluctuates across versions).
 - **No `has_metadata` field** in `core.get_torrent_status` (live-probed against 2.x + Label plugin 0.3); proxy: `files` array non-empty.
 - Every deserializer uses `#[serde(default)]` because `get_torrent_status` silently drops unknown keys rather than returning an error.
+- `list_scoped` asks `core.get_torrents_status` for every key (empty key list), which is how `stop_at_ratio` / `stop_ratio` / `ratio` arrive for `seeding_done` (#228).
 
 ## Transmission quirks (`transmission/mod.rs`)
 
@@ -84,7 +100,7 @@ Distinct from `services::auto_expand` (sibling-series detection inside a batch p
 - Native labels in 4.x; Ryokan filters `labels.contains(self.label)` client-side (RPC has no server-side label filter).
 - File-selection is **0/1 (unwanted/wanted)** via parallel `files-wanted: [idx]` / `files-unwanted: [idx]` arrays. Priority high/normal/low is a *separate* axis Ryokan deliberately doesn't touch.
 - Duplicate-add surfaces as `torrent-duplicate` key inside `result: "success"` envelope (not as an error). No message parsing.
-- **Completion is `percentDone >= 1.0`**, NOT `isFinished`. `isFinished` means "hit seed ratio/time target" (user-defined stop condition), not "download complete."
+- **Completion is `percentDone >= 1.0`**, NOT `isFinished`. `isFinished` means "hit seed ratio/time target" (user-defined stop condition), not "download complete." It feeds `DownloadItem::seeding_done` together with the ratio fields (#228); `list_scoped` also makes a best-effort `session-get` for the daemon's global ratio limit.
 - Status codes 0..=6: 0=Stopped, 1=Queued-to-verify, 2=Verifying, 3=Queued-to-download, 4=Downloading, 5=Queued-to-seed, 6=Seeding.
 
 ## rtorrent quirks (`rtorrent/mod.rs`)
@@ -98,6 +114,7 @@ Distinct from `services::auto_expand` (sibling-series detection inside a batch p
 - `d.base_path` is empty on closed/stopped torrents and after rtorrent restart; fall back to `d.directory + "/" + d.name` when empty.
 - During metadata fetch, `base_path` ends in `.meta` (also the signal metadata hasn't arrived); post-metadata it rewrites to actual content name. Poll `!base_path.ends_with(".meta")` at 500ms cadence, **60s budget** (longer than other clients — cold DHT legitimately takes longer).
 - Wire tags: rtorrent returns `<i8>` for sizes / rates / most counters; the decoder accepts both `<i4>` and `<i8>`.
+- **No per-torrent seed limits.** See the seed-rules table above; do not reintroduce a `d.ratio.*.set` call, none exists in `command_download.cc`.
 
 ## SAB quirks (`sabnzbd/mod.rs`)
 
@@ -113,6 +130,7 @@ Distinct from `services::auto_expand` (sibling-series detection inside a batch p
   - **First add per process** (`add_torrent_returning_id` / `add_torrent_paused_returning_id`) — defensive safety net for users who saved their SAB row without clicking Test. Cached via the `category_ensured` `AtomicBool` on `SabClient` so only the first grab pays the `get_cats` round-trip; subsequent grabs early-return. Failure (network blip, read-only `nzb_key`) is logged at `warn` and swallowed — the add succeeds and a process restart re-attempts.
 - **Defensive `change_cat` after auto-create-on-add.** SAB's `set_config` writes the category to its config file with no documented guarantee that the write is visible to the very next `addurl` call in the same process (config reload propagation). When `ensure_category_cached_once` reports it just created the category, the add path follows up with `mode=change_cat&value=<nzo_id>&value2=<cat>` to re-tag the just-added queue slot. Without this, a fresh-install first grab can land in SAB's default bucket despite passing `cat=…` on `addurl`, repeating the very symptom auto-create is meant to fix. `change_cat` is queue-only per SAB 5.0 docs; for the add-path use case the just-added job is in queue. `change_cat` failure is logged but never fails the add. The `AlreadyPresent` path skips `change_cat` deliberately — the slot pre-existed our addurl call, so it's either tagged correctly already or was added by another tool we shouldn't overstep.
 - **`set_config` parameter shape**: pass both `keyword=` (4.x) and `name=` (5.x) for the category identifier. SAB ignores unknown params, so passing both is safe across versions and removes the version-detection footgun. Live-probed against 5.0.1 (2026-05-02). Full SAB API key required (read-only `nzb_api_key` returns 401/403 on `set_config`); error surfaces with a hint to swap keys.
+- **Post-import removal (#228)** is `delete(nzo_id, true)` (queue first, then `mode=history&name=delete&del_files=1`) plus unlinking the stamped `imported_source_paths`, because `del_files=1` no-ops when the history `storage` is the parent complete dir. Same belt and braces as the episode delete path.
 - **`list_scoped` diagnostic dumps `seen_categories=…`** when SAB returned slots but the filter dropped all of them — the actionable bit users compare against `configured_category=…` to spot the mismatch from logs alone. Cheap (one `String` allocation per dropped slot, only on the unhappy path).
 
 ## Live-smoke tests

@@ -109,6 +109,33 @@ struct QbitRawTorrent {
     save_path: String,
     #[serde(default)]
     content_path: String,
+    /// Share-limit progress (issue #228). `max_ratio`,
+    /// `max_seeding_time` (minutes) and `max_inactive_seeding_time`
+    /// (minutes) are the *effective* limits: the per-torrent override
+    /// when one is set, else the global one, and `-1` when there is no
+    /// limit. `seeding_time` is seconds; `last_activity` a unix time.
+    /// Builds that predate a field (inactive limits arrived in 4.6)
+    /// read as "no limit".
+    #[serde(default)]
+    ratio: f64,
+    #[serde(default = "no_limit_f64")]
+    max_ratio: f64,
+    #[serde(default)]
+    seeding_time: i64,
+    #[serde(default = "no_limit_i64")]
+    max_seeding_time: i64,
+    #[serde(default = "no_limit_i64")]
+    max_inactive_seeding_time: i64,
+    #[serde(default)]
+    last_activity: i64,
+}
+
+fn no_limit_f64() -> f64 {
+    -1.0
+}
+
+fn no_limit_i64() -> i64 {
+    -1
 }
 
 /// Raw per-file shape qBit returns from `/torrents/files`. Converted
@@ -699,33 +726,35 @@ impl DownloadClient for QbitClient {
     ///
     /// Wire shape: `POST /api/v2/torrents/setShareLimits` with
     /// form fields `hashes`, `ratioLimit`, `seedingTimeLimit`, and
-    /// `inactiveSeedingTimeLimit`. Per qBit 4.5+ docs:
-    /// - `-2.0` / `-2` = no limit (override the global default
-    ///   for "limit").
-    /// - `-1.0` / `-1` = use the global default.
+    /// `inactiveSeedingTimeLimit`. Per the qBit WebUI API docs:
+    /// - `-2` = use the global limit.
+    /// - `-1` = no limit for this torrent.
     /// - any other value = the per-torrent override.
     ///
-    /// Ryokan's [`SeedRules`] uses `Option<f64>` / `Option<u64>` —
-    /// `None` translates to `-1` so the per-torrent rule defers to
-    /// the global default (the `respect_seed_rules` flag tracks
-    /// whether ANY rule is in effect, so a None field doesn't
-    /// mean "no rule" at the model layer).
-    /// `inactiveSeedingTimeLimit` isn't in the trait; pass `-1`
-    /// (use global) verbatim.
+    /// Ryokan's [`SeedRules`] uses `Option<f64>` / `Option<u64>`; a
+    /// `None` field translates to `-2` so the torrent keeps the
+    /// user's global rule for that dimension (the `respect_seed_rules`
+    /// flag tracks whether ANY rule is in effect, so a None field
+    /// doesn't mean "no rule" at the model layer). Before #228 this
+    /// sent `-1`, which switched every unset dimension to "unlimited"
+    /// and disabled the global seeding-time and inactivity limits on
+    /// each grab from a ratio-only indexer.
+    /// `inactiveSeedingTimeLimit` isn't in the trait; `-2` keeps the
+    /// global inactivity limit.
     async fn set_seed_rules(&self, info_hash: &str, rules: super::SeedRules) -> Result<(), String> {
         let ratio = rules
             .ratio
             .map(|r| r.to_string())
-            .unwrap_or_else(|| "-1".to_string());
+            .unwrap_or_else(|| "-2".to_string());
         let seeding_time = rules
             .time_minutes
             .map(|m| m.to_string())
-            .unwrap_or_else(|| "-1".to_string());
+            .unwrap_or_else(|| "-2".to_string());
         let form = [
             ("hashes", info_hash),
             ("ratioLimit", ratio.as_str()),
             ("seedingTimeLimit", seeding_time.as_str()),
-            ("inactiveSeedingTimeLimit", "-1"),
+            ("inactiveSeedingTimeLimit", "-2"),
         ];
         let resp = self
             .do_post_form("/api/v2/torrents/setShareLimits", &form)
@@ -745,6 +774,7 @@ impl DownloadClient for QbitClient {
 
 fn to_download_item(raw: QbitRawTorrent) -> DownloadItem {
     let state_kind = map_qbit_state(&raw.state);
+    let seeding_done = qbit_seeding_done(&raw, chrono::Utc::now().timestamp());
     DownloadItem {
         hash: raw.hash,
         name: raw.name,
@@ -757,7 +787,31 @@ fn to_download_item(raw: QbitRawTorrent) -> DownloadItem {
         save_path: raw.save_path,
         content_path: raw.content_path,
         state_kind,
+        seeding_done,
     }
+}
+
+/// qBit stops a torrent itself when a share limit is reached (its
+/// "pause" / "stop" action; the "remove" actions make it vanish). A
+/// stopped-complete torrent whose ratio, seeding time, or inactivity
+/// has reached the effective limit is therefore done seeding; a
+/// stopped-complete torrent below every limit was paused by hand and
+/// is left alone. Mirrors Sonarr's `HasReachedSeedLimit`.
+fn qbit_seeding_done(raw: &QbitRawTorrent, now_unix: i64) -> bool {
+    if !matches!(raw.state.as_str(), "pausedUP" | "stoppedUP") {
+        return false;
+    }
+    let ratio_met = raw.max_ratio >= 0.0 && raw.ratio >= raw.max_ratio;
+    let time_met = raw.max_seeding_time >= 0 && raw.seeding_time >= raw.max_seeding_time * 60;
+    // The inactivity branch is the one place user intent and client
+    // intent blur: a torrent paused by hand that then sits idle past a
+    // global inactivity limit reads as done. qBit would normally have
+    // stopped it itself first, so the window is small, and the library
+    // keeps its own copy either way.
+    let inactive_met = raw.max_inactive_seeding_time >= 0
+        && raw.last_activity > 0
+        && now_unix - raw.last_activity >= raw.max_inactive_seeding_time * 60;
+    ratio_met || time_met || inactive_met
 }
 
 /// Map qBit's native state strings to the normalized
@@ -1539,3 +1593,120 @@ mod tests {
 /// pure-function tests above.
 #[cfg(test)]
 mod wiremock_tests;
+
+#[cfg(test)]
+mod seeding_done_tests {
+    //! Issue #228: `qbit_seeding_done` reads qBit's effective share
+    //! limits off `torrents/info`. Units: `seeding_time` seconds,
+    //! `max_seeding_time` / `max_inactive_seeding_time` minutes,
+    //! `last_activity` unix seconds, `-1` = no limit.
+    use super::*;
+
+    const NOW: i64 = 1_700_000_000;
+
+    fn raw(state: &str) -> QbitRawTorrent {
+        QbitRawTorrent {
+            hash: "h".into(),
+            name: "n".into(),
+            size: 1,
+            progress: 1.0,
+            dlspeed: 0,
+            state: state.into(),
+            category: String::new(),
+            eta: 0,
+            save_path: String::new(),
+            content_path: String::new(),
+            ratio: 0.0,
+            max_ratio: -1.0,
+            seeding_time: 0,
+            max_seeding_time: -1,
+            max_inactive_seeding_time: -1,
+            last_activity: 0,
+        }
+    }
+
+    #[test]
+    fn paused_at_ratio_limit_is_done() {
+        let mut t = raw("pausedUP");
+        t.max_ratio = 2.0;
+        t.ratio = 2.01;
+        assert!(qbit_seeding_done(&t, NOW));
+        t.state = "stoppedUP".into();
+        assert!(
+            qbit_seeding_done(&t, NOW),
+            "5.x spells the stop state stoppedUP"
+        );
+    }
+
+    #[test]
+    fn stopped_at_seeding_time_limit_is_done() {
+        let mut t = raw("stoppedUP");
+        t.max_seeding_time = 60;
+        t.seeding_time = 60 * 60;
+        assert!(qbit_seeding_done(&t, NOW));
+        t.seeding_time = 59 * 60;
+        assert!(
+            !qbit_seeding_done(&t, NOW),
+            "minutes on the limit, seconds on the clock"
+        );
+    }
+
+    #[test]
+    fn stopped_at_inactivity_limit_is_done() {
+        let mut t = raw("pausedUP");
+        t.max_inactive_seeding_time = 30;
+        t.last_activity = NOW - 31 * 60;
+        assert!(qbit_seeding_done(&t, NOW));
+        t.last_activity = NOW - 10 * 60;
+        assert!(!qbit_seeding_done(&t, NOW));
+        t.last_activity = 0;
+        assert!(
+            !qbit_seeding_done(&t, NOW),
+            "no activity timestamp, no inactivity verdict"
+        );
+    }
+
+    #[test]
+    fn paused_below_every_limit_was_paused_by_hand() {
+        let mut t = raw("pausedUP");
+        t.max_ratio = 2.0;
+        t.ratio = 1.5;
+        t.max_seeding_time = 600;
+        t.seeding_time = 60;
+        assert!(!qbit_seeding_done(&t, NOW));
+    }
+
+    #[test]
+    fn still_seeding_is_never_done_even_past_the_limit() {
+        let mut t = raw("uploading");
+        t.max_ratio = 1.0;
+        t.ratio = 3.0;
+        assert!(!qbit_seeding_done(&t, NOW));
+        t.state = "stalledUP".into();
+        assert!(!qbit_seeding_done(&t, NOW));
+    }
+
+    #[test]
+    fn no_limits_means_never_done() {
+        let mut t = raw("pausedUP");
+        t.ratio = 99.0;
+        t.seeding_time = 10_000_000;
+        assert!(
+            !qbit_seeding_done(&t, NOW),
+            "-1 on every limit is qBit's 'unlimited'"
+        );
+    }
+
+    #[test]
+    fn old_builds_without_the_fields_read_as_no_limit() {
+        let t: QbitRawTorrent = serde_json::from_value(serde_json::json!({
+            "hash": "h", "name": "n", "size": 1, "progress": 1.0, "dlspeed": 0,
+            "state": "pausedUP", "category": "", "eta": 0
+        }))
+        .unwrap();
+        assert_eq!(t.max_ratio, -1.0);
+        assert_eq!(t.max_seeding_time, -1);
+        assert_eq!(t.max_inactive_seeding_time, -1);
+        assert!(!qbit_seeding_done(&t, NOW));
+    }
+}

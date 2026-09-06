@@ -114,6 +114,15 @@ struct DelugeRawTorrent {
     total_size: i64,
     #[serde(default)]
     is_finished: bool,
+    /// Per-torrent ratio stop (issue #228). Deluge copies the global
+    /// `stop_seed_at_ratio` / `stop_seed_ratio` into each torrent's
+    /// options at add time, so these are the effective values.
+    #[serde(default)]
+    stop_at_ratio: bool,
+    #[serde(default)]
+    stop_ratio: f64,
+    #[serde(default)]
+    ratio: f64,
     #[serde(default)]
     label: String,
     #[serde(default)]
@@ -784,6 +793,7 @@ fn is_duplicate_add_error(msg: &str) -> bool {
 
 fn to_download_item(raw: DelugeRawTorrent) -> DownloadItem {
     let state_kind = map_deluge_state(&raw);
+    let seeding_done = deluge_seeding_done(&raw);
     // content_path for Deluge is not a native field — compute from
     // save_path + files' common prefix via the shared helper.
     let files_view: Vec<DownloadFile> = to_download_files(&raw);
@@ -809,7 +819,16 @@ fn to_download_item(raw: DelugeRawTorrent) -> DownloadItem {
         save_path: raw.save_path,
         content_path,
         state_kind,
+        seeding_done,
     }
+}
+
+/// Deluge pauses a torrent when `stop_at_ratio` is on and the ratio
+/// reaches `stop_ratio` (`remove_at_ratio` would make it vanish
+/// instead). A finished, paused torrent at or past that ratio is done
+/// seeding; a paused one below it was paused by hand.
+fn deluge_seeding_done(raw: &DelugeRawTorrent) -> bool {
+    raw.state == "Paused" && raw.is_finished && raw.stop_at_ratio && raw.ratio >= raw.stop_ratio
 }
 
 fn to_download_files(raw: &DelugeRawTorrent) -> Vec<DownloadFile> {
@@ -1625,3 +1644,59 @@ mod tests {
 /// mock `/json` endpoint.
 #[cfg(test)]
 mod wiremock_tests;
+
+#[cfg(test)]
+mod seeding_done_tests {
+    //! Issue #228: Deluge pauses a torrent at `stop_ratio` when
+    //! `stop_at_ratio` is on; that paused, finished, at-ratio state is
+    //! what `deluge_seeding_done` looks for.
+    use super::*;
+
+    fn raw(
+        state: &str,
+        is_finished: bool,
+        stop_at_ratio: bool,
+        ratio: f64,
+        stop_ratio: f64,
+    ) -> DelugeRawTorrent {
+        DelugeRawTorrent {
+            state: state.into(),
+            is_finished,
+            stop_at_ratio,
+            ratio,
+            stop_ratio,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn paused_finished_at_ratio_is_done() {
+        assert!(deluge_seeding_done(&raw("Paused", true, true, 2.0, 2.0)));
+        assert!(deluge_seeding_done(&raw("Paused", true, true, 2.4, 2.0)));
+    }
+
+    #[test]
+    fn paused_without_a_ratio_stop_was_paused_by_hand() {
+        assert!(!deluge_seeding_done(&raw("Paused", true, false, 5.0, 2.0)));
+    }
+
+    #[test]
+    fn paused_below_the_ratio_is_not_done() {
+        assert!(!deluge_seeding_done(&raw("Paused", true, true, 1.9, 2.0)));
+    }
+
+    #[test]
+    fn seeding_or_unfinished_is_never_done() {
+        assert!(!deluge_seeding_done(&raw("Seeding", true, true, 3.0, 2.0)));
+        assert!(!deluge_seeding_done(&raw("Paused", false, true, 3.0, 2.0)));
+    }
+
+    #[test]
+    fn a_status_without_the_keys_reads_as_not_done() {
+        let t: DelugeRawTorrent = serde_json::from_value(serde_json::json!({
+            "hash": "h", "name": "n", "state": "Paused", "is_finished": true
+        }))
+        .unwrap();
+        assert!(!deluge_seeding_done(&t));
+    }
+}

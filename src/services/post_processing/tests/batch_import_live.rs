@@ -115,6 +115,7 @@ fn complete_torrent(hash: &str, save_path: &Path) -> DownloadItem {
         save_path: save_path.to_string_lossy().into_owned(),
         content_path: String::new(),
         state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
     }
 }
 

@@ -36,6 +36,13 @@ pub struct DownloadClientRow {
     pub download_path: String,
     pub enabled: bool,
     pub is_default: bool,
+    /// Issue #228: remove an imported download from this client (files
+    /// included) once it has finished seeding; usenet jobs and move-mode
+    /// torrents go right after import. Sonarr's per-client "Remove
+    /// Completed". Default on; set through `set_remove_completed`, not
+    /// the upsert form, so the many `DownloadClientForm` call sites
+    /// stay as they are.
+    pub remove_completed: bool,
 }
 
 /// Insert/update payload — `&str` rather than `String` so the
@@ -54,7 +61,7 @@ pub struct DownloadClientForm<'a> {
 }
 
 const SELECT_COLS: &str = "id, name, kind, url, username, password, label, \
-                           download_path, enabled, is_default";
+                           download_path, enabled, is_default, remove_completed";
 
 /// Wire-protocol family for a download-client kind. Mirrors
 /// `services::download_client::protocol_for_client_kind` — duplicated
@@ -93,6 +100,10 @@ fn map_row(r: sqlx::sqlite::SqliteRow) -> DownloadClientRow {
             .try_get::<i64, _>("is_default")
             .map(|v| v != 0)
             .unwrap_or(false),
+        remove_completed: r
+            .try_get::<i64, _>("remove_completed")
+            .map(|v| v != 0)
+            .unwrap_or(true),
     }
 }
 
@@ -237,6 +248,19 @@ pub async fn update(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+    Ok(())
+}
+
+/// Issue #228: the per-client "Remove completed downloads" switch.
+pub async fn set_remove_completed(db: &SqlitePool, id: i64, on: bool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE download_clients SET remove_completed = ?, updated_at = strftime('%s','now') \
+         WHERE id = ?",
+    )
+    .bind(if on { 1_i64 } else { 0_i64 })
+    .bind(id)
+    .execute(db)
+    .await?;
     Ok(())
 }
 

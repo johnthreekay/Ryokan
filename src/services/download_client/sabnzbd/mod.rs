@@ -565,6 +565,7 @@ impl DownloadClient for SabClient {
                     save_path: String::new(),
                     content_path: String::new(),
                     state_kind: Self::map_state(&slot.status, false),
+                    seeding_done: false,
                 });
             } else {
                 dropped_cats.push(slot.cat);
@@ -619,6 +620,7 @@ impl DownloadClient for SabClient {
                 save_path: canonical_job_path.clone(),
                 content_path: canonical_job_path,
                 state_kind: Self::map_state(&slot.status, true),
+                seeding_done: false,
             });
         }
 

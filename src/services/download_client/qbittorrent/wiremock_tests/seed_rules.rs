@@ -3,13 +3,15 @@
 //!
 //! The endpoint takes form fields:
 //!   * `hashes` — comma-separated lowercase hex
-//!   * `ratioLimit` — float (`-1` use global, `-2` no limit, value
+//!   * `ratioLimit` — float (`-2` use global, `-1` no limit, value
 //!     = override)
 //!   * `seedingTimeLimit` — int minutes (same convention)
-//!   * `inactiveSeedingTimeLimit` — int minutes (`-1` use global)
+//!   * `inactiveSeedingTimeLimit` — int minutes (`-2` use global)
 //!
-//! Tests pin the `None` → `-1` (defer-to-global) translation and
-//! confirm both fields ride through the same form post.
+//! Tests pin the `None` → `-2` (defer-to-global) translation and
+//! confirm both fields ride through the same form post. Before #228
+//! the impl sent `-1`, qBit's "no limit", which silently disabled the
+//! global limits on every dimension an indexer left unset.
 
 use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, ResponseTemplate};
@@ -20,10 +22,10 @@ use crate::services::download_client::{DownloadClient, SeedRules};
 const HASH: &str = "abc1234567";
 
 #[tokio::test]
-async fn seed_rules_with_ratio_only_passes_minus_one_for_time() {
-    // `None` translates to `-1` (use global default), NOT to
-    // omitted — that's the qBit semantics. Pin both the
-    // path + the form contents.
+async fn seed_rules_with_ratio_only_passes_minus_two_for_time() {
+    // `None` translates to `-2` (use the global limit), NOT to
+    // omitted and NOT to `-1` (no limit). Pin both the path + the
+    // form contents.
     let (server, client) = new_fixture().await;
     // Note: 2.0_f64.to_string() = "2" (no trailing decimal). qBit
     // accepts both "2" and "2.0" — the wire shape Ryokan emits is
@@ -32,7 +34,7 @@ async fn seed_rules_with_ratio_only_passes_minus_one_for_time() {
         .and(path("/api/v2/torrents/setShareLimits"))
         .and(body_string_contains(format!("hashes={}", HASH)))
         .and(body_string_contains("ratioLimit=2&"))
-        .and(body_string_contains("seedingTimeLimit=-1"))
+        .and(body_string_contains("seedingTimeLimit=-2"))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)
         .mount(&server)
@@ -48,11 +50,11 @@ async fn seed_rules_with_ratio_only_passes_minus_one_for_time() {
 }
 
 #[tokio::test]
-async fn seed_rules_with_time_only_passes_minus_one_for_ratio() {
+async fn seed_rules_with_time_only_passes_minus_two_for_ratio() {
     let (server, client) = new_fixture().await;
     Mock::given(method("POST"))
         .and(path("/api/v2/torrents/setShareLimits"))
-        .and(body_string_contains("ratioLimit=-1"))
+        .and(body_string_contains("ratioLimit=-2"))
         .and(body_string_contains("seedingTimeLimit=120"))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)

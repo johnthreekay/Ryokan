@@ -135,6 +135,7 @@ fn fake_torrent(hash: &str, state_kind: DownloadItemState) -> DownloadItem {
         save_path: String::new(),
         content_path: String::new(),
         state_kind,
+        seeding_done: false,
     }
 }
 
@@ -1092,6 +1093,7 @@ async fn run_once_rejects_malicious_filelist_entries_but_imports_legit_siblings(
         save_path: source_path.clone(),
         content_path: source_path.clone(),
         state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
     };
 
     // The malicious entries — each `.mkv` so they survive the

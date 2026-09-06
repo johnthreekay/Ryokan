@@ -131,6 +131,7 @@ pub async fn record_grab(
          SET state = 'pending',
              imported_at = NULL,
              client_content_path = '',
+             client_removed_at = NULL,
              grabbed_at = CURRENT_TIMESTAMP,
              series_id = ?,
              episode_numbers = ?,
@@ -364,6 +365,116 @@ pub async fn get_all_pending(db: &SqlitePool) -> Result<Vec<GrabbedTorrent>, sql
             }
         })
         .collect())
+}
+
+/// Issue #228: grabs post-processing fully imported (`imported_at`
+/// set and `import_mode` not `partial`; `mark_completed_no_import`
+/// rows and partial imports never qualify, their download folder still
+/// holds the only copy of something) whose item may still sit in a
+/// download client (never removed by Ryokan, never seen gone). The
+/// finished-seed sweep's work list; rows leave it through
+/// `stamp_client_removed`.
+pub async fn list_imported_in_client(db: &SqlitePool) -> Result<Vec<GrabbedTorrent>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT id, hash, torrent_name, series_id, episode_numbers, grabbed_at, \
+                COALESCE(is_batch, 0) AS is_batch, download_client_id \
+         FROM grabbed_torrents \
+         WHERE state = 'imported' AND imported_at IS NOT NULL \
+           AND COALESCE(import_mode, '') != 'partial' \
+           AND client_removed_at IS NULL AND hash != '' \
+         ORDER BY grabbed_at ASC",
+    )
+    .fetch_all(db)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| {
+            let eps_json: String = row.get("episode_numbers");
+            let episode_numbers: Vec<i32> = serde_json::from_str(&eps_json).unwrap_or_default();
+            let is_batch_i: i64 = row.get("is_batch");
+            GrabbedTorrent {
+                id: row.get("id"),
+                hash: row.get("hash"),
+                torrent_name: row.get("torrent_name"),
+                series_id: row.get("series_id"),
+                episode_numbers,
+                state: "imported".to_string(),
+                grabbed_at: row.get("grabbed_at"),
+                is_batch: is_batch_i != 0,
+                download_client_id: row
+                    .try_get::<Option<i64>, _>("download_client_id")
+                    .ok()
+                    .flatten(),
+            }
+        })
+        .collect())
+}
+
+/// Issue #228: the item left its download client (Ryokan removed it,
+/// or it was already gone). Idempotent; `record_grab`'s reactivation
+/// clears it again.
+pub async fn stamp_client_removed(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE grabbed_torrents SET client_removed_at = CURRENT_TIMESTAMP \
+         WHERE id = ? AND client_removed_at IS NULL",
+    )
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Batch form of [`stamp_client_removed`] for the sweep's "already gone"
+/// rows. Chunked so a first pass over a long history is a handful of
+/// statements, not one per row.
+pub async fn stamp_client_removed_many(db: &SqlitePool, ids: &[i64]) -> Result<(), sqlx::Error> {
+    for chunk in ids.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(", ");
+        let sql = format!(
+            "UPDATE grabbed_torrents SET client_removed_at = CURRENT_TIMESTAMP \
+             WHERE client_removed_at IS NULL AND id IN ({placeholders})"
+        );
+        let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
+        for id in chunk {
+            q = q.bind(id);
+        }
+        q.execute(db).await?;
+    }
+    Ok(())
+}
+
+/// Issue #228: the file-operation mode this grab was imported under
+/// (`hardlink` / `copy` / `move`), or `partial` for a partial import;
+/// `None` for rows imported before the column existed.
+pub async fn import_mode(db: &SqlitePool, id: i64) -> Option<String> {
+    sqlx::query_scalar::<_, Option<String>>("SELECT import_mode FROM grabbed_torrents WHERE id = ?")
+        .bind(id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+}
+
+pub async fn stamp_import_mode(db: &SqlitePool, id: i64, mode: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE grabbed_torrents SET import_mode = ? WHERE id = ?")
+        .bind(mode)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+pub async fn client_removed_at(db: &SqlitePool, id: i64) -> Option<String> {
+    sqlx::query_scalar::<_, Option<String>>(
+        "SELECT client_removed_at FROM grabbed_torrents WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .flatten()
 }
 
 pub async fn mark_imported(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {

@@ -109,6 +109,20 @@ struct TxRawTorrent {
     is_stalled: bool,
     #[serde(default, rename = "errorString")]
     error_string: String,
+    /// Transmission's own "seed limit reached, stopped" flag (issue
+    /// #228); the stop condition, not download completion. 4.x sets it
+    /// for an idle stop or a ratio reached; 3.x only for an idle stop,
+    /// so the ratio fields below are read as well.
+    #[serde(default, rename = "isFinished")]
+    is_finished: bool,
+    #[serde(default, rename = "uploadRatio")]
+    upload_ratio: f64,
+    /// 0 = global ratio setting, 1 = this torrent's `seedRatioLimit`,
+    /// 2 = unlimited.
+    #[serde(default, rename = "seedRatioMode")]
+    seed_ratio_mode: i32,
+    #[serde(default, rename = "seedRatioLimit")]
+    seed_ratio_limit: f64,
     #[serde(default)]
     files: Vec<TxRawFile>,
     #[serde(default, rename = "fileStats")]
@@ -486,10 +500,35 @@ impl DownloadClient for TransmissionClient {
             "labels",
             "isStalled",
             "errorString",
+            "isFinished",
+            "uploadRatio",
+            "seedRatioMode",
+            "seedRatioLimit",
             "files",
             "fileStats",
         ];
         let args = self.send("torrent-get", json!({"fields": fields})).await?;
+        // The daemon's global ratio limit, for torrents in mode 0. Best
+        // effort: without it a global-mode ratio stop on 3.x reads as
+        // still seeding, which is the safe direction.
+        let global_ratio = match self
+            .send(
+                "session-get",
+                json!({"fields": ["seedRatioLimited", "seedRatioLimit"]}),
+            )
+            .await
+        {
+            Ok(session) => {
+                let limited = session
+                    .get("seedRatioLimited")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                limited
+                    .then(|| session.get("seedRatioLimit").and_then(|v| v.as_f64()))
+                    .flatten()
+            }
+            Err(_) => None,
+        };
         let list: Vec<TxRawTorrent> = serde_json::from_value(
             args.get("torrents")
                 .cloned()
@@ -500,7 +539,7 @@ impl DownloadClient for TransmissionClient {
         Ok(list
             .into_iter()
             .filter(|t| t.labels.iter().any(|l| l == &self.label))
-            .map(to_download_item)
+            .map(|t| to_download_item(t, global_ratio))
             .collect())
     }
 
@@ -574,8 +613,13 @@ impl DownloadClient for TransmissionClient {
     /// "mode" enums for ratio + idle:
     /// - `seedRatioMode`: 0 = global default, 1 = per-torrent
     ///   override using `seedRatioLimit`, 2 = unlimited.
-    /// - `seedIdleMode`: same enum, gated by `seedIdleLimit`
-    ///   (in MINUTES, matching Ryokan's `SeedRules.time_minutes`).
+    /// - `seedIdleMode`: same enum, gated by `seedIdleLimit` in
+    ///   minutes of *inactivity*. Transmission has no total-seed-time
+    ///   limit, so Ryokan's `SeedRules.time_minutes` maps onto the
+    ///   idle limit: the torrent never stops earlier than N minutes
+    ///   after completing (idle time cannot exceed elapsed time) but
+    ///   keeps seeding past N while peers are still pulling. Good
+    ///   enough as a minimum; not the same rule (issue #228).
     ///
     /// `None` fields are intentionally omitted from the args
     /// rather than sent as `mode: 0` — Ryokan's policy is "leave
@@ -613,8 +657,9 @@ impl DownloadClient for TransmissionClient {
     }
 }
 
-fn to_download_item(raw: TxRawTorrent) -> DownloadItem {
+fn to_download_item(raw: TxRawTorrent, global_ratio: Option<f64>) -> DownloadItem {
     let state_kind = map_tx_state(&raw);
+    let seeding_done = tx_seeding_done(&raw, global_ratio);
     let files_view = to_download_files(&raw);
     let content_path = super::compute_content_path(&raw.download_dir, &files_view);
     // Preserve the numeric status as the UI state string — no
@@ -645,7 +690,29 @@ fn to_download_item(raw: TxRawTorrent) -> DownloadItem {
         save_path: raw.download_dir,
         content_path,
         state_kind,
+        seeding_done,
     }
+}
+
+/// Transmission stops a torrent itself at its ratio or idle limit.
+/// `isFinished` covers both on 4.x but only the idle stop on 3.x, so a
+/// stopped complete torrent at or past its effective ratio limit (its
+/// own in mode 1, the daemon's in mode 0 when one is set) counts too.
+/// Mode 2 is unlimited. A stopped torrent below its limit was stopped
+/// by hand. Same shape as Sonarr's `HasReachedSeedLimit`.
+fn tx_seeding_done(raw: &TxRawTorrent, global_ratio: Option<f64>) -> bool {
+    if raw.is_finished {
+        return true;
+    }
+    if raw.status != 0 || raw.percent_done < 1.0 || !raw.error_string.is_empty() {
+        return false;
+    }
+    let limit = match raw.seed_ratio_mode {
+        1 => Some(raw.seed_ratio_limit),
+        0 => global_ratio,
+        _ => None,
+    };
+    limit.is_some_and(|l| raw.upload_ratio >= l)
 }
 
 fn to_download_files(raw: &TxRawTorrent) -> Vec<DownloadFile> {
@@ -792,6 +859,47 @@ mod tests {
             normalize_base_url("http://localhost:9091/"),
             "http://localhost:9091"
         );
+    }
+
+    #[test]
+    fn seeding_done_reads_finished_or_the_effective_ratio() {
+        let stopped = |mode: i32, limit: f64, ratio: f64| TxRawTorrent {
+            status: 0,
+            percent_done: 1.0,
+            seed_ratio_mode: mode,
+            seed_ratio_limit: limit,
+            upload_ratio: ratio,
+            ..Default::default()
+        };
+        // isFinished wins on its own (4.x, or a 3.x idle stop).
+        let finished = TxRawTorrent {
+            is_finished: true,
+            status: 0,
+            ..Default::default()
+        };
+        assert!(tx_seeding_done(&finished, None));
+        // Per-torrent limit reached (3.x ratio stop leaves isFinished false).
+        assert!(tx_seeding_done(&stopped(1, 2.0, 2.0), None));
+        assert!(!tx_seeding_done(&stopped(1, 2.0, 1.9), None));
+        // Global mode needs the daemon's limit.
+        assert!(tx_seeding_done(&stopped(0, 0.0, 1.5), Some(1.5)));
+        assert!(!tx_seeding_done(&stopped(0, 0.0, 1.5), None));
+        // Unlimited never finishes; still seeding never finishes.
+        assert!(!tx_seeding_done(&stopped(2, 0.0, 9.0), Some(1.0)));
+        let seeding = TxRawTorrent {
+            status: 6,
+            percent_done: 1.0,
+            seed_ratio_mode: 1,
+            seed_ratio_limit: 1.0,
+            upload_ratio: 3.0,
+            ..Default::default()
+        };
+        assert!(!tx_seeding_done(&seeding, None));
+        let errored = TxRawTorrent {
+            error_string: "disk".into(),
+            ..stopped(1, 1.0, 3.0)
+        };
+        assert!(!tx_seeding_done(&errored, None));
     }
 
     #[test]

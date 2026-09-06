@@ -381,20 +381,34 @@ impl AppState {
         download_client_id: Option<i64>,
         hash: &str,
     ) -> Option<Arc<dyn DownloadClient>> {
+        self.resolve_grab_client_with_id(download_client_id, hash)
+            .await
+            .map(|(_, c)| c)
+    }
+
+    /// [`Self::resolve_grab_client`] with the resolved pool id alongside,
+    /// for callers that key per-client state on it (the #228 sweep).
+    pub async fn resolve_grab_client_with_id(
+        &self,
+        download_client_id: Option<i64>,
+        hash: &str,
+    ) -> Option<(i64, Arc<dyn DownloadClient>)> {
+        let pool = self.download_clients.read().await.clone();
         if let Some(id) = download_client_id
-            && let Some(client) = self.client_by_id(id).await
+            && let Some(client) = pool.clients.get(&id)
         {
-            return Some(client);
+            return Some((id, client.clone()));
         }
         if hash.starts_with("SABnzbd_nzo_") {
-            let pool = self.download_clients.read().await.clone();
-            for c in pool.clients.values() {
+            for (id, c) in &pool.clients {
                 if c.protocol() == "usenet" {
-                    return Some(c.clone());
+                    return Some((*id, c.clone()));
                 }
             }
         }
-        self.default_download_client().await
+        let id = pool.default_torrent_id?;
+        let client = pool.clients.get(&id)?.clone();
+        Some((id, client))
     }
 }
 
