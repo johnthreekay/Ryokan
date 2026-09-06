@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tower_http::compression::CompressionLayer;
+use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -1419,7 +1420,15 @@ async fn main() {
     // negotiates via the client's Accept-Encoding automatically; if the
     // client doesn't advertise support, the body is passed through
     // unchanged.
-    let compression = CompressionLayer::new().br(true).gzip(true);
+    // Archives are already gzip: re-encoding them wastes CPU on the
+    // slowest responses the app serves and, until the download stream
+    // was fused, tripped the layer's end-of-body re-poll into a panic.
+    // The predicate keeps the defaults (size floor, images, SSE) and
+    // adds `application/gzip`.
+    let compression = CompressionLayer::new()
+        .br(true)
+        .gzip(true)
+        .compress_when(DefaultPredicate::new().and(NotForContentType::new("application/gzip")));
 
     // Long-lived Cache-Control on /static/*. Without an explicit header the
     // browser falls back to heuristic freshness and tends to fire a

@@ -13,9 +13,19 @@
 # pin its branches" / "someone deleted a test that was the only thing
 # pinning a mutation" failure modes between active sessions.
 #
-# Per-PR mutation gating is NOT viable — even the curated subset takes
-# 3-5h. Weekly cron is the right cadence; manual `workflow_dispatch`
-# is available for ad-hoc runs.
+# Why shards: a GitHub-hosted job is capped at 6 hours, and the
+# curated subset (~712 mutants) runs at roughly 30 mutants an hour on
+# ubuntu-latest with two jobs (every mutant is an incremental rebuild
+# plus the full nextest suite). Eighteen weekly runs in a row were
+# cancelled at the cap with a third of the mutants done. The matrix
+# below splits the mutants round-robin across 8 shards (~90 each,
+# about 3 hours per shard), and a second job merges the shards'
+# `mutants.out` files before the baseline diff. Each shard runs its own
+# unmutated baseline, so the per-mutant test timeout stays auto-derived
+# from the runner's real test time rather than a guessed constant.
+#
+# Per-PR mutation gating is NOT viable. Weekly cron is the right
+# cadence; manual `workflow_dispatch` is available for ad-hoc runs.
 
 name: Mutation testing (weekly)
 
@@ -35,14 +45,23 @@ concurrency:
   group: mutants-weekly
   cancel-in-progress: false
 
+env:
+  # The shard count. Must match the matrix below.
+  SHARDS: 8
+
 jobs:
-  mutants:
+  shard:
+    name: shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    # GH free-tier ubuntu-latest caps at 6h. The curated file list
-    # below targets ~500-700 mutants which finishes well under that
-    # ceiling at --jobs 2; the timeout is generous headroom against a
-    # slow link or flaky wiremock binding.
-    timeout-minutes: 360
+    # GH-hosted jobs cap at 6h. A shard is ~90 mutants, about 3h at
+    # the measured rate; the timeout leaves room for a slow week.
+    timeout-minutes: 350
+    strategy:
+      # A shard that dies must not cancel the others: the merge job
+      # still reports what finished, it just does not save a baseline.
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v7
 
@@ -58,12 +77,98 @@ jobs:
         with:
           # Distinct cache key from rust.yml so the test profile
           # (opt-level=1 deps) doesn't fight with verify-pass cache.
+          # Shared across shards: the first one to finish saves it.
           key: mutants-weekly
 
       # Both binaries via prebuilt-action (avoids the ~2 min build).
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest,cargo-mutants
+
+      # The curated subset. These are the files where targeted
+      # mutation work has produced the highest catch rates and where
+      # regression detection is most useful. Skip the big network-
+      # dependent ones (rss/mod.rs at 309 mutants, auto_search/mod.rs
+      # at 300+) — those need their own session-sized runs.
+      #
+      # Exit codes: 0 all caught, 2 missed mutants, 3 timeouts,
+      # 4 unviable; all of those mean the run completed and the
+      # output files are the result. 1 is a usage / harness error and
+      # must fail the shard so the merge job knows not to trust the
+      # week's numbers.
+      - name: Run cargo-mutants shard ${{ matrix.shard }}/${{ env.SHARDS }}
+        run: |
+          set +e
+          cargo mutants \
+            --jobs 2 \
+            --test-tool nextest \
+            --features test-support \
+            --timeout-multiplier 5.0 \
+            --shard "${{ matrix.shard }}/${SHARDS}" \
+            --sharding round-robin \
+            --file 'src/services/scoring.rs' \
+            --file 'src/services/source/mod.rs' \
+            --file 'src/handlers/library/crud/mod.rs' \
+            --file 'src/services/anibridge.rs' \
+            --file 'src/services/metadata_sync.rs'
+          code=$?
+          echo "cargo-mutants exit code: $code"
+          case "$code" in
+            0|2|3|4) ;;
+            *) exit "$code" ;;
+          esac
+          for f in caught missed timeout unviable; do
+            touch "mutants.out/$f.txt"
+            printf '%s: %s\n' "$f" "$(wc -l < "mutants.out/$f.txt")"
+          done
+
+      # Partial output from a shard that timed out is still worth
+      # merging (the summary shows what finished); the merge job only
+      # withholds the baseline save in that case.
+      - name: Upload shard output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-shard-${{ matrix.shard }}
+          path: |
+            mutants.out/caught.txt
+            mutants.out/missed.txt
+            mutants.out/timeout.txt
+            mutants.out/unviable.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+  report:
+    name: merge and report
+    needs: shard
+    # Run even when a shard failed or timed out, so the summary says
+    # what happened instead of the week silently producing nothing.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download shard outputs
+        uses: actions/download-artifact@v7
+        with:
+          pattern: mutants-shard-*
+          path: shards
+
+      # One `mutants.out/` from the shards, in the layout
+      # `scripts/mutants-weekly.sh` reads. Round-robin sharding makes
+      # every mutant appear in exactly one shard, so the files simply
+      # concatenate.
+      - name: Merge shard outputs
+        run: |
+          set -e
+          mkdir -p mutants.out
+          shopt -s nullglob
+          for f in caught missed timeout unviable; do
+            cat shards/mutants-shard-*/"$f.txt" > "mutants.out/$f.txt" || true
+            printf '%s: %s\n' "$f" "$(wc -l < "mutants.out/$f.txt")"
+          done
+          echo "shards present: $(ls -d shards/mutants-shard-* | wc -l) of ${SHARDS}"
 
       # Restore last week's baseline. The save step at the bottom
       # uses a unique key per run-id; this restore matches via prefix
@@ -78,31 +183,10 @@ jobs:
           restore-keys: |
             mutants-baseline-v1-
 
-      # The curated subset. These are the files where targeted
-      # mutation work has produced the highest catch rates and where
-      # regression detection is most useful. Skip the big network-
-      # dependent ones (rss/mod.rs at 309 mutants, auto_search/mod.rs
-      # at 300+) — those need their own session-sized runs.
-      - name: Run cargo-mutants on curated subset
-        run: |
-          set -e
-          # Don't fail the workflow on cargo-mutants exit codes — the
-          # script reads the output bucket files directly and decides
-          # regression status itself.
-          cargo mutants \
-            --jobs 2 \
-            --test-tool nextest \
-            --features test-support \
-            --timeout-multiplier 5.0 \
-            --file 'src/services/scoring.rs' \
-            --file 'src/services/source/mod.rs' \
-            --file 'src/handlers/library/crud/mod.rs' \
-            --file 'src/services/anibridge.rs' \
-            --file 'src/services/metadata_sync.rs' \
-            || true
-
       - name: Generate report and update baseline
         id: report
+        env:
+          SHARDS_RESULT: ${{ needs.shard.result }}
         run: |
           set +e
           ./scripts/mutants-weekly.sh \
@@ -111,16 +195,28 @@ jobs:
             --output-baseline mutants.baseline.next.json \
             --output-report mutants-report.md
           echo "regression=$?" >> "$GITHUB_OUTPUT"
+          if [ "$SHARDS_RESULT" != "success" ]; then
+            {
+              echo "> **Incomplete run:** shard job result was \`$SHARDS_RESULT\`."
+              echo "> The numbers below cover only the shards that finished, and this run's snapshot is not saved as next week's baseline."
+              echo
+              cat mutants-report.md
+            } > mutants-report.partial.md
+            mv mutants-report.partial.md mutants-report.md
+          fi
           # The script writes the next baseline regardless of
           # regression status — overwrite the input so the cache save
           # step picks up the fresh snapshot.
-          mv mutants.baseline.next.json mutants.baseline.json
+          if [ -f mutants.baseline.next.json ]; then
+            mv mutants.baseline.next.json mutants.baseline.json
+          fi
 
       - name: Post report to workflow summary
+        if: always()
         run: cat mutants-report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Open issue on regression
-        if: steps.report.outputs.regression == '1'
+        if: steps.report.outputs.regression == '1' && needs.shard.result == 'success'
         run: |
           gh issue create \
             --title "Mutation regression — $(date -u +%F)" \
@@ -129,13 +225,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Save the new baseline. Unique key per run so we never miss the
-      # save (cache@v4 doesn't overwrite on key-hit). Restoration on
-      # the next run uses the prefix `mutants-baseline-v1-` to match
+      # Save the new baseline, but only from a complete run: a
+      # partial snapshot would make every unfinished mutant look
+      # "new" next week. Unique key per run so we never miss the save
+      # (cache@v4 doesn't overwrite on key-hit). Restoration on the
+      # next run uses the prefix `mutants-baseline-v1-` to match
       # whichever entry is most recent. GH evicts unmatched-prefix
       # cache entries after 7 days of no access.
       - name: Save baseline for next run
-        if: always()
+        if: needs.shard.result == 'success' && steps.report.outputs.regression != ''
         uses: actions/cache/save@v6
         with:
           path: mutants.baseline.json
