@@ -48,7 +48,7 @@
                only turned off; the modal it opens posts to
                `/settings/indexers/nyaa`, the one writer for its
                fields. #}
-            <article class="dc-card" id="indexer-card-nyaa">
+            <article class="dc-card dc-card-builtin" id="indexer-card-nyaa">
                 <div class="dc-card-body"
                      role="button"
                      tabindex="0"
@@ -58,15 +58,21 @@
                     <div class="dc-card-header">
                         <div class="dc-card-title">
                             <strong class="dc-card-name">Nyaa</strong>
-                            <span class="dc-default-pill" title="Ships with Ryokan">BUILT-IN</span>
                         </div>
-                        {% if !config.nyaa_enabled %}
-                        <span class="dc-status-pill dc-status-pill-disabled">Disabled</span>
-                        {% else if config.rss_enabled && !config.disable_nyaa_rss %}
-                        <span class="dc-status-pill dc-status-pill-ok" title="Feed polled on every RSS sync">&#10003; RSS</span>
-                        {% else %}
-                        <span class="dc-status-pill dc-status-pill-ok" title="RSS off">Enabled</span>
-                        {% endif %}
+                        {# No delete button on this card, so the pills
+                           take the corner: the status pill sits where
+                           the × is on the other cards, BUILT-IN beside
+                           it (`.dc-card-pills` in settings.css). #}
+                        <div class="dc-card-pills">
+                            <span class="dc-default-pill{% if !config.nyaa_enabled %} dc-default-pill-off{% endif %}" title="Ships with Ryokan">BUILT-IN</span>
+                            {% if !config.nyaa_enabled %}
+                            <span class="dc-status-pill dc-status-pill-disabled">Disabled</span>
+                            {% else if config.rss_enabled && !config.disable_nyaa_rss %}
+                            <span class="dc-status-pill dc-status-pill-ok" title="Feed polled on every RSS sync">&#10003; RSS</span>
+                            {% else %}
+                            <span class="dc-status-pill dc-status-pill-ok" title="RSS off">Enabled</span>
+                            {% endif %}
+                        </div>
                     </div>
                     <dl class="dc-card-meta">
                         <div class="dc-card-meta-row">
