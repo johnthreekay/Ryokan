@@ -1158,6 +1158,31 @@
     right: 10px;
 }
 
+/* The built-in Nyaa card has no delete button, so its pills take the
+   corner: the status pill sits where the × is on the other cards and
+   the BUILT-IN pill beside it, in the slot a status pill normally
+   has. The header's × reservation is dropped and the group is pulled
+   right by the difference between the body padding (16px) and the
+   ×'s 10px offset, so the right edges line up across the grid. */
+.dc-card-builtin .dc-card-header {
+    padding-right: 0;
+}
+
+.dc-card-pills {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-right: -6px;
+}
+
+/* Nyaa switched off: the built-in pill goes red so the card reads as
+   off at a glance, not only from the dim status pill. */
+.dc-default-pill-off {
+    background: rgba(var(--red-rgb), 0.18);
+    color: var(--red);
+}
+
 /* Empty-state spans the grid so it doesn't sit awkwardly in a
    single track when the user has no clients yet. */
 .dc-empty {

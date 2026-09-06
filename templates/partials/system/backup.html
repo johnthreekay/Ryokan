@@ -87,9 +87,21 @@
     <div class="cf-section">
         <h3>Restore</h3>
         <p class="form-hint">Upload a backup from this or an older Ryokan. The current state is backed up first, and the restore is applied when Ryokan restarts.</p>
+        {# Same shape as the Backup section above: the input on its
+           own row, the action row under it. The native picker stays
+           for the OS dialog and keyboard focus but is visually
+           hidden; the label is the trigger and the chosen name sits
+           beside it (`.file-field` in forms.css). The upload button
+           wakes up once a file is chosen (static/js/system.js). #}
+        <div class="backup-options">
+            <div class="file-field">
+                <input type="file" id="restore-file" class="file-field-input" accept=".tar.gz,.tgz,application/gzip">
+                <label for="restore-file" class="btn btn-secondary">Choose backup</label>
+                <span class="file-field-name" id="restore-file-name">No file chosen</span>
+            </div>
+        </div>
         <div class="backup-actions">
-            <input type="file" id="restore-file" accept=".tar.gz,.tgz,application/gzip">
-            <button type="button" class="btn btn-primary" id="restore-upload"{% if b.pending.is_some() %} disabled{% endif %}>Upload and stage restore</button>
+            <button type="button" class="btn btn-primary" id="restore-upload" disabled{% if b.pending.is_some() %} data-pending="1"{% endif %}>Upload and stage restore</button>
         </div>
         <div id="restore-result" class="form-hint backup-result" hidden></div>
     </div>

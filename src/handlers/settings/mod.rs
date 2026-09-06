@@ -386,12 +386,7 @@ pub struct SettingsForm {
     finished_series_quality: String,
     media_root: String,
     title_language: String,
-    rss_enabled: Option<String>,
     rss_interval_minutes: i32,
-    /// Nyaa-specific RSS opt-out. Lives in the General
-    /// tab next to `rss_enabled` / `rss_interval_minutes`. Checkbox →
-    /// `Some(_)` when checked, `None` when not.
-    disable_nyaa_rss: Option<String>,
     post_processing_enabled: Option<String>,
     post_processing_mode: String,
     /// v1.3.0 — opt-in: trigger auto-search when a series's
@@ -420,7 +415,6 @@ pub struct SettingsForm {
     upgrade_search_enabled: Option<String>,
     seadex_enabled: Option<String>,
     default_custom_query_tokens: Option<String>,
-    default_restrict_to_uploader: Option<String>,
     /// Issue #83 — interactive file-picker trigger policy. `batches_only`
     /// (default) opens the modal for multi-file torrents; `never`
     /// preserves 1.3.0 one-click behavior. Lives on the General tab
@@ -431,8 +425,6 @@ pub struct SettingsForm {
     /// General tab, Grabbing. Both used to sit on System → Debug.
     #[serde(default)]
     auto_grab_on_add: Option<String>,
-    #[serde(default)]
-    allow_non_english: Option<String>,
     /// Issue #62 — watch-list sync cadence in minutes. Clamped
     /// to 15..=10080 (15 minutes .. 7 days) on save per decision #5.
     /// `None` means "field absent from this form submission" and
@@ -567,8 +559,6 @@ pub struct QualityForm {
     seadex_enabled: Option<String>,
     #[serde(default)]
     default_custom_query_tokens: Option<String>,
-    #[serde(default)]
-    default_restrict_to_uploader: Option<String>,
 }
 
 #[derive(Template)]
@@ -589,16 +579,16 @@ pub struct QualityFormPartial {
 pub struct GeneralForm {
     media_root: String,
     title_language: String,
-    /// Checkbox: unchecked omits the field from the POST entirely;
-    /// `#[serde(default)]` makes serde_urlencoded map the absence to
-    /// `None` rather than failing deserialization. Same shape every
-    /// other Option<String> on the per-tab forms uses.
+    /// The RSS master switch (every source: Nyaa, indexers, direct
+    /// feeds). Checkbox: unchecked omits the field from the POST
+    /// entirely; `#[serde(default)]` makes serde_urlencoded map the
+    /// absence to `None` rather than failing deserialization. Same
+    /// shape every other Option<String> on the per-tab forms uses.
+    /// The Nyaa feed's own toggle lives on the Nyaa card
+    /// (`/settings/indexers/nyaa`).
     #[serde(default)]
-    rss_enabled: Option<String>,
+    rss_master_enabled: Option<String>,
     rss_interval_minutes: i32,
-    /// Nyaa-specific RSS opt-out.
-    #[serde(default)]
-    disable_nyaa_rss: Option<String>,
     #[serde(default)]
     post_processing_enabled: Option<String>,
     post_processing_mode: String,
@@ -619,8 +609,6 @@ pub struct GeneralForm {
     grab_preview_mode: Option<String>,
     #[serde(default)]
     auto_grab_on_add: Option<String>,
-    #[serde(default)]
-    allow_non_english: Option<String>,
     /// Recycle bin (#123). Empty disables recycle.
     #[serde(default)]
     recycle_bin_path: String,
@@ -1237,14 +1225,13 @@ pub async fn settings_submit(
                 .unwrap_or_else(|| "english".to_string())
         },
         force_mal_fallback: current_force_mal_fallback,
-        rss_enabled: if form.tab.as_deref() == Some("general") {
-            form.rss_enabled.is_some()
-        } else {
-            existing_cfg
-                .as_ref()
-                .map(|c| c.rss_enabled)
-                .unwrap_or(false)
-        },
+        // Nyaa-card fields (rss_enabled, disable_nyaa_rss, allow_non_english,
+        // default_restrict_to_uploader, nyaa_enabled, nyaa_download_client_id)
+        // are owned by `/settings/indexers/nyaa`; every tab save preserves them.
+        rss_enabled: existing_cfg
+            .as_ref()
+            .map(|c| c.rss_enabled)
+            .unwrap_or(false),
         rss_interval_minutes: if form.tab.as_deref() == Some("general") {
             form.rss_interval_minutes.clamp(1, 60)
         } else {
@@ -1263,14 +1250,14 @@ pub async fn settings_submit(
             .as_ref()
             .map(|cfg| cfg.rss_master_enabled)
             .unwrap_or(true),
-        disable_nyaa_rss: if form.tab.as_deref() == Some("general") {
-            form.disable_nyaa_rss.is_some()
-        } else {
-            existing_cfg
-                .as_ref()
-                .map(|c| c.disable_nyaa_rss)
-                .unwrap_or(false)
-        },
+        disable_nyaa_rss: existing_cfg
+            .as_ref()
+            .map(|c| c.disable_nyaa_rss)
+            .unwrap_or(false),
+        nyaa_enabled: existing_cfg
+            .as_ref()
+            .map(|c| c.nyaa_enabled)
+            .unwrap_or(true),
         force_kitsu_fallback: current_force_kitsu_fallback,
         post_processing_enabled: if form.tab.as_deref() == Some("general") {
             form.post_processing_enabled.is_some()
@@ -1312,14 +1299,10 @@ pub async fn settings_submit(
         } else {
             existing_cfg.as_ref().map(|c| c.prefer_subs).unwrap_or(true)
         },
-        allow_non_english: if form.tab.as_deref() == Some("general") {
-            form.allow_non_english.is_some()
-        } else {
-            existing_cfg
-                .as_ref()
-                .map(|c| c.allow_non_english)
-                .unwrap_or(false)
-        },
+        allow_non_english: existing_cfg
+            .as_ref()
+            .map(|c| c.allow_non_english)
+            .unwrap_or(false),
         sonarr_enabled: if form.tab.as_deref() == Some("integrations") || form.tab.is_none() {
             form.sonarr_enabled.is_some()
         } else {
@@ -1396,19 +1379,10 @@ pub async fn settings_submit(
                 .map(|c| c.default_custom_query_tokens.clone())
                 .unwrap_or_default()
         },
-        default_restrict_to_uploader: if form.tab.as_deref() == Some("quality")
-            || form.tab.is_none()
-        {
-            form.default_restrict_to_uploader
-                .unwrap_or_default()
-                .trim()
-                .to_string()
-        } else {
-            existing_cfg
-                .as_ref()
-                .map(|c| c.default_restrict_to_uploader.clone())
-                .unwrap_or_default()
-        },
+        default_restrict_to_uploader: existing_cfg
+            .as_ref()
+            .map(|c| c.default_restrict_to_uploader.clone())
+            .unwrap_or_default(),
         // #83 — Interactive file-picker lives on the General tab
         // (Grabbing). Preserve on other-tab saves. Unknown values
         // coerce to `batches_only`.
@@ -1746,9 +1720,8 @@ pub async fn settings_general_submit(
             "romaji" | "english" | "native" => form.title_language,
             _ => "english".to_string(),
         },
-        rss_enabled: form.rss_enabled.is_some(),
+        rss_master_enabled: form.rss_master_enabled.is_some(),
         rss_interval_minutes: form.rss_interval_minutes.clamp(1, 60),
-        disable_nyaa_rss: form.disable_nyaa_rss.is_some(),
         post_processing_enabled: form.post_processing_enabled.is_some(),
         post_processing_mode: match form.post_processing_mode.as_str() {
             "move" | "copy" | "hardlink" => form.post_processing_mode,
@@ -1763,7 +1736,6 @@ pub async fn settings_general_submit(
             Some(existing_cfg.grab_preview_mode.as_str()),
         ),
         auto_grab_on_add: form.auto_grab_on_add.is_some(),
-        allow_non_english: form.allow_non_english.is_some(),
         recycle_bin_path: form
             .recycle_bin_path
             .trim()
@@ -2120,11 +2092,6 @@ pub async fn settings_quality_submit(
         seadex_enabled: form.seadex_enabled.is_some(),
         default_custom_query_tokens: form
             .default_custom_query_tokens
-            .unwrap_or_default()
-            .trim()
-            .to_string(),
-        default_restrict_to_uploader: form
-            .default_restrict_to_uploader
             .unwrap_or_default()
             .trim()
             .to_string(),

@@ -100,13 +100,6 @@
                 </label>
                 <label class="setting-row">
                     <span class="setting-row-text">
-                        <span class="setting-row-title">Allow non-English releases in automatic grabs</span>
-                        <span class="setting-row-desc">Auto-search and RSS use Nyaa's English-translated category by default. Interactive search always shows every category.</span>
-                    </span>
-                    <input type="checkbox" name="allow_non_english" id="allow_non_english" {% if config.allow_non_english %}checked{% endif %}>
-                </label>
-                <label class="setting-row">
-                    <span class="setting-row-text">
                         <span class="setting-row-title">Remove and blocklist detected misgrabs</span>
                         <span class="setting-row-desc">A download whose files name a different series is removed from the client, blocklisted, and searched again. Off keeps it in the client and lists it under System → Misgrabs.</span>
                     </span>
@@ -121,16 +114,9 @@
                 <label class="setting-row">
                     <span class="setting-row-text">
                         <span class="setting-row-title">Enable automatic RSS sync</span>
-                        <span class="setting-row-desc">Poll the Nyaa anime feed and grab matching releases automatically.</span>
+                        <span class="setting-row-desc">Poll Nyaa, your indexers, and your direct feeds on the interval below, and grab matching releases. Each source has its own RSS switch on the Indexers tab.</span>
                     </span>
-                    <input type="checkbox" name="rss_enabled" id="rss_enabled" {% if config.rss_enabled %}checked{% endif %}>
-                </label>
-                <label class="setting-row">
-                    <span class="setting-row-text">
-                        <span class="setting-row-title">Skip the Nyaa RSS feed</span>
-                        <span class="setting-row-desc">Only poll the indexer and direct RSS feeds you configured.</span>
-                    </span>
-                    <input type="checkbox" name="disable_nyaa_rss" id="disable_nyaa_rss" {% if config.disable_nyaa_rss %}checked{% endif %}>
+                    <input type="checkbox" name="rss_master_enabled" id="rss_master_enabled" {% if config.rss_master_enabled %}checked{% endif %}>
                 </label>
             </div>
             <div class="form-group">

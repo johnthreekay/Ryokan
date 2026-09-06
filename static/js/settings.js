@@ -589,6 +589,9 @@ function openIndexerEditModal(id, name) {
         'Editing ' + (name || 'indexer')
     );
 }
+function openNyaaEditModal() {
+    fetchAndOpenIndexerModal('/settings/indexers/nyaa/edit-form', 'Nyaa');
+}
 function openIndexerAddModal(slug, name) {
     const url = slug
         ? '/settings/indexers/add-form?template=' + encodeURIComponent(slug)

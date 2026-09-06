@@ -48,12 +48,14 @@
         <label class="setting-row">
             <span class="setting-row-text">
                 <span class="setting-row-title">Follow symlinks</span>
+                <span class="setting-row-desc">Scan files and folders that are symlinks too. Off skips them, since a library that links media back to the download folder would otherwise import the same files twice.</span>
             </span>
             <input type="checkbox" name="follow_symlinks" value="1"{% if form.follow_symlinks %} checked{% endif %}>
         </label>
         <label class="setting-row">
             <span class="setting-row-text">
                 <span class="setting-row-title">Include hidden files and folders</span>
+                <span class="setting-row-desc">Scan names that start with a dot. Off skips them.</span>
             </span>
             <input type="checkbox" name="include_hidden" value="1"{% if form.include_hidden %} checked{% endif %}>
         </label>

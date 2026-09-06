@@ -165,7 +165,7 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
             media_root TEXT NOT NULL DEFAULT '',
             title_language TEXT NOT NULL DEFAULT 'english',
             force_mal_fallback INTEGER NOT NULL DEFAULT 0,
-            rss_enabled INTEGER NOT NULL DEFAULT 0,
+            rss_enabled INTEGER NOT NULL DEFAULT 1,
             rss_interval_minutes INTEGER NOT NULL DEFAULT 15,
             force_kitsu_fallback INTEGER NOT NULL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -2859,6 +2859,15 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         "ALTER TABLE config ADD COLUMN import_stall_hours INTEGER NOT NULL DEFAULT 24",
     ] {
         sqlx::query(sql).execute(db).await.ok();
+
+        // Built-in Nyaa card on the Indexers tab: the one switch that turns
+        // the built-in search off entirely (auto-search, interactive search,
+        // the SeaDex seed, and the Nyaa RSS feed). Default on, so an
+        // upgrade changes nothing.
+        sqlx::query("ALTER TABLE config ADD COLUMN nyaa_enabled INTEGER NOT NULL DEFAULT 1")
+            .execute(db)
+            .await
+            .ok();
     }
 
     // Issue #228 — remove finished downloads from the client. The

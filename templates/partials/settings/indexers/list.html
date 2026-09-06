@@ -43,9 +43,69 @@
            grid so the empty section reads as an instruction rather
            than a blank panel. #}
         <div class="dc-card-grid">
+            {# The built-in Nyaa search, rendered from the config row
+               rather than an `indexers` row. It cannot be deleted,
+               only turned off; the modal it opens posts to
+               `/settings/indexers/nyaa`, the one writer for its
+               fields. #}
+            <article class="dc-card dc-card-builtin" id="indexer-card-nyaa">
+                <div class="dc-card-body"
+                     role="button"
+                     tabindex="0"
+                     onclick="openNyaaEditModal()"
+                     onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openNyaaEditModal(); }"
+                     aria-label="Edit Nyaa">
+                    <div class="dc-card-header">
+                        <div class="dc-card-title">
+                            <strong class="dc-card-name">Nyaa</strong>
+                        </div>
+                        {# No delete button on this card, so the pills
+                           take the corner: the status pill sits where
+                           the × is on the other cards, BUILT-IN beside
+                           it (`.dc-card-pills` in settings.css). #}
+                        <div class="dc-card-pills">
+                            <span class="dc-default-pill{% if !config.nyaa_enabled %} dc-default-pill-off{% endif %}" title="Ships with Ryokan">BUILT-IN</span>
+                            {% if !config.nyaa_enabled %}
+                            <span class="dc-status-pill dc-status-pill-disabled">Disabled</span>
+                            {% else if config.rss_enabled && !config.disable_nyaa_rss %}
+                            <span class="dc-status-pill dc-status-pill-ok" title="Feed polled on every RSS sync">&#10003; RSS</span>
+                            {% else %}
+                            <span class="dc-status-pill dc-status-pill-ok" title="RSS off">Enabled</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <dl class="dc-card-meta">
+                        <div class="dc-card-meta-row">
+                            <dt>Kind</dt>
+                            <dd>nyaa</dd>
+                        </div>
+                        <div class="dc-card-meta-row">
+                            <dt>URL</dt>
+                            <dd><code>https://nyaa.si</code></dd>
+                        </div>
+                        <div class="dc-card-meta-row">
+                            <dt>Categories</dt>
+                            <dd>{% if config.allow_non_english %}All anime{% else %}English-translated{% endif %}</dd>
+                        </div>
+                        {% if let Some(pin) = config.nyaa_download_client_id %}
+                        <div class="dc-card-meta-row">
+                            <dt>Client</dt>
+                            <dd>{% for dc in download_clients %}{% if dc.id == *pin %}{{ dc.name }}{% endif %}{% endfor %}</dd>
+                        </div>
+                        {% endif %}
+                        {% if !config.default_restrict_to_uploader.is_empty() %}
+                        <div class="dc-card-meta-row">
+                            <dt>Uploader</dt>
+                            <dd>{{ config.default_restrict_to_uploader }}</dd>
+                        </div>
+                        {% endif %}
+                    </dl>
+                </div>
+            </article>
+
             {% if indexers.is_empty() %}
             <div class="dc-empty">
-                <p class="form-hint" style="margin: 0">No indexers configured yet. Pick a tile above to add one.</p>
+                <p class="form-hint" style="margin: 0">No indexers configured beyond the built-in Nyaa search. Pick a tile above to add one.</p>
             </div>
             {% endif %}
 

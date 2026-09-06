@@ -109,6 +109,14 @@ pub(crate) fn adult_needs_indexer(is_adult: bool, indexer_count: usize) -> bool 
     is_adult && indexer_count == 0
 }
 
+/// True when an automatic search has nowhere to look: the built-in
+/// Nyaa search is switched off on its Indexers-tab card and no indexer
+/// is configured. The auto-search toast and log say so instead of
+/// reporting an empty result as if the release did not exist.
+pub(crate) fn search_has_no_source(nyaa_enabled: bool, indexer_count: usize) -> bool {
+    !nyaa_enabled && indexer_count == 0
+}
+
 #[derive(Template)]
 #[template(path = "series.html")]
 struct SeriesTemplate {
@@ -473,5 +481,14 @@ mod adult_indexer_tests {
         assert!(!adult_needs_indexer(true, 1));
         assert!(!adult_needs_indexer(false, 0));
         assert!(!adult_needs_indexer(false, 3));
+    }
+
+    #[test]
+    fn search_has_no_source_only_when_nyaa_off_and_none_configured() {
+        use super::search_has_no_source;
+        assert!(search_has_no_source(false, 0));
+        assert!(!search_has_no_source(false, 1));
+        assert!(!search_has_no_source(true, 0));
+        assert!(!search_has_no_source(true, 2));
     }
 }

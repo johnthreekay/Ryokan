@@ -464,6 +464,14 @@ pub async fn sync_once(state: &AppState, trigger: &str) -> Result<SyncSummary, S
 /// invariant — Nyaa's items go in first so a release surfaced on
 /// both Nyaa and an indexer attributes to Nyaa for grab routing,
 /// matching the v1 behavior.
+/// Whether the built-in Nyaa feed is polled: the Nyaa card's RSS toggle
+/// (`rss_enabled`, with the older `disable_nyaa_rss` opt-out still
+/// honored) and the card's master switch. Indexer and direct feeds
+/// have their own per-row flags; `rss_master_enabled` above them all.
+pub fn nyaa_rss_enabled(cfg: &config::Config) -> bool {
+    cfg.nyaa_enabled && cfg.rss_enabled && !cfg.disable_nyaa_rss
+}
+
 async fn fetch_all_sources(
     state: &AppState,
     cfg: &config::Config,
@@ -476,7 +484,7 @@ async fn fetch_all_sources(
     //    (Nyaa-specific opt-out for users who only
     //    want indexer-RSS / direct-RSS feeds polled). Master flag
     //    has already been honored at the sync_once_inner top.
-    if cfg.rss_enabled && !cfg.disable_nyaa_rss {
+    if nyaa_rss_enabled(cfg) {
         match fetch_feeds(cfg.allow_non_english, has_music_series).await {
             Ok(nyaa_items) => items.extend(nyaa_items),
             Err(err) => {
@@ -2431,3 +2439,30 @@ fn group_matches_blacklist(group: &str, blacklist: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod nyaa_gate_tests {
+    use super::*;
+
+    #[test]
+    fn nyaa_feed_needs_the_card_on_and_its_rss_toggle_on() {
+        let mut cfg = config::Config {
+            rss_enabled: true,
+            disable_nyaa_rss: false,
+            nyaa_enabled: true,
+            ..Default::default()
+        };
+        assert!(nyaa_rss_enabled(&cfg));
+        cfg.nyaa_enabled = false;
+        assert!(!nyaa_rss_enabled(&cfg), "the card's master switch wins");
+        cfg.nyaa_enabled = true;
+        cfg.disable_nyaa_rss = true;
+        assert!(
+            !nyaa_rss_enabled(&cfg),
+            "the older opt-out is still honored"
+        );
+        cfg.disable_nyaa_rss = false;
+        cfg.rss_enabled = false;
+        assert!(!nyaa_rss_enabled(&cfg));
+    }
+}

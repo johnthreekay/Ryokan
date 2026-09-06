@@ -23,7 +23,7 @@ The **Default client** checkbox is per-protocol, not global. You can have one de
 
 Add torznab indexers (typically fronted by Prowlarr) and newznab indexers (typically Jackett or direct from NZBGeek-style services) here. Direct RSS feeds from sources like SubsPlease also live in this tab.
 
-**Indexer** here means a search source. Ryokan ships with built-in Nyaa search; everything else lands in this tab.
+**Indexer** here means a search source. Ryokan ships with built-in Nyaa search, shown as the first card; everything else is added here.
 
 Each indexer row has a **Categories** field. Blank means automatic: Ryokan asks for anime (5070), adds Movies (2000) for a film and XXX (6000) for an adult title, and when the indexer reports none of those it asks for what the indexer does report, so a sukebei-only or movies-only indexer is never asked for a category it does not have. A value is sent as written on every search and poll, comma separated, Sonarr-style, for torznab and newznab rows alike. The edit form folds what the indexer offers under the field; click an entry to add or remove its id.
 
@@ -32,7 +32,7 @@ Each indexer row has an optional **download client pin** that overrides the per-
 Two more things live on this tab:
 
 - **autobrr webhook**: accepts inbound webhooks at `/api/webhook/autobrr`. [autobrr](https://autobrr.com) is a separate self-hosted tool that watches IRC announce channels for new releases and pushes matches as HTTP webhooks; this is the receiving side. The webhook has its own API key with a dedicated regenerate button, so an accidental tab POST can't silently rotate or wipe it.
-- **Nyaa search** pin: Ryokan's built-in Nyaa search is not an indexer row, so this section is where you pin it to a specific torrent client. **(use default)** routes Nyaa grabs to the torrent default.
+- **Nyaa**: the built-in search is the first card, marked built-in, and cannot be removed. Click it to turn it off, switch its RSS feed on or off, choose English-translated or every anime category for automatic grabs, pin it to a torrent client (**use default** routes Nyaa grabs to the default torrent client), or restrict it to one uploader by default. Off skips Nyaa in automatic and interactive searches and stops its feed; the Search page keeps working. A series can override the uploader restriction on its own page.
 
 ## Quality & Releases
 
@@ -44,7 +44,7 @@ The scoring inputs that decide which release wins when several match the same ep
 - **Finished-series quality**: a separate cutoff that applies once AniList marks the series as `FINISHED`. Pattern: WEB while a series is airing, BluRay once the season's done.
 - **Audio preference**: subtitled, dubbed, or no preference. Affects scoring, not filtering.
 - **SeaDex enabled**: when on, Ryokan consults [SeaDex](https://releases.moe) (a community-curated list of "best release" picks per AniList ID) and gives matching releases a large score bonus. Adding a Custom Format that uses the `SeaDexBest` spec automatically suppresses this toggle so you don't double-count.
-- **Default custom query tokens / restrict-to-uploader**: defaults pre-filled into the manual search modal so common filters don't have to be retyped.
+- **Default custom query tokens**: keywords added to every search, such as `bd 1080p`. A series can override them on its own page. The Nyaa uploader restriction lives on the Nyaa card of the Indexers tab.
 
 ## Custom Formats
 
@@ -73,9 +73,8 @@ Issue API keys for outside tools that need to talk to Ryokan. Each key gets a na
 Day-to-day knobs.
 
 - **Media Root Path**: where Ryokan imports completed downloads. The value is the path *inside* Ryokan's container. With the default compose, `/media/anime` maps to `/srv/media/anime` on the host.
-- **Enable automatic RSS sync**: polls the official Nyaa anime RSS feed on the interval below and auto-grabs matching releases.
+- **Enable automatic RSS sync**: the master switch. Nyaa's feed, indexer feeds, and direct feeds are polled on the interval below and matching releases are grabbed. Each source also has its own RSS switch on the Indexers tab.
 - **RSS Sync Interval (minutes)**: how often the background RSS poller runs. Default 15 minutes; minimum 1, maximum 60.
-- **Skip the Nyaa RSS feed**: the background poller skips Nyaa entirely; indexer RSS feeds (torznab / newznab) and direct RSS feeds still run on the same interval. Use it when you only want releases from your configured indexers.
 - **Enable post-processing**: rename and move completed downloads into the media library and write NFO sidecars for Jellyfin. Needs a media root and a download client.
 - **File operation mode**: `hardlink` (default; keeps the torrent seeding by sharing the same inode between the download folder and the library), `copy`, or `move`. Hardlink automatically falls back to copy when the source and destination are on different filesystems (where hardlinks aren't possible).
 - **Give up on stuck imports after (hours)**: when the download client reports a download finished but Ryokan still finds no video file to import after this many hours (the download folder is not visible to Ryokan, or the release turned out to be all extras), the download is marked failed, the episode shows as failed, an Import Failed notification goes out, and the release is listed under Downloads → Blocklist. Remove it from the blocklist to let a search grab it again. Default 24. `0` keeps retrying forever. Nothing is given up on in the first 15 minutes after a restart, so a download folder that mounts late is not mistaken for a stuck import. Leftover partial files from an import that stopped mid-copy (they end in `.ryokan-tmp` or `.ryokan-new`) are removed from the media library by the hourly cleanup once they are older than two hours; a `.ryokan-new` goes to the recycle bin when one is configured.
@@ -105,7 +104,6 @@ Day-to-day knobs.
 - **Add the series to the library when grabbing from Search**: on by default. Off sends the release to the download client without tracking the series.
 - **Interactive file picker**: whether the file picker opens for multi-file releases. **Batches only** (default) opens it for batches and one-clicks single-file releases; **Never** is one-click everywhere.
 - **Search for monitored episodes when a series is added**: on by default. Off adds the series without starting a download.
-- **Allow non-English releases in automatic grabs**: when off, auto-search and RSS use Nyaa's English-translated category. When on, they search every anime category, including untranslated and multi-sub releases. Interactive search always shows every category.
 - **Remove and blocklist detected misgrabs**: when the files inside a download clearly name a different series, Ryokan removes the download from the client, blocklists the release, notifies you, and searches again. On by default. Off keeps the download in the client, never imports it, and lists it under System, Misgrabs for you to restore or dismiss.
 
 ## On the System page (not Settings)

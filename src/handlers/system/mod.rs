@@ -349,7 +349,10 @@ pub async fn system_page(
         .as_ref()
         .map(|cfg| cfg.force_kitsu_fallback)
         .unwrap_or(false);
-    let rss_enabled = cfg.as_ref().map(|cfg| cfg.rss_enabled).unwrap_or(false);
+    let rss_enabled = cfg
+        .as_ref()
+        .map(|cfg| cfg.rss_master_enabled)
+        .unwrap_or(false);
     let rss_interval_minutes = cfg
         .as_ref()
         .map(|cfg| cfg.rss_interval_minutes)
@@ -530,7 +533,7 @@ pub async fn debug_settings_submit(
             ("external_sync", LogCategory::ExternalSync.label()),
             ("notifications", LogCategory::Notifications.label()),
         ],
-        rss_enabled: cfg.rss_enabled,
+        rss_enabled: cfg.rss_master_enabled,
         rss_interval_minutes: cfg.rss_interval_minutes,
         rss_last_run: rss::latest_run(&state.db).await.unwrap_or(None),
         rss_recent: Vec::new(),

@@ -17,6 +17,7 @@ use axum_htmx::HxRequest;
 use serde::Deserialize;
 
 use crate::AppState;
+use crate::models::config;
 use crate::models::download_clients::DownloadClientRow;
 use crate::models::indexers::{
     Indexer, IndexerForm, KIND_NEWZNAB, KIND_TORZNAB, delete, insert, list_all, update,
@@ -66,6 +67,11 @@ struct IndexerSectionPartial {
     indexers: Vec<Indexer>,
     download_clients: Vec<DownloadClientRow>,
     indexer_catalog: &'static [SeededIndexer],
+    /// The built-in Nyaa card reads its fields straight off the config
+    /// row (`nyaa_enabled`, `rss_enabled` / `disable_nyaa_rss`,
+    /// `allow_non_english`, `nyaa_download_client_id`,
+    /// `default_restrict_to_uploader`); Nyaa is not an `indexers` row.
+    config: config::Config,
 }
 
 impl IndexerSectionPartial {
@@ -137,12 +143,230 @@ async fn render_section(state: &AppState) -> Response {
     let download_clients = crate::models::download_clients::list_all(&state.db)
         .await
         .unwrap_or_default();
+    let config = config::get_config(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     IndexerSectionPartial {
         indexers,
         download_clients,
         indexer_catalog: SEEDED,
+        config,
     }
     .into_html_ok()
+}
+
+// ── The built-in Nyaa card ──────────────────────────────────────────
+//
+// Nyaa is not an `indexers` row and never becomes one: the `Indexer`
+// trait is for torznab / newznab, and the source classifier reads
+// Nyaa's description body directly. Its settings live on `config`,
+// and the card on the Indexers tab is rendered from that row. This
+// endpoint is the only writer for those six columns; every tab form
+// preserves them (`settings_submit`, `settings_general_submit`,
+// `settings_quality_submit`), so a General save can never clobber a
+// Nyaa change made a moment earlier.
+
+/// Modal body for the built-in Nyaa card.
+#[derive(Template)]
+#[template(path = "partials/settings/indexers/nyaa_form_body.html")]
+struct NyaaFormPartial {
+    config: config::Config,
+    download_clients: Vec<DownloadClientRow>,
+}
+
+impl NyaaFormPartial {
+    fn into_html_ok(self) -> Response {
+        Html(self.render().unwrap_or_default()).into_response()
+    }
+}
+
+/// Form payload for the Nyaa card's modal. Checkboxes POST only when
+/// checked, so every field is optional.
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct NyaaSettingsForm {
+    /// The built-in search as a whole.
+    #[serde(default)]
+    pub enabled: Option<String>,
+    /// Poll the Nyaa anime feed on every RSS sync.
+    #[serde(default)]
+    pub rss_enabled: Option<String>,
+    /// `english` (Nyaa's English-translated category) or `all` (every
+    /// anime category). Anything else reads as `english`.
+    #[serde(default)]
+    pub categories: Option<String>,
+    /// Torrent client that receives Nyaa grabs. Empty = the default.
+    #[serde(default)]
+    pub download_client_id: Option<String>,
+    /// Only take releases from this Nyaa account. Empty = any.
+    #[serde(default)]
+    pub default_restrict_to_uploader: Option<String>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/settings/indexers/nyaa/edit-form",
+    tag = "Settings",
+    summary = "Render the edit form body for the built-in Nyaa card",
+    description = "Returns the nyaa_form_body.html fragment, prefilled from the config row, swapped into the shared indexer modal body when the user clicks the Nyaa card on the Indexers tab.",
+    responses(
+        (status = 200, description = "HTML fragment"),
+    ),
+)]
+pub async fn settings_indexers_nyaa_form(State(state): State<AppState>) -> Response {
+    let config = match config::get_config(&state.db).await {
+        Ok(cfg) => cfg.unwrap_or_default(),
+        Err(e) => {
+            return ModalErrorPartial {
+                message: format!("Failed to load settings: {e}"),
+            }
+            .into_html_ok();
+        }
+    };
+    let download_clients = crate::models::download_clients::list_all(&state.db)
+        .await
+        .unwrap_or_default();
+    NyaaFormPartial {
+        config,
+        download_clients,
+    }
+    .into_html_ok()
+}
+
+#[utoipa::path(
+    post,
+    path = "/settings/indexers/nyaa",
+    tag = "Settings",
+    summary = "Save the built-in Nyaa card",
+    description = "Writes the Nyaa-only settings (`nyaa_enabled`, the Nyaa RSS toggle, the category choice, the download client pin, and the default uploader restriction) in one place. A usenet client pin is refused: Nyaa returns torrents. HTMX callers get the re-rendered Indexers section; others are redirected back to the tab.",
+    responses(
+        (status = 200, description = "Re-rendered Indexers section (HTMX)"),
+        (status = 303, description = "Redirect back to the Indexers tab"),
+    ),
+)]
+pub async fn settings_indexers_nyaa_save(
+    State(state): State<AppState>,
+    HxRequest(is_htmx): HxRequest,
+    Form(form): Form<NyaaSettingsForm>,
+) -> Response {
+    let pin: Option<i64> = form
+        .download_client_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<i64>().ok());
+    // Protocol guard: Nyaa surfaces torrent magnets / .torrent URLs. A
+    // usenet pin would resolve at grab time and fail at the client's
+    // add path, so refuse it here. Fail closed on a DB error during
+    // the lookup rather than letting the pin slip through; a client
+    // deleted between page load and submit is allowed (the pin then
+    // falls back to the default at grab time).
+    if let Some(client_id) = pin {
+        let row = match crate::models::download_clients::get_by_id(&state.db, client_id).await {
+            Ok(row) => row,
+            Err(e) => {
+                let msg = urlencoding::encode(&format!(
+                    "Couldn't verify the download client (DB error: {e}); please retry."
+                ))
+                .into_owned();
+                return error_redirect(is_htmx, &msg);
+            }
+        };
+        if let Some(row) = row
+            && let Some(client_proto) =
+                crate::services::download_client::protocol_for_client_kind(&row.kind)
+            && client_proto != "torrent"
+        {
+            let msg = urlencoding::encode(&format!(
+                "Can't send Nyaa grabs to a {} client (Nyaa returns torrents; {} accepts {client_proto})",
+                row.kind, row.kind
+            ))
+            .into_owned();
+            return error_redirect(is_htmx, &msg);
+        }
+    }
+
+    // Read-modify-write under the same lock the tab forms hold, so a
+    // General save in flight cannot write back the values it read
+    // before this one landed.
+    let _guard = super::CONFIG_WRITE_LOCK.lock().await;
+    let mut cfg = match config::get_config(&state.db).await {
+        Ok(cfg) => cfg.unwrap_or_default(),
+        Err(e) => {
+            logger::error(
+                &state.db,
+                LogCategory::System,
+                "Nyaa settings save failed",
+                &e.to_string(),
+            )
+            .await;
+            return error_redirect(is_htmx, "Save+failed");
+        }
+    };
+    let rss_on = form.rss_enabled.is_some();
+    cfg.nyaa_enabled = form.enabled.is_some();
+    cfg.rss_enabled = rss_on;
+    cfg.disable_nyaa_rss = !rss_on;
+    cfg.allow_non_english = form.categories.as_deref() == Some("all");
+    cfg.nyaa_download_client_id = pin;
+    cfg.default_restrict_to_uploader = form
+        .default_restrict_to_uploader
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    // `save_config` leaves `nyaa_download_client_id` alone on purpose
+    // (the column has always had a single dedicated writer), so the
+    // pin is written separately, still under the lock.
+    let saved = match config::save_config(&state.db, &cfg).await {
+        Ok(()) => sqlx::query("UPDATE config SET nyaa_download_client_id = ? WHERE id = 1")
+            .bind(pin)
+            .execute(&state.db)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    match saved {
+        Ok(()) => {
+            logger::info(
+                &state.db,
+                LogCategory::System,
+                "Nyaa settings updated",
+                &format!(
+                    "enabled={}, rss={}, categories={}, download_client_id={pin:?}, uploader={:?}",
+                    cfg.nyaa_enabled,
+                    rss_on,
+                    if cfg.allow_non_english {
+                        "all"
+                    } else {
+                        "english"
+                    },
+                    cfg.default_restrict_to_uploader
+                ),
+            )
+            .await;
+            drop(_guard);
+            if is_htmx {
+                render_section(&state).await
+            } else {
+                crate::handlers::responses::htmx_aware_redirect(
+                    is_htmx,
+                    "/settings?tab=indexers&msg=Nyaa+settings+saved",
+                )
+            }
+        }
+        Err(e) => {
+            logger::error(
+                &state.db,
+                LogCategory::System,
+                "Nyaa settings save failed",
+                &e,
+            )
+            .await;
+            error_redirect(is_htmx, "Save+failed")
+        }
+    }
 }
 
 /// Form for create/update — `id == None` creates, `id == Some(n)`
@@ -1305,6 +1529,215 @@ mod tests {
                     || location.contains("Indexer%20%27id%3d9999%27%20deleted")
                     || location.contains("Indexer+%27id%3d9999%27+deleted"),
                 "expected id-based fallback in deleted-toast; got: {location}"
+            );
+        }
+    }
+
+    mod nyaa_card {
+        use super::*;
+        use crate::models::download_clients::DownloadClientForm;
+        use crate::test_support::{build_test_app_state, in_memory_pool};
+        use axum::extract::{Form, State};
+        use axum::response::IntoResponse;
+        use axum_htmx::HxRequest;
+
+        async fn client(db: &sqlx::SqlitePool, name: &str, kind: &str) -> i64 {
+            crate::models::download_clients::insert(
+                db,
+                DownloadClientForm {
+                    name,
+                    kind,
+                    url: "http://client.local",
+                    username: "",
+                    password: "key",
+                    label: "",
+                    download_path: "",
+                    enabled: true,
+                    is_default: false,
+                },
+            )
+            .await
+            .unwrap()
+        }
+
+        fn form(
+            enabled: bool,
+            rss: bool,
+            categories: &str,
+            pin: Option<i64>,
+            uploader: &str,
+        ) -> NyaaSettingsForm {
+            NyaaSettingsForm {
+                enabled: enabled.then(String::new),
+                rss_enabled: rss.then(String::new),
+                categories: Some(categories.to_string()),
+                download_client_id: Some(pin.map(|p| p.to_string()).unwrap_or_default()),
+                default_restrict_to_uploader: Some(uploader.to_string()),
+            }
+        }
+
+        fn location(resp: Response) -> String {
+            resp.headers()
+                .get("location")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string()
+        }
+
+        #[tokio::test]
+        async fn save_writes_every_nyaa_field_and_clears_them_again() {
+            let db = in_memory_pool().await;
+            let qbit = client(&db, "qbit", "qbittorrent").await;
+            let state = build_test_app_state(db.clone(), None);
+
+            let resp = settings_indexers_nyaa_save(
+                State(state.clone()),
+                HxRequest(false),
+                Form(form(false, false, "all", Some(qbit), "  SubsPlease ")),
+            )
+            .await
+            .into_response();
+            assert!(
+                location(resp).contains("msg="),
+                "a clean save redirects back to the tab with a message"
+            );
+            let saved = config::get_config(&db).await.unwrap().unwrap();
+            assert!(!saved.nyaa_enabled);
+            assert!(!saved.rss_enabled);
+            assert!(saved.disable_nyaa_rss);
+            assert!(saved.allow_non_english);
+            assert_eq!(saved.nyaa_download_client_id, Some(qbit));
+            assert_eq!(saved.default_restrict_to_uploader, "SubsPlease");
+
+            // Unchecked boxes arrive as `None`; a blank pin clears it.
+            let _ = settings_indexers_nyaa_save(
+                State(state.clone()),
+                HxRequest(false),
+                Form(form(true, true, "english", None, "")),
+            )
+            .await;
+            let saved = config::get_config(&db).await.unwrap().unwrap();
+            assert!(saved.nyaa_enabled);
+            assert!(saved.rss_enabled);
+            assert!(!saved.disable_nyaa_rss);
+            assert!(!saved.allow_non_english);
+            assert_eq!(saved.nyaa_download_client_id, None);
+            assert_eq!(saved.default_restrict_to_uploader, "");
+        }
+
+        #[tokio::test]
+        async fn save_leaves_every_other_setting_alone() {
+            let db = in_memory_pool().await;
+            let state = build_test_app_state(db.clone(), None);
+            let seed = config::Config {
+                media_root: "/seed/media".to_string(),
+                rss_master_enabled: false,
+                rss_interval_minutes: 42,
+                default_custom_query_tokens: "bd 1080p".to_string(),
+                ..Default::default()
+            };
+            config::save_config(&db, &seed).await.unwrap();
+
+            let _ = settings_indexers_nyaa_save(
+                State(state),
+                HxRequest(false),
+                Form(form(true, false, "english", None, "Erai-raws")),
+            )
+            .await;
+            let saved = config::get_config(&db).await.unwrap().unwrap();
+            assert_eq!(saved.media_root, "/seed/media");
+            assert!(!saved.rss_master_enabled);
+            assert_eq!(saved.rss_interval_minutes, 42);
+            assert_eq!(saved.default_custom_query_tokens, "bd 1080p");
+            assert_eq!(saved.default_restrict_to_uploader, "Erai-raws");
+        }
+
+        /// Nyaa surfaces torrent magnets, so pinning it to a SAB (usenet)
+        /// client would resolve at grab time and fail at SAB's
+        /// `mode=addurl`. Reject the save with a clear toast.
+        #[tokio::test]
+        async fn usenet_pin_is_refused_and_nothing_is_written() {
+            let db = in_memory_pool().await;
+            let sab = client(&db, "SAB", "sabnzbd").await;
+            let state = build_test_app_state(db.clone(), None);
+            let resp = settings_indexers_nyaa_save(
+                State(state),
+                HxRequest(false),
+                Form(form(false, false, "all", Some(sab), "x")),
+            )
+            .await
+            .into_response();
+            let loc = location(resp);
+            assert!(
+                loc.contains("err=") && loc.contains("Nyaa"),
+                "expected protocol-mismatch err redirect, got: {loc}"
+            );
+            let saved = config::get_config(&db).await.unwrap();
+            assert!(
+                saved
+                    .map(|c| c.nyaa_enabled && c.nyaa_download_client_id.is_none())
+                    .unwrap_or(true),
+                "a refused save must not write any of the fields"
+            );
+        }
+
+        /// A transient DB error on the pin's protocol lookup must not
+        /// silently skip the gate.
+        #[tokio::test]
+        async fn db_error_during_pin_lookup_fails_closed() {
+            let db = in_memory_pool().await;
+            let sab = client(&db, "SAB", "sabnzbd").await;
+            let state = build_test_app_state(db.clone(), None);
+            db.close().await;
+            let resp = settings_indexers_nyaa_save(
+                State(state),
+                HxRequest(false),
+                Form(form(true, true, "english", Some(sab), "")),
+            )
+            .await
+            .into_response();
+            let loc = location(resp);
+            assert!(
+                loc.contains("err=") && (loc.contains("DB%20error") || loc.contains("DB+error")),
+                "expected fail-closed err redirect mentioning DB error, got: {loc}"
+            );
+        }
+
+        #[tokio::test]
+        async fn edit_form_reflects_the_config_row() {
+            let db = in_memory_pool().await;
+            let qbit = client(&db, "qbit", "qbittorrent").await;
+            let _sab = client(&db, "SAB", "sabnzbd").await;
+            let seed = config::Config {
+                nyaa_enabled: false,
+                allow_non_english: true,
+                default_restrict_to_uploader: "SubsPlease".to_string(),
+                ..Default::default()
+            };
+            config::save_config(&db, &seed).await.unwrap();
+            sqlx::query("UPDATE config SET nyaa_download_client_id = ? WHERE id = 1")
+                .bind(qbit)
+                .execute(&db)
+                .await
+                .unwrap();
+            let state = build_test_app_state(db, None);
+
+            let resp = settings_indexers_nyaa_form(State(state)).await;
+            let body = String::from_utf8(
+                axum::body::to_bytes(resp.into_body(), usize::MAX)
+                    .await
+                    .unwrap()
+                    .to_vec(),
+            )
+            .unwrap();
+            assert!(body.contains(r#"action="/settings/indexers/nyaa""#));
+            assert!(!body.contains(r#"name="enabled" checked"#));
+            assert!(body.contains(r#"value="all" selected"#));
+            assert!(body.contains(r#"value="SubsPlease""#));
+            assert!(body.contains(">qbit<") || body.contains("qbit"));
+            assert!(
+                !body.contains("SAB"),
+                "usenet clients are not offered for a torrent-only source"
             );
         }
     }

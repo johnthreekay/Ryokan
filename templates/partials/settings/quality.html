@@ -103,9 +103,8 @@
             {# #23 — Global search defaults. Per-series overrides on the
                series detail page take precedence when set. The token field
                reaches every configured indexer (Nyaa + torznab / newznab)
-               via the shared query-build path. The uploader field is
-               Nyaa-only by construction (no torznab equivalent) and lives
-               in its own fieldset below. #}
+               via the shared query-build path. The Nyaa-only uploader
+               restriction lives on the Nyaa card (Indexers tab). #}
             <div class="form-group">
                 <label for="default_custom_query_tokens">Default Custom Query Tokens</label>
                 <input type="text" name="default_custom_query_tokens" id="default_custom_query_tokens" value="{{ config.default_custom_query_tokens }}" placeholder="bd 1080p">
@@ -113,12 +112,3 @@
             </div>
         </div>
 
-        <div class="cf-section">
-            <h3>Nyaa-only defaults</h3>
-            <p class="cf-section-desc">Only the built-in Nyaa search uses these.</p>
-            <div class="form-group">
-                <label for="default_restrict_to_uploader">Default Restrict to Uploader</label>
-                <input type="text" name="default_restrict_to_uploader" id="default_restrict_to_uploader" value="{{ config.default_restrict_to_uploader }}" placeholder="SubsPlease">
-                <span class="form-hint">Only show releases from this Nyaa account. A series can override this on its own page.</span>
-            </div>
-        </div>

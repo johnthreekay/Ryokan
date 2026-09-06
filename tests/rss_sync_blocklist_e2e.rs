@@ -7,8 +7,8 @@
 //! before the client add, rather than in isolation.
 //!
 //! No env var to coordinate: the feed URL is a table row. Nyaa's own
-//! RSS stays off (`rss_enabled` defaults to false) so the only source
-//! is the wiremock feed.
+//! RSS is switched off in the seeded config (it is on by default) so
+//! the only source is the wiremock feed.
 
 use async_trait::async_trait;
 use ryokan::models::direct_rss_feeds::{self, DirectRssFeedForm};
@@ -158,6 +158,15 @@ async fn rss_sync_rejects_blocklisted_releases_by_hash_and_by_title() {
         .await;
 
     let db = in_memory_pool().await;
+    ryokan::models::config::save_config(
+        &db,
+        &ryokan::models::config::Config {
+            rss_enabled: false,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("seed config with the Nyaa feed off");
     let series_id = seed_monitored_series(&db).await;
     direct_rss_feeds::insert(
         &db,
@@ -250,6 +259,15 @@ async fn rss_sync_grabs_the_same_items_when_nothing_is_blocklisted() {
         .await;
 
     let db = in_memory_pool().await;
+    ryokan::models::config::save_config(
+        &db,
+        &ryokan::models::config::Config {
+            rss_enabled: false,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("seed config with the Nyaa feed off");
     seed_monitored_series(&db).await;
     direct_rss_feeds::insert(
         &db,

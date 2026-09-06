@@ -679,6 +679,7 @@ mod non_htmx_path {
             rss_enabled: true,
             rss_interval_minutes: 20,
             disable_nyaa_rss: false,
+            nyaa_enabled: true,
             post_processing_enabled: true,
             post_processing_mode: "copy".to_string(),
             search_on_monitoring_change: true,
@@ -714,17 +715,15 @@ mod non_htmx_path {
             axum::Form(GeneralForm {
                 media_root: "/submit/media".to_string(),
                 title_language: "romaji".to_string(),
-                rss_enabled: None,                        // submit→false, seed=true
-                rss_interval_minutes: 45,                 // seed=20
-                disable_nyaa_rss: Some(String::new()),    // submit→true, seed=false
-                post_processing_enabled: None,            // submit→false, seed=true
+                rss_master_enabled: None,      // submit→false, seed=true
+                rss_interval_minutes: 45,      // seed=20
+                post_processing_enabled: None, // submit→false, seed=true
                 post_processing_mode: "move".to_string(), // seed=copy
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None, // submit→false, seed=true
                 misgrab_auto_remove: None,
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
-                allow_non_english: None,
                 recycle_bin_path: "/submit/recycle/".to_string(), // seed=/seed/recycle; trailing slash trimmed
                 recycle_bin_age_days: 45,                         // seed=7
                 import_stall_hours: 24,
@@ -752,9 +751,10 @@ mod non_htmx_path {
         // Every General-tab field round-trips at the submitted value.
         assert_eq!(saved.media_root, "/submit/media");
         assert_eq!(saved.title_language, "romaji");
-        assert!(!saved.rss_enabled);
+        assert!(!saved.rss_master_enabled);
+        assert!(saved.rss_enabled, "Nyaa-card fields are preserved");
         assert_eq!(saved.rss_interval_minutes, 45);
-        assert!(saved.disable_nyaa_rss);
+        assert!(!saved.disable_nyaa_rss, "Nyaa-card fields are preserved");
         assert!(!saved.post_processing_enabled);
         assert_eq!(saved.post_processing_mode, "move");
         assert!(!saved.search_on_monitoring_change);
@@ -792,7 +792,6 @@ mod non_htmx_path {
                 upgrade_search_enabled: Some(String::new()),     // seed=false → submit→true
                 seadex_enabled: None,                            // seed=true → submit→false
                 default_custom_query_tokens: Some("submit-tokens".to_string()), // seed=seed-tokens
-                default_restrict_to_uploader: Some("submit-uploader".to_string()), // seed=seed-uploader
             }),
         )
         .await
@@ -818,7 +817,10 @@ mod non_htmx_path {
         assert!(saved.upgrade_search_enabled);
         assert!(!saved.seadex_enabled);
         assert_eq!(saved.default_custom_query_tokens, "submit-tokens");
-        assert_eq!(saved.default_restrict_to_uploader, "submit-uploader");
+        assert_eq!(
+            saved.default_restrict_to_uploader, "seed-uploader",
+            "Nyaa-card fields are preserved"
+        );
         // Cross-tab fields (General + Integrations) stay at seed.
         assert_eq!(saved.media_root, "/seed/media");
         assert_eq!(saved.jellyfin_url, "http://jelly.seed:8096");
@@ -938,9 +940,8 @@ mod non_htmx_path {
         let form = |checked: bool| GeneralForm {
             media_root: String::new(),
             title_language: "english".to_string(),
-            rss_enabled: None,
+            rss_master_enabled: None,
             rss_interval_minutes: 15,
-            disable_nyaa_rss: None,
             post_processing_enabled: None,
             post_processing_mode: "hardlink".to_string(),
             search_on_monitoring_change: None,
@@ -948,7 +949,6 @@ mod non_htmx_path {
             misgrab_auto_remove: checked.then(String::new),
             grab_preview_mode: None,
             auto_grab_on_add: None,
-            allow_non_english: None,
             recycle_bin_path: String::new(),
             recycle_bin_age_days: 30,
             import_stall_hours: 24,
@@ -987,9 +987,8 @@ mod non_htmx_path {
         let form = |hours: i64| GeneralForm {
             media_root: String::new(),
             title_language: "english".to_string(),
-            rss_enabled: None,
+            rss_master_enabled: None,
             rss_interval_minutes: 15,
-            disable_nyaa_rss: None,
             post_processing_enabled: None,
             post_processing_mode: "hardlink".to_string(),
             search_on_monitoring_change: None,
@@ -997,7 +996,6 @@ mod non_htmx_path {
             misgrab_auto_remove: None,
             grab_preview_mode: None,
             auto_grab_on_add: None,
-            allow_non_english: None,
             recycle_bin_path: String::new(),
             recycle_bin_age_days: 30,
             import_stall_hours: hours,
@@ -1033,9 +1031,8 @@ mod non_htmx_path {
             axum::Form(GeneralForm {
                 media_root: String::new(),
                 title_language: "english".to_string(),
-                rss_enabled: None,
+                rss_master_enabled: None,
                 rss_interval_minutes: 15,
-                disable_nyaa_rss: None,
                 post_processing_enabled: None,
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
@@ -1043,7 +1040,6 @@ mod non_htmx_path {
                 misgrab_auto_remove: None,
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
-                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 import_stall_hours: 24,
@@ -1081,9 +1077,8 @@ mod non_htmx_path {
             axum::Form(GeneralForm {
                 media_root: "/nonexistent-test-path-9b3a2".to_string(),
                 title_language: "english".to_string(),
-                rss_enabled: None,
+                rss_master_enabled: None,
                 rss_interval_minutes: 15,
-                disable_nyaa_rss: None,
                 post_processing_enabled: None,
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
@@ -1091,7 +1086,6 @@ mod non_htmx_path {
                 misgrab_auto_remove: None,
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
-                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 import_stall_hours: 24,
@@ -1132,9 +1126,8 @@ mod non_htmx_path {
             axum::Form(GeneralForm {
                 media_root: path.clone(),
                 title_language: "english".to_string(),
-                rss_enabled: None,
+                rss_master_enabled: None,
                 rss_interval_minutes: 15,
-                disable_nyaa_rss: None,
                 post_processing_enabled: None,
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
@@ -1142,7 +1135,6 @@ mod non_htmx_path {
                 misgrab_auto_remove: None,
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
-                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 import_stall_hours: 24,
@@ -1193,9 +1185,8 @@ mod non_htmx_path {
             axum::Form(GeneralForm {
                 media_root: String::new(),
                 title_language: "english".to_string(),
-                rss_enabled: None,
+                rss_master_enabled: None,
                 rss_interval_minutes: 15,
-                disable_nyaa_rss: None,
                 post_processing_enabled: None,
                 post_processing_mode: "garbage".to_string(),
                 search_on_monitoring_change: None,
@@ -1203,7 +1194,6 @@ mod non_htmx_path {
                 misgrab_auto_remove: None,
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
-                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 import_stall_hours: 24,
@@ -1236,9 +1226,8 @@ mod non_htmx_path {
             axum::Form(GeneralForm {
                 media_root: String::new(),
                 title_language: "klingon".to_string(),
-                rss_enabled: None,
+                rss_master_enabled: None,
                 rss_interval_minutes: 15,
-                disable_nyaa_rss: None,
                 post_processing_enabled: None,
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
@@ -1246,7 +1235,6 @@ mod non_htmx_path {
                 misgrab_auto_remove: None,
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
-                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 import_stall_hours: 24,
@@ -1288,7 +1276,6 @@ mod non_htmx_path {
                 upgrade_search_enabled: None,
                 seadex_enabled: None,
                 default_custom_query_tokens: None,
-                default_restrict_to_uploader: None,
             }),
         )
         .await
@@ -1664,9 +1651,8 @@ mod non_htmx_path {
             axum::Form(GeneralForm {
                 media_root: String::new(),
                 title_language: "romaji".to_string(),
-                rss_enabled: None,
+                rss_master_enabled: None,
                 rss_interval_minutes: 15,
-                disable_nyaa_rss: None,
                 post_processing_enabled: None,
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
@@ -1674,7 +1660,6 @@ mod non_htmx_path {
                 misgrab_auto_remove: None,
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
-                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 import_stall_hours: 24,
@@ -1702,7 +1687,6 @@ mod non_htmx_path {
                 upgrade_search_enabled: None,
                 seadex_enabled: None,
                 default_custom_query_tokens: None,
-                default_restrict_to_uploader: None,
             }),
         );
         let (_a, _b) = tokio::join!(general, quality);
@@ -1733,9 +1717,8 @@ mod non_htmx_path {
             axum::Form(GeneralForm {
                 media_root: String::new(),
                 title_language: "english".to_string(),
-                rss_enabled: None,
+                rss_master_enabled: None,
                 rss_interval_minutes: 15,
-                disable_nyaa_rss: None,
                 post_processing_enabled: None,
                 post_processing_mode: "hardlink".to_string(),
                 search_on_monitoring_change: None,
@@ -1743,7 +1726,6 @@ mod non_htmx_path {
                 misgrab_auto_remove: None,
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
-                allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
                 import_stall_hours: 24,
@@ -1793,9 +1775,8 @@ mod naming_templates {
         GeneralForm {
             media_root: "/media".to_string(),
             title_language: "english".to_string(),
-            rss_enabled: None,
+            rss_master_enabled: None,
             rss_interval_minutes: 15,
-            disable_nyaa_rss: None,
             post_processing_enabled: Some(String::new()),
             post_processing_mode: "hardlink".to_string(),
             search_on_monitoring_change: None,
@@ -1803,7 +1784,6 @@ mod naming_templates {
             misgrab_auto_remove: None,
             grab_preview_mode: None,
             auto_grab_on_add: None,
-            allow_non_english: None,
             recycle_bin_path: String::new(),
             recycle_bin_age_days: 14,
             import_stall_hours: 24,

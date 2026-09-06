@@ -148,7 +148,7 @@ pub async fn find_all_for_target(
     let expected_season = infer_season_from_detail(detail);
     let sibling_aliases = collect_sibling_aliases(detail, &aliases);
     let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases);
-    let categories = quality::nyaa_categories_for_format(&detail.format, config.allow_non_english);
+    let categories = nyaa_search_categories(config, &detail.format);
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
 
@@ -549,7 +549,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
         }
     }
 
-    let categories = quality::nyaa_categories_for_format(&detail.format, config.allow_non_english);
+    let categories = nyaa_search_categories(config, &detail.format);
     let indexers_arc = indexers_cache.read().await.clone();
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
@@ -828,7 +828,7 @@ async fn collect_scored_for_target(
         }
     }
 
-    let categories = quality::nyaa_categories_for_format(&detail.format, config.allow_non_english);
+    let categories = nyaa_search_categories(config, &detail.format);
     let indexers_arc = indexers_cache.read().await.clone();
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
@@ -1825,6 +1825,18 @@ async fn resolve_search_overrides(
             alternate_titles: Vec::new(),
         },
     }
+}
+
+/// Nyaa categories for one series, or none at all when the built-in
+/// Nyaa search is switched off on its Indexers-tab card. An empty list
+/// builds no Nyaa queries, so every collector then runs on the
+/// configured indexers alone; the fan-out and merge need no other
+/// change.
+fn nyaa_search_categories(config: &Config, format: &str) -> Vec<String> {
+    if !config.nyaa_enabled {
+        return Vec::new();
+    }
+    quality::nyaa_categories_for_format(format, config.allow_non_english)
 }
 
 /// Async entry-point variant — hits the DB for franchise aliases when
@@ -3003,5 +3015,30 @@ mod tests {
         let p2 = candidates[2].match_provenance.as_ref().expect("stamped");
         assert_eq!(p2.kind, MatchKind::SeadexCurated);
         assert!(p2.alias.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod nyaa_gate_tests {
+    use super::*;
+
+    #[test]
+    fn nyaa_off_builds_no_categories_and_on_matches_the_quality_table() {
+        let mut config = Config {
+            allow_non_english: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            nyaa_search_categories(&config, "TV"),
+            quality::nyaa_categories_for_format("TV", true)
+        );
+        config.allow_non_english = false;
+        assert_eq!(
+            nyaa_search_categories(&config, "MUSIC"),
+            quality::nyaa_categories_for_format("MUSIC", false)
+        );
+        config.nyaa_enabled = false;
+        assert!(nyaa_search_categories(&config, "TV").is_empty());
+        assert!(nyaa_search_categories(&config, "MUSIC").is_empty());
     }
 }
