@@ -97,6 +97,13 @@
                        data-first-torrent="{% if first_torrent_client %}1{% else %}0{% endif %}"
                        data-first-usenet="{% if first_usenet_client %}1{% else %}0{% endif %}">
             </label>
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Remove completed downloads</span>
+                    <span class="setting-row-desc">Remove an imported download from this client, files included, once the client reports it finished seeding. Usenet jobs and Move-mode torrents go right after import. Partial and failed imports stay; the library keeps its own copy.</span>
+                </span>
+                <input type="checkbox" name="remove_completed" checked>
+            </label>
         </div>
     </div>
     <div class="modal-footer">

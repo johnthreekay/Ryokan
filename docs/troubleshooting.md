@@ -68,6 +68,15 @@ Ryokan does not wait forever. Once a finished download has gone 24 hours (Settin
 
 These are partial copies from an import that stopped mid-copy (a restart or crash while moving a large file across filesystems, or while replacing a file during an upgrade). Media servers may index them as broken episodes. The hourly cleanup removes any that are older than two hours, waiting for a running import to finish first; a fresh one is a copy in progress, so leave it alone. A `.ryokan-tmp` is deleted outright because it is never the only copy. A `.ryokan-new` is a complete file that an upgrade was about to swap in, so it goes to the recycle bin when one is configured, listed under the name of its series folder. Restore puts the hidden temporary file back exactly as it was, and the next cleanup sweeps it again. To keep the file, rename it in the season folder instead: drop the leading dot and the `.ryokan-new` ending.
 
+## Finished downloads stay in the client
+
+Since 1.9.3 Ryokan removes a download from its client once the download is imported and nothing is left to seed. If one is still there:
+
+- **The client's box is off.** Settings → Connections → Downloads, edit the client, and check **Remove completed downloads**.
+- **The client has not finished seeding it.** In hardlink or copy mode a torrent leaves only when the client itself stops it at a ratio, seeding-time, or inactivity limit. Give the client a limit, and make sure its action when the limit is reached is to pause or stop the torrent, not delete it (Ryokan deletes after the import). rTorrent needs a ratio group in `.rtorrent.rc` with its default action, which closes the item and marks it. A torrent you paused or stopped by hand is left alone on purpose.
+- **The import was partial or failed.** Those stay in the client so you can look at them.
+- **It just finished.** The check runs every five minutes. System → Logs, category PostProcess, shows a "Removed ... from the download client" line for each one that went.
+
 ## Series-page state is stale
 
 Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. If something looks wrong:

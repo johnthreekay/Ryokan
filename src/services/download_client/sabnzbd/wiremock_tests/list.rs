@@ -479,3 +479,46 @@ async fn list_scoped_returns_error_when_queue_endpoint_500s() {
         "queue 500 must surface as Err — silent empty-list would mask outages"
     );
 }
+
+#[tokio::test]
+async fn list_scoped_never_reports_seeding_done_for_usenet() {
+    // Issue #228: usenet has nothing to seed. A completed history job
+    // leaves SAB at import time (post-processing's removal path), so
+    // the finished-seed signal stays false and the client's protocol
+    // is what routes the removal.
+    let (server, client) = new_fixture().await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("mode", "queue"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "queue": { "slots": [] }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("mode", "history"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "history": {
+                "slots": [
+                    {
+                        "nzo_id": "SABnzbd_nzo_done",
+                        "name": "completed-show",
+                        "category": "ryokan-test",
+                        "status": "Completed",
+                        "storage": "/mnt/sab/complete/done",
+                        "bytes": 1024,
+                        "url": "",
+                    }
+                ]
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let items = client.list_scoped().await.expect("list_scoped");
+    let done = items.iter().find(|i| i.hash == "SABnzbd_nzo_done").unwrap();
+    assert_eq!(done.state_kind, DownloadItemState::PausedComplete);
+    assert!(!done.seeding_done);
+    assert_eq!(client.protocol(), "usenet");
+}

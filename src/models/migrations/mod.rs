@@ -2861,6 +2861,22 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         sqlx::query(sql).execute(db).await.ok();
     }
 
+    // Issue #228 — remove finished downloads from the client. The
+    // switch is per client (Sonarr's "Remove Completed"), default on.
+    // `client_removed_at` is stamped when post-processing removed an
+    // imported grab's item from its client, or found it already gone,
+    // so the finished-seed sweep stops looking at the row.
+    for sql in [
+        "ALTER TABLE download_clients ADD COLUMN remove_completed INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE grabbed_torrents ADD COLUMN client_removed_at TEXT",
+        // The file-operation mode a grab was imported under, so the
+        // sweep's move-mode rule never applies to a row imported by
+        // hardlink because the mode was switched later.
+        "ALTER TABLE grabbed_torrents ADD COLUMN import_mode TEXT",
+    ] {
+        sqlx::query(sql).execute(db).await.ok();
+    }
+
     Ok(())
 }
 

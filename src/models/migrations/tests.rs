@@ -1276,3 +1276,33 @@ async fn import_robustness_columns_exist_with_defaults() {
         .await
         .expect("second migrate is idempotent");
 }
+
+#[tokio::test]
+async fn client_removal_columns_exist_with_defaults() {
+    // Issue #228: the per-client remove-after-import switch and the
+    // per-grab stamps.
+    let db = fresh_migrated_pool().await;
+    for (table, col) in [
+        ("download_clients", "remove_completed"),
+        ("grabbed_torrents", "client_removed_at"),
+        ("grabbed_torrents", "import_mode"),
+    ] {
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?")
+            .bind(table)
+            .bind(col)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "{table}.{col} missing");
+    }
+    let default_on: String = sqlx::query_scalar(
+        "SELECT dflt_value FROM pragma_table_info('download_clients') WHERE name = 'remove_completed'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(default_on, "1", "removal is on by default for a new client");
+    crate::models::migrations::migrate(&db)
+        .await
+        .expect("second migrate is idempotent");
+}

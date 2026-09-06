@@ -2210,6 +2210,10 @@ async fn main() {
                         )
                         .await;
                         services::post_processing::run_once(&pp_state).await;
+                        // Issue #228: remove imported torrents whose
+                        // client reports seeding finished (throttled to
+                        // every 5 minutes inside).
+                        services::post_processing::sweep_finished_seeds(&pp_state).await;
                         let _ = models::scheduled_tasks::mark_finished(
                             &pp_state.db,
                             "post_processing",

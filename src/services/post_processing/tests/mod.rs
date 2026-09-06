@@ -21,6 +21,7 @@
 
 mod batch_import_live;
 mod batch_preflight;
+mod client_cleanup;
 mod file_ops;
 mod filenames;
 mod grab_claims_episode;
