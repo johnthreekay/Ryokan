@@ -134,18 +134,22 @@ impl Drop for TempDirGuard {
     }
 }
 
-/// Stream `path` as an attachment. `guard` rides along in the stream
-/// state so its cleanup runs when the body is done.
-async fn file_response(
-    path: &Path,
-    download_name: &str,
+/// The file's bytes in 64 KiB chunks, with `guard` riding along in the
+/// stream state so its cleanup runs when the body is done.
+///
+/// Fused on purpose: a body layer may poll the stream once more after
+/// it has ended (the compression middleware does, while it finishes
+/// its encoder), and a bare `unfold` panics on that. The panic killed
+/// the download mid-stream for every browser that advertised
+/// `Accept-Encoding`, while curl, which does not, got the whole file.
+fn file_stream(
+    file: tokio::fs::File,
     guard: TempDirGuard,
-) -> Result<Response, String> {
-    let file = tokio::fs::File::open(path)
-        .await
-        .map_err(|e| format!("open {}: {e}", path.display()))?;
-    let size = file.metadata().await.ok().map(|m| m.len());
-    let stream = futures_util::stream::unfold((file, guard), |(mut file, guard)| async move {
+) -> futures_util::stream::Fuse<
+    impl futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+> {
+    use futures_util::StreamExt;
+    futures_util::stream::unfold((file, guard), |(mut file, guard)| async move {
         let mut buf = vec![0u8; 64 * 1024];
         match tokio::io::AsyncReadExt::read(&mut file, &mut buf).await {
             Ok(0) => None,
@@ -155,7 +159,21 @@ async fn file_response(
             }
             Err(e) => Some((Err(e), (file, guard))),
         }
-    });
+    })
+    .fuse()
+}
+
+/// Stream `path` as an attachment.
+async fn file_response(
+    path: &Path,
+    download_name: &str,
+    guard: TempDirGuard,
+) -> Result<Response, String> {
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|e| format!("open {}: {e}", path.display()))?;
+    let size = file.metadata().await.ok().map(|m| m.len());
+    let stream = file_stream(file, guard);
     let mut resp = Response::new(Body::from_stream(stream));
     let headers = resp.headers_mut();
     headers.insert(
@@ -579,6 +597,31 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(std::fs::read(&full).unwrap(), b"gzip bytes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The download body is polled once more after it ends by the
+    /// compression layer; an unfused `unfold` panics there and the
+    /// browser sees a failed download.
+    #[tokio::test]
+    async fn file_stream_yields_none_again_after_the_end() {
+        use futures_util::StreamExt;
+        let dir = std::env::temp_dir().join(format!("ryokan-file-stream-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("payload.bin");
+        std::fs::write(&path, vec![7u8; 70 * 1024]).unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let mut stream = std::pin::pin!(file_stream(file, TempDirGuard(None)));
+        let mut total = 0usize;
+        while let Some(chunk) = stream.next().await {
+            total += chunk.unwrap().len();
+        }
+        assert_eq!(total, 70 * 1024);
+        assert!(
+            stream.next().await.is_none(),
+            "a second poll after the end must be None"
+        );
+        assert!(stream.next().await.is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
