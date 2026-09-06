@@ -684,6 +684,7 @@ mod non_htmx_path {
             search_on_monitoring_change: true,
             recycle_bin_path: "/seed/recycle".to_string(),
             recycle_bin_age_days: 7,
+            import_stall_hours: 24,
             ..config::Config::default()
         };
         config::save_config(db, &cfg)
@@ -726,6 +727,7 @@ mod non_htmx_path {
                 allow_non_english: None,
                 recycle_bin_path: "/submit/recycle/".to_string(), // seed=/seed/recycle; trailing slash trimmed
                 recycle_bin_age_days: 45,                         // seed=7
+                import_stall_hours: 24,
                 series_folder_format: String::new(),
                 season_folder_format: String::new(),
                 episode_file_format: String::new(),
@@ -949,6 +951,7 @@ mod non_htmx_path {
             allow_non_english: None,
             recycle_bin_path: String::new(),
             recycle_bin_age_days: 30,
+            import_stall_hours: 24,
             series_folder_format: String::new(),
             season_folder_format: String::new(),
             episode_file_format: String::new(),
@@ -972,6 +975,51 @@ mod non_htmx_path {
             .into_response();
         let saved = config::get_config(&db).await.unwrap().unwrap();
         assert!(saved.misgrab_auto_remove, "checked saves on");
+    }
+
+    /// Import robustness (#205): the General tab owns the stall window
+    /// and clamps it to 0..=720 hours.
+    #[tokio::test]
+    async fn general_tab_save_persists_and_clamps_import_stall_hours() {
+        let db = in_memory_pool().await;
+        seed_initial_config(&db).await;
+        let state = build_test_app_state(db.clone(), None);
+        let form = |hours: i64| GeneralForm {
+            media_root: String::new(),
+            title_language: "english".to_string(),
+            rss_enabled: None,
+            rss_interval_minutes: 15,
+            disable_nyaa_rss: None,
+            post_processing_enabled: None,
+            post_processing_mode: "hardlink".to_string(),
+            search_on_monitoring_change: None,
+            manual_search_auto_add: None,
+            misgrab_auto_remove: None,
+            grab_preview_mode: None,
+            auto_grab_on_add: None,
+            allow_non_english: None,
+            recycle_bin_path: String::new(),
+            recycle_bin_age_days: 30,
+            import_stall_hours: hours,
+            series_folder_format: String::new(),
+            season_folder_format: String::new(),
+            episode_file_format: String::new(),
+            backup_schedule: String::new(),
+            backup_directory: String::new(),
+            backup_retention_count: 7,
+            backup_include_artwork: None,
+        };
+        for (submitted, expected) in [(36, 36), (0, 0), (-5, 0), (9000, 720)] {
+            let _ = settings_general_submit(
+                State(state.clone()),
+                HxRequest(true),
+                axum::Form(form(submitted)),
+            )
+            .await
+            .into_response();
+            let saved = config::get_config(&db).await.unwrap().unwrap();
+            assert_eq!(saved.import_stall_hours, expected, "submitted {submitted}");
+        }
     }
 
     #[tokio::test]
@@ -998,6 +1046,7 @@ mod non_htmx_path {
                 allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
+                import_stall_hours: 24,
                 series_folder_format: String::new(),
                 season_folder_format: String::new(),
                 episode_file_format: String::new(),
@@ -1045,6 +1094,7 @@ mod non_htmx_path {
                 allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
+                import_stall_hours: 24,
                 series_folder_format: String::new(),
                 season_folder_format: String::new(),
                 episode_file_format: String::new(),
@@ -1095,6 +1145,7 @@ mod non_htmx_path {
                 allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
+                import_stall_hours: 24,
                 series_folder_format: String::new(),
                 season_folder_format: String::new(),
                 episode_file_format: String::new(),
@@ -1155,6 +1206,7 @@ mod non_htmx_path {
                 allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
+                import_stall_hours: 24,
                 series_folder_format: String::new(),
                 season_folder_format: String::new(),
                 episode_file_format: String::new(),
@@ -1197,6 +1249,7 @@ mod non_htmx_path {
                 allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
+                import_stall_hours: 24,
                 series_folder_format: String::new(),
                 season_folder_format: String::new(),
                 episode_file_format: String::new(),
@@ -1624,6 +1677,7 @@ mod non_htmx_path {
                 allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
+                import_stall_hours: 24,
                 series_folder_format: String::new(),
                 season_folder_format: String::new(),
                 episode_file_format: String::new(),
@@ -1692,6 +1746,7 @@ mod non_htmx_path {
                 allow_non_english: None,
                 recycle_bin_path: String::new(),
                 recycle_bin_age_days: 30,
+                import_stall_hours: 24,
                 series_folder_format: String::new(),
                 season_folder_format: String::new(),
                 episode_file_format: String::new(),
@@ -1751,6 +1806,7 @@ mod naming_templates {
             allow_non_english: None,
             recycle_bin_path: String::new(),
             recycle_bin_age_days: 14,
+            import_stall_hours: 24,
             series_folder_format: series.to_string(),
             season_folder_format: season.to_string(),
             episode_file_format: episode.to_string(),

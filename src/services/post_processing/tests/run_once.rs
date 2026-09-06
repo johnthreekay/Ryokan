@@ -1236,3 +1236,201 @@ async fn run_once_rejects_malicious_filelist_entries_but_imports_legit_siblings(
          a 'pending' or 'failed' here means rejection blocked the legit file too"
     );
 }
+
+// ── Import robustness (#205): the stall timer ────────────────────────
+//
+// A torrent the client reports complete, with an empty file list and
+// no directory Ryokan can walk, comes back `ImportOutcome::NotReady`
+// on every tick. These tests drive that shape through `run_once` and
+// pin the escalation: stamped on the first complete sighting, failed
+// only once the stamp is older than `config.import_stall_hours`,
+// never when the setting is 0.
+
+async fn seed_stalled_grab(db: &sqlx::SqlitePool, hash: &str) -> i64 {
+    seed_config(db).await;
+    let series_id = seed_series(db, 1, "Show").await;
+    let g = grabbed_torrents::record_grab(db, hash, "[G] Show - 01", series_id, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    insert_dc(
+        db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    g
+}
+
+async fn backdate_completed_seen(db: &sqlx::SqlitePool, id: i64, hours: i64) {
+    sqlx::query("UPDATE grabbed_torrents SET completed_seen_at = datetime('now', ?) WHERE id = ?")
+        .bind(format!("-{hours} hours"))
+        .bind(id)
+        .execute(db)
+        .await
+        .unwrap();
+}
+
+async fn state_and_reason(db: &sqlx::SqlitePool, id: i64) -> (String, String, Option<String>) {
+    sqlx::query_as(
+        "SELECT state, failure_reason, completed_seen_at FROM grabbed_torrents WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_one(db)
+    .await
+    .unwrap()
+}
+
+/// One `run_once` tick against a client that reports `hash` complete.
+/// `build_test_app_state` pins `start_time` to 2024, so the boot grace
+/// never applies here; `run_with_complete_torrent_booted_at` opts in.
+async fn run_with_complete_torrent(db: &sqlx::SqlitePool, hash: &str) {
+    let state = build_test_app_state(db.clone(), None);
+    run_tick_with_complete_torrent(&state, hash).await;
+}
+
+async fn run_with_complete_torrent_booted_at(
+    db: &sqlx::SqlitePool,
+    hash: &str,
+    start_time: chrono::DateTime<chrono::Utc>,
+) {
+    let mut state = build_test_app_state(db.clone(), None);
+    state.start_time = start_time;
+    run_tick_with_complete_torrent(&state, hash).await;
+}
+
+async fn run_tick_with_complete_torrent(state: &crate::AppState, hash: &str) {
+    let client = Arc::new(RecordingClient::new(vec![fake_torrent(
+        hash,
+        DownloadItemState::Seeding,
+    )]));
+    install_pool(
+        state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(state).await;
+}
+
+#[tokio::test]
+async fn run_once_stamps_completed_seen_and_keeps_a_fresh_not_ready_grab_pending() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let db = in_memory_pool().await;
+    let g = seed_stalled_grab(&db, "stallfresh").await;
+
+    run_with_complete_torrent(&db, "stallfresh").await;
+
+    let (state, reason, seen) = state_and_reason(&db, g).await;
+    assert_eq!(state, "pending", "a just-completed grab is not a stall");
+    assert_eq!(reason, "");
+    assert!(seen.is_some(), "the first complete sighting is stamped");
+}
+
+#[tokio::test]
+async fn run_once_fails_a_grab_complete_for_longer_than_the_stall_window() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let db = in_memory_pool().await;
+    let g = seed_stalled_grab(&db, "stallold").await;
+    backdate_completed_seen(&db, g, 25).await;
+
+    run_with_complete_torrent(&db, "stallold").await;
+
+    let (state, reason, seen) = state_and_reason(&db, g).await;
+    assert_eq!(state, "failed", "25h past the 24h default is a stall");
+    assert_eq!(reason, post_processing::IMPORT_STALLED_REASON);
+    assert!(seen.is_some());
+    assert!(
+        grabbed_torrents::is_blocklisted(&db, "stallold")
+            .await
+            .unwrap(),
+        "the failed row is the blocklist entry"
+    );
+    let logged: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM logs WHERE level = 'warn' AND message LIKE 'Import gave up on%'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(logged, 1, "one PostProcess warn names the reason");
+}
+
+#[tokio::test]
+async fn run_once_never_escalates_when_the_stall_window_is_zero() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let db = in_memory_pool().await;
+    let g = seed_stalled_grab(&db, "stalloff").await;
+    backdate_completed_seen(&db, g, 25).await;
+    sqlx::query("UPDATE config SET import_stall_hours = 0 WHERE id = 1")
+        .execute(&db)
+        .await
+        .unwrap();
+
+    run_with_complete_torrent(&db, "stalloff").await;
+
+    let (state, reason, seen) = state_and_reason(&db, g).await;
+    assert_eq!(state, "pending", "0 keeps the retry-forever behavior");
+    assert_eq!(reason, "");
+    let seen = seen.expect("stamp kept");
+    assert!(
+        crate::services::post_processing::grab_is_stale(&seen, 24 * 3600),
+        "the tick must not overwrite the original sighting: {seen}"
+    );
+}
+
+#[tokio::test]
+async fn run_once_measures_the_stall_from_completion_not_from_the_grab() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // A download that took two days is not a stall: grabbed_at is old,
+    // completed_seen_at is fresh.
+    let db = in_memory_pool().await;
+    let g = seed_stalled_grab(&db, "slowdl").await;
+    sqlx::query(
+        "UPDATE grabbed_torrents SET grabbed_at = datetime('now', '-48 hours') WHERE id = ?",
+    )
+    .bind(g)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    run_with_complete_torrent(&db, "slowdl").await;
+
+    let (state, _, seen) = state_and_reason(&db, g).await;
+    assert_eq!(state, "pending");
+    assert!(seen.is_some());
+}
+
+#[tokio::test]
+async fn run_once_holds_the_stall_timer_during_the_boot_grace() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // Ryokan was off for longer than the window with this grab already
+    // stamped: the stamp is 25h old, but this process has retried it zero
+    // times. The first tick after boot must not be the one that fails it.
+    let db = in_memory_pool().await;
+    let g = seed_stalled_grab(&db, "stallboot").await;
+    backdate_completed_seen(&db, g, 25).await;
+
+    run_with_complete_torrent_booted_at(&db, "stallboot", chrono::Utc::now()).await;
+
+    let (state, reason, _) = state_and_reason(&db, g).await;
+    assert_eq!(state, "pending", "no escalation inside the boot grace");
+    assert_eq!(reason, "");
+
+    // Once the grace is over the same grab fails on the next tick.
+    let booted = chrono::Utc::now()
+        - chrono::Duration::seconds(post_processing::IMPORT_STALL_BOOT_GRACE_SECS + 1);
+    run_with_complete_torrent_booted_at(&db, "stallboot", booted).await;
+
+    let (state, reason, _) = state_and_reason(&db, g).await;
+    assert_eq!(state, "failed", "past the grace the 25h stall is judged");
+    assert_eq!(reason, post_processing::IMPORT_STALLED_REASON);
+}

@@ -146,7 +146,7 @@
                 <tr id="blocklist-row-{{ entry.id }}">
                     <td><span data-ts="{{ entry.grabbed_at }}" data-ts-rendered="1" title="{{ entry.grabbed_at }} UTC">{{ entry.grabbed_at_relative() }}</span></td>
                     <td title="{{ entry.series_title }}">{% if entry.anilist_id > 0 %}<a href="/series/{{ entry.anilist_id }}">{{ entry.series_title }}</a>{% else %}{{ entry.series_title }}{% endif %}</td>
-                    <td><div class="dl-torrent-name" title="{{ entry.torrent_name }}">{{ entry.torrent_name }}</div></td>
+                    <td><div class="dl-torrent-name" title="{{ entry.torrent_name }}">{{ entry.torrent_name }}</div>{% if !entry.failure_reason.is_empty() %}<span class="tag tag-res" title="Why it was blocklisted">{{ entry.failure_reason_label() }}</span>{% endif %}</td>
                     <td>{% for ep in entry.episode_numbers %}{% if !loop.first %}, {% endif %}{{ ep }}{% endfor %}</td>
                     <td>
                         <form method="post" action="/api/downloads/blocklist/remove" style="display:inline"

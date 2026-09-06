@@ -142,6 +142,7 @@ pub async fn record_grab(
          SET state = 'pending',
              imported_at = NULL,
              client_content_path = '',
+             completed_seen_at = NULL,
              grabbed_at = CURRENT_TIMESTAMP,
              series_id = ?,
              episode_numbers = ?,
@@ -543,6 +544,51 @@ pub async fn mark_failed(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+/// `mark_failed` plus a `failure_reason` the Downloads page and the
+/// blocklist can tell apart from a client error or a misgrab.
+pub async fn mark_failed_with_reason(
+    db: &SqlitePool,
+    id: i64,
+    reason: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE grabbed_torrents SET state = 'failed', failure_reason = ? WHERE id = ?")
+        .bind(reason)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+/// Import robustness (#205): record the first post-processing tick that
+/// saw the download client report this grab complete. Idempotent
+/// (`WHERE completed_seen_at IS NULL`) so the stall timer measures the
+/// whole "complete but not imported" window, not the latest tick.
+/// Reactivating an imported row (`record_grab`) clears it again.
+pub async fn stamp_completed_seen(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE grabbed_torrents SET completed_seen_at = CURRENT_TIMESTAMP \
+         WHERE id = ? AND completed_seen_at IS NULL",
+    )
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// The `completed_seen_at` stamp (SQLite `CURRENT_TIMESTAMP` text), or
+/// `None` when no tick has seen the grab complete yet.
+pub async fn completed_seen_at(db: &SqlitePool, id: i64) -> Option<String> {
+    sqlx::query_scalar::<_, Option<String>>(
+        "SELECT completed_seen_at FROM grabbed_torrents WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .flatten()
+}
+
 /// Issue #28 — stamp the indexer attribution + the
 /// respect_seed_rules flag on a grab row after the grab has been
 /// added to the download client and any per-indexer
@@ -796,6 +842,7 @@ pub async fn get_all_with_series(
 ) -> Result<Vec<GrabbedTorrentWithSeries>, sqlx::Error> {
     let sql = format!(
         r#"SELECT g.id, g.hash, g.torrent_name, g.series_id, g.episode_numbers, g.state, g.grabbed_at, g.imported_at,
+                  COALESCE(g.failure_reason, '') AS failure_reason,
                   {title_expr},
                   COALESCE(s.anilist_id, 0) AS anilist_id,
                   g.replaced_by_grab_id,
@@ -832,6 +879,7 @@ pub async fn get_all_with_series(
                 replaced_by_grab_id: row.get("replaced_by_grab_id"),
                 replaced_by_torrent_name: row.get("replaced_by_torrent_name"),
                 replaces_count: row.get("replaces_count"),
+                failure_reason: row.get("failure_reason"),
             }
         })
         .collect())
@@ -844,6 +892,7 @@ pub async fn get_blocked(
 ) -> Result<Vec<GrabbedTorrentWithSeries>, sqlx::Error> {
     let sql = format!(
         r#"SELECT g.id, g.hash, g.torrent_name, g.series_id, g.episode_numbers, g.state, g.grabbed_at, g.imported_at,
+                  COALESCE(g.failure_reason, '') AS failure_reason,
                   {title_expr},
                   COALESCE(s.anilist_id, 0) AS anilist_id,
                   g.replaced_by_grab_id,
@@ -876,6 +925,7 @@ pub async fn get_blocked(
                 replaced_by_grab_id: row.get("replaced_by_grab_id"),
                 replaced_by_torrent_name: row.get("replaced_by_torrent_name"),
                 replaces_count: row.get("replaces_count"),
+                failure_reason: row.get("failure_reason"),
             }
         })
         .collect())
@@ -1249,6 +1299,10 @@ pub struct GrabbedTorrentWithSeries {
     /// "superseded N grabs" note on the replacing row. Zero for the
     /// common case.
     pub replaces_count: i64,
+    /// Why a `failed` row is on the blocklist: `misgrab`,
+    /// `import_stalled`, or empty for a client error / disk-full failure
+    /// that recorded no reason.
+    pub failure_reason: String,
 }
 
 impl GrabbedTorrentWithSeries {
@@ -1263,6 +1317,16 @@ impl GrabbedTorrentWithSeries {
     /// `services::relative_time` for the full rationale.
     pub fn grabbed_at_relative(&self) -> String {
         crate::services::relative_time::humanize_sqlite_short_now(&self.grabbed_at)
+    }
+
+    /// Label for the Blocklist tab's reason tag; empty when the row
+    /// carries no reason. Unknown reasons show as stored.
+    pub fn failure_reason_label(&self) -> &str {
+        match self.failure_reason.as_str() {
+            "misgrab" => "Misgrab",
+            "import_stalled" => "Import stalled",
+            other => other,
+        }
     }
 }
 

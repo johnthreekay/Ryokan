@@ -1999,11 +1999,16 @@ async fn main() {
                         // would linger until the process restarts. Hourly global
                         // sweep keeps the map bounded.
                         handlers::auth::sweep_login_failures();
+                        let cleanup_cfg = models::config::get_config(&cleanup_db)
+                            .await
+                            .ok()
+                            .flatten();
                         // Recycle-bin purge (#123). Date buckets older than
                         // `recycle_bin_age_days` are dropped; 0 disables the
                         // sweep and an empty path means no bin at all.
-                        if let Ok(Some(cfg)) = models::config::get_config(&cleanup_db).await
-                            && !cfg.recycle_bin_path.trim().is_empty()
+                        if let Some(cfg) = cleanup_cfg
+                            .as_ref()
+                            .filter(|c| !c.recycle_bin_path.trim().is_empty())
                         {
                             match services::recycle::purge_old(
                                 &cfg.recycle_bin_path,
@@ -2035,6 +2040,111 @@ async fn main() {
                                     tracing::error!("Recycle bin purge failed: {}", e);
                                 }
                                 _ => {}
+                            }
+                        }
+                        // Orphaned temp-file sweep (#205). An import that
+                        // died mid-copy leaves `<dest>.ryokan-tmp` or
+                        // `.<name>.ryokan-new` in the season folder; nothing
+                        // else ever looks at those again. The sweep removes
+                        // only under both import locks and skips the hour
+                        // when an import is running.
+                        if let Some(cfg) = cleanup_cfg
+                            .as_ref()
+                            .filter(|c| !c.media_root.trim().is_empty())
+                        {
+                            use services::post_processing::temp_sweep;
+                            match temp_sweep::sweep_orphaned_temp_files(
+                                &cleanup_db,
+                                &cfg.media_root,
+                                &cfg.recycle_bin_path,
+                                temp_sweep::ORPHAN_MIN_AGE,
+                            )
+                            .await
+                            {
+                                Ok(report) => {
+                                    if report.skipped_busy {
+                                        tracing::debug!(
+                                            "Temp-file sweep skipped: an import is running; next hour"
+                                        );
+                                    }
+                                    if !report.removed.is_empty() {
+                                        let listed: Vec<String> = report
+                                            .removed
+                                            .iter()
+                                            .take(10)
+                                            .map(|p| p.display().to_string())
+                                            .collect();
+                                        // `bytes` is what was freed: a file moved
+                                        // to the bin still occupies the disk there,
+                                        // so an all-recycled pass reports the move
+                                        // and no size.
+                                        let mut notes = Vec::new();
+                                        if report.bytes > 0 {
+                                            notes.push(format!(
+                                                "{} freed",
+                                                services::recycle::human_bytes(report.bytes)
+                                            ));
+                                        }
+                                        if report.recycled > 0 {
+                                            notes.push(format!(
+                                                "{} moved to the recycle bin",
+                                                report.recycled
+                                            ));
+                                        }
+                                        let notes = if notes.is_empty() {
+                                            String::new()
+                                        } else {
+                                            format!(" ({})", notes.join(", "))
+                                        };
+                                        services::logger::info(
+                                            &cleanup_db,
+                                            models::log::LogCategory::PostProcess,
+                                            &format!(
+                                                "Removed {} leftover temporary file{} from the media library{}",
+                                                report.removed.len(),
+                                                if report.removed.len() == 1 { "" } else { "s" },
+                                                notes
+                                            ),
+                                            &format!(
+                                                "left by an import that stopped mid-copy; older than {}h; kept_recent={} files={}{}",
+                                                temp_sweep::ORPHAN_MIN_AGE.as_secs() / 3600,
+                                                report.kept_recent,
+                                                listed.join(", "),
+                                                if report.removed.len() > listed.len() {
+                                                    ", ..."
+                                                } else {
+                                                    ""
+                                                }
+                                            ),
+                                        )
+                                        .await;
+                                    }
+                                    if !report.errors.is_empty() {
+                                        let joined = report.errors.join("; ");
+                                        cleanup_errors.push(format!("temp sweep: {joined}"));
+                                        services::logger::warn(
+                                            &cleanup_db,
+                                            models::log::LogCategory::PostProcess,
+                                            &format!(
+                                                "Temp-file sweep hit {} error{}",
+                                                report.errors.len(),
+                                                if report.errors.len() == 1 { "" } else { "s" }
+                                            ),
+                                            &joined,
+                                        )
+                                        .await;
+                                    }
+                                }
+                                Err(e) => {
+                                    cleanup_errors.push(format!("temp sweep: {}", e));
+                                    services::logger::error(
+                                        &cleanup_db,
+                                        models::log::LogCategory::PostProcess,
+                                        "Temp-file sweep failed",
+                                        &e,
+                                    )
+                                    .await;
+                                }
                             }
                         }
                         let status = if cleanup_errors.is_empty() {

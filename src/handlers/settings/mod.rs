@@ -408,6 +408,10 @@ pub struct SettingsForm {
     recycle_bin_path: String,
     #[serde(default = "default_recycle_bin_age_days")]
     recycle_bin_age_days: i64,
+    /// Import robustness (#205): hours a finished download may sit with
+    /// nothing importable before it is marked failed; 0 = never.
+    #[serde(default = "default_import_stall_hours")]
+    import_stall_hours: i64,
     prefer_subs: String,
     sonarr_enabled: Option<String>,
     sonarr_api_key: Option<String>,
@@ -623,6 +627,10 @@ pub struct GeneralForm {
     /// Purge horizon in days; 0 = never auto-purge.
     #[serde(default = "default_recycle_bin_age_days")]
     recycle_bin_age_days: i64,
+    /// Import robustness (#205): hours a finished download may sit with
+    /// nothing importable before it is marked failed; 0 = never.
+    #[serde(default = "default_import_stall_hours")]
+    import_stall_hours: i64,
     /// Naming templates (#124). Empty falls back to the default so a
     /// form that omits them (or a cleared field) never stores a blank.
     #[serde(default)]
@@ -658,6 +666,10 @@ fn naming_or_default(raw: &str, kind: TemplateKind) -> String {
 
 fn default_recycle_bin_age_days() -> i64 {
     14
+}
+
+fn default_import_stall_hours() -> i64 {
+    24
 }
 
 #[derive(Template)]
@@ -1487,6 +1499,14 @@ pub async fn settings_submit(
                 .map(|c| c.recycle_bin_age_days)
                 .unwrap_or(14)
         },
+        import_stall_hours: if form.tab.as_deref() == Some("general") {
+            form.import_stall_hours.clamp(0, 720)
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.import_stall_hours)
+                .unwrap_or(24)
+        },
     };
 
     let active_tab = normalize_settings_tab(form.tab.clone());
@@ -1750,6 +1770,7 @@ pub async fn settings_general_submit(
             .trim_end_matches('/')
             .to_string(),
         recycle_bin_age_days: form.recycle_bin_age_days.clamp(0, 3650),
+        import_stall_hours: form.import_stall_hours.clamp(0, 720),
         series_folder_format: naming_or_default(
             &form.series_folder_format,
             TemplateKind::SeriesFolder,

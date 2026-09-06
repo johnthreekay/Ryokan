@@ -14,10 +14,24 @@ use crate::services::{logger, media, naming, nfo};
 
 mod artwork_copy;
 mod state;
+pub mod temp_sweep;
 
 use artwork_copy::{copy_series_and_season_poster, copy_series_banner_and_backdrop};
 use state::fallback_ep_offset;
 pub use state::{grab_is_stale, scan_library_for_unclassified, scan_series_for_unclassified};
+
+/// `grabbed_torrents.failure_reason` written by the #205 stall timer, so
+/// the blocklist row reads as "never became importable" rather than a
+/// client error or a misgrab.
+pub const IMPORT_STALLED_REASON: &str = "import_stalled";
+
+/// How long after boot the #205 stall timer stays quiet, in seconds.
+/// `completed_seen_at` is wall-clock, so a grab stamped before a long
+/// shutdown reads as stalled on the very first tick after boot, before
+/// this process has retried it even once; a download mount that comes up
+/// after Ryokan in boot order is the usual shape. Measured against
+/// `AppState.start_time`.
+pub const IMPORT_STALL_BOOT_GRACE_SECS: i64 = 15 * 60;
 
 pub(crate) static POST_PROC_LOCK: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
@@ -706,7 +720,8 @@ async fn load_series_import_ctx(
 ///
 /// - `NotReady` — torrent complete but no video files visible yet
 ///   (qBit still finalizing, or the pack is all samples/.nfo). Leave
-///   the grab pending so the next tick retries.
+///   the grab pending so the next tick retries, until the #205 stall
+///   timer (`escalate_if_stalled`) gives up on it.
 /// - `Imported` — every video file landed.
 /// - `PartiallyImported { failed_episodes }` — some files imported,
 ///   some failed (typically transient: disk full mid-copy, source
@@ -2487,6 +2502,12 @@ pub async fn run_once(state: &AppState) {
             continue;
         }
 
+        // Import robustness (#205): the first tick that sees the client
+        // report the grab complete starts the stall clock. Idempotent,
+        // so later ticks keep the original stamp and the timer measures
+        // the whole "complete but not imported" window.
+        let _ = grabbed_torrents::stamp_completed_seen(&state.db, grab.id).await;
+
         // Stamp qBit's output path on the grab row before we move/
         // hardlink the file into the library. Done BEFORE import so
         // that even if import errors out mid-way, the UI still has a
@@ -2609,10 +2630,10 @@ pub async fn run_once(state: &AppState) {
                 // Torrent complete but no video files yet — leave as pending.
                 // The caller (qBit) might still be finalizing the files,
                 // or the torrent could be all samples/.nfo (pathological).
-                // We intentionally don't escalate here — next post-proc
-                // tick retries. A stuck-forever failsafe would need a
-                // "pending too long" timer; covered by the plan's
-                // future work, not this commit.
+                // The next tick retries; only the #205 stall timer ends
+                // the wait, once the grab has been client-complete for
+                // longer than `cfg.import_stall_hours`.
+                escalate_if_stalled(state, &cfg, grab).await;
             }
             Err(e) => {
                 logger::error(
@@ -2646,6 +2667,104 @@ pub async fn run_once(state: &AppState) {
             .await;
         }
     }
+}
+
+/// Import robustness (#205): give up on a grab the download client has
+/// reported complete for longer than `cfg.import_stall_hours` while every
+/// tick still found nothing to import (`ImportOutcome::NotReady`). The
+/// usual causes are a download folder Ryokan cannot see (per-client
+/// download path mismatch, SAB's complete dir not mounted) or a release
+/// that turned out to be all samples and extras. The grab is marked
+/// failed with [`IMPORT_STALLED_REASON`], which makes it the blocklist
+/// entry for that release (Downloads → Blocklist lifts it), and its
+/// episode tags flip to `failed` so the series page stops showing
+/// "Importing" and the next auto-search can look again.
+///
+/// Measured from `completed_seen_at`, never `grabbed_at`: a slow
+/// download is not a stall. `0` hours disables the timer, keeping the
+/// pre-#205 retry-forever behavior. Nothing escalates during the first
+/// [`IMPORT_STALL_BOOT_GRACE_SECS`] after boot, so a grab that sat
+/// through a shutdown gets its retries in this process before it is
+/// judged.
+async fn escalate_if_stalled(
+    state: &AppState,
+    cfg: &config::Config,
+    grab: &grabbed_torrents::GrabbedTorrent,
+) {
+    if cfg.import_stall_hours <= 0 {
+        return;
+    }
+    let uptime_secs = chrono::Utc::now()
+        .signed_duration_since(state.start_time)
+        .num_seconds();
+    if uptime_secs < IMPORT_STALL_BOOT_GRACE_SECS {
+        return;
+    }
+    let Some(seen) = grabbed_torrents::completed_seen_at(&state.db, grab.id).await else {
+        return;
+    };
+    let Some(age_secs) = state::sqlite_age_secs(&seen) else {
+        return;
+    };
+    if age_secs <= cfg.import_stall_hours.saturating_mul(3600) {
+        return;
+    }
+    // A grab this very tick judged a misgrab also comes back NotReady;
+    // the misgrab sweep removes and blocklists it with its own reason.
+    if grabbed_torrents::get_verification(&state.db, grab.id)
+        .await
+        .as_deref()
+        == Some("misgrab")
+    {
+        return;
+    }
+    let stuck_hours = age_secs / 3600;
+    if let Err(e) =
+        grabbed_torrents::mark_failed_with_reason(&state.db, grab.id, IMPORT_STALLED_REASON).await
+    {
+        logger::error(
+            &state.db,
+            LogCategory::PostProcess,
+            &format!(
+                "Failed to mark stalled import '{}' failed",
+                grab.torrent_name
+            ),
+            &e.to_string(),
+        )
+        .await;
+        return;
+    }
+    // After the write, so the line is true when it lands and fires once:
+    // a failed UPDATE leaves the grab pending and this tick's error line
+    // is the only record.
+    logger::warn(
+        &state.db,
+        LogCategory::PostProcess,
+        &format!(
+            "Import gave up on '{}': complete for {}h with no importable video files",
+            grab.torrent_name, stuck_hours
+        ),
+        &format!(
+            "series_id={} hash={} completed_seen_at={} limit_hours={}; marked failed and blocklisted, remove it from Downloads > Blocklist to allow it again",
+            grab.series_id, grab.hash, seen, cfg.import_stall_hours
+        ),
+    )
+    .await;
+    // Parent series only: an auto-expanded batch's sibling routes keep
+    // their `grabbed` tags, the same limit the misgrab remediation has.
+    let _ =
+        episode_tags::mark_grab_failed_for_release(&state.db, grab.series_id, &grab.torrent_name)
+            .await;
+    crate::services::notifications::emit_import_failed(
+        state,
+        grab.series_id,
+        grab.episode_numbers.first().copied(),
+        &grab.torrent_name,
+        &format!(
+            "complete in the download client for {stuck_hours}h with no importable video files"
+        ),
+    )
+    .await;
 }
 
 /// Lightweight variant of `run_once` used when post-processing is
