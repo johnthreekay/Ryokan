@@ -250,7 +250,7 @@ impl Default for Config {
             media_root: String::new(),
             title_language: "english".to_string(),
             force_mal_fallback: false,
-            rss_enabled: false,
+            rss_enabled: true,
             rss_interval_minutes: 15,
             rss_master_enabled: true,
             disable_nyaa_rss: false,

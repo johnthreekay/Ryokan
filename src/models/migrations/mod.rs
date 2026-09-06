@@ -165,7 +165,7 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
             media_root TEXT NOT NULL DEFAULT '',
             title_language TEXT NOT NULL DEFAULT 'english',
             force_mal_fallback INTEGER NOT NULL DEFAULT 0,
-            rss_enabled INTEGER NOT NULL DEFAULT 0,
+            rss_enabled INTEGER NOT NULL DEFAULT 1,
             rss_interval_minutes INTEGER NOT NULL DEFAULT 15,
             force_kitsu_fallback INTEGER NOT NULL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
