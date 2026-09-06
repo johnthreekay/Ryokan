@@ -62,6 +62,15 @@ The poller saw the torrent reach 100% but the post-processing tick hasn't moved 
 - **Post-processing is disabled** in Settings → General. Ryokan correctly leaves the file at the download client's path; the row shouldn't be showing "Importing…" in this state. If it is, force-refresh the page (Ctrl+Shift+R); there's a known race where the per-row state can lag the global toggle.
 - **Post-processing is on but the import is failing.** Check System → Logs filtered to `PostProcess`. Common causes: `media_root` isn't writable by the runtime user, the media filesystem is full, or Ryokan can't see the download client's complete path (per-client `download_path` mismatch; see [Download clients → Per-client download paths](download-clients.md#per-client-download-paths)).
 
+## Finished downloads stay in the client
+
+Since 1.9.3 Ryokan removes a download from its client once the download is imported and nothing is left to seed. If one is still there:
+
+- **The client's box is off.** Settings → Connections → Downloads, edit the client, and check **Remove completed downloads**.
+- **The client has not finished seeding it.** In hardlink or copy mode a torrent leaves only when the client itself stops it at a ratio, seeding-time, or inactivity limit. Give the client a limit, and make sure its action when the limit is reached is to pause or stop the torrent, not delete it (Ryokan deletes after the import). rTorrent needs a ratio group in `.rtorrent.rc` with its default action, which closes the item and marks it. A torrent you paused or stopped by hand is left alone on purpose.
+- **The import was partial or failed.** Those stay in the client so you can look at them.
+- **It just finished.** The check runs every five minutes. System → Logs, category PostProcess, shows a "Removed ... from the download client" line for each one that went.
+
 ## Series-page state is stale
 
 Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. If something looks wrong:

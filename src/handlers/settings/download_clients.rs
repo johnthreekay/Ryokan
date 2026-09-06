@@ -390,6 +390,10 @@ pub struct DownloadClientUpsertForm {
     /// Checkbox semantics: only POSTed when checked.
     pub enabled: Option<String>,
     pub is_default: Option<String>,
+    /// Issue #228: remove imported downloads from this client once they
+    /// have finished seeding (usenet: right after import).
+    #[serde(default)]
+    pub remove_completed: Option<String>,
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -469,6 +473,23 @@ pub async fn settings_download_clients_upsert(
 
     match result {
         Ok(id) => {
+            if let Err(e) = crate::models::download_clients::set_remove_completed(
+                &state.db,
+                id,
+                form.remove_completed.is_some(),
+            )
+            .await
+            {
+                // The column defaults to on, so a lost "off" is the
+                // destructive direction; say so rather than swallow it.
+                logger::error(
+                    &state.db,
+                    LogCategory::System,
+                    "Download client saved but its remove-completed switch was not",
+                    &format!("id={id}: {e}"),
+                )
+                .await;
+            }
             let verb = if form.id.is_some() {
                 "updated"
             } else {
@@ -1111,6 +1132,7 @@ mod tests {
             download_path: "/downloads".to_string(),
             enabled: Some("on".to_string()),
             is_default: None,
+            remove_completed: Some("on".to_string()),
         }
     }
 

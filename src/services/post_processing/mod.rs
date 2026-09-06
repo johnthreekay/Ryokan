@@ -13,9 +13,13 @@ use crate::services::source::{self, SeriesContext};
 use crate::services::{logger, media, naming, nfo};
 
 mod artwork_copy;
+pub mod client_cleanup;
 mod state;
 
 use artwork_copy::{copy_series_and_season_poster, copy_series_banner_and_backdrop};
+pub use client_cleanup::{
+    remove_stamped_source_paths, sweep_finished_seeds, sweep_finished_seeds_now,
+};
 use state::fallback_ep_offset;
 pub use state::{grab_is_stale, scan_library_for_unclassified, scan_series_for_unclassified};
 
@@ -2511,6 +2515,12 @@ pub async fn run_once(state: &AppState) {
             Ok(ImportOutcome::Imported) => {
                 any_imported = true;
                 let _ = grabbed_torrents::mark_imported(&state.db, grab.id).await;
+                let _ = grabbed_torrents::stamp_import_mode(
+                    &state.db,
+                    grab.id,
+                    &cfg.post_processing_mode,
+                )
+                .await;
                 // #27 — log every successful import so there's a trail
                 // from grab → complete in System → Logs. Before this,
                 // the only log a successful grab produced was the grab
@@ -2527,6 +2537,13 @@ pub async fn run_once(state: &AppState) {
                     ),
                 )
                 .await;
+                // Issue #228: a usenet job, or a torrent imported in
+                // move mode, has nothing left to seed and leaves the
+                // client now. Hardlink and copy mode torrents keep
+                // seeding until the finished-seed sweep sees the
+                // client's own rules met.
+                client_cleanup::remove_after_import(state, &cfg, grab, grab_client_id, &client)
+                    .await;
                 // Episode tag "grabbed → completed" flips happen inside
                 // `import_torrent` itself so a Phase 2 routed batch can
                 // mark each sibling's tags under the sibling's own
@@ -2546,6 +2563,11 @@ pub async fn run_once(state: &AppState) {
                 // would only notice in Jellyfin.
                 any_imported = true;
                 let _ = grabbed_torrents::mark_imported(&state.db, grab.id).await;
+                // Issue #228: a partial import must never be swept out
+                // of the client; the episodes that failed are still only
+                // in the download folder. "partial" keeps the row out of
+                // `list_imported_in_client` for good.
+                let _ = grabbed_torrents::stamp_import_mode(&state.db, grab.id, "partial").await;
                 logger::error(
                     &state.db,
                     LogCategory::PostProcess,

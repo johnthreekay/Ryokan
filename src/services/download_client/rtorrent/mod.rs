@@ -588,12 +588,20 @@ impl DownloadClient for RtorrentClient {
             "d.message=",
             "d.base_path=",
             "d.directory=",
+            // Issue #228: set by the default ratio-group action
+            // (`d.try_close= ; d.ignore_commands.set=1`), which is the
+            // one signal that separates "closed at ratio" from a stop
+            // by hand or after a restart. The reader tolerates a
+            // 13-column row (older fixtures) as "not set"; an rTorrent
+            // without the command would fault the whole multicall, but
+            // `d.ignore_commands` has been in the 0.9 series throughout.
+            "d.ignore_commands=",
         ];
         let rows = self.main_view(getters).await?;
 
         let mut out = Vec::with_capacity(rows.len());
         for cols in rows {
-            if cols.len() < getters.len() {
+            if cols.len() < 13 {
                 continue;
             }
             let hash = cols[0].as_string().unwrap_or_default().to_ascii_lowercase();
@@ -612,6 +620,7 @@ impl DownloadClient for RtorrentClient {
             let message = cols[10].as_string().unwrap_or_default().to_string();
             let base_path = cols[11].as_string().unwrap_or_default().to_string();
             let directory = cols[12].as_string().unwrap_or_default().to_string();
+            let ignore_commands = cols.get(13).and_then(|v| v.as_int()).unwrap_or(0) != 0;
 
             let state_kind = map_state(complete, is_active, hashing, is_open, &message);
             let state_str = state_label(state_kind);
@@ -622,6 +631,15 @@ impl DownloadClient for RtorrentClient {
             };
             let save_path = directory.clone();
             let content_path = content_path(&base_path, &directory, &name);
+            // rTorrent's default ratio-group action closes a finished
+            // item and sets its ignore flag; only that combination is
+            // done seeding (issue #228). A stop by hand leaves the item
+            // open; a restart reloads stopped items closed but without
+            // the flag; a tracker or disk error carries a message. A
+            // custom group action that does not set the flag never
+            // reads as done, which is the safe way to be wrong.
+            let seeding_done =
+                complete && !is_open && !is_active && ignore_commands && message.is_empty();
             out.push(DownloadItem {
                 hash,
                 name,
@@ -634,6 +652,7 @@ impl DownloadClient for RtorrentClient {
                 save_path,
                 content_path,
                 state_kind,
+                seeding_done,
             });
         }
         Ok(out)
@@ -751,42 +770,30 @@ impl DownloadClient for RtorrentClient {
         "RTorrent"
     }
 
-    /// Issue #28 — apply per-torrent ratio rules via
-    /// rTorrent's `d.ratio.max.set` XML-RPC.
-    ///
-    /// Wire shape: `d.ratio.max.set` takes the hash + a ratio
-    /// value **in per-mille** (ratio × 1000). So `1.5` becomes
-    /// `1500`. This is rTorrent's standard ratio-group convention;
-    /// `d.ratio.min.set` and `d.ratio.upload.set` exist too but
-    /// govern graduated stopping behavior we don't need here.
-    /// `d.ratio.max.set` alone gives "stop seeding at exactly this
-    /// ratio," which matches the per-indexer rule semantics.
-    ///
-    /// Like Deluge, rTorrent has no native idle-time stop in core —
-    /// `time_minutes` logs at debug and is a no-op. The
-    /// `seedingtime` view extension exists in some setups but
-    /// isn't part of the canonical rTorrent API surface.
-    ///
-    /// Hash uppercase: rTorrent's wire protocol expects upper-hex
-    /// for every `d.<method>` call keyed by hash. The conversion
-    /// happens here, not at call sites — same convention as the
-    /// rest of the file.
+    /// Issue #28 asked for per-torrent seed rules; rTorrent has none
+    /// (issue #228). Its only per-item ratio command is the read-only
+    /// `d.ratio`; ratio handling is configured per *group* in
+    /// `.rtorrent.rc` (`group.seeding.ratio.enable`,
+    /// `group2.seeding.ratio.min/max/upload.set`, the action in
+    /// `group.seeding.ratio.command`) and applies to every item in the
+    /// group. Until #228 this called a `d.ratio.max.set` that does not
+    /// exist, so every seed-ruled grab faulted and nothing was applied.
+    /// Returning `Err` makes `apply_indexer_seed_rules` log the gap per
+    /// grab; the `respect_seed_rules` flag is still set, so Ryokan
+    /// keeps its hands off the item and rTorrent's own ratio group
+    /// decides when seeding ends.
     async fn set_seed_rules(&self, info_hash: &str, rules: super::SeedRules) -> Result<(), String> {
-        if let Some(ratio) = rules.ratio {
-            let permille = (ratio * 1000.0).round() as i64;
-            let hash_uc = info_hash.to_ascii_uppercase();
-            self.call(
-                "d.ratio.max.set",
-                &[XmlValue::String(hash_uc), XmlValue::Int(permille)],
-            )
-            .await?;
-        }
-        if rules.time_minutes.is_some() {
-            tracing::debug!(
-                "rtorrent: time_minutes seed-rule ignored — no native idle-time stop in core"
-            );
-        }
-        Ok(())
+        let ratio = rules
+            .ratio
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| "none".to_string());
+        let time = rules
+            .time_minutes
+            .map(|m| format!("{m}m"))
+            .unwrap_or_else(|| "none".to_string());
+        Err(format!(
+            "rTorrent has no per-torrent seed limits (ratio={ratio} time={time} not applied to {info_hash}); configure a ratio group in .rtorrent.rc"
+        ))
     }
 }
 

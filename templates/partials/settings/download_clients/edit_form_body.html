@@ -93,6 +93,13 @@
                 </label>
                 <span class="form-hint">Receives every grab without an explicit indexer pin. Per-protocol; torrent and usenet defaults are independent.</span>
             </div>
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="remove_completed" {% if row.remove_completed %}checked{% endif %}>
+                    Remove completed downloads
+                </label>
+                <span class="form-hint">Remove an imported download from this client, files included, once the client reports it finished seeding. Usenet jobs and Move-mode torrents go right after import. Partial and failed imports stay. The library keeps its own copy.</span>
+            </div>
         </div>
     </div>
     <div class="modal-footer">

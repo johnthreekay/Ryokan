@@ -109,3 +109,73 @@ async fn list_scoped_empty_multicall2_returns_empty_vec() {
     let items = client.list_scoped().await.expect("list_scoped");
     assert!(items.is_empty());
 }
+
+/// One `d.multicall2` row in list_scoped's 13-column order, with the
+/// three flags that decide `seeding_done`.
+fn flag_row(hash: &str, complete: i32, is_active: i32, is_open: i32, ignore: i32) -> String {
+    format!(
+        "<array><data>\
+            <value><string>{hash}</string></value>\
+            <value><string>Row</string></value>\
+            <value><i8>10</i8></value>\
+            <value><i8>10</i8></value>\
+            <value><i8>0</i8></value>\
+            <value><string>ryokan-test</string></value>\
+            <value><i4>{complete}</i4></value>\
+            <value><i4>{is_active}</i4></value>\
+            <value><i4>0</i4></value>\
+            <value><i4>{is_open}</i4></value>\
+            <value><string></string></value>\
+            <value><string>/downloads/Row</string></value>\
+            <value><string>/downloads</string></value>\
+            <value><i4>{ignore}</i4></value>\
+        </data></array>"
+    )
+}
+
+#[tokio::test]
+async fn list_scoped_marks_a_closed_complete_item_as_done_seeding() {
+    // Issue #228: the default ratio-group action (`d.try_close= ;
+    // d.ignore_commands.set=1`) leaves a complete item closed with its
+    // ignore flag set; that combination is the only "finished seeding"
+    // signal rTorrent offers. A stop by hand keeps the item open, a
+    // restart reloads a stopped item closed without the flag, and an
+    // active item is still seeding.
+    let (server, client) = new_fixture().await;
+    let closed = flag_row("AAAA000000000000000000000000000000000001", 1, 0, 0, 1);
+    let stopped_open = flag_row("AAAA000000000000000000000000000000000002", 1, 0, 1, 0);
+    let seeding = flag_row("AAAA000000000000000000000000000000000003", 1, 1, 1, 0);
+    let closed_incomplete = flag_row("AAAA000000000000000000000000000000000004", 0, 0, 0, 1);
+    let closed_no_flag = flag_row("AAAA000000000000000000000000000000000005", 1, 0, 0, 0);
+    install_xmlrpc(
+        &server,
+        "d.multicall2",
+        array_response(&[
+            closed,
+            stopped_open,
+            seeding,
+            closed_incomplete,
+            closed_no_flag,
+        ]),
+    )
+    .await;
+    let items = client.list_scoped().await.expect("list_scoped");
+    let done = |suffix: &str| {
+        items
+            .iter()
+            .find(|i| i.hash.ends_with(suffix))
+            .unwrap()
+            .seeding_done
+    };
+    assert!(done("01"), "closed complete item");
+    assert!(
+        !done("02"),
+        "stopped but open: a ruTorrent Stop, not a ratio close"
+    );
+    assert!(!done("03"), "still seeding");
+    assert!(!done("04"), "closed but incomplete");
+    assert!(
+        !done("05"),
+        "closed without the ignore flag: a restart or a custom action"
+    );
+}

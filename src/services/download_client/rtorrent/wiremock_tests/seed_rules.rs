@@ -1,55 +1,20 @@
-//! Issue #28 — `set_seed_rules` against rTorrent's
-//! `d.ratio.max.set` XML-RPC call.
-//!
-//! rTorrent's wire format:
-//!   * Hash uppercase (every `d.<method>` call keyed by hash).
-//!   * Ratio in **per-mille** (ratio × 1000): `1.5` becomes `1500`.
-//!     This is rTorrent's standard ratio-group convention; the
-//!     other ratio knobs (`min`/`upload`) govern graduated
-//!     stopping behavior we don't need.
-//!   * `time_minutes` is a no-op — rTorrent core has no native
-//!     idle-time stop; the impl logs at debug and skips the call.
+//! Issue #28 asked for per-torrent seed rules on rTorrent; issue #228
+//! found there is nothing to call. rTorrent's only per-item ratio
+//! command is the read-only `d.ratio`; ratio handling is configured per
+//! group in `.rtorrent.rc`. The earlier impl posted a `d.ratio.max.set`
+//! that does not exist and every seed-ruled grab faulted. Now
+//! `set_seed_rules` makes no request and returns an error naming the
+//! ratio-group configuration, which `apply_indexer_seed_rules` logs.
 
-use wiremock::matchers::{body_string_contains, method, path};
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, ResponseTemplate};
 
-use super::fixture::{int_response, new_fixture};
+use super::fixture::new_fixture;
 use crate::services::download_client::{DownloadClient, SeedRules};
 
 const HASH_LC: &str = "aabbccddeeff00112233445566778899aabbccdd";
-const HASH_UC: &str = "AABBCCDDEEFF00112233445566778899AABBCCDD";
 
-#[tokio::test]
-async fn seed_rules_with_ratio_calls_d_ratio_max_set_in_permille() {
-    let (server, client) = new_fixture().await;
-    Mock::given(method("POST"))
-        .and(path("/RPC2"))
-        .and(body_string_contains(
-            "<methodName>d.ratio.max.set</methodName>",
-        ))
-        .and(body_string_contains(HASH_UC))
-        // 1.5 ratio × 1000 = 1500 per-mille.
-        .and(body_string_contains("<i8>1500</i8>"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(int_response(0)))
-        .expect(1)
-        .mount(&server)
-        .await;
-    client
-        .set_seed_rules(
-            HASH_LC,
-            SeedRules {
-                ratio: Some(1.5),
-                time_minutes: None,
-            },
-        )
-        .await
-        .expect("seed rules");
-}
-
-#[tokio::test]
-async fn seed_rules_with_only_time_skips_wire_call() {
-    // rtorrent has no native idle-time stop. With ratio also None
-    // the impl is a complete no-op — pin that no RPC fires.
+async fn assert_no_rpc_and_honest_error(rules: SeedRules) {
     let (server, client) = new_fixture().await;
     Mock::given(method("POST"))
         .and(path("/RPC2"))
@@ -57,29 +22,39 @@ async fn seed_rules_with_only_time_skips_wire_call() {
         .expect(0)
         .mount(&server)
         .await;
-    client
-        .set_seed_rules(
-            HASH_LC,
-            SeedRules {
-                ratio: None,
-                time_minutes: Some(60),
-            },
-        )
+    let err = client
+        .set_seed_rules(HASH_LC, rules)
         .await
-        .expect("must not error when there's nothing to send");
+        .expect_err("rTorrent has no per-torrent seed limits");
+    assert!(
+        err.contains("ratio group") && err.contains(HASH_LC),
+        "error must say how rTorrent does ratios and name the item: {err}"
+    );
 }
 
 #[tokio::test]
-async fn seed_rules_empty_skips_wire_call() {
-    let (server, client) = new_fixture().await;
-    Mock::given(method("POST"))
-        .and(path("/RPC2"))
-        .respond_with(ResponseTemplate::new(500))
-        .expect(0)
-        .mount(&server)
-        .await;
-    client
-        .set_seed_rules(HASH_LC, SeedRules::default())
-        .await
-        .expect("empty rules must no-op");
+async fn ratio_rule_makes_no_rpc_call_and_says_why() {
+    assert_no_rpc_and_honest_error(SeedRules {
+        ratio: Some(1.5),
+        time_minutes: None,
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn time_rule_makes_no_rpc_call_and_says_why() {
+    assert_no_rpc_and_honest_error(SeedRules {
+        ratio: None,
+        time_minutes: Some(60),
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn both_rules_make_no_rpc_call_and_say_why() {
+    assert_no_rpc_and_honest_error(SeedRules {
+        ratio: Some(2.0),
+        time_minutes: Some(120),
+    })
+    .await;
 }

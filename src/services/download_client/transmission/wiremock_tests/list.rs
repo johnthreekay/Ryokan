@@ -151,3 +151,88 @@ async fn list_scoped_missing_torrents_key_returns_empty_vec() {
     let items = client.list_scoped().await.expect("list_scoped");
     assert!(items.is_empty());
 }
+
+#[tokio::test]
+async fn list_scoped_requests_is_finished_and_maps_it_to_seeding_done() {
+    // Issue #228: `isFinished` is Transmission's own "seed limit
+    // reached, stopped" flag. It has to be in the requested field list
+    // or it never arrives, and a stopped complete torrent without it
+    // is a user pause, not a finished seed.
+    let (server, client) = new_fixture().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/transmission/rpc"))
+        .and(wiremock::matchers::header(
+            "x-transmission-session-id",
+            super::fixture::TEST_SESSION_ID,
+        ))
+        .and(wiremock::matchers::body_string_contains("\"isFinished\""))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(json!({
+            "result": "success",
+            "arguments": {
+                "torrents": [
+                    {
+                        "id": 1, "hashString": "finished-hash", "name": "Finished",
+                        "totalSize": 10, "percentDone": 1.0, "rateDownload": 0, "status": 0,
+                        "eta": 0, "downloadDir": "/downloads", "labels": ["ryokan-test"],
+                        "isStalled": false, "errorString": "", "isFinished": true,
+                        "files": [], "fileStats": []
+                    },
+                    torrent("paused-hash", "Paused by hand", &["ryokan-test"], 0, 1.0),
+                ]
+            },
+            "tag": 0,
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let items = client.list_scoped().await.expect("list_scoped");
+    let done = |h: &str| items.iter().find(|i| i.hash == h).unwrap().seeding_done;
+    assert!(done("finished-hash"));
+    assert!(
+        !done("paused-hash"),
+        "stopped and complete but not finished is a user pause"
+    );
+}
+
+#[tokio::test]
+async fn list_scoped_detects_a_ratio_stop_without_is_finished() {
+    // Transmission 3.x sets isFinished only for idle stops; a torrent
+    // stopped at its ratio reports isFinished false. The effective
+    // ratio limit (per torrent, or the daemon's global one) fills the
+    // gap.
+    let (server, client) = new_fixture().await;
+    install_rpc(
+        &server,
+        "session-get",
+        json!({"seedRatioLimited": true, "seedRatioLimit": 1.5}),
+    )
+    .await;
+    let stopped = |hash: &str, mode: i32, limit: f64, ratio: f64| {
+        json!({
+            "id": 1, "hashString": hash, "name": hash, "totalSize": 10, "percentDone": 1.0,
+            "rateDownload": 0, "status": 0, "eta": 0, "downloadDir": "/downloads",
+            "labels": ["ryokan-test"], "isStalled": false, "errorString": "",
+            "isFinished": false, "uploadRatio": ratio, "seedRatioMode": mode,
+            "seedRatioLimit": limit, "files": [], "fileStats": []
+        })
+    };
+    install_rpc(
+        &server,
+        "torrent-get",
+        json!({
+            "torrents": [
+                stopped("own-limit", 1, 2.0, 2.2),
+                stopped("global-limit", 0, 0.0, 1.6),
+                stopped("below-global", 0, 0.0, 0.4),
+                stopped("unlimited", 2, 0.0, 9.0),
+            ]
+        }),
+    )
+    .await;
+    let items = client.list_scoped().await.expect("list_scoped");
+    let done = |h: &str| items.iter().find(|i| i.hash == h).unwrap().seeding_done;
+    assert!(done("own-limit"));
+    assert!(done("global-limit"));
+    assert!(!done("below-global"));
+    assert!(!done("unlimited"));
+}
