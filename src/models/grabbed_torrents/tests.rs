@@ -951,3 +951,73 @@ async fn get_all_pending_excludes_misgrab_rows_and_unverified_listing_respects_a
         "magnet:?xt=urn:btih:ffff"
     );
 }
+
+// ── Import robustness (#205) ─────────────────────────────────────────
+
+#[tokio::test]
+async fn completed_seen_stamp_is_first_writer_wins_and_reactivation_clears_it() {
+    let db = misgrab_pool().await;
+    let sid = misgrab_series(&db, 1, "Show").await;
+    let id = record_grab(&db, "stall", "[G] Show - 01", sid, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        completed_seen_at(&db, id).await.is_none(),
+        "unstamped at grab time"
+    );
+
+    stamp_completed_seen(&db, id).await.unwrap();
+    let first = completed_seen_at(&db, id).await.expect("stamped");
+    // Backdate, then stamp again: the original sighting must survive so
+    // the stall timer measures the whole window, not the latest tick.
+    sqlx::query(
+        "UPDATE grabbed_torrents SET completed_seen_at = '2020-01-01 00:00:00' WHERE id = ?",
+    )
+    .bind(id)
+    .execute(&db)
+    .await
+    .unwrap();
+    stamp_completed_seen(&db, id).await.unwrap();
+    assert_eq!(
+        completed_seen_at(&db, id).await.as_deref(),
+        Some("2020-01-01 00:00:00")
+    );
+    assert_ne!(first, "2020-01-01 00:00:00");
+
+    // Re-grabbing an imported hash reactivates the row; the old stamp
+    // would otherwise fail the re-import on its first complete tick.
+    mark_imported(&db, id).await.unwrap();
+    let again = record_grab(&db, "stall", "[G] Show - 01", sid, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(again, id, "reactivation reuses the row");
+    assert!(
+        completed_seen_at(&db, id).await.is_none(),
+        "reactivation clears completed_seen_at"
+    );
+}
+
+#[tokio::test]
+async fn mark_failed_with_reason_sets_state_and_reason() {
+    let db = misgrab_pool().await;
+    let sid = misgrab_series(&db, 1, "Show").await;
+    let id = record_grab(&db, "stall2", "[G] Show - 02", sid, &[2], false)
+        .await
+        .unwrap()
+        .unwrap();
+    mark_failed_with_reason(&db, id, "import_stalled")
+        .await
+        .unwrap();
+    let (state, reason): (String, String) =
+        sqlx::query_as("SELECT state, failure_reason FROM grabbed_torrents WHERE id = ?")
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(state, "failed");
+    assert_eq!(reason, "import_stalled");
+    assert!(is_blocklisted(&db, "stall2").await.unwrap());
+    assert!(get_all_pending(&db).await.unwrap().is_empty());
+}

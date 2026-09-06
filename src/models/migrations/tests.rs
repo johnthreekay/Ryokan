@@ -1250,3 +1250,29 @@ async fn episode_grab_history_gains_match_provenance_columns() {
         .await
         .expect("second migrate is idempotent");
 }
+
+#[tokio::test]
+async fn import_robustness_columns_exist_with_defaults() {
+    // #205: the stall timer's stamp on grabs and its window on config.
+    let db = fresh_migrated_pool().await;
+    for (table, col) in [
+        ("grabbed_torrents", "completed_seen_at"),
+        ("config", "import_stall_hours"),
+    ] {
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?")
+            .bind(table)
+            .bind(col)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "{table}.{col} missing");
+    }
+    let cfg = crate::models::config::get_config(&db)
+        .await
+        .unwrap()
+        .unwrap_or_default();
+    assert_eq!(cfg.import_stall_hours, 24, "default window is a day");
+    crate::models::migrations::migrate(&db)
+        .await
+        .expect("second migrate is idempotent");
+}

@@ -27,6 +27,11 @@
                 </select>
                 <span class="form-hint">Hardlink needs the download client and the media library on the same filesystem. Ryokan falls back to copy when a hardlink fails.</span>
             </div>
+            <div class="form-group">
+                <label for="import_stall_hours">Give up on stuck imports after (hours)</label>
+                <input type="number" min="0" max="720" required name="import_stall_hours" id="import_stall_hours" value="{{ config.import_stall_hours }}">
+                <span class="form-hint">A finished download that still has no video file to import after this long is marked failed and listed under Downloads → Blocklist. 0 keeps retrying forever.</span>
+            </div>
         </div>
 
         <div class="cf-section" id="naming-settings">

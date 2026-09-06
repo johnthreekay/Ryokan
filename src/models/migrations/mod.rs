@@ -2849,6 +2849,18 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         sqlx::query(sql).execute(db).await.ok();
     }
 
+    // Import robustness (#205). `completed_seen_at` is stamped by the
+    // first post-processing tick that saw the download client report
+    // the grab complete, so the "complete but never imported" timer
+    // measures the stuck window rather than the download itself.
+    // `import_stall_hours` is that window; 0 disables the escalation.
+    for sql in [
+        "ALTER TABLE grabbed_torrents ADD COLUMN completed_seen_at TEXT",
+        "ALTER TABLE config ADD COLUMN import_stall_hours INTEGER NOT NULL DEFAULT 24",
+    ] {
+        sqlx::query(sql).execute(db).await.ok();
+    }
+
     Ok(())
 }
 
