@@ -285,11 +285,14 @@ function forceRunTask(btn, taskKey) {
         .then(({ ok, data }) => {
             // Queue across the reload — `location.reload()` below
             // tears down the DOM and a non-queued toast disappears
-            // before the user can read it.
+            // before the user can read it. A 200 with `ok: false`
+            // (task skipped as already running, or partly failed)
+            // reads as a warning, not a success.
+            const good = ok && !(data && data.ok === false);
             if (data && data.message) {
                 window.ryokanQueueToast({
-                    kind: ok ? 'success' : 'error',
-                    title: ok ? 'Task complete' : 'Task failed',
+                    kind: good ? 'success' : (ok ? 'warn' : 'error'),
+                    title: good ? 'Task complete' : (ok ? 'Task not completed' : 'Task failed'),
                     body: data.message,
                 });
             } else if (!ok) {
@@ -362,9 +365,13 @@ function runDebugAction(btn, opts) {
     .then(async r => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.message || opts.failureTitle);
+        // A 200 with `ok: false` is a run that did not fully succeed
+        // (some series failed) or one skipped because the same sweep
+        // is already running. Say so instead of celebrating.
+        const partial = data.ok === false;
         window.ryokanToast({
-            kind: 'success',
-            title: opts.successTitle,
+            kind: partial ? 'warn' : 'success',
+            title: partial ? (opts.warnTitle || opts.failureTitle) : opts.successTitle,
             body: data.message || opts.successBody || '',
         });
     })
@@ -411,6 +418,7 @@ async function rebuildAniListCache(btn) {
         startBody: 'This can take a while for large libraries.',
         successTitle: 'Metadata cache rebuilt',
         successBody: 'Metadata cache rebuild complete.',
+        warnTitle: 'Metadata cache rebuild',
         failureTitle: 'Rebuild failed',
     });
 }

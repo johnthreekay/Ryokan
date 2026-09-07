@@ -277,3 +277,135 @@ async fn get_anime_detail_cached_short_circuits_second_call() {
     }
     jikan::reset_state_for_tests().await;
 }
+
+// ── episode cache: failures are not negative-cached (#235) ────────
+
+use ryokan::test_support::in_memory_pool;
+
+async fn episode_cache_rows(db: &sqlx::SqlitePool, mal_id: i64) -> Vec<(i32, String)> {
+    sqlx::query_as("SELECT episode_number, title FROM episode_cache WHERE mal_id = ? ORDER BY 1")
+        .bind(mal_id)
+        .fetch_all(db)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn fetch_episode_titles_does_not_cache_a_failed_fetch() {
+    // A 5xx used to be cached as the 7-day `__RYOKAN_EMPTY__` sentinel,
+    // which handed the series to the Kitsu title fallback until the
+    // TTL lapsed (#235). The failure must leave no row so the next
+    // call asks again.
+    let _gate = ENV_LOCK.lock().await;
+    jikan::reset_state_for_tests().await;
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/123/episodes"))
+        .respond_with(ResponseTemplate::new(503))
+        .expect(1)
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("JIKAN_API_BASE", mock.uri());
+    }
+    let db = in_memory_pool().await;
+
+    let eps = jikan::fetch_episode_titles(&db, 123).await;
+    assert!(eps.is_empty());
+    assert!(
+        episode_cache_rows(&db, 123).await.is_empty(),
+        "a failed fetch must not write the negative-cache sentinel"
+    );
+
+    // Tenrai recovers: the next call fetches and caches for real.
+    mock.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/123/episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": [{ "mal_id": 1, "title": "Back Online", "aired": "2024-01-01T00:00:00+00:00" }]
+        })))
+        .expect(1)
+        .mount(&mock)
+        .await;
+    let eps = jikan::fetch_episode_titles(&db, 123).await;
+    assert_eq!(eps.get(&1).map(|e| e.title.as_str()), Some("Back Online"));
+    assert_eq!(
+        episode_cache_rows(&db, 123).await,
+        vec![(1, "Back Online".to_string())]
+    );
+
+    unsafe {
+        std::env::remove_var("JIKAN_API_BASE");
+    }
+    jikan::reset_state_for_tests().await;
+}
+
+#[tokio::test]
+async fn fetch_episode_titles_still_negative_caches_a_real_empty_list() {
+    // The sentinel keeps its job for the case it was built for: MAL
+    // has no episode list. One request, then the cache answers.
+    let _gate = ENV_LOCK.lock().await;
+    jikan::reset_state_for_tests().await;
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/124/episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "data": [] })))
+        .expect(1)
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("JIKAN_API_BASE", mock.uri());
+    }
+    let db = in_memory_pool().await;
+
+    assert!(jikan::fetch_episode_titles(&db, 124).await.is_empty());
+    assert_eq!(
+        episode_cache_rows(&db, 124).await,
+        vec![(0, "__RYOKAN_EMPTY__".to_string())]
+    );
+    assert!(jikan::fetch_episode_titles(&db, 124).await.is_empty());
+
+    unsafe {
+        std::env::remove_var("JIKAN_API_BASE");
+    }
+    jikan::reset_state_for_tests().await;
+}
+
+#[tokio::test]
+async fn fetch_episode_titles_skips_the_request_during_cooldown_without_caching() {
+    // A 429 elsewhere sets the process-wide cooldown; the episode
+    // fetch honors it like `search_anime` does, and the skipped call
+    // leaves no sentinel behind.
+    let _gate = ENV_LOCK.lock().await;
+    jikan::reset_state_for_tests().await;
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(ResponseTemplate::new(429).set_body_string("rate limit"))
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/125/episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": [{ "mal_id": 1, "title": "Unreached", "aired": null }]
+        })))
+        .expect(0)
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("JIKAN_API_BASE", mock.uri());
+    }
+    let db = in_memory_pool().await;
+
+    jikan::search_anime("anything")
+        .await
+        .expect_err("429 must surface as Err and arm the cooldown");
+
+    assert!(jikan::fetch_episode_titles(&db, 125).await.is_empty());
+    assert!(episode_cache_rows(&db, 125).await.is_empty());
+
+    unsafe {
+        std::env::remove_var("JIKAN_API_BASE");
+    }
+    jikan::reset_state_for_tests().await;
+}

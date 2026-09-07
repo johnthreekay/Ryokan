@@ -631,6 +631,18 @@ pub async fn api_rebuild_cached_metadata(
     // the scheduled 12h `refresh_all_series_metadata` status row
     // when the two overlap — they're semantically different
     // operations and the audit trail for each should stand alone.
+    // Probe the sweep lock before writing a `running` row, so a click
+    // during the 12h refresh (or a double-fired button, #235) answers
+    // "already running" instead of a second sweep over the same rows.
+    // The sweep takes the lock itself; this only keeps the audit row
+    // and the toast honest.
+    if metadata_sync::METADATA_SWEEP_LOCK.try_lock().is_err() {
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "message": "Metadata rebuild is already running",
+        })));
+    }
+
     let db = state.db.clone();
     let outer = tokio::spawn(async move {
         let middle_db = db.clone();
@@ -646,46 +658,49 @@ pub async fn api_rebuild_cached_metadata(
             let inner = tokio::spawn(async move {
                 metadata_sync::rebuild_cached_metadata_for_all(&rebuild_db).await
             });
-            inner.await // Result<(usize, usize, usize), JoinError>
+            inner.await // Result<Result<(usize, usize, usize), String>, JoinError>
         });
 
-        let (status, detail, payload): (&str, String, Option<(usize, usize, usize)>) =
-            match middle.await {
-                Ok(Ok((rebuilt, skipped, failed))) => {
-                    let st = if failed > 0 { "warn" } else { "ok" };
-                    (
-                        st,
-                        format!("rebuilt={rebuilt}, skipped={skipped}, failed={failed}"),
-                        Some((rebuilt, skipped, failed)),
-                    )
-                }
-                Ok(Err(join_err)) => {
-                    // Inner panicked. The middle task caught it and
-                    // bubbled it up cleanly.
-                    let kind = if join_err.is_panic() {
-                        "panicked"
-                    } else {
-                        "join error"
-                    };
-                    ("error", format!("rebuild sweep {kind}: {join_err}"), None)
-                }
-                Err(join_err) => {
-                    // Middle itself panicked — e.g. `mark_started`
-                    // internals, or something between the nested
-                    // spawns. Still mark the run finished so the
-                    // status row exits `running`.
-                    let kind = if join_err.is_panic() {
-                        "panicked"
-                    } else {
-                        "join error"
-                    };
-                    (
-                        "error",
-                        format!("rebuild orchestration task {kind}: {join_err}"),
-                        None,
-                    )
-                }
-            };
+        type Outcome = Result<(usize, usize, usize), String>;
+        let (status, detail, payload): (&str, String, Option<Outcome>) = match middle.await {
+            Ok(Ok(Ok((rebuilt, skipped, failed)))) => {
+                let st = if failed > 0 { "warn" } else { "ok" };
+                (
+                    st,
+                    format!("rebuilt={rebuilt}, skipped={skipped}, failed={failed}"),
+                    Some(Ok((rebuilt, skipped, failed))),
+                )
+            }
+            // Lost the lock race to a sweep that started between the
+            // probe above and the spawn: nothing was rebuilt.
+            Ok(Ok(Err(busy))) => ("warn", busy.clone(), Some(Err(busy))),
+            Ok(Err(join_err)) => {
+                // Inner panicked. The middle task caught it and
+                // bubbled it up cleanly.
+                let kind = if join_err.is_panic() {
+                    "panicked"
+                } else {
+                    "join error"
+                };
+                ("error", format!("rebuild sweep {kind}: {join_err}"), None)
+            }
+            Err(join_err) => {
+                // Middle itself panicked — e.g. `mark_started`
+                // internals, or something between the nested
+                // spawns. Still mark the run finished so the
+                // status row exits `running`.
+                let kind = if join_err.is_panic() {
+                    "panicked"
+                } else {
+                    "join error"
+                };
+                (
+                    "error",
+                    format!("rebuild orchestration task {kind}: {join_err}"),
+                    None,
+                )
+            }
+        };
         let _ = scheduled_tasks::mark_finished(&db, "metadata_rebuild", status, &detail).await;
         payload
     });
@@ -697,7 +712,7 @@ pub async fn api_rebuild_cached_metadata(
         )
     })?;
 
-    let Some((rebuilt, skipped, failed)) = payload else {
+    let Some(outcome) = payload else {
         // Inner panicked — we already wrote an "error" row into
         // scheduled_task_runs so operators can see what happened.
         // Surface a 500 to the client (on the happy path where they
@@ -707,6 +722,15 @@ pub async fn api_rebuild_cached_metadata(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             "Rebuild task panicked; see scheduled tasks for details.".to_string(),
         ));
+    };
+    let (rebuilt, skipped, failed) = match outcome {
+        Ok(counts) => counts,
+        Err(busy) => {
+            return Ok(Json(serde_json::json!({
+                "ok": false,
+                "message": busy,
+            })));
+        }
     };
 
     let message = format!(
@@ -1096,18 +1120,42 @@ pub async fn api_force_metadata_refresh(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
     detached_task(async move {
+        // Same probe as the rebuild: a refresh during a rebuild (or the
+        // 12h tick) answers "already running" instead of queuing.
+        if metadata_sync::METADATA_SWEEP_LOCK.try_lock().is_err() {
+            return Ok::<_, (StatusCode, String)>(Json(serde_json::json!({
+                "ok": false,
+                "message": "Metadata refresh is already running",
+            })));
+        }
         let _ = scheduled_tasks::mark_started(
             &state.db,
             "metadata_refresh",
             "Manual metadata refresh started",
         )
         .await;
-        let (refreshed, failed) = metadata_sync::refresh_all_series_metadata(&state.db).await;
+        let (refreshed, failed) =
+            match metadata_sync::refresh_all_series_metadata(&state.db).await {
+                Ok(counts) => counts,
+                Err(busy) => {
+                    let _ = scheduled_tasks::mark_finished(
+                        &state.db,
+                        "metadata_refresh",
+                        "warn",
+                        &busy,
+                    )
+                    .await;
+                    return Ok(Json(serde_json::json!({
+                        "ok": false,
+                        "message": busy,
+                    })));
+                }
+            };
         let status = if failed > 0 { "warn" } else { "ok" };
         let detail = format!("refreshed={}, failed={}", refreshed, failed);
         let _ =
             scheduled_tasks::mark_finished(&state.db, "metadata_refresh", status, &detail).await;
-        Ok::<_, (StatusCode, String)>(Json(serde_json::json!({
+        Ok(Json(serde_json::json!({
             "ok": failed == 0,
             "message": format!("Metadata refresh complete. Refreshed: {}. Failed: {}.", refreshed, failed),
         })))

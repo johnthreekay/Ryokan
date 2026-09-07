@@ -86,6 +86,11 @@ path = "tests/jikan_e2e.rs"
 required-features = ["test-support"]
 
 [[test]]
+name = "kitsu_e2e"
+path = "tests/kitsu_e2e.rs"
+required-features = ["test-support"]
+
+[[test]]
 name = "rss_user_feed_e2e"
 path = "tests/rss_user_feed_e2e.rs"
 required-features = ["test-support"]
