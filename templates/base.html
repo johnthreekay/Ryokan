@@ -46,11 +46,11 @@
         html { background: #0f0f13; color: #d4d4e0; color-scheme: dark; }
         body { margin: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.5; }
     </style>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <link rel="stylesheet" href="/static/css/topbar.css">
-    <link rel="stylesheet" href="/static/css/forms.css">
-    <link rel="stylesheet" href="/static/css/badges.css">
-    <link rel="stylesheet" href="/static/css/modals.css">
+    <link rel="stylesheet" href="/static/css/base.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/topbar.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/forms.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/badges.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/modals.css?v={{ crate::asset_version() }}">
     {# Per-page CSS bundled here instead of `{% block page_css %}` per
        template. Reason: a head-merge (the htmx 2 head-support extension) diffed <head> on
        every boost nav. With per-template CSS links, navigating
@@ -70,17 +70,17 @@
        Modular CSS class names are page-scoped enough (`.dc-*`,
        `.indexer-*`, `.cf-*`, `.ep-*`, etc.) that cross-page rule
        collision is not a concern. #}
-    <link rel="stylesheet" href="/static/css/pages/auth.css">
-    <link rel="stylesheet" href="/static/css/pages/calendar.css">
-    <link rel="stylesheet" href="/static/css/pages/downloads.css">
-    <link rel="stylesheet" href="/static/css/pages/grab_picker.css">
-    <link rel="stylesheet" href="/static/css/pages/import.css">
-    <link rel="stylesheet" href="/static/css/pages/index.css">
-    <link rel="stylesheet" href="/static/css/pages/recycle.css">
-    <link rel="stylesheet" href="/static/css/pages/search.css">
-    <link rel="stylesheet" href="/static/css/pages/series.css">
-    <link rel="stylesheet" href="/static/css/pages/settings.css">
-    <link rel="stylesheet" href="/static/css/pages/system.css">
+    <link rel="stylesheet" href="/static/css/pages/auth.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/calendar.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/downloads.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/grab_picker.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/import.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/index.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/recycle.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/search.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/series.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/settings.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/system.css?v={{ crate::asset_version() }}">
 </head>
 <body hx-boost:inherited="true">
     {# `hx-boost:inherited="true"` on `<body>` opts every plain `<a>`
@@ -327,9 +327,9 @@
        means every plain `<a>` and `<form>` runs through htmx by
        default. Per-page `hx-boost="false"` opt-outs are documented at
        each opt-out site. #}
-    <script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
-    <script src="/static/js/page_lifecycle.js" defer></script>
-    <script src="/static/js/base.js" defer></script>
+    <script src="/static/vendor/htmx-4.0.0.min.js?v={{ crate::asset_version() }}" defer></script>
+    <script src="/static/js/page_lifecycle.js?v={{ crate::asset_version() }}" defer></script>
+    <script src="/static/js/base.js?v={{ crate::asset_version() }}" defer></script>
     {# Per-page scripts must load AFTER `page_lifecycle.js` + `base.js`
        because they call `window.ryokanRegisterPageInit`,
        `window.ryokanProgressToast`, `window.ryokanToast`, etc. defined

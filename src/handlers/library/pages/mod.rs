@@ -487,7 +487,6 @@ pub async fn series_detail(
     // without a read-your-writes race. Everything *after* this point is
     // read-only and fans out in parallel.
     let mut monitor_mode = "future".to_string();
-    let mut monitor_mode_label = monitoring::MonitorMode::Future.label().to_string();
     let monitor_mode_manual_override = db_series
         .as_ref()
         .map(|s| s.monitor_mode_manual_override)
@@ -497,10 +496,8 @@ pub async fn series_detail(
             monitoring_service::ensure_series_monitoring_rows(&state.db, tracked).await
         {
             monitor_mode = summary.mode.as_str().to_string();
-            monitor_mode_label = summary.mode.label().to_string();
         } else {
             monitor_mode = tracked.monitor_mode.clone();
-            monitor_mode_label = tracked.monitor_mode_enum().label().to_string();
         }
     }
 
@@ -764,7 +761,6 @@ pub async fn series_detail(
         adult_without_indexers,
         recycle_enabled,
         monitor_mode,
-        monitor_mode_label,
         monitor_mode_manual_override,
         can_sync_from_external_account,
         sync_provider_label,

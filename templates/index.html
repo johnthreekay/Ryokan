@@ -4,6 +4,13 @@
 {% block title %} - Library{% endblock %}
 
 {% block content %}
+{# Everything the sort controls re-render: the header (count, chips,
+   search box, tools) and the grid. The sort select and direction
+   button fetch the page with the new query and swap this region in
+   place (`hx-select` picks it out of the full page), pushing the URL
+   so reload and back/forward keep the sort. The bulk toolbar and
+   modals below stay put. #}
+<div id="library-page">
 <div class="page-header library-header">
     {# ── Row 1: identity + primary. Title with ambient collection
        counts on the left; search (the highest-frequency control) and
@@ -65,11 +72,18 @@
                values are each key's DEFAULT direction (recent =
                newest first, title = A to Z, score = high first) so
                picking a key is one interaction; the arrow flips
-               within the key. librarySortNavigate in index.js
+               within the key. librarySortParams in index.js
                recomposes the canonical ?sort= value and preserves
                ?list= + the live search text. #}
             <label for="library-sort-key" class="visually-hidden">Sort</label>
-            <select id="library-sort-key" class="folder-select library-sort-key" onchange="librarySortKeyChanged(this)">
+            <select id="library-sort-key" class="folder-select library-sort-key"
+                    hx-get="/"
+                    hx-trigger="change"
+                    hx-vals="js:{...librarySortParams('key', this)}"
+                    hx-target="#library-page"
+                    hx-select="#library-page"
+                    hx-swap="outerHTML"
+                    hx-push-url="true">
                 <option value="recent"{% if sort_key.as_str() == "recent" %} selected{% endif %}>Recently added</option>
                 <option value="title"{% if sort_key.as_str() == "title" %} selected{% endif %}>Title</option>
                 {% if !score_format.is_empty() %}
@@ -80,7 +94,13 @@
                     id="library-sort-dir"
                     class="library-sort-dir"
                     data-desc="{{ sort_desc }}"
-                    onclick="librarySortDirToggled(this)"
+                    hx-get="/"
+                    hx-trigger="click"
+                    hx-vals="js:{...librarySortParams('dir', this)}"
+                    hx-target="#library-page"
+                    hx-select="#library-page"
+                    hx-swap="outerHTML"
+                    hx-push-url="true"
                     title="{% if sort_desc %}Descending{% else %}Ascending{% endif %}"
                     aria-label="Toggle sort direction">
                 <svg class="library-sort-dir-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
@@ -205,6 +225,7 @@
     {% endfor %}
 </div>
 {% endif %}
+</div>{# /#library-page #}
 
 {# Bulk action toolbar (issue #125). Mounted as soon as the user
    enters bulk-select mode (see toggleBulkSelectMode in index.js).
@@ -245,34 +266,44 @@
     </div>
 </div>
 
-{# Bulk delete confirmation modal. Distinct from the per-row
-   data-ryokan-confirm-* pattern because we collect a delete-files
-   checkbox alongside the confirmation. With a recycle bin configured
-   (#123) the folders move there; otherwise it's a permanent unlink and
-   the copy says "cannot be undone." #}
+{# Bulk delete confirmation modal: the series page's remove modal
+   for many series at once. Files always go the way the recycle-bin
+   setting says (moved to the bin, or deleted), exactly like a single
+   remove; the copy states which. #}
 <div class="modal-backdrop" id="bulk-delete-modal" style="display:none" data-recycle-enabled="{% if recycle_enabled %}true{% else %}false{% endif %}" onclick="closeBulkDeleteModal(event)">
-    <div class="modal" onclick="event.stopPropagation()" style="max-width: 520px">
-        <div class="modal-header">
-            <h3>Remove from library</h3>
+    <div class="modal remove-series-modal" onclick="event.stopPropagation()">
+        <div class="modal-header remove-series-header">
+            <div class="remove-series-heading">
+                <div class="remove-series-icon" aria-hidden="true">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                </div>
+                <div class="remove-series-heading-text">
+                    <h3>Remove from library</h3>
+                    <p class="remove-series-subtitle"><span id="bulk-delete-count">0</span> series selected</p>
+                </div>
+            </div>
             <button type="button" class="btn-icon" onclick="closeBulkDeleteModal(event)" aria-label="Close">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
         </div>
-        <div class="modal-body">
-            <p style="margin: 0 0 12px;">Remove <strong><span id="bulk-delete-count">0</span> series</strong> from your library.</p>
-            <div class="setting-rows">
-                <label class="setting-row">
-                    <span class="setting-row-text">
-                        <span class="setting-row-title">{% if recycle_enabled %}Also move files to the recycle bin{% else %}Also delete files from disk{% endif %}</span>
-                        <span class="setting-row-desc">{% if recycle_enabled %}Each series folder moves to the recycle bin and its active torrents are removed from the download client.{% else %}Each series folder is deleted permanently and its active torrents are removed from the download client. This cannot be undone.{% endif %}</span>
-                    </span>
-                    <input type="checkbox" id="bulk-delete-files-toggle">
-                </label>
-            </div>
+        <div class="modal-body remove-series-body">
+            <ul class="remove-series-consequences">
+                <li>Each series folder and its episode files {% if recycle_enabled %}will move to the recycle bin{% else %}will be deleted from disk{% endif %}.</li>
+                <li>Every torrent for these series will be removed from <strong>the download client</strong>.</li>
+                <li>Imported episodes and the <strong>Jellyfin</strong> folders will be gone.</li>
+            </ul>
+            {% if recycle_enabled %}
+            <p class="remove-series-final-warning">Files can be restored from the <a href="/library/recycle">Recycle Bin</a> page until they are purged. The library entries themselves are removed.</p>
+            {% else %}
+            <p class="remove-series-final-warning">This cannot be undone.</p>
+            {% endif %}
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer remove-series-footer">
             <button type="button" class="btn btn-secondary" onclick="closeBulkDeleteModal(event)">Cancel</button>
-            <span class="modal-footer-spacer"></span>
             <button type="button" id="bulk-delete-confirm-btn" class="btn btn-danger" onclick="confirmBulkDelete()">Remove from library</button>
         </div>
     </div>
@@ -401,4 +432,4 @@ window.initialTitleLanguage = '{{ title_language }}';
 </script>
 {% endblock %}
 
-{% block page_js %}<script src="/static/js/index.js" defer></script>{% endblock %}
+{% block page_js %}<script src="/static/js/index.js?v={{ crate::asset_version() }}" defer></script>{% endblock %}

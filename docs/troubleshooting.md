@@ -79,7 +79,7 @@ Since 1.9.3 Ryokan removes a download from its client once the download is impor
 
 ## Series-page state is stale
 
-Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. If something looks wrong:
+Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. A download the client has paused says **Paused** on its progress bar, and the episode's grab history (click the episode) shows what the client is doing with a torrent it still holds in the **State** column: `seeding` or `paused` in place of `grabbed` or `completed`, with the progress, speed, or the reason underneath. If something looks wrong:
 
 1. **Refresh the page** (F5). The server-rendered page is the ground truth; if refresh fixes it, it's a JS-side staleness bug worth filing.
 2. If refresh *doesn't* fix it, the underlying DB state is what you're seeing. Check the grab-history modal for an authoritative view of that episode's grab state.

@@ -11,7 +11,7 @@ DB-backed log of everything Ryokan does, filterable by category, level, and free
 - **Category filter**: 19 categories, one per subsystem (Search, Grab, AutoSearch, AniList, DownloadClient, PostProcess, Quality, etc.). Pick the one matching what you were doing when the issue appeared.
 - **Level filter**: trace / debug / info / warn / error. The DB-side floor is set by `RYOKAN_DB_LOG_LEVEL` (default `info`). Setting the filter to `trace` or `debug` won't surface entries Ryokan never persisted; bump the env var if you need that detail. See [Docker reference → Environment variables](docker.md#environment-variables).
 - **Search box**: substring match against the message and detail columns. Useful for finding a specific release title, hash, or filename.
-- **Older →** paginates backwards. Logs older than ~30 days are pruned by the `cleanup` background task.
+- **Pages**: 200 entries per page, newest first. Use the numbered links, **Newer** / **Older**, or type a page number in the **Page** box to jump. Filters and the page are kept in the address bar, so a reload or a shared link lands on the same view. **Live** shows new entries as they arrive, on the first page only. Logs older than ~30 days are pruned by the `cleanup` background task.
 
 For specific diagnostic walkthroughs, see [Troubleshooting](troubleshooting.md).
 

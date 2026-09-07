@@ -40,6 +40,7 @@ async fn api_logs_poll_returns_only_entries_strictly_after_cursor() {
             after: Some(cursor),
             level: None,
             category: None,
+            search: None,
         }),
     )
     .await;
@@ -86,6 +87,7 @@ async fn api_logs_poll_filters_by_level_and_category_at_sql_layer() {
             after: Some(0),
             level: Some("warn".to_string()),
             category: Some("grab".to_string()),
+            search: None,
         }),
     )
     .await;

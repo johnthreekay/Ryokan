@@ -1032,13 +1032,16 @@ pub async fn mark_episode_failed(
     Ok(Json(report))
 }
 
-/// Returns download progress for episodes of a series that are currently downloading.
+/// Returns the download client's view of every episode of a series that
+/// still has an item in a client: downloads in flight (progress, speed,
+/// paused or stalled) and imported episodes whose torrent is still
+/// seeding or sitting paused.
 #[utoipa::path(
     get,
     path = "/api/series/{anilist_id}/download-progress",
     tag = "Library",
     summary = "Episode download progress",
-    description = "Returns download progress for all actively downloading episodes of a series.",
+    description = "Returns the download client's state for every episode of a series that still has an item in a client: downloads in flight, and imported episodes whose torrent is still seeding or paused (`imported: true`).",
     params(
         ("anilist_id" = i64, Path, description = "AniList ID or internal series ID"),
     ),
@@ -1062,12 +1065,20 @@ pub async fn episode_download_progress(
     let pending = crate::models::grabbed_torrents::get_all_pending(&state.db)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Imported grabs whose item Ryokan has not seen leave the client
+    // (the #228 finished-seed sweep's own work list): the episode is in
+    // the library, and the row describes what the client still holds,
+    // so the series page can say "seeding" or "paused" next to the
+    // quality tag. Filtered to this series below, like `pending`.
+    let seeding = crate::models::grabbed_torrents::list_imported_in_client(&state.db)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    if pending.is_empty() {
+    if pending.is_empty() && seeding.is_empty() {
         return Ok(Json(Vec::new()));
     }
 
-    let grab_ids: Vec<i64> = pending.iter().map(|g| g.id).collect();
+    let grab_ids: Vec<i64> = pending.iter().chain(seeding.iter()).map(|g| g.id).collect();
     let routes_by_grab =
         crate::models::grabbed_torrents::get_series_routes_for_grabs(&state.db, &grab_ids)
             .await
@@ -1110,18 +1121,52 @@ pub async fn episode_download_progress(
         .map(|t| (t.hash.to_lowercase(), t))
         .collect();
 
-    let mut results = Vec::new();
-    for grab in &pending {
-        let routes = routes_by_grab.get(&grab.id);
-        let ep_nums: Vec<i32> = match routes {
+    // A grab's episodes on *this* series: its sibling routes when
+    // auto-expand wrote any (a batch pack can span series), else its
+    // own episode list when it belongs here, else nothing.
+    let episodes_for = |grab: &crate::models::grabbed_torrents::GrabbedTorrent| -> Vec<i32> {
+        match routes_by_grab.get(&grab.id) {
             Some(routes) if !routes.is_empty() => routes
                 .iter()
                 .filter(|r| r.series_id == tracked.id)
                 .flat_map(|r| r.episode_numbers.iter().copied())
                 .collect(),
             _ if grab.series_id == tracked.id => grab.episode_numbers.clone(),
-            _ => continue,
+            _ => Vec::new(),
+        }
+    };
+
+    let mut results = Vec::new();
+
+    // Imported-and-still-in-client rows go first so that, when the
+    // poller keys the list by episode, a newer pending grab for the
+    // same episode (an upgrade in flight) is the one that wins. An
+    // item that is gone from every client is simply skipped here; the
+    // finished-seed sweep is the one that stamps `client_removed_at`.
+    for grab in &seeding {
+        let ep_nums = episodes_for(grab);
+        if ep_nums.is_empty() {
+            continue;
+        }
+        let Some(t) = by_hash.get(&grab.hash.to_lowercase()).copied() else {
+            continue;
         };
+        for ep in ep_nums {
+            results.push(EpisodeProgress {
+                episode: ep,
+                progress: t.progress,
+                speed: t.dlspeed,
+                state: t.state.clone(),
+                state_kind: t.state_kind,
+                hash: t.hash.to_lowercase(),
+                imported: true,
+                seeding_done: t.seeding_done,
+            });
+        }
+    }
+
+    for grab in &pending {
+        let ep_nums = episodes_for(grab);
         if ep_nums.is_empty() {
             continue;
         }
@@ -1165,6 +1210,9 @@ pub async fn episode_download_progress(
                 speed: t.dlspeed,
                 state: t.state.clone(),
                 state_kind: t.state_kind,
+                hash: t.hash.to_lowercase(),
+                imported: false,
+                seeding_done: t.seeding_done,
             });
         }
     }
@@ -1185,6 +1233,22 @@ pub struct EpisodeProgress {
     /// Normalized state slug from [`DownloadItemState`]. See its
     /// rendered form in the Downloads page state badges.
     pub state_kind: crate::services::download_client::DownloadItemState,
+    /// The client's hash for the item (lowercase), so the episode
+    /// modal can match a grab-history row to it.
+    #[serde(default)]
+    pub hash: String,
+    /// `true` when the episode's file is already in the library and this
+    /// row describes what the download client still holds for it
+    /// (seeding, stopped at a seeding limit, paused by hand). `false`
+    /// for a download still in flight, where `progress` is the
+    /// progress bar.
+    #[serde(default)]
+    pub imported: bool,
+    /// The client itself stopped the item because its seeding rules
+    /// (ratio, seeding time, inactivity) are met. See
+    /// [`DownloadItem::seeding_done`](crate::services::download_client::DownloadItem::seeding_done).
+    #[serde(default)]
+    pub seeding_done: bool,
 }
 
 /// Returns the current episode state for a series as JSON.

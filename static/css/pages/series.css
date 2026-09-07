@@ -350,6 +350,23 @@
     min-width: 0;
 }
 
+/* The Upgrades row: two inline checkboxes and a hint on one line, the
+   same density as the Monitoring row's select and hint above it. The
+   setting-row recipe (a card per switch) belongs in Settings; inside
+   this panel it nested a box in a box and made the row twice the
+   height of its neighbor. Wraps on narrow screens. */
+.monitoring-card .monitoring-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 20px;
+}
+
+.monitoring-card .checkbox-row {
+    font-size: 13px;
+    gap: 8px;
+}
+
 .monitoring-divider {
     height: 1px;
     background: var(--border);
@@ -1070,6 +1087,19 @@
 .grab-state-removed { color: var(--text-dim); font-weight: 600; }
 
 .grab-state-replaced { color: var(--orange); font-weight: 600; }
+
+/* Live client states in the same column (series_episode_modal.js
+   `grabStateCell`): the torrent is still in the client. */
+.grab-state-seeding { color: var(--green); font-weight: 600; }
+
+.grab-state-paused { color: var(--orange); font-weight: 600; }
+
+.grab-state-detail {
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 400;
+    white-space: nowrap;
+}
 
 .btn-mark-failed {
     font-size: 11px;

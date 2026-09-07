@@ -642,7 +642,7 @@ a:hover {
 }
 
 .folder-select {
-    padding: 6px 10px;
+    padding: 6px 30px 6px 10px; /* right: chevron room, see the select rule in forms.css */
     /* Longhand `background-color` (not the `background:` shorthand)
      * so the global `select { background-image: ...chevron... }` rule
      * in forms.css survives the cascade. The shorthand resets
@@ -1119,7 +1119,7 @@ input[type="file"]::file-selector-button:hover {
     border: 1px solid var(--border);
     color: var(--text);
     border-radius: var(--radius);
-    padding: 10px 12px;
+    padding: 10px 30px 10px 12px; /* right: chevron room */
     font-size: 14px;
     font-family: var(--font-body);
     transition: border-color 0.15s;
@@ -1166,6 +1166,13 @@ input[type="file"]::file-selector-button:hover {
     color: var(--text-dim);
     min-width: 40px;
     text-align: right;
+    white-space: nowrap;
+}
+
+/* A download the client has paused keeps its bar, in the warning
+   color, and its text says so. */
+.dl-progress-paused .dl-progress-fill {
+    background: var(--orange);
 }
 
 .ep-dl-progress {

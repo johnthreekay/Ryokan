@@ -107,6 +107,13 @@ pub struct GrabHistoryEntry {
     pub is_batch: bool,
     pub grabbed_at: String,
     pub state: String,
+    /// Info hash (or usenet job id) of this row's torrent, found the
+    /// same way as `client_content_path`: the newest `grabbed_torrents`
+    /// row for the same series and release title. Empty when unknown.
+    /// The episode modal matches it against the download-progress
+    /// poll so the State column can say what the client is doing with
+    /// the torrent (seeding, paused).
+    pub grab_hash: String,
     /// Client-side path of the completed torrent
     /// (`grabbed_torrents.client_content_path`). Empty until the
     /// post-processing sweep observes the torrent as complete. Sourced
@@ -430,6 +437,15 @@ pub async fn get_grab_history(
                 COALESCE(egh.match_phase, '') AS match_phase,
                 COALESCE(egh.matched_alias, '') AS matched_alias,
                 COALESCE(egh.match_ratio, 0) AS match_ratio,
+                COALESCE((
+                    SELECT gt.hash
+                      FROM grabbed_torrents gt
+                     WHERE gt.series_id = egh.series_id
+                       AND gt.torrent_name = egh.release_title
+                       AND COALESCE(gt.hash, '') <> ''
+                     ORDER BY gt.grabbed_at DESC
+                     LIMIT 1
+                ), '') AS grab_hash,
                 COALESCE((
                     SELECT gt.client_content_path
                       FROM grabbed_torrents gt
@@ -1446,6 +1462,7 @@ mod tests {
             is_batch: false,
             grabbed_at: "2026-04-24T00:00:00Z".to_string(),
             state: "grabbed".to_string(),
+            grab_hash: String::new(),
             client_content_path: "/downloads/Show - 01.mkv".to_string(),
             match_kind: String::new(),
             match_phase: String::new(),

@@ -133,8 +133,48 @@
     margin-left: auto;
 }
 
-/* Direction toggle: square button matching the sort select's height.
-   The arrow SVG points down (descending); ascending rotates it. */
+/* The tools right of the sort dropdown (the direction arrow, Select,
+   and the Recycle Bin link) wear the dropdown's own recipe rather
+   than the round icon-button family: 32px, page fill, 1px border,
+   the control radius, 13px text. The arrow and the bin are square;
+   Select carries its icon and label. The arrow SVG points down
+   (descending); ascending rotates it. */
+.library-scope-tools .library-sort-dir,
+.library-scope-tools .bulk-select-toggle {
+    box-sizing: border-box;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.library-scope-tools .library-sort-dir {
+    width: 32px;
+    padding: 0;
+    color: var(--text-dim);
+}
+
+.library-scope-tools .bulk-select-toggle {
+    padding: 0 12px;
+}
+
+.library-scope-tools .library-sort-dir:hover,
+.library-scope-tools .bulk-select-toggle:hover {
+    border-color: var(--border-accent);
+    color: var(--text-bright);
+}
+
+.library-scope-tools .library-sort-dir:focus-visible,
+.library-scope-tools .bulk-select-toggle:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+}
 
 
 .library-sort-dir-icon {
@@ -1106,6 +1146,3 @@
 
 /* The sort-direction button sits between a select and a text button;
    a circle there reads as a stray, so it takes the control radius. */
-.library-sort-dir {
-    border-radius: var(--radius);
-}

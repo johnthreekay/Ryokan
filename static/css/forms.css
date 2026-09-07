@@ -218,7 +218,7 @@
 .search-bar input:focus { outline: none; border-color: var(--accent); }
 
 .search-bar select {
-    padding: 10px 12px;
+    padding: 10px 30px 10px 12px; /* right: chevron room */
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -649,7 +649,13 @@ select {
     background-repeat: no-repeat !important;
     background-position: right 10px center !important;
     background-size: 14px !important;
-    padding-right: 30px;
+    /* Room for the chevron (10px inset + 14px glyph + a gap), guarded
+     * like the image above: a per-role `padding: 6px 10px` shorthand
+     * on a select reset this to 10px and drew the chevron over the
+     * last letters of "Anime - English" and "Missing Episodes". The
+     * role rules below state their right padding explicitly too, so
+     * the numbers read honestly, but this is what holds the line. */
+    padding-right: 30px !important;
 }
 
 select:focus-visible {

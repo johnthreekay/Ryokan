@@ -172,5 +172,5 @@ window.searchState = {
 {% include "partials/grab_picker_modal.html" %}
 {% endblock %}
 
-{% block page_js %}<script src="/static/js/grab_picker.js" defer></script>
-<script src="/static/js/search.js" defer></script>{% endblock %}
+{% block page_js %}<script src="/static/js/grab_picker.js?v={{ crate::asset_version() }}" defer></script>
+<script src="/static/js/search.js?v={{ crate::asset_version() }}" defer></script>{% endblock %}
