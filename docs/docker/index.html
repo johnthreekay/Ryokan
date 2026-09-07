@@ -50,12 +50,6 @@
     
     
       
-        
-        
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
-        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
-      
     
     
       <link rel="stylesheet" href="../stylesheets/ryokan.css">
@@ -674,6 +668,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#branch-and-pull-request-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Branch and pull request images
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reset-auth" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -830,6 +835,33 @@
     
   
   Configuration (cont.)
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  How releases are scored
 
     
   </span>
@@ -1094,6 +1126,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#branch-and-pull-request-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Branch and pull request images
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reset-auth" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1174,7 +1217,7 @@
 <tr>
 <td><code>RYOKAN_COOKIE_SECURE</code></td>
 <td>unset (off)</td>
-<td>Append <code>Secure</code> to the session cookie. Off by default so HTTP localhost works; flip on for HTTPS.</td>
+<td>Force the <code>Secure</code> flag onto the login cookie. Usually unnecessary: with <code>RYOKAN_TRUSTED_PROXY=1</code>, Ryokan sets the flag on its own whenever the proxy reports HTTPS. Set this only for an HTTPS proxy that doesn't send <code>X-Forwarded-Proto</code>. Leave it off for plain HTTP or you won't be able to stay logged in.</td>
 </tr>
 <tr>
 <td><code>RYOKAN_RESET_AUTH</code></td>
@@ -1214,7 +1257,7 @@
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/downloads:/downloads</span><span class="w">          </span><span class="c1"># optional but required for post-processing</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span><span class="w">      </span><span class="c1"># optional but required for post-processing</span>
 </span></code></pre></div>
-<p><strong><code>/data</code> (required)</strong> holds the SQLite database, the artwork blob cache, the encryption key, the anibridge mappings cache, and any sentinel files. Loss of <code>/data</code> means losing your library state, queued grabs, scoring history, and OAuth tokens. The named-volume default (<code>ryokan-data</code>) keeps it inside Docker; bind-mount to a host path if you want the database visible from the host filesystem.</p>
+<p><strong><code>/data</code> (required)</strong> holds the SQLite database, the artwork blob cache, the encryption key, the anibridge mappings cache, the default <code>backups/</code> folder, and any sentinel files. Loss of <code>/data</code> means losing your library state, queued grabs, scoring history, and OAuth tokens. The named-volume default (<code>ryokan-data</code>) keeps it inside Docker; bind-mount to a host path if you want the database visible from the host filesystem.</p>
 <p><strong><code>/downloads</code> and <code>/media/...</code></strong> are post-processing's source and destination. They're optional in the sense that Ryokan boots without them, but post-processing requires both to be visible inside the container at the same paths your download client uses for "complete" files and the path you set in Settings → General → Media Root Path.</p>
 <h2 id="healthcheck">Healthcheck<a class="headerlink" href="#healthcheck" title="Anchor link">&para;</a></h2>
 <p>The image ships with:</p>
@@ -1232,6 +1275,16 @@
 <p class="admonition-title">Don't <code>docker compose down -v</code></p>
 <p>The <code>-v</code> flag removes named volumes. With the documented setup, that means deleting your DB, encryption key, OAuth tokens, and library state. There's no undo. <code>down</code> without <code>-v</code> is safe.</p>
 </div>
+<h2 id="branch-and-pull-request-images">Branch and pull request images<a class="headerlink" href="#branch-and-pull-request-images" title="Anchor link">&para;</a></h2>
+<p>Every branch pushed to the repository publishes a multi-arch image tagged with the branch name, with <code>/</code> replaced by <code>-</code>. A branch called <code>feat/misgrab-guardrails</code> is pullable as:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/johnthreekay/ryokan:feat-misgrab-guardrails
+</span></code></pre></div>
+<p><code>main</code> and <code>dev</code> keep their own tags, and releases keep <code>latest</code> and the version tags.</p>
+<p>A pull request from a fork cannot publish to the registry, so its build lands as a workflow artifact instead. Open the pull request's <strong>Publish Docker image</strong> run under Actions, download <code>ryokan-pr-&lt;number&gt;-linux-amd64</code> (or <code>-linux-arm64</code>), and load it:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>load<span class="w"> </span>-i<span class="w"> </span>ryokan-pr-123-linux-amd64.tar
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>docker<span class="w"> </span>run<span class="w"> </span>-p<span class="w"> </span><span class="m">8978</span>:8978<span class="w"> </span>-v<span class="w"> </span>./data:/data<span class="w"> </span>ghcr.io/johnthreekay/ryokan:pr-123
+</span></code></pre></div>
+<p>The artifact is kept for 14 days after the run.</p>
 <h2 id="reset-auth">Reset auth<a class="headerlink" href="#reset-auth" title="Anchor link">&para;</a></h2>
 <p>If you forget your admin password and have no other recovery path, you can wipe the users and sessions tables and create a new admin account on next boot. Two steps are required so a stuck-on env var can't silently wipe auth on every restart:</p>
 <ol>
@@ -1242,10 +1295,10 @@
 <p>OAuth tokens, library state, scoring history, and Custom Formats are preserved. Only authentication state is wiped.</p>
 <h2 id="running-behind-a-reverse-proxy">Running behind a reverse proxy<a class="headerlink" href="#running-behind-a-reverse-proxy" title="Anchor link">&para;</a></h2>
 <p>If you put Ryokan behind nginx, Caddy, Traefik, or similar, set <code>RYOKAN_TRUSTED_PROXY=1</code> so the per-IP login throttle reads <code>X-Forwarded-For</code> from the proxy instead of the proxy's own IP. The proxy must overwrite these headers on ingress (don't pass through whatever the client sent), or you've just added a header-spoofing bypass.</p>
-<p>Also set <code>RYOKAN_COOKIE_SECURE=1</code> if the proxy serves Ryokan over HTTPS, so the session cookie carries the <code>Secure</code> flag.</p>
+<p>With that set, the login cookie is marked <code>Secure</code> automatically whenever the proxy reports HTTPS (<code>X-Forwarded-Proto: https</code>), the same way Sonarr does it. <code>RYOKAN_COOKIE_SECURE=1</code> forces the flag for a proxy that doesn't send that header.</p>
 <p>The <a href="../stack-builder/">Stack builder</a> generates Caddy / Traefik / nginx config with the right header rewrites and env-var combinations.</p>
 <hr />
-<p><em>Last updated: 2026-05-07.</em></p>
+<p><em>Last updated: 2026-08-29.</em></p>
 
 
 

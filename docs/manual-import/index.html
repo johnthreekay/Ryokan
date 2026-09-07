@@ -50,12 +50,6 @@
     
     
       
-        
-        
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
-        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
-      
     
     
       <link rel="stylesheet" href="../stylesheets/ryokan.css">
@@ -736,6 +730,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  How releases are scored
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../calendar/" class="md-nav__link">
         
   
@@ -1363,7 +1384,7 @@
 <li><strong>Already on disk</strong>: a different file already sits at the destination name and Ryokan has no tag for it (a file dropped in by hand, or a folder scanned twice); it is left alone rather than overwritten, since an overwrite would skip the recycle bin.</li>
 <li><strong>Duplicate name</strong>: another file in the same series lands on the same destination name; only the first is written.</li>
 </ul>
-<p>Files land at <code>&lt;media root&gt;/&lt;series folder&gt;/&lt;season folder&gt;/&lt;original filename&gt;</code>. Filenames are kept as they are; renaming into Ryokan's own naming scheme is a separate feature. For a new series the folder name comes from the series folder template in Settings → General → File naming, rendered from the AniList title (the destination column shows it), and if a folder of that name already exists under the media root without a series owning it, the import uses a suffixed name (<code>Show (2)</code>) instead. Titles everywhere in the wizard, the progress messages, and the report follow your <strong>Settings → General → Title language</strong>.</p>
+<p>Files land at <code>&lt;media root&gt;/&lt;series folder&gt;/&lt;season folder&gt;/&lt;original filename&gt;</code>. Filenames are kept as they are; renaming into Ryokan's own naming scheme is a separate feature. For a new series the folder name comes from the series folder template in Settings → General → File naming, rendered from the AniList title (the destination column shows it), and if a folder of that name already exists under the media root without a series owning it, the import uses a suffixed name (<code>Show (2)</code>) instead. Titles everywhere in the wizard, the progress messages, and the report follow your <strong>Settings → General → Preferred Title Language</strong>.</p>
 <h3 id="badges-worth-a-look">Badges worth a look<a class="headerlink" href="#badges-worth-a-look" title="Anchor link">&para;</a></h3>
 <ul>
 <li><strong>Check this match</strong>: the AniList title shares little with the name Ryokan read. Look at the alternatives before trusting it.</li>

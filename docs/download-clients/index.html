@@ -50,12 +50,6 @@
     
     
       
-        
-        
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
-        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
-      
     
     
       <link rel="stylesheet" href="../stylesheets/ryokan.css">
@@ -736,6 +730,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  How releases are scored
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../calendar/" class="md-nav__link">
         
   
@@ -1123,7 +1144,7 @@
 <p><strong>Prepare qBit:</strong></p>
 <ol>
 <li>Open qBit's web UI (default port 8080) and create your admin password if it's still on the random first-run password.</li>
-<li><strong>Tools → Options → Web UI</strong>: uncheck <strong>Enable Host header validation</strong>, then Save and restart the qBit container. qBit 4.5+ enables this by default; with it on, qBit returns 401 even for correct credentials when Ryokan-in-container POSTs with a <code>Host: qbittorrent:8080</code> header. Symptom in Ryokan is "qBittorrent Unauthorized" stuck in the connections panel while the web UI works fine from your browser.</li>
+<li><strong>Tools → Options → Web UI</strong>: uncheck <strong>Enable Host header validation</strong>, then Save and restart the qBit container. qBit 4.5+ enables this by default; with it on, qBit returns 401 even for correct credentials when Ryokan-in-container POSTs with a <code>Host: qbittorrent:8080</code> header. Symptom in Ryokan is "qBittorrent Unauthorized" stuck on Settings → Download Clients while the web UI works fine from your browser.</li>
 </ol>
 <p><strong>Add it to Ryokan</strong> (Settings → Download Clients):</p>
 <ul>

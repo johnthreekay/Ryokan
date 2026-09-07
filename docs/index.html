@@ -48,12 +48,6 @@
     
     
       
-        
-        
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
-        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
-      
     
     
       <link rel="stylesheet" href="./stylesheets/ryokan.css">
@@ -814,6 +808,33 @@
   
   
     <li class="md-nav__item">
+      <a href="./scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  How releases are scored
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="./calendar/" class="md-nav__link">
         
   
@@ -1070,17 +1091,20 @@
 <p>If you've used Sonarr for TV, the shape is the same. Ryokan is just the anime-tuned version of that idea: release-group reputation, batch packs, fansub conventions, <a href="https://releases.moe">SeaDex</a> authoritative picks, AniList as the metadata source.</p>
 <div class="admonition info">
 <p class="admonition-title">Project status</p>
-<p>Ryokan is a one-person project; expect rough edges. v1.X handles anime only; manga and light novels are on the roadmap for v2.X.</p>
+<p>Ryokan is a one-person project; expect rough edges. v1.X handles anime only; manga and light novels are a later goal, after the anime side is solid.</p>
 </div>
 <h2 id="what-you-can-do-with-it">What you can do with it<a class="headerlink" href="#what-you-can-do-with-it" title="Anchor link">&para;</a></h2>
 <ul>
 <li><strong>Track anime from AniList or MAL.</strong> Link your account and Ryokan auto-adds shows you mark as watching. Or add them manually from Ryokan's search.</li>
 <li><strong>Search multiple sources at once.</strong> Built-in <a href="https://nyaa.si">Nyaa</a> search, torznab and newznab indexers via Prowlarr or Jackett, direct RSS feeds, and autobrr webhooks all merge into one ranked result list.</li>
 <li><strong>Pick the best release automatically.</strong> A quality profile, <a href="https://trash-guides.info">TRaSH-Guides</a>-compatible Custom Formats (the same scoring rules Sonarr uses), and optional <a href="https://releases.moe">SeaDex</a> picks (a community-curated list of best anime releases) decide what gets grabbed.</li>
-<li><strong>Re-grab when something better lands.</strong> Set a quality cutoff once; Ryokan watches for upgrades and replaces older grabs as higher-scoring releases show up.</li>
+<li><strong>Re-grab when something better lands.</strong> Set a quality cutoff and Ryokan keeps watching for higher-quality uploads, replacing older grabs as higher-scoring releases show up.</li>
 <li><strong>See what's airing this week.</strong> A built-in <a href="calendar/">Calendar</a> shows upcoming episodes for the shows in your library, as a list or a month grid. You can also subscribe to it from your phone or laptop's calendar app.</li>
 <li><strong>Use the download client you already have.</strong> qBittorrent, Deluge, Transmission, rTorrent, or SABnzbd. Run more than one at once and Ryokan routes per-grab.</li>
 <li><strong>Land files in your library automatically.</strong> Hardlink (default; keeps the torrent seeding), copy, or move.</li>
+<li><strong>Import the anime you already have.</strong> Point the <a href="manual-import/">import wizard</a> at a folder; it matches each series on AniList and lands the files in place.</li>
+<li><strong>Undo a deletion.</strong> With a recycle bin configured, deleted episodes and series folders wait there until you restore or purge them.</li>
+<li><strong>Back up and restore from the UI.</strong> Snapshot the database and encryption key from System → Backup, on a schedule if you like, and restore by uploading the archive.</li>
 <li><strong>Plug into Seerr.</strong> Ryokan exposes a Sonarr/Radarr-compatible API so Seerr requests anime the same way it asks Sonarr for TV.</li>
 </ul>
 <h2 id="get-started">Get started<a class="headerlink" href="#get-started" title="Anchor link">&para;</a></h2>
@@ -1103,7 +1127,7 @@
 <li><strong><a href="faq/">FAQ</a></strong>: how Ryokan compares to Sonarr, multi-user, manga support, API access, backup.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-05-09.</em></p>
+<p><em>Last updated: 2026-08-29.</em></p>
 
 
 

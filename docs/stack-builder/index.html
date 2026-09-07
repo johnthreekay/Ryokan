@@ -50,12 +50,6 @@
     
     
       
-        
-        
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
-        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
-      
     
     
       <link rel="stylesheet" href="../stylesheets/ryokan.css">
@@ -818,6 +812,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  How releases are scored
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../calendar/" class="md-nav__link">
         
   
@@ -1149,10 +1170,10 @@
 <li><strong>First-run</strong>: every container needs its <code>/srv/docker/&lt;service&gt;/</code> subdirectory pre-owned by the PUID/PGID you set above. The generated compose's header comment includes the exact <code>mkdir + chown</code> for the services you picked.</li>
 <li><strong>Reverse proxy</strong>: the generated config is a stub. You'll need to point a real domain (or Cloudflare Tunnel route) at the proxy and edit the proxy's config file with your actual hostname.</li>
 <li><strong>VPN</strong>: Gluetun expects WireGuard or OpenVPN credentials in its env. Wrong/missing credentials show up as connection failures on the download client (which can't reach trackers). The gluetun container's logs are the right place to debug.</li>
-<li><strong>qBit "Unauthorized" with correct credentials</strong>: qBittorrent 4.5+ enables Host header validation by default. When Ryokan-in-container POSTs to <code>http://qbittorrent:8080</code>, the <code>Host:</code> header it sends is <code>qbittorrent:8080</code>, which qBit refuses with 401 even when the username and password are right. Symptom in Ryokan: Settings → Connections shows the qBit row stuck on "qBittorrent Unauthorized" while the WebUI accessed from your browser works fine. Fix: in the qBit WebUI, <strong>Tools → Options → Web UI</strong>, uncheck <strong>"Enable Host header validation"</strong> (or add <code>qbittorrent</code> and your LAN IP to the allowlist if you'd rather keep it on). Save, then <code>docker compose restart qbittorrent</code>. SAB and Transmission don't do this check, which is why they connect without the same workaround.</li>
+<li><strong>qBit "Unauthorized" with correct credentials</strong>: qBittorrent 4.5+ enables Host header validation by default. When Ryokan-in-container POSTs to <code>http://qbittorrent:8080</code>, the <code>Host:</code> header it sends is <code>qbittorrent:8080</code>, which qBit refuses with 401 even when the username and password are right. Symptom in Ryokan: Settings → Download Clients shows the qBit card stuck on "qBittorrent Unauthorized" while the WebUI accessed from your browser works fine. Fix: in the qBit WebUI, <strong>Tools → Options → Web UI</strong>, uncheck <strong>"Enable Host header validation"</strong> (or add <code>qbittorrent</code> and your LAN IP to the allowlist if you'd rather keep it on). Save, then <code>docker compose restart qbittorrent</code>. SAB and Transmission don't do this check, which is why they connect without the same workaround.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-05-07.</em></p>
+<p><em>Last updated: 2026-08-29.</em></p>
 
   
 

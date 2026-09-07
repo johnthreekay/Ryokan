@@ -16,7 +16,7 @@
         <link rel="prev" href="../configuration/">
       
       
-        <link rel="next" href="../calendar/">
+        <link rel="next" href="../scoring/">
       
       
         
@@ -49,12 +49,6 @@
       
     
     
-      
-        
-        
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
-        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
       
     
     
@@ -801,6 +795,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#import-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Import Library
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -823,6 +828,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#misgrabs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Misgrabs
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#notifications" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -834,10 +850,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#scoring" class="md-nav__link">
+  <a href="#docs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Scoring
+        Docs
       </span>
     </span>
   </a>
@@ -870,6 +886,33 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  How releases are scored
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1116,6 +1159,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#import-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Import Library
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1138,6 +1192,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#misgrabs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Misgrabs
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#notifications" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1149,10 +1214,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#scoring" class="md-nav__link">
+  <a href="#docs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Scoring
+        Docs
       </span>
     </span>
   </a>
@@ -1200,15 +1265,15 @@
 
 
 <h1 id="system">System<a class="headerlink" href="#system" title="Anchor link">&para;</a></h1>
-<p>The <strong>System</strong> page is Ryokan's operational view: logs, background-task health, recent RSS activity, episodes flagged for review, notification destinations, scoring reference, and debug toggles. Settings (the things that change behavior) live under <strong>Settings</strong>; System is where you go to see what Ryokan has been doing or to flip a runtime toggle.</p>
-<p>The page has 8 tabs across the top. Each gets its own section below.</p>
+<p>The <strong>System</strong> page is Ryokan's operational view: logs, background-task health, recent RSS activity, episodes flagged for review, notification destinations, a link to these docs, and debug toggles. Settings (the things that change behavior) live under <strong>Settings</strong>; System is where you go to see what Ryokan has been doing or to flip a runtime toggle.</p>
+<p>The page has a left sidebar with eleven entries (it collapses to a strip on narrow screens). Each gets its own section below.</p>
 <h2 id="logs">Logs<a class="headerlink" href="#logs" title="Anchor link">&para;</a></h2>
 <p>DB-backed log of everything Ryokan does, filterable by category, level, and free-text search. This is where most "why didn't this work?" questions get answered.</p>
 <ul>
 <li><strong>Category filter</strong>: 19 categories, one per subsystem (Search, Grab, AutoSearch, AniList, DownloadClient, PostProcess, Quality, etc.). Pick the one matching what you were doing when the issue appeared.</li>
 <li><strong>Level filter</strong>: trace / debug / info / warn / error. The DB-side floor is set by <code>RYOKAN_DB_LOG_LEVEL</code> (default <code>info</code>). Setting the filter to <code>trace</code> or <code>debug</code> won't surface entries Ryokan never persisted; bump the env var if you need that detail. See <a href="../docker/#environment-variables">Docker reference → Environment variables</a>.</li>
 <li><strong>Search box</strong>: substring match against the message and detail columns. Useful for finding a specific release title, hash, or filename.</li>
-<li><strong>Older →</strong> paginates backwards. Logs older than ~30 days are pruned by the <code>cleanup</code> background task.</li>
+<li><strong>Pages</strong>: 200 entries per page, newest first. Use the numbered links, <strong>Newer</strong> / <strong>Older</strong>, or type a page number in the <strong>Page</strong> box to jump. Filters and the page are kept in the address bar, so a reload or a shared link lands on the same view. <strong>Live</strong> shows new entries as they arrive, on the first page only. Logs older than ~30 days are pruned by the <code>cleanup</code> background task.</li>
 </ul>
 <p>For specific diagnostic walkthroughs, see <a href="../troubleshooting/">Troubleshooting</a>.</p>
 <h2 id="rss">RSS<a class="headerlink" href="#rss" title="Anchor link">&para;</a></h2>
@@ -1219,20 +1284,22 @@
 <li>A feed silently broke (host moved, auth changed) and the configured indexer isn't reporting errors elsewhere.</li>
 <li>You want to see how often a feed actually surfaces new items before committing to it.</li>
 </ul>
-<p>The RSS poll cadence is set in <strong>Settings → General → RSS Sync Interval</strong>. Manual "Sync now" buttons live on each indexer / direct-feed row in <strong>Settings → Indexers</strong>.</p>
+<p>The RSS poll cadence is set in <strong>Settings → General → RSS Sync Interval</strong>. Manual sync is the <strong>Sync RSS Now</strong> button on this tab, or <strong>Run now</strong> on the <code>rss_sync</code> row under Scheduled Tasks.</p>
 <h2 id="scheduled-tasks">Scheduled Tasks<a class="headerlink" href="#scheduled-tasks" title="Anchor link">&para;</a></h2>
 <p>Status of Ryokan's background tasks: external_sync (watch-list sync), post_processing (move imported files into the library), grab_sweep (reconcile pending grabs against the download client's state), upgrade_search (look for better releases of already-grabbed episodes), library_classify, metadata_refresh, airing_refresh (refreshes the air times that show up on the <a href="../calendar/">Calendar</a>), and a handful more.</p>
-<p>Each row shows last-run time, status (ok / warn / error / running), restart count if the task crashed and got restarted, and current backoff if it's in a failure cycle.</p>
+<p>Each row shows the schedule, whether the task is enabled, the last run's status and detail, when it last started and finished, and a <strong>Run now</strong> button.</p>
 <p>When to come here:</p>
 <ul>
 <li>A feature feels "stuck" and you want to see if its background task is alive (running the loop) or wedged (crash-looping with restarts).</li>
 <li>After updating Ryokan, to confirm tasks resumed cleanly on the new image.</li>
 <li>A specific recurring action (watch-list sync, upgrade search) hasn't happened recently and you want to confirm timing.</li>
 </ul>
+<h2 id="import-library">Import Library<a class="headerlink" href="#import-library" title="Anchor link">&para;</a></h2>
+<p>A one-time wizard for anime you already have on disk: it walks a folder, matches each series on AniList, previews what would happen to every file, then imports. It has its own page: <a href="../manual-import/">Manual import</a>.</p>
 <h2 id="backup">Backup<a class="headerlink" href="#backup" title="Anchor link">&para;</a></h2>
 <p>Download a backup, keep scheduled ones in a folder, and restore from one.</p>
 <p>A backup is a <code>.tar.gz</code> holding a consistent snapshot of the database (<code>ryokan.db</code>), the encryption key (<code>.ryokan-key</code>) that protects linked AniList and MyAnimeList tokens, a <code>manifest.json</code> with the Ryokan version and schema level, and, when you tick the option, the cached artwork. The snapshot is taken with SQLite's <code>VACUUM INTO</code>, so it is complete even while Ryokan is busy; copying <code>ryokan.db</code> by hand while Ryokan runs is not, because recent writes live in <code>ryokan.db-wal</code> until a checkpoint.</p>
-<p><strong>A backup is a password export.</strong> It contains the key, the encrypted account tokens, every download client password, and the activity log. Keep it where you keep secrets. For sharing with support, tick <strong>Sanitize</strong> instead: passwords, API keys, and tokens are blanked, the log is trimmed to its last 1000 lines, and the key and hostname stay out.</p>
+<p><strong>A backup is a password export.</strong> It contains the key, the encrypted account tokens, every download client password, and the activity log. Keep it where you keep secrets. For sharing with support, tick <strong>Sanitize</strong> instead: passwords, API keys, tokens, and the keys inside indexer download links and feed addresses are blanked, the log is trimmed to its last 1000 lines, and the key and hostname stay out.</p>
 <ul>
 <li><strong>Download backup</strong> builds the archive and sends it to the browser.</li>
 <li><strong>Save to backup folder</strong> writes one to the folder from Settings → General, the same as a scheduled run, and prunes older ones past the retention count. The folder's contents are listed below the buttons with per-file Download and Delete.</li>
@@ -1249,38 +1316,43 @@
 <li>After importing files from outside Ryokan (e.g. legacy library scan).</li>
 <li>Periodically, to keep your library's quality_tag accurate so upgrade-search behaves predictably.</li>
 </ul>
-<p>This list is opt-in noise: each "needs review" entry is also written to the <code>Quality</code> log category, and notifications can fire on each one (default off in <strong>Settings → Notifications</strong> because reclassify sweeps can produce hundreds of entries at once).</p>
+<p>This list is opt-in noise: each "needs review" entry is also written to the <code>Quality</code> log category, and notifications can fire on each one (off by default for a new provider, toggled per provider on <strong>System → Notifications</strong>, because reclassify sweeps can produce hundreds of entries at once).</p>
+<h2 id="misgrabs">Misgrabs<a class="headerlink" href="#misgrabs" title="Anchor link">&para;</a></h2>
+<p>Ryokan checks every download against the list of files the download client reports. When those files clearly name a different series than the one the release was grabbed for, the download is a misgrab. By default Ryokan removes it from the download client, adds the release to the blocklist so it is never grabbed again, sends a notification, and searches again for the episode it was supposed to fill.</p>
+<p>The Misgrabs tab lists what was caught: the series, the release name, a sample of the file names inside it, when it was detected, and what happened to it. Each row has two actions.</p>
+<ul>
+<li><strong>Restore</strong> says the release was right after all. Ryokan stops treating it as a misgrab for good, and if the download was removed it is added back to the download client.</li>
+<li><strong>Dismiss</strong> confirms the misgrab. The release stays on the blocklist and the row leaves this tab. If the download was only flagged and is still in the client, it is removed now.</li>
+</ul>
+<p>Downloads whose file names carry no title at all (for example <code>01.mkv</code> inside an unnamed folder) are never treated as misgrabs, and neither are files that share a word with the series title, so abbreviated fansub names are safe.</p>
+<p>You can turn off automatic removal under Settings, General, "Remove and blocklist detected misgrabs". Ryokan then keeps the download in the client, never imports it, and lists it here as held until you restore or dismiss it.</p>
 <h2 id="notifications">Notifications<a class="headerlink" href="#notifications" title="Anchor link">&para;</a></h2>
 <p>CRUD UI for outbound notification destinations. Two provider kinds:</p>
 <ul>
 <li><strong>Webhook</strong>: posts JSON to any HTTPS endpoint you configure (ntfy, Apprise, n8n, custom). Optional HMAC secret signs the body so receivers can verify it came from your Ryokan.</li>
 <li><strong>Discord</strong>: posts an embed to a Discord webhook URL you provide.</li>
 </ul>
-<p>Per-event opt-in matrix per provider: Grabbed, Imported, Import failed, Classifier needs review, Indexer down, Download client unreachable, External-sync re-link required, Health (synthetic test event).</p>
+<p>Per-event opt-in matrix per provider: Grabbed, Imported, Import failed, Classifier needs review, Indexer down, Download client unreachable, Re-link required, Health (test).</p>
 <p>When to come here:</p>
 <ul>
 <li>First-time setup of a Discord channel or a webhook receiver.</li>
 <li>Tweaking which events fire to which destination (you might want imports going to Discord but classifier-needs-review only going to a quiet ntfy channel).</li>
 <li>Sending a test event to confirm the destination is wired up correctly (the <strong>Send test</strong> button on each provider's modal).</li>
 </ul>
-<p>The receiving side of <code>/api/webhook/autobrr</code> is <em>inbound</em>; that's a separate concept from these <em>outbound</em> notifications. The autobrr inbound webhook lives in <strong>Settings → Connections</strong>.</p>
-<h2 id="scoring">Scoring<a class="headerlink" href="#scoring" title="Anchor link">&para;</a></h2>
-<p>Read-only reference. Shows the scoring weights Ryokan uses (seeders, preferred-group order, resolution match, batch bonus, dual-audio penalty/bonus, etc.) so you can predict why one release outranked another.</p>
-<p>This page doesn't change behavior; the actual scoring inputs (preferred groups, resolution / source profile, custom formats) are configured in <strong>Settings → Preferred Quality &amp; Releases</strong> and <strong>Settings → Custom Formats</strong> (<a href="../configuration/">Configuration</a> explains those tabs).</p>
+<p>The receiving side of <code>/api/webhook/autobrr</code> is <em>inbound</em>; that's a separate concept from these <em>outbound</em> notifications. The autobrr inbound webhook lives in <strong>Settings → Indexers</strong>.</p>
+<h2 id="docs">Docs<a class="headerlink" href="#docs" title="Anchor link">&para;</a></h2>
+<p>Opens this documentation site in a new tab. The scoring reference that used to live here is now <a href="../scoring/">How releases are scored</a>.</p>
 <h2 id="credits">Credits<a class="headerlink" href="#credits" title="Anchor link">&para;</a></h2>
-<p>Project credits and third-party license attributions. Useful when you want to know which crates Ryokan ships with or want to see the upstream URL for a specific dependency.</p>
-<p>The full third-party license texts are bundled into the binary at compile time and surfaced from this tab.</p>
+<p>Where Ryokan's data and releases come from (AniList, MyAnimeList through Tenrai, Kitsu, Nyaa, your indexers and feeds, SeaDex, anibridge-mappings, TRaSH Guides), the libraries it is built on, and the font it uses, each with a link and its license. The full list of Rust crates with their license texts is the third-party notices file in the repository, linked from this tab.</p>
 <h2 id="debug">Debug<a class="headerlink" href="#debug" title="Anchor link">&para;</a></h2>
-<p>Runtime toggles and diagnostic actions that don't fit cleanly under Settings.</p>
+<p>Diagnostic switches and one-shot actions. The grabbing switches that used to live here (non-English releases, searching when a series is added) are under Settings, General, Grabbing.</p>
 <ul>
-<li><strong>Allow non-English releases</strong>: when off, Nyaa search restricts to category <code>1_2</code> (English-translated). When on, Ryokan also pulls from category <code>1_0</code> (Anime All; includes untranslated and multi-sub releases). Music releases always search categories <code>1_1</code> + <code>2_0</code> regardless. Lives here rather than under Settings because flipping it changes how in-flight searches resolve, not stored configuration.</li>
-<li><strong>Force MAL fallback</strong>: temporarily skip AniList and go straight to the MAL provider (Tenrai; any Jikan-v4-compatible API via <code>JIKAN_API_BASE</code>) for metadata fetches. Useful when AniList is rate-limited or returning stale data; flip back off after the issue clears.</li>
+<li><strong>Force MAL/Tenrai fallback for search and tracked fallback entries</strong>: temporarily skip AniList and go straight to the MAL provider (Tenrai; any Jikan-v4-compatible API via <code>JIKAN_API_BASE</code>) for metadata fetches. Useful when AniList is rate-limited or returning stale data; flip back off after the issue clears.</li>
 <li><strong>Force Kitsu fallback</strong>: same idea, for the Kitsu provider further down the metadata chain.</li>
-<li><strong>Auto-grab on add</strong>: when on, adding a series to the library kicks off an immediate auto-search for the first episode (and existing episodes if the series is partially-aired). When off, you have to manually trigger the search per episode.</li>
 </ul>
-<p>Toast feedback appears on this tab when a debug action succeeds or fails. Most other tabs don't have feedback toasts because they're read-only.</p>
+<p>Toast feedback appears on this tab when a debug action succeeds or fails. Backup and Notifications toast too; the read-only tabs don't.</p>
 <hr />
-<p><em>Last updated: 2026-05-07.</em></p>
+<p><em>Last updated: 2026-09-04.</em></p>
 
 
 

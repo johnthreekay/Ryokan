@@ -50,12 +50,6 @@
     
     
       
-        
-        
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
-        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
-      
     
     
       <link rel="stylesheet" href="../stylesheets/ryokan.css">
@@ -893,6 +887,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  How releases are scored
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../calendar/" class="md-nav__link">
         
   
@@ -1570,7 +1591,7 @@
 <li><strong>Username</strong>: <code>admin</code></li>
 <li><strong>Password</strong>: the password you just set in qBit</li>
 <li><strong>Category</strong>: <code>ryokan-anime</code></li>
-<li><strong>Default for this protocol</strong>: on</li>
+<li><strong>Default client</strong>: on</li>
 </ul>
 </div>
 <div class="tabbed-block">
@@ -1581,7 +1602,7 @@
 <li><strong>URL</strong>: <code>http://deluge:8112</code></li>
 <li><strong>Password</strong>: the password you set in Deluge's web UI</li>
 <li><strong>Label</strong>: <code>ryokan-anime</code></li>
-<li><strong>Default for this protocol</strong>: on</li>
+<li><strong>Default client</strong>: on</li>
 </ul>
 </div>
 <div class="tabbed-block">
@@ -1593,7 +1614,7 @@
 <li><strong>Username</strong>: <code>admin</code> (matches <code>USER</code> in the compose)</li>
 <li><strong>Password</strong>: whatever you set <code>PASS</code> to in the compose</li>
 <li><strong>Label</strong>: <code>ryokan-anime</code></li>
-<li><strong>Default for this protocol</strong>: on</li>
+<li><strong>Default client</strong>: on</li>
 </ul>
 </div>
 <div class="tabbed-block">
@@ -1605,7 +1626,7 @@
 <li><strong>Username</strong>: <code>admin</code> (matches the htpasswd you generated in step 1)</li>
 <li><strong>Password</strong>: the password you put in the htpasswd file</li>
 <li><strong>Label</strong>: <code>ryokan-anime</code></li>
-<li><strong>Default for this protocol</strong>: on</li>
+<li><strong>Default client</strong>: on</li>
 </ul>
 <p>If you skipped htpasswd in step 1 (you'll have to manually delete the <code>/srv/docker/rutorrent/passwd:/passwd</code> mount from the compose), leave Username and Password blank.</p>
 </div>
@@ -1617,7 +1638,7 @@
 <li><strong>URL</strong>: <code>http://sabnzbd:8080</code> (the <strong>container</strong> port, not the 8081 host mapping. Ryokan reaches SAB through Docker's per-compose network where SAB is still on its native 8080; the 8081 in the compose is only for your browser to hit from the host.)</li>
 <li><strong>API Key</strong>: paste the full API key</li>
 <li><strong>Category</strong>: <code>ryokan-anime</code> (Ryokan auto-creates this in SAB if it doesn't exist)</li>
-<li><strong>Default for this protocol</strong>: on</li>
+<li><strong>Default client</strong>: on</li>
 </ul>
 </div>
 </div>
@@ -1639,8 +1660,8 @@
 <p><strong>Settings → Indexers → Add indexer</strong>. Paste the URL Prowlarr or Jackett gave you (it ends in <code>/api</code>), the API key, and pick a name. The defaults handle the rest.</p>
 <p>Click <strong>Test connection</strong> to confirm Ryokan can reach it.</p>
 <h2 id="7-add-a-show-and-watch-it-land">7. Add a show and watch it land<a class="headerlink" href="#7-add-a-show-and-watch-it-land" title="Anchor link">&para;</a></h2>
-<p>Go back to the library page, click <strong>Add series</strong>, type the name of an anime you want, and pick the right one from the dropdown. Ryokan fetches metadata from AniList by default.</p>
-<p>When the series page opens, click an episode you want, then <strong>Search</strong>. You'll see a list of releases ranked by Ryokan's scoring. Pick one and click <strong>Grab</strong>, or hit <strong>Auto-search</strong> to let Ryokan pick the highest-scored release for you.</p>
+<p>Go back to the library page, click <strong>+ Add Series</strong>, type the name of an anime you want, and pick the right one from the dropdown. Ryokan fetches metadata from AniList by default.</p>
+<p>When the series page opens, each episode row has two icon buttons: <strong>Interactive search</strong> lists the releases ranked by Ryokan's scoring so you can click <strong>Grab</strong> on one, and <strong>Auto search</strong> lets Ryokan grab the highest-scored release for you. <strong>Search Monitored Episodes</strong> at the top runs the automatic version for every monitored episode.</p>
 <p>The grab fires off to your download client. When it finishes:</p>
 <ol>
 <li>Post-processing hardlinks the file into <code>/srv/media/anime/&lt;show name&gt;/Season 01/&lt;episode&gt;.mkv</code> on your host.</li>
@@ -1657,7 +1678,7 @@
 <li><strong><a href="../troubleshooting/">Troubleshooting</a></strong> has the most common stumbles and their fixes.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-05-07.</em></p>
+<p><em>Last updated: 2026-08-29.</em></p>
 
 
 

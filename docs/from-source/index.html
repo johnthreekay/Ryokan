@@ -50,12 +50,6 @@
     
     
       
-        
-        
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
-        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
-      
     
     
       <link rel="stylesheet" href="../stylesheets/ryokan.css">
@@ -657,10 +651,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
+  <a href="#what-you-need" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Prerequisites
+        What you need
       </span>
     </span>
   </a>
@@ -819,6 +813,33 @@
     
   
   Configuration (cont.)
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  How releases are scored
 
     
   </span>
@@ -1039,10 +1060,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
+  <a href="#what-you-need" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Prerequisites
+        What you need
       </span>
     </span>
   </a>
@@ -1112,43 +1133,51 @@
 
 
 <h1 id="build-from-source">Build from source<a class="headerlink" href="#build-from-source" title="Anchor link">&para;</a></h1>
-<p>You don't need this if you're running the Docker image. This page is for contributing to Ryokan or running pre-release commits straight off the <code>dev</code> branch.</p>
-<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Anchor link">&para;</a></h2>
+<p>You don't need this if you run the Docker image. This page is for contributing to Ryokan or running pre-release commits from the <code>dev</code> branch.</p>
+<h2 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong>Rust 1.95 or later</strong> (enforced via <code>Cargo.toml</code>'s <code>package.rust-version</code>).</li>
-<li><strong>A C/C++ toolchain plus <code>cmake</code></strong>. Two crates compile native code at build time: <code>anitomy-sys</code> ships C++ source it builds via <code>cc</code> for anime title tokenization, and <code>aws-lc-sys</code> builds aws-lc via cmake (rustls' crypto provider since reqwest 0.13).</li>
-<li><strong><code>mold</code> and <code>clang</code></strong>. Ryokan pins <code>linker = "clang"</code> with <code>-fuse-ld=mold</code> for x86_64 and aarch64 Linux. Cuts incremental link time 3–5× vs ld/lld. Without them you'll get <code>linker 'clang' not found</code> or <code>ld.mold not found</code> at first build.</li>
-<li><strong><code>cargo-nextest</code></strong> for the canonical <code>cargo t</code> test alias. Falls through to plain <code>cargo test</code> if not installed.</li>
+<li><strong>Rust 1.95 or later</strong>.</li>
+<li><strong>A C/C++ compiler and <code>cmake</code></strong>. Two of Ryokan's dependencies build native code (the anime title parser and the TLS library).</li>
+<li><strong><code>mold</code> and <code>clang</code></strong> on Linux. Ryokan links with them on Linux because it makes rebuilds much faster. Without them the first build stops with <code>linker 'clang' not found</code> or <code>ld.mold not found</code>.</li>
+<li><strong><code>cargo-nextest</code></strong> (optional) for the <code>cargo t</code> test shortcut. Plain <code>cargo test</code> works without it.</li>
 </ul>
 <h2 id="install-the-toolchain">Install the toolchain<a class="headerlink" href="#install-the-toolchain" title="Anchor link">&para;</a></h2>
-<p>On Arch:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sudo<span class="w"> </span>pacman<span class="w"> </span>-S<span class="w"> </span>mold<span class="w"> </span>clang<span class="w"> </span>cmake
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>cargo<span class="w"> </span>install<span class="w"> </span>cargo-nextest<span class="w"> </span>--locked
+<p>Debian or Ubuntu:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>mold<span class="w"> </span>clang<span class="w"> </span>cmake
 </span></code></pre></div>
-<p>On Debian or Ubuntu:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>mold<span class="w"> </span>clang<span class="w"> </span>cmake
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>cargo<span class="w"> </span>install<span class="w"> </span>cargo-nextest<span class="w"> </span>--locked
+<p>Fedora:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>mold<span class="w"> </span>clang<span class="w"> </span>cmake
 </span></code></pre></div>
-<p>On macOS, the toolchain story is messier: aws-lc and anitomy-sys both build cleanly under Apple Clang, but mold isn't packaged and you'll fall back to ld64. Builds are slower but functional.</p>
+<p>Arch:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sudo<span class="w"> </span>pacman<span class="w"> </span>-S<span class="w"> </span>mold<span class="w"> </span>clang<span class="w"> </span>cmake
+</span></code></pre></div>
+<p>macOS:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>xcode-select<span class="w"> </span>--install<span class="w">     </span><span class="c1"># Apple's compiler, once</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>brew<span class="w"> </span>install<span class="w"> </span>cmake
+</span></code></pre></div>
+<p>The mold linker setting only applies to Linux, so macOS builds use Apple's linker and need nothing else.</p>
+<p>Then, on any of them:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>cargo<span class="w"> </span>install<span class="w"> </span>cargo-nextest<span class="w"> </span>--locked
+</span></code></pre></div>
 <h2 id="clone-and-run">Clone and run<a class="headerlink" href="#clone-and-run" title="Anchor link">&para;</a></h2>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/johnthreekay/Ryokan.git
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>Ryokan
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>cargo<span class="w"> </span>run<span class="w">                </span><span class="c1"># http://localhost:8978; creates data/ryokan.db on first run</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/johnthreekay/Ryokan.git
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">cd</span><span class="w"> </span>Ryokan
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>cargo<span class="w"> </span>run<span class="w">                </span><span class="c1"># http://localhost:8978; creates data/ryokan.db on first run</span>
 </span></code></pre></div>
-<p>The first build takes a while (aws-lc, anitomy C++, full dep tree). Subsequent rebuilds are fast; mold links the binary in under a second.</p>
+<p>The first build takes a while. Rebuilds after that are quick.</p>
 <h2 id="tests-and-lints">Tests and lints<a class="headerlink" href="#tests-and-lints" title="Anchor link">&para;</a></h2>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>cargo<span class="w"> </span>t<span class="w">                                                                  </span><span class="c1"># canonical test alias (uses nextest)</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>cargo<span class="w"> </span>fmt<span class="w"> </span>--all<span class="w"> </span>--<span class="w"> </span>--check<span class="w">                                               </span><span class="c1"># CI runs this first</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>cargo<span class="w"> </span>clippy<span class="w"> </span>--workspace<span class="w"> </span>--all-targets<span class="w"> </span>--features<span class="w"> </span>test-support<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w">   </span><span class="c1"># CI form</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>cargo<span class="w"> </span>t<span class="w">                                                                  </span><span class="c1"># the test suite</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>cargo<span class="w"> </span>fmt<span class="w"> </span>--all<span class="w"> </span>--<span class="w"> </span>--check<span class="w">                                               </span><span class="c1"># formatting (CI runs this first)</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>cargo<span class="w"> </span>clippy<span class="w"> </span>--workspace<span class="w"> </span>--all-targets<span class="w"> </span>--features<span class="w"> </span>test-support<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings<span class="w">   </span><span class="c1"># lints, the way CI runs them</span>
 </span></code></pre></div>
 <h2 id="where-next">Where next<a class="headerlink" href="#where-next" title="Anchor link">&para;</a></h2>
 <ul>
 <li><strong><a href="../configuration/">Configuration</a></strong>: the Settings tabs.</li>
 <li><strong><a href="../download-clients/">Download clients</a></strong>: per-client setup notes.</li>
-<li><strong><a href="../docker/">Docker reference</a></strong>: environment variable table; useful even when running from source since the <code>RYOKAN_*</code> flags work the same way.</li>
+<li><strong><a href="../docker/">Docker reference</a></strong>: the environment variable table; the <code>RYOKAN_*</code> variables work the same way when running from source.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-05-07.</em></p>
+<p><em>Last updated: 2026-08-29.</em></p>
 
 
 

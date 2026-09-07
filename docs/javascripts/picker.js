@@ -802,7 +802,8 @@ services:
         lines.push("trusts the X-Forwarded-* headers Cloudflare adds.");
       } else {
         lines.push(`Drop your real domain into the ${cfg.proxy} config (see comments in the compose).`);
-        lines.push("Set RYOKAN_TRUSTED_PROXY=1 and RYOKAN_COOKIE_SECURE=1 in Ryokan's env once HTTPS is working.");
+        lines.push("Set RYOKAN_TRUSTED_PROXY=1 in Ryokan's env once HTTPS is working; the login cookie");
+        lines.push("turns Secure on its own from the proxy's X-Forwarded-Proto header.");
       }
     }
 

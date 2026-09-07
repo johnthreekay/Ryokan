@@ -50,12 +50,6 @@
     
     
       
-        
-        
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
-        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
-      
     
     
       <link rel="stylesheet" href="../stylesheets/ryokan.css">
@@ -731,6 +725,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  How releases are scored
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../calendar/" class="md-nav__link">
         
   
@@ -971,6 +992,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#files-ending-in-ryokan-tmp-or-ryokan-new-in-the-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Files ending in <code>.ryokan-tmp</code> or <code>.ryokan-new</code> in the library
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#finished-downloads-stay-in-the-client" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1019,6 +1051,28 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Migrations failing on first boot
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auto-search-saw-releases-but-grabbed-none" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Auto search saw releases but grabbed none
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ryokan-removed-a-download-it-decided-was-the-wrong-series" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Ryokan removed a download it decided was the wrong series
       </span>
     </span>
   </a>
@@ -1177,6 +1231,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#files-ending-in-ryokan-tmp-or-ryokan-new-in-the-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Files ending in <code>.ryokan-tmp</code> or <code>.ryokan-new</code> in the library
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#finished-downloads-stay-in-the-client" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1232,6 +1297,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#auto-search-saw-releases-but-grabbed-none" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Auto search saw releases but grabbed none
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ryokan-removed-a-download-it-decided-was-the-wrong-series" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Ryokan removed a download it decided was the wrong series
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#i-deleted-an-episode-or-series-by-accident" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1267,7 +1354,7 @@
 <ul>
 <li><strong>System → Logs</strong>, filtered by category to whatever subsystem you suspect (AniList, Jikan, Kitsu, Grab, AutoSearch, Nyaa, DownloadClient, Jellyfin, PostProcess, etc.). Pick the one matching what you were doing when the issue appeared.</li>
 <li><strong>Test connection</strong> on each download-client row (Settings → Download Clients) and each indexer row (Settings → Indexers). Connection tests catch most config issues at config time rather than at grab time. The <a href="../download-clients/">Download clients</a> page lists per-client gotchas.</li>
-<li><strong>The grab-history modal</strong> on each episode (click the episode in the library page, then the History button) shows every release ever grabbed for that episode, with state (<code>grabbed</code> / <code>completed</code> / <code>failed</code> / <code>removed</code> / <code>replaced</code>) and timestamp. Useful for "why is this episode in this state?" questions.</li>
+<li><strong>The grab-history modal</strong> on each episode (click the episode on its series page, then the <strong>Grab History</strong> section of the episode modal) shows every release ever grabbed for that episode, with state (<code>grabbed</code> / <code>completed</code> / <code>failed</code> / <code>removed</code> / <code>replaced</code>) and timestamp. Useful for "why is this episode in this state?" questions.</li>
 </ul>
 <h2 id="sab-downloads-disappear-from-ryokan-but-still-download-in-sab">SAB downloads disappear from Ryokan but still download in SAB<a class="headerlink" href="#sab-downloads-disappear-from-ryokan-but-still-download-in-sab" title="Anchor link">&para;</a></h2>
 <p>You'll see this in System → Logs as a debug-level line:</p>
@@ -1304,6 +1391,9 @@
 <li><strong>Post-processing is disabled</strong> in Settings → General. Ryokan correctly leaves the file at the download client's path; the row shouldn't be showing "Importing…" in this state. If it is, force-refresh the page (Ctrl+Shift+R); there's a known race where the per-row state can lag the global toggle.</li>
 <li><strong>Post-processing is on but the import is failing.</strong> Check System → Logs filtered to <code>PostProcess</code>. Common causes: <code>media_root</code> isn't writable by the runtime user, the media filesystem is full, or Ryokan can't see the download client's complete path (per-client <code>download_path</code> mismatch; see <a href="../download-clients/#per-client-download-paths">Download clients → Per-client download paths</a>).</li>
 </ul>
+<p>Ryokan does not wait forever. Once a finished download has gone 24 hours (Settings → General → Give up on stuck imports) with nothing to import, it is marked failed with a <code>PostProcess</code> log line saying how long it sat, the episode shows as failed, and the release appears under Downloads → Blocklist. Fix the path problem, remove the entry from the blocklist, and search again. The download itself stays in the client and Ryokan does not look at it again, so delete it there too if you no longer want it. After a restart Ryokan waits 15 minutes before giving up on anything, so a download folder that mounts after Ryokan starts gets its retries first.</p>
+<h2 id="files-ending-in-ryokan-tmp-or-ryokan-new-in-the-library">Files ending in <code>.ryokan-tmp</code> or <code>.ryokan-new</code> in the library<a class="headerlink" href="#files-ending-in-ryokan-tmp-or-ryokan-new-in-the-library" title="Anchor link">&para;</a></h2>
+<p>These are partial copies from an import that stopped mid-copy (a restart or crash while moving a large file across filesystems, or while replacing a file during an upgrade). Media servers may index them as broken episodes. The hourly cleanup removes any that are older than two hours, waiting for a running import to finish first; a fresh one is a copy in progress, so leave it alone. A <code>.ryokan-tmp</code> is deleted outright because it is never the only copy. A <code>.ryokan-new</code> is a complete file that an upgrade was about to swap in, so it goes to the recycle bin when one is configured, listed under the name of its series folder. Restore puts the hidden temporary file back exactly as it was, and the next cleanup sweeps it again. To keep the file, rename it in the season folder instead: drop the leading dot and the <code>.ryokan-new</code> ending.</p>
 <h2 id="finished-downloads-stay-in-the-client">Finished downloads stay in the client<a class="headerlink" href="#finished-downloads-stay-in-the-client" title="Anchor link">&para;</a></h2>
 <p>Since 1.9.3 Ryokan removes a download from its client once the download is imported and nothing is left to seed. If one is still there:</p>
 <ul>
@@ -1313,7 +1403,7 @@
 <li><strong>It just finished.</strong> The check runs every five minutes. System → Logs, category PostProcess, shows a "Removed ... from the download client" line for each one that went.</li>
 </ul>
 <h2 id="series-page-state-is-stale">Series-page state is stale<a class="headerlink" href="#series-page-state-is-stale" title="Anchor link">&para;</a></h2>
-<p>Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. If something looks wrong:</p>
+<p>Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. A download the client has paused says <strong>Paused</strong> on its progress bar, and the episode's grab history (click the episode) shows what the client is doing with a torrent it still holds in the <strong>State</strong> column: <code>seeding</code> or <code>paused</code> in place of <code>grabbed</code> or <code>completed</code>, with the progress, speed, or the reason underneath. If something looks wrong:</p>
 <ol>
 <li><strong>Refresh the page</strong> (F5). The server-rendered page is the ground truth; if refresh fixes it, it's a JS-side staleness bug worth filing.</li>
 <li>If refresh <em>doesn't</em> fix it, the underlying DB state is what you're seeing. Check the grab-history modal for an authoritative view of that episode's grab state.</li>
@@ -1334,10 +1424,17 @@
 <li>Back up the DB: <code>cp /srv/docker/ryokan/ryokan.db /srv/docker/ryokan/ryokan.db.backup</code> (path is wherever you put <code>/data</code> in your compose).</li>
 <li>Check integrity: <code>sqlite3 /srv/docker/ryokan/ryokan.db "PRAGMA integrity_check;"</code>. If it returns <code>ok</code>, the DB itself is fine and the migration error is something else (network during migration? unusual). If it returns anything other than <code>ok</code>, the DB is corrupt; restore from your backup or accept losing the DB and starting fresh (delete the file, restart Ryokan, the first-run setup runs again).</li>
 </ol>
-<hr />
-<p><em>Last updated: 2026-05-07.</em></p>
+<h2 id="auto-search-saw-releases-but-grabbed-none">Auto search saw releases but grabbed none<a class="headerlink" href="#auto-search-saw-releases-but-grabbed-none" title="Anchor link">&para;</a></h2>
+<p>Automatic search only takes a release whose name contains one of the series' titles as written, or an alternate title you added, and names nothing beyond it, so a sequel titled by subtitle ("Dr. Stone New World") is not mistaken for the first season. When the only releases on offer name the show some other way, the search toast reads "looked close but none named the series exactly" and lists examples, and System → Logs has the full list. If one of those is the right show, add that name on the series page under <strong>Advanced search overrides</strong>, <strong>Alternate titles</strong>, and search again. See <a href="../scoring/#what-automatic-search-will-and-will-not-grab">How releases are scored</a>.</p>
+<h2 id="ryokan-removed-a-download-it-decided-was-the-wrong-series">Ryokan removed a download it decided was the wrong series<a class="headerlink" href="#ryokan-removed-a-download-it-decided-was-the-wrong-series" title="Anchor link">&para;</a></h2>
+<p>Ryokan compares the files inside every download with the series it was grabbed for. When the file names clearly belong to a different show, it removes the download, blocklists the release, and searches again. Open System, Misgrabs to see what was caught and why: the row shows the file names Ryokan looked at.</p>
+<p>If the release was actually correct, click <strong>Restore</strong>. Ryokan adds it back to the download client and never flags that release again. If a series keeps producing misgrabs, its AniList titles probably do not match how groups name it; check the series page's title and any synonyms, and check which indexers you have configured, since any-word search on some indexers returns unrelated releases.</p>
+<p>Ryokan stops searching again automatically after three misgrabs for the same series in a day. Fix the cause, then search from the series page.</p>
+<p>If you would rather decide yourself, turn off "Remove and blocklist detected misgrabs" under Settings, General. Downloads are then held in the client and listed on the Misgrabs tab until you restore or dismiss them.</p>
 <h2 id="i-deleted-an-episode-or-series-by-accident">I deleted an episode or series by accident<a class="headerlink" href="#i-deleted-an-episode-or-series-by-accident" title="Anchor link">&para;</a></h2>
-<p>If a recycle bin path is configured under Settings &gt; General, nothing is gone yet: open the Library page and click <strong>Recycle Bin</strong>. Each deleted episode (with its NFO, subtitles, and thumbnail) or series folder is listed by the day it was deleted with a <strong>Restore</strong> button that puts it back exactly where it came from. Restoring a series folder brings the files back but not the library entry. Re-add the series from Search afterwards and Ryokan will pick the files up on disk. Entries purge automatically after the configured number of days (14 by default), so restore before then. If the path was empty at the time of the delete, the files were removed permanently. If the path was set but not writable, the delete was refused and the file is still where it was.</p>
+<p>If a recycle bin path is configured under Settings → General, nothing is gone yet: open the Library page and click the recycle-bin icon in the toolbar (it appears once the bin has items), or go to <code>/library/recycle</code>. Each deleted episode (with its NFO, subtitles, and thumbnail) or series folder is listed by the day it was deleted with a <strong>Restore</strong> button that puts it back exactly where it came from. Restoring a series folder brings the files back but not the library entry. Re-add the series from Search afterwards and Ryokan will pick the files up on disk. Entries purge automatically after the configured number of days (14 by default), so restore before then. If the path was empty at the time of the delete, the files were removed permanently. If the path was set but not writable, the delete was refused and the file is still where it was.</p>
+<hr />
+<p><em>Last updated: 2026-08-29.</em></p>
 
 
 
