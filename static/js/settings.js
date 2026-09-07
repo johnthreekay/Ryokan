@@ -1363,11 +1363,11 @@ function openExternalAccountPasteModal(provider) {
                 <p class="form-hint" style="margin-top:0">${hint}</p>
                 <div class="form-group">
                     <label for="ext-accounts-paste-value">${fieldLabel}</label>
-                    <textarea id="ext-accounts-paste-value" rows="3" style="width:100%;font-family:monospace;font-size:12px"></textarea>
+                    <textarea id="ext-accounts-paste-value" rows="3" style="width:100%;font-family:var(--font-mono);font-size:12px"></textarea>
                 </div>
                 <div class="form-group">
                     <label for="ext-accounts-paste-state">State</label>
-                    <input id="ext-accounts-paste-state" type="text" style="width:100%;font-family:monospace;font-size:12px">
+                    <input id="ext-accounts-paste-state" type="text" style="width:100%;font-family:var(--font-mono);font-size:12px">
                     <span class="form-hint">CSRF nonce; required. Both fields appear on the callback page.</span>
                 </div>
                 <div id="ext-accounts-paste-error" class="form-hint" style="color:var(--red);display:none"></div>
