@@ -1700,10 +1700,19 @@ async fn main() {
                                 "Refreshing tracked series metadata",
                             )
                             .await;
-                            let (refreshed, failed) =
-                                services::metadata_sync::refresh_all_series_metadata(&db).await;
-                            let status = if failed > 0 { "warn" } else { "ok" };
-                            let detail = format!("refreshed={}, failed={}", refreshed, failed);
+                            // Err only when the manual rebuild holds
+                            // `METADATA_SWEEP_LOCK`; that sweep covers
+                            // this tick's work, so record and move on.
+                            let (status, detail) =
+                                match services::metadata_sync::refresh_all_series_metadata(&db)
+                                    .await
+                                {
+                                    Ok((refreshed, failed)) => (
+                                        if failed > 0 { "warn" } else { "ok" },
+                                        format!("refreshed={}, failed={}", refreshed, failed),
+                                    ),
+                                    Err(busy) => ("warn", busy),
+                                };
                             let _ = models::scheduled_tasks::mark_finished(
                                 &db,
                                 "metadata_refresh",
