@@ -6,7 +6,9 @@ use std::sync::{LazyLock, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+use crate::models::log::LogCategory;
 use crate::services::anilist::{AnimeDetail, AnimeEntry, RelatedEntry, StreamingEpisode};
+use crate::services::logger;
 
 /// Default base URL for the MAL metadata fallback. Tenrai's v1 API is a
 /// drop-in continuation of Jikan v4 (identical response schema, authless);
@@ -762,9 +764,36 @@ pub async fn fetch_episode_titles(db: &SqlitePool, mal_id: i64) -> HashMap<i32, 
             episodes
         }
         // Not cached: see `fetch_from_jikan`. The next caller asks again.
-        Err(_) => HashMap::new(),
+        Err(err) => {
+            log_episode_fetch_failure(db, mal_id, &err).await;
+            HashMap::new()
+        }
     }
 }
+
+/// The `System → Logs` line for a failed episode-list fetch. Until #235
+/// this only reached the console as a `tracing` warn, so a user whose
+/// titles had silently switched to the Kitsu fallback had nothing in
+/// the UI to explain why. The cooldown short-circuit is left to
+/// `tracing`: the 429 that armed it was the actionable event, and one
+/// line per series for the rest of the cooldown window is noise.
+async fn log_episode_fetch_failure(db: &SqlitePool, mal_id: i64, err: &str) {
+    if err.starts_with(COOLDOWN_ERROR_PREFIX) {
+        tracing::debug!("Jikan episode fetch skipped for mal_id {}: {}", mal_id, err);
+        return;
+    }
+    logger::warn(
+        db,
+        LogCategory::Jikan,
+        &format!("Episode list fetch failed for MAL {}", mal_id),
+        err,
+    )
+    .await;
+}
+
+/// Prefix of the `Err` `fetch_from_jikan` returns without sending a
+/// request because a prior 429 armed the cooldown.
+const COOLDOWN_ERROR_PREFIX: &str = "Jikan rate-limited (cooldown";
 
 pub async fn fetch_episode_titles_for_detail(
     db: &SqlitePool,
@@ -819,7 +848,10 @@ pub async fn fetch_episode_titles_for_detail(
     // next tick asks again instead of reading a 7-day sentinel (#235).
     let fresh = match fetch_from_jikan(mal_id).await {
         Ok(fresh) => fresh,
-        Err(_) => return cached.unwrap_or_default(),
+        Err(err) => {
+            log_episode_fetch_failure(db, mal_id, &err).await;
+            return cached.unwrap_or_default();
+        }
     };
     let _ = cache_episodes(db, mal_id, &fresh).await;
     let target_count = effective_target;
@@ -907,6 +939,11 @@ async fn cache_episodes(
         .await?;
 
     if episodes.is_empty() {
+        tracing::debug!(
+            "MAL lists no episodes for mal_id {}; caching that for {} days",
+            mal_id,
+            CACHE_TTL_SECS / 86_400
+        );
         sqlx::query(
             "INSERT INTO episode_cache (mal_id, episode_number, title, aired) VALUES (?, 0, ?, '')",
         )
@@ -961,7 +998,8 @@ async fn fetch_from_jikan(mal_id: i64) -> Result<HashMap<i32, EpisodeInfo>, Stri
     // to back off, so don't burn the retry ladder on the same storm.
     if let Some(remaining) = jikan_cooldown_remaining() {
         return Err(format!(
-            "Jikan rate-limited (cooldown {}s remaining)",
+            "{} {}s remaining)",
+            COOLDOWN_ERROR_PREFIX,
             remaining.as_secs().max(1)
         ));
     }

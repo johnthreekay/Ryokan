@@ -316,6 +316,18 @@ async fn fetch_episode_titles_does_not_cache_a_failed_fetch() {
         episode_cache_rows(&db, 123).await.is_empty(),
         "a failed fetch must not write the negative-cache sentinel"
     );
+    // ...and it must say so where the user looks (System → Logs), not
+    // only on the console.
+    let logged: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT level, message, detail FROM logs WHERE category = 'jikan' ORDER BY id",
+    )
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert_eq!(logged.len(), 1, "{logged:?}");
+    assert_eq!(logged[0].0, "warn");
+    assert_eq!(logged[0].1, "Episode list fetch failed for MAL 123");
+    assert!(logged[0].2.contains("503"), "{}", logged[0].2);
 
     // Tenrai recovers: the next call fetches and caches for real.
     mock.reset().await;
@@ -403,6 +415,14 @@ async fn fetch_episode_titles_skips_the_request_during_cooldown_without_caching(
 
     assert!(jikan::fetch_episode_titles(&db, 125).await.is_empty());
     assert!(episode_cache_rows(&db, 125).await.is_empty());
+    // The cooldown skip stays off System → Logs: the 429 that armed it
+    // was the event, one line per series for the rest of the window is
+    // noise.
+    let jikan_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM logs WHERE category = 'jikan'")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(jikan_rows, 0);
 
     unsafe {
         std::env::remove_var("JIKAN_API_BASE");

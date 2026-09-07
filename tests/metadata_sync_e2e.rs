@@ -1097,6 +1097,25 @@ async fn refresh_with_a_jikan_sentinel_takes_kitsu_titles_by_mal_id_not_by_title
             .map(|e| (e.title.as_str(), e.source.as_str())),
         Some(("Kitsu Two", "kitsu"))
     );
+    // The hand-off is visible in System → Logs.
+    let kitsu_lines: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT level, message, detail FROM logs WHERE category = 'kitsu' ORDER BY id",
+    )
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert!(!kitsu_lines.is_empty(), "expected a Kitsu hand-off line");
+    assert_eq!(kitsu_lines[0].0, "info");
+    assert_eq!(
+        kitsu_lines[0].1,
+        "Episode titles for Test TV Show EN came from Kitsu"
+    );
+    assert!(
+        kitsu_lines[0].2.contains("mal_id=Some(77777)")
+            && kitsu_lines[0].2.contains("reason=mal_empty"),
+        "{}",
+        kitsu_lines[0].2
+    );
 
     unsafe {
         std::env::remove_var("RYOKAN_ANILIST_API_BASE");

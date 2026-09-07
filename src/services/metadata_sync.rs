@@ -219,6 +219,16 @@ async fn fetch_live_detail_for_ids(
     anilist::get_anime_detail_with_options(provider_id, mal_id, force_mal_fallback).await
 }
 
+fn preferred_title_for_log(detail: &anilist::AnimeDetail) -> &str {
+    if !detail.title_english.trim().is_empty() {
+        &detail.title_english
+    } else if !detail.title_romaji.trim().is_empty() {
+        &detail.title_romaji
+    } else {
+        &detail.title_native
+    }
+}
+
 fn episode_needs_kitsu_backfill<F>(ep_count: i32, mut has_jikan_title: F) -> bool
 where
     F: FnMut(i32) -> bool,
@@ -264,6 +274,34 @@ async fn build_episode_cache(
     } else {
         HashMap::new()
     };
+    // Say so in System → Logs when Kitsu actually supplies titles. Until
+    // #235 the hand-off from MAL to Kitsu left no trace in the UI, so a
+    // series wearing another provider's titles had no line to explain
+    // it. Quiet when Kitsu had nothing, so relation-tree entries with no
+    // mapping don't spam the log.
+    if !kitsu_eps.is_empty() {
+        let reason = if force_kitsu_fallback {
+            "forced"
+        } else {
+            "mal_empty"
+        };
+        logger::info(
+            db,
+            LogCategory::Kitsu,
+            &format!(
+                "Episode titles for {} came from Kitsu",
+                preferred_title_for_log(detail)
+            ),
+            &format!(
+                "mal_id={:?}, reason={}, kitsu_episodes={}, jikan_episodes={}",
+                detail.id_mal,
+                reason,
+                kitsu_eps.len(),
+                jikan_eps.len()
+            ),
+        )
+        .await;
+    }
 
     let mut merged = Vec::new();
     for ep_num in 1..=ep_count {
