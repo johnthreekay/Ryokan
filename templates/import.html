@@ -241,4 +241,4 @@
 </div>{# /.tabbed-page #}
 {% endblock %}
 
-{% block page_js %}<script src="/static/js/import.js" defer></script>{% endblock %}
+{% block page_js %}<script src="/static/js/import.js?v={{ crate::asset_version() }}" defer></script>{% endblock %}
