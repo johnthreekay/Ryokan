@@ -7,8 +7,8 @@
 //! not surface its NSFW entries, so the title fuzz for "Dropout" (MAL
 //! 31886) picked "Gabriel DropOut Specials" and that show's episode
 //! titles were stamped onto the series. The fallback now resolves by
-//! MAL id through `/mappings` whenever it has one and only fuzzes for a
-//! series with no MAL id at all.
+//! MAL id through `/mappings` and never by title: no MAL id, no Kitsu
+//! episode titles.
 
 use ryokan::services::kitsu;
 use ryokan::test_support::in_memory_pool;
@@ -111,19 +111,12 @@ async fn episode_fallback_resolves_by_mal_id_and_never_title_searches() {
     }
     let db = in_memory_pool().await;
 
-    let eps = kitsu::fetch_episode_titles_fallback(
-        &db,
-        Some(31886),
-        &["Dropout".to_string(), "ドロップアウト".to_string()],
-        Some(2016),
-        Some(2),
-    )
-    .await;
+    let eps = kitsu::fetch_episode_titles_fallback(&db, Some(31886)).await;
     assert_eq!(eps.get(&1).map(|e| e.title.as_str()), Some("Dropout One"));
     assert_eq!(eps.get(&2).map(|e| e.title.as_str()), Some("Dropout Two"));
 
     // Cached under the mapped id: a second call is served from the DB.
-    let again = kitsu::fetch_episode_titles_fallback(&db, Some(31886), &[], None, None).await;
+    let again = kitsu::fetch_episode_titles_fallback(&db, Some(31886)).await;
     assert_eq!(again.len(), 2);
 
     unsafe {
@@ -148,14 +141,7 @@ async fn episode_fallback_with_a_mal_id_but_no_mapping_returns_nothing() {
     }
     let db = in_memory_pool().await;
 
-    let eps = kitsu::fetch_episode_titles_fallback(
-        &db,
-        Some(31886),
-        &["Dropout".to_string()],
-        Some(2016),
-        Some(2),
-    )
-    .await;
+    let eps = kitsu::fetch_episode_titles_fallback(&db, Some(31886)).await;
     assert!(eps.is_empty());
 
     unsafe {
@@ -179,14 +165,7 @@ async fn episode_fallback_with_a_failed_mapping_lookup_returns_nothing() {
     }
     let db = in_memory_pool().await;
 
-    let eps = kitsu::fetch_episode_titles_fallback(
-        &db,
-        Some(31886),
-        &["Dropout".to_string()],
-        None,
-        None,
-    )
-    .await;
+    let eps = kitsu::fetch_episode_titles_fallback(&db, Some(31886)).await;
     assert!(eps.is_empty());
 
     unsafe {
@@ -195,8 +174,11 @@ async fn episode_fallback_with_a_failed_mapping_lookup_returns_nothing() {
 }
 
 #[tokio::test]
-async fn episode_fallback_without_a_mal_id_still_title_searches() {
-    // The pre-#235 path, kept for series that have no MAL id at all.
+async fn episode_fallback_without_a_mal_id_returns_nothing_and_never_searches() {
+    // Kitsu's role is the outage fallback for MAL, and a title guess is
+    // the one thing it must not do: with no MAL id there is no identity
+    // to resolve, so there are no Kitsu episode titles. The tempting
+    // search result stays unrequested.
     let _gate = ENV_LOCK.lock().await;
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
@@ -205,11 +187,11 @@ async fn episode_fallback_without_a_mal_id_still_title_searches() {
         .expect(0)
         .mount(&mock)
         .await;
-    mount_tempting_title_search(&mock, 1).await;
+    mount_tempting_title_search(&mock, 0).await;
     Mock::given(method("GET"))
         .and(path("/anime/13294/episodes"))
         .respond_with(ResponseTemplate::new(200).set_body_json(episodes_response("Gabriel")))
-        .expect(1)
+        .expect(0)
         .mount(&mock)
         .await;
     unsafe {
@@ -217,15 +199,17 @@ async fn episode_fallback_without_a_mal_id_still_title_searches() {
     }
     let db = in_memory_pool().await;
 
-    let eps = kitsu::fetch_episode_titles_fallback(
-        &db,
-        None,
-        &["Gabriel DropOut Specials".to_string()],
-        Some(2017),
-        Some(2),
-    )
-    .await;
-    assert_eq!(eps.get(&1).map(|e| e.title.as_str()), Some("Gabriel One"));
+    assert!(
+        kitsu::fetch_episode_titles_fallback(&db, None)
+            .await
+            .is_empty()
+    );
+    // `Some(0)` is the external-sync placeholder, not an id.
+    assert!(
+        kitsu::fetch_episode_titles_fallback(&db, Some(0))
+            .await
+            .is_empty()
+    );
 
     unsafe {
         std::env::remove_var("RYOKAN_KITSU_API_BASE");

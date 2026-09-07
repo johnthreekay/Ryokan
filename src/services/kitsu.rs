@@ -563,11 +563,12 @@ async fn cache_kitsu_episodes(
 
 /// Episode titles and air dates from Kitsu, the fallback behind Jikan.
 ///
-/// **Identity first.** When the caller knows the MAL id, the entry is
-/// resolved through Kitsu's `/mappings` lookup and the title search is
-/// never consulted; a MAL id with no Kitsu mapping (or a failed lookup)
-/// yields nothing rather than a guess. Only a series with no MAL id at
-/// all falls back to `best_candidate`'s title fuzz.
+/// **By identity only.** The entry is resolved through Kitsu's
+/// `/mappings` lookup for the series' MAL id; the title search is never
+/// consulted for episode titles. No MAL id, no Kitsu mapping, or a
+/// failed lookup yields nothing rather than a guess. The mapping is a
+/// Kitsu endpoint, so this still works while MAL itself is down, which
+/// is what the fallback is for.
 ///
 /// Issue #235 is why: Kitsu's text search does not surface its NSFW
 /// entries, so for "Dropout" (MAL 31886) the fuzz scored "Gabriel
@@ -575,39 +576,34 @@ async fn cache_kitsu_episodes(
 /// a year apart, title contained twice), and that show's episode
 /// titles were stamped onto the series. A wrong title from another
 /// show is worse than a blank one, and blanks still get the
-/// "Episode N" treatment downstream.
+/// "Episode N" treatment downstream. `best_candidate` remains the
+/// *detail* fallback for a series with no MAL id (`get_anime_detail_by_titles`).
 pub async fn fetch_episode_titles_fallback(
     db: &SqlitePool,
     mal_id: Option<i64>,
-    titles: &[String],
-    wanted_year: Option<i32>,
-    wanted_eps: Option<i32>,
 ) -> HashMap<i32, EpisodeInfo> {
-    let candidate = match mal_id.filter(|id| *id > 0) {
-        Some(mid) => match candidate_by_mal_id(mid).await {
-            Ok(Some(c)) => c,
-            Ok(None) => {
-                tracing::debug!(
-                    target: "ryokan::kitsu",
-                    mal_id = mid,
-                    "Kitsu has no mapping for this MAL id; not guessing episode titles by title"
-                );
-                return HashMap::new();
-            }
-            Err(err) => {
-                tracing::warn!(
-                    target: "ryokan::kitsu",
-                    mal_id = mid,
-                    error = %err,
-                    "Kitsu mapping lookup failed; skipping the episode-title fallback"
-                );
-                return HashMap::new();
-            }
-        },
-        None => match best_candidate(titles, wanted_year, wanted_eps).await {
-            Ok(Some(c)) => c,
-            _ => return HashMap::new(),
-        },
+    let Some(mid) = mal_id.filter(|id| *id > 0) else {
+        return HashMap::new();
+    };
+    let candidate = match candidate_by_mal_id(mid).await {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            tracing::debug!(
+                target: "ryokan::kitsu",
+                mal_id = mid,
+                "Kitsu has no mapping for this MAL id; not guessing episode titles by title"
+            );
+            return HashMap::new();
+        }
+        Err(err) => {
+            tracing::warn!(
+                target: "ryokan::kitsu",
+                mal_id = mid,
+                error = %err,
+                "Kitsu mapping lookup failed; skipping the episode-title fallback"
+            );
+            return HashMap::new();
+        }
     };
 
     if let Ok(Some(cached)) = get_cached_kitsu_episodes(db, candidate.id).await {

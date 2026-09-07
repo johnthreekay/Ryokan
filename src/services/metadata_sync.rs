@@ -250,11 +250,6 @@ async fn build_episode_cache(
         HashMap::new()
     };
 
-    let kitsu_titles = vec![
-        detail.title_english.clone(),
-        detail.title_romaji.clone(),
-        detail.title_native.clone(),
-    ];
     let should_try_kitsu = ep_count > 1
         && (force_kitsu_fallback
             || episode_needs_kitsu_backfill(ep_count, |ep_num| {
@@ -265,14 +260,7 @@ async fn build_episode_cache(
             }));
 
     let kitsu_eps = if should_try_kitsu {
-        kitsu::fetch_episode_titles_fallback(
-            db,
-            detail.id_mal,
-            &kitsu_titles,
-            detail.season_year,
-            Some(ep_count),
-        )
-        .await
+        kitsu::fetch_episode_titles_fallback(db, detail.id_mal).await
     } else {
         HashMap::new()
     };

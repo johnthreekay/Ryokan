@@ -929,18 +929,7 @@ pub(super) async fn build_episodes(
                     .unwrap_or(false)
             }));
     let kitsu_eps: HashMap<i32, kitsu::EpisodeInfo> = if should_try_kitsu {
-        kitsu::fetch_episode_titles_fallback(
-            db,
-            detail.id_mal,
-            &[
-                detail.title_english.clone(),
-                detail.title_romaji.clone(),
-                detail.title_native.clone(),
-            ],
-            detail.season_year,
-            detail.episodes,
-        )
-        .await
+        kitsu::fetch_episode_titles_fallback(db, detail.id_mal).await
     } else {
         HashMap::new()
     };
