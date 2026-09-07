@@ -26,6 +26,14 @@ if (!window.__ryokanSystemListeners) {
         }
         menu.classList.remove('open');
     });
+
+    // A filter change or page jump swaps #logs-panel in from the
+    // server with the Live checkbox in its default state; put the
+    // user's choice back.
+    document.body.addEventListener('htmx:after:swap', function () {
+        const toggle = document.getElementById('poll-toggle');
+        if (toggle) toggle.checked = window.__ryokanLogsLive;
+    });
 }
 
 // `var` (not `let`) at module scope is deliberate across every per-page
@@ -44,14 +52,32 @@ var latestId = (function () {
     return firstRow ? parseInt(firstRow.dataset.id, 10) || 0 : 0;
 })();
 
-function applyFilters() {
-    const level = document.getElementById('filter-level').value;
-    const category = document.getElementById('filter-category').value;
-    const search = document.getElementById('filter-search').value;
-    const params = new URLSearchParams({tab: 'logs', level});
-    if (category) params.set('category', category);
-    if (search) params.set('search', search);
-    window.location.href = '/system?' + params.toString();
+// The Live toggle's state outlives the panel: every filter change and
+// page jump swaps #logs-panel (and its checkbox) back in from the
+// server, so the choice is kept here and re-applied after each swap.
+window.__ryokanLogsLive = window.__ryokanLogsLive !== false;
+
+function setLogsLive(on) {
+    window.__ryokanLogsLive = !!on;
+    if (on) startPolling(); else stopPolling();
+}
+
+// The filter and jump forms send every field, so an untouched
+// category or search would push `&category=&search=` into the URL;
+// drop empty values before the request goes out.
+function dropEmptyLogParams(ev) {
+    const body = ev && ev.detail && ev.detail.ctx && ev.detail.ctx.request && ev.detail.ctx.request.body;
+    if (!body || typeof body.delete !== 'function') return;
+    for (const [key, value] of Array.from(body.entries())) {
+        if (value === '') body.delete(key);
+    }
+}
+
+// Re-render the panel for the current filters (page 1) without a
+// reload: submitting the filter form runs its hx-get.
+function refreshLogsPanel() {
+    const form = document.getElementById('logs-filter-form');
+    if (form) form.requestSubmit();
 }
 
 async function clearLogs() {
@@ -64,7 +90,7 @@ async function clearLogs() {
     try {
         const r = await fetch('/api/logs/clear', {method: 'POST', headers: {'Content-Type': 'application/json'}});
         await r.json();
-        location.reload();
+        refreshLogsPanel();
     } catch (err) {
         console.error('Failed to clear logs:', err);
         window.ryokanToast({kind: 'error', title: 'Clear logs failed', body: err && err.message ? err.message : 'Unknown error'});
@@ -90,12 +116,25 @@ function escapeHtml(s) {
 function pollLogs() {
     const toggle = document.getElementById('poll-toggle');
     if (!toggle || !toggle.checked) return;
+    // Only the newest page receives live rows: prepending them to an
+    // older page put the newest entries above page 3's, which read as
+    // "it jumped back to page 1".
+    const panel = document.getElementById('logs-panel');
+    if (!panel || panel.dataset.page !== '1') return;
+    // The cursor is the top row of whatever the panel currently shows
+    // (a filter change or page jump swaps the rows under us), so the
+    // poll asks for rows newer than that and matching the same
+    // filters, search included.
+    const firstRow = document.querySelector('#log-tbody tr[data-id]');
+    latestId = firstRow ? parseInt(firstRow.dataset.id, 10) || 0 : 0;
 
     const level = document.getElementById('filter-level').value;
     const category = document.getElementById('filter-category').value;
+    const search = (document.getElementById('filter-search') || {}).value || '';
     const params = new URLSearchParams({after: latestId});
     if (level) params.set('level', level);
     if (category) params.set('category', category);
+    if (search) params.set('search', search);
 
     fetch('/api/logs/poll?' + params.toString())
         .then(r => r.json())
@@ -156,18 +195,11 @@ window.ryokanRegisterPageInit('system-logs-poll', {
     mount: function () {
         const pollToggle = document.getElementById('poll-toggle');
         if (!pollToggle) return; // defensive; check() should preclude this
-        // `data-bound` flag mirrors the pattern in settings.js: a
-        // re-mount on the SAME page (rare — shouldn't happen via
-        // boost since check() returning the same truthy doesn't
-        // re-fire mount, but a future htmx.process call elsewhere
-        // could trigger it) is idempotent w.r.t. event listeners.
-        if (!pollToggle.dataset.ryokanBound) {
-            pollToggle.addEventListener('change', function () {
-                if (this.checked) startPolling(); else stopPolling();
-            });
-            pollToggle.dataset.ryokanBound = '1';
-        }
-        startPolling();
+        // The checkbox carries its own `onchange` (setLogsLive), so a
+        // freshly swapped-in panel needs no binding; the toggle only
+        // has to show the state kept across swaps.
+        pollToggle.checked = window.__ryokanLogsLive;
+        if (window.__ryokanLogsLive) startPolling(); else stopPolling();
     },
     unmount: function () {
         stopPolling();

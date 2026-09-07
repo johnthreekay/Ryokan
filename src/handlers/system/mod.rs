@@ -90,14 +90,17 @@ struct SystemTemplate {
     filter_level: String,
     filter_category: String,
     filter_search: String,
-    /// Current page's cursor (the `before_id` query param value, or
-    /// `None` for the first/newest page). Used in the template to
-    /// render the "Newest" reset link conditionally.
-    log_before_id: Option<i64>,
-    /// Cursor for the "Older →" link, set to the `id` of the oldest
-    /// entry on the current page. `None` when the page is the last
-    /// (or when there are no entries at all).
-    log_older_id: Option<i64>,
+    /// Numbered Logs pages, `LOG_PAGE_SIZE` rows each, over the active
+    /// filter: the current page (clamped to the last one), how many
+    /// there are, the neighbors for the Newer / Older links, the
+    /// windowed links to render, and the filter as an encoded
+    /// query-string tail every link and the jump box carry.
+    log_page: i64,
+    log_pages: i64,
+    log_prev_page: Option<i64>,
+    log_next_page: Option<i64>,
+    log_page_links: Vec<LogPageLink>,
+    log_filter_qs: String,
     /// Mirrors `log_before_id` for the RSS tab — the active cursor
     /// the user navigated to (drives the "← Newest" link).
     rss_before_id: Option<i64>,
@@ -145,11 +148,66 @@ pub struct SystemQuery {
     search: Option<String>,
     message: Option<String>,
     error: Option<String>,
-    /// Cursor for "Older →" pagination on the logs tab. When set,
+    /// Cursor for "Older →" pagination on the RSS tab. When set,
     /// the query fetches entries with `id < before_id`. Omitted on
     /// the first page so the user always lands on the newest
     /// entries.
     before_id: Option<i64>,
+    /// 1-based page of the Logs tab (numbered pages over the active
+    /// filter). Missing or below 1 is the first page; past the last
+    /// page lands on the last page.
+    page: Option<i64>,
+}
+
+/// Rows per page on the Logs tab.
+const LOG_PAGE_SIZE: i64 = 200;
+
+/// One entry of the Logs tab's page strip: a page number, the current
+/// page (rendered as the filled button), or a gap where the window
+/// skips pages.
+pub struct LogPageLink {
+    number: i64,
+    current: bool,
+    gap: bool,
+}
+
+/// The page strip: the first and last page, the current page with two
+/// neighbors on each side, and a gap wherever the sequence skips.
+fn page_links(current: i64, total: i64) -> Vec<LogPageLink> {
+    let mut pages: Vec<i64> = vec![1, total];
+    pages.extend((current - 2..=current + 2).filter(|p| *p >= 1 && *p <= total));
+    pages.sort_unstable();
+    pages.dedup();
+    let mut links = Vec::with_capacity(pages.len() * 2);
+    let mut prev = 0;
+    for p in pages {
+        if prev > 0 && p - prev > 1 {
+            links.push(LogPageLink {
+                number: 0,
+                current: false,
+                gap: true,
+            });
+        }
+        links.push(LogPageLink {
+            number: p,
+            current: p == current,
+            gap: false,
+        });
+        prev = p;
+    }
+    links
+}
+
+/// The active filter as a query-string tail (`&level=…&category=…
+/// &search=…`, values encoded) for the page links and the jump box.
+fn log_filter_query_string(level: &str, category: &str, search: &str) -> String {
+    let mut qs = String::new();
+    for (key, value) in [("level", level), ("category", category), ("search", search)] {
+        if !value.is_empty() {
+            qs.push_str(&format!("&{key}={}", urlencoding::encode(value)));
+        }
+    }
+    qs
 }
 
 #[derive(Deserialize)]
@@ -217,35 +275,31 @@ pub async fn system_page(
     // these six queries sequentially — the wall time was the sum of all
     // RTTs. With `tokio::join!` each future races on its own pool
     // connection and the handler waits on the slowest one only.
-    let logs_before_id = params.before_id;
+    let log_page_requested = params.page.unwrap_or(1).max(1);
+    let log_query = log::LogQuery {
+        level: Some(filter_level.clone()),
+        category: (!filter_category.is_empty()).then(|| filter_category.clone()),
+        search: (!filter_search.is_empty()).then(|| filter_search.clone()),
+        limit: LOG_PAGE_SIZE,
+        offset: (log_page_requested - 1) * LOG_PAGE_SIZE,
+        before_id: None,
+    };
     let logs_fut = async {
         if tab == "logs" {
-            log::query(
-                &state.db,
-                &log::LogQuery {
-                    level: Some(filter_level.clone()),
-                    category: if filter_category.is_empty() {
-                        None
-                    } else {
-                        Some(filter_category.clone())
-                    },
-                    search: if filter_search.is_empty() {
-                        None
-                    } else {
-                        Some(filter_search.clone())
-                    },
-                    // Fetch one extra row so the template can tell
-                    // whether there's an "Older" page to link to
-                    // (without a separate COUNT query). Drop the
-                    // extra below before passing to the template.
-                    limit: 201,
-                    before_id: logs_before_id,
-                },
-            )
-            .await
-            .unwrap_or_default()
+            log::query(&state.db, &log_query).await.unwrap_or_default()
         } else {
             Vec::new()
+        }
+    };
+    // The count that sizes the page strip is over the same filter as
+    // the rows; other tabs keep the plain total for the debug view.
+    let log_count_fut = async {
+        if tab == "logs" {
+            log::count_filtered(&state.db, &log_query)
+                .await
+                .unwrap_or(0)
+        } else {
+            log::count(&state.db).await.unwrap_or(0)
         }
     };
     let rss_before_id = params.before_id;
@@ -332,14 +386,14 @@ pub async fn system_page(
         rss::latest_run(&state.db),
         rss_recent_fut,
         scheduled_tasks_fut,
-        log::count(&state.db),
+        log_count_fut,
         review_entries_fut,
         misgrab_entries_fut,
         notification_payload_fut,
     );
     let cfg = cfg_res.ok().flatten();
     let rss_last_run = rss_last_run_res.unwrap_or(None);
-    let log_count = log_count_res.unwrap_or(0);
+    let log_count = log_count_res;
 
     let force_mal_fallback = cfg
         .as_ref()
@@ -389,7 +443,29 @@ pub async fn system_page(
     // COUNT. If we got the extra row, drop it and stash the oldest
     // visible row's id as the `before_id` for the next page; if we
     // got fewer than the limit, this is the last page.
-    let (logs, log_older_id) = truncate_to_page(logs, 200, |e| e.id);
+    // Numbered pages over the filtered count. A page past the end (a
+    // stale link after entries were pruned) lands on the last page,
+    // which means one more query for that rare case.
+    let log_pages = (log_count.max(0) + LOG_PAGE_SIZE - 1) / LOG_PAGE_SIZE;
+    let log_pages = log_pages.max(1);
+    let log_page = log_page_requested.min(log_pages);
+    let logs = if tab == "logs" && log_page != log_page_requested {
+        log::query(
+            &state.db,
+            &log::LogQuery {
+                offset: (log_page - 1) * LOG_PAGE_SIZE,
+                ..log_query
+            },
+        )
+        .await
+        .unwrap_or_default()
+    } else {
+        logs
+    };
+    let log_prev_page = (log_page > 1).then(|| log_page - 1);
+    let log_next_page = (log_page < log_pages).then(|| log_page + 1);
+    let log_page_links = page_links(log_page, log_pages);
+    let log_filter_qs = log_filter_query_string(&filter_level, &filter_category, &filter_search);
     let (rss_recent, rss_older_id) = truncate_to_page(rss_recent, 200, |e| e.id);
     let recycle_unwritable = crate::services::recycle::is_unwritable();
     let backup_view = if tab == "backup" {
@@ -411,8 +487,12 @@ pub async fn system_page(
         filter_level,
         filter_category,
         filter_search,
-        log_before_id: logs_before_id,
-        log_older_id,
+        log_page,
+        log_pages,
+        log_prev_page,
+        log_next_page,
+        log_page_links,
+        log_filter_qs,
         rss_before_id,
         rss_older_id,
         categories,
@@ -509,8 +589,12 @@ pub async fn debug_settings_submit(
         filter_level: "info".to_string(),
         filter_category: String::new(),
         filter_search: String::new(),
-        log_before_id: None,
-        log_older_id: None,
+        log_page: 1,
+        log_pages: 1,
+        log_prev_page: None,
+        log_next_page: None,
+        log_page_links: Vec::new(),
+        log_filter_qs: String::new(),
         rss_before_id: None,
         rss_older_id: None,
         categories: vec![
@@ -552,6 +636,9 @@ pub struct LogPollQuery {
     after: Option<i64>,
     level: Option<String>,
     category: Option<String>,
+    /// The page's message / detail substring filter, so a filtered
+    /// page only receives rows it would show.
+    search: Option<String>,
 }
 
 #[utoipa::path(
@@ -559,7 +646,7 @@ pub struct LogPollQuery {
     path = "/api/logs/poll",
     tag = "System",
     summary = "Poll log entries",
-    description = "Retrieve recent log entries, optionally filtered by level and category. Supports long-polling via the `after` parameter.",
+    description = "Retrieve recent log entries, optionally filtered by level, category, and a message search. Supports long-polling via the `after` parameter.",
     params(LogPollQuery),
     responses(
         (status = 200, description = "Log entries", body = Vec<log::LogEntry>),
@@ -581,6 +668,7 @@ pub async fn api_logs_poll(
         100,
         params.level.as_deref(),
         params.category.as_deref(),
+        params.search.as_deref(),
     )
     .await
     .unwrap_or_default();
@@ -1516,3 +1604,42 @@ mod endpoint_tests;
 mod tasks_endpoint_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod log_pages_tests {
+    use super::*;
+
+    fn render(links: &[LogPageLink]) -> String {
+        links
+            .iter()
+            .map(|l| {
+                if l.gap {
+                    "…".to_string()
+                } else if l.current {
+                    format!("[{}]", l.number)
+                } else {
+                    l.number.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn page_strip_windows_around_the_current_page() {
+        assert_eq!(render(&page_links(1, 1)), "[1]");
+        assert_eq!(render(&page_links(2, 5)), "1 [2] 3 4 5");
+        assert_eq!(render(&page_links(6, 42)), "1 … 4 5 [6] 7 8 … 42");
+        assert_eq!(render(&page_links(42, 42)), "1 … 40 41 [42]");
+        assert_eq!(render(&page_links(3, 42)), "1 2 [3] 4 5 … 42");
+    }
+
+    #[test]
+    fn filter_tail_encodes_and_skips_empty_values() {
+        assert_eq!(log_filter_query_string("", "", ""), "");
+        assert_eq!(
+            log_filter_query_string("info", "grab", "foo & bar"),
+            "&level=info&category=grab&search=foo%20%26%20bar"
+        );
+    }
+}

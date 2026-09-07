@@ -45,30 +45,43 @@
 
 {% if tab == "logs" %}
 <!-- Logs Tab -->
+{# `#logs-panel` is what the filter form, the page links, and the jump
+   box swap: each is an hx-get of this same page with the new query,
+   `hx-select` picks the panel out of the full response, and the URL
+   is pushed so reload and back/forward keep the view. `data-page`
+   tells the live poller (system.js) whether this is the newest page;
+   it only prepends new entries on page 1. `log_filter_qs` is the
+   active filter as an encoded query-string tail so paging never
+   drops the filter (a search like `foo & bar` would otherwise split
+   into a second parameter). #}
+<div id="logs-panel" data-page="{{ log_page }}">
 <div class="logs-toolbar">
-    <div class="logs-filters">
-        <select id="filter-level" class="log-filter-select" onchange="applyFilters()">
+    <form class="logs-filters" id="logs-filter-form" method="get" action="/system"
+          hx-get="/system" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true"
+          hx-on::config:request="dropEmptyLogParams(event)">
+        <input type="hidden" name="tab" value="logs">
+        <select id="filter-level" name="level" class="log-filter-select" onchange="this.form.requestSubmit()">
             <option value="trace" {% if filter_level == "trace" %}selected{% endif %}>Trace</option>
             <option value="debug" {% if filter_level == "debug" %}selected{% endif %}>Debug</option>
             <option value="info" {% if filter_level == "info" %}selected{% endif %}>Info</option>
             <option value="warn" {% if filter_level == "warn" %}selected{% endif %}>Warn</option>
             <option value="error" {% if filter_level == "error" %}selected{% endif %}>Error</option>
         </select>
-        <select id="filter-category" class="log-filter-select" onchange="applyFilters()">
+        <select id="filter-category" name="category" class="log-filter-select" onchange="this.form.requestSubmit()">
             <option value="">All Categories</option>
             {% for cat in categories %}
             <option value="{{ cat.0 }}" {% if filter_category == cat.0 %}selected{% endif %}>{{ cat.1 }}</option>
             {% endfor %}
         </select>
-        <input type="text" id="filter-search" class="log-filter-input" placeholder="Filter messages..." value="{{ filter_search }}" onkeydown="if(event.key==='Enter')applyFilters()">
-        <button class="btn btn-ghost btn-sm" onclick="applyFilters()" title="Apply filters">
+        <input type="text" id="filter-search" name="search" class="log-filter-input" placeholder="Filter messages..." value="{{ filter_search }}">
+        <button class="btn btn-ghost btn-sm" type="submit" title="Apply filters">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         </button>
-    </div>
+    </form>
     <div class="logs-actions">
-        <span class="log-count">{{ log_count }} entries</span>
-        <label class="log-poll-toggle" title="Auto-refresh">
-            <input type="checkbox" id="poll-toggle" checked>
+        <span class="log-count">{{ log_count }} entr{% if log_count == 1 %}y{% else %}ies{% endif %}</span>
+        <label class="log-poll-toggle" title="Show new entries as they arrive (first page only)">
+            <input type="checkbox" id="poll-toggle" checked onchange="setLogsLive(this.checked)">
             <span class="log-poll-label">Live</span>
         </label>
         {# Download presets — each link triggers a server-rendered TSV
@@ -120,29 +133,41 @@
     {% endif %}
 </div>
 
-{# Cursor-based pagination. `log_older_id` is the id of the oldest
-   visible row when there's more history beyond this page; `None`
-   on the last page. `log_before_id` is the current page's cursor;
-   `None` on the first/newest page (so the "Newest" link only
-   renders when the user has navigated backwards). Both controls
-   propagate the active filter state via query params so paginating
-   doesn't reset the filter dropdowns. #}
-{# `|urlencode` on every interpolated filter value: `filter_search` is
-   user-controlled (the "Filter messages..." input), and a search like
-   `foo & bar` would otherwise produce an href the browser parses as a
-   new query parameter starting at `& bar`, breaking pagination
-   silently. The same applies to category / level for any future
-   non-ascii or `&`-bearing values. #}
-{% if log_older_id.is_some() || log_before_id.is_some() %}
-<div class="logs-pagination">
-    {% if log_before_id.is_some() %}
-    <a class="btn btn-ghost btn-sm" href="/system?tab=logs{% if !filter_level.is_empty() %}&level={{ filter_level|urlencode }}{% endif %}{% if !filter_category.is_empty() %}&category={{ filter_category|urlencode }}{% endif %}{% if !filter_search.is_empty() %}&search={{ filter_search|urlencode }}{% endif %}">← Newest</a>
+{# Numbered pages, 200 entries each, over the active filter. Every
+   link and the jump box carry `log_filter_qs`. #}
+{% if log_pages > 1 %}
+<nav class="logs-pagination" aria-label="Log pages">
+    {% if let Some(prev) = log_prev_page %}
+    <a class="btn btn-ghost btn-sm" href="/system?tab=logs&page={{ prev }}{{ log_filter_qs }}" hx-get="/system?tab=logs&page={{ prev }}{{ log_filter_qs }}" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true">&larr; Newer</a>
     {% endif %}
-    {% if let Some(older) = log_older_id %}
-    <a class="btn btn-ghost btn-sm" href="/system?tab=logs&before_id={{ older }}{% if !filter_level.is_empty() %}&level={{ filter_level|urlencode }}{% endif %}{% if !filter_category.is_empty() %}&category={{ filter_category|urlencode }}{% endif %}{% if !filter_search.is_empty() %}&search={{ filter_search|urlencode }}{% endif %}">Older →</a>
+    <div class="logs-page-links">
+    {% for link in log_page_links %}
+        {% if link.gap %}
+        <span class="logs-page-gap" aria-hidden="true">&hellip;</span>
+        {% else if link.current %}
+        <span class="btn btn-secondary btn-sm logs-page-current" aria-current="page">{{ link.number }}</span>
+        {% else %}
+        <a class="btn btn-ghost btn-sm" href="/system?tab=logs&page={{ link.number }}{{ log_filter_qs }}" hx-get="/system?tab=logs&page={{ link.number }}{{ log_filter_qs }}" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true">{{ link.number }}</a>
+        {% endif %}
+    {% endfor %}
+    </div>
+    {% if let Some(next) = log_next_page %}
+    <a class="btn btn-ghost btn-sm" href="/system?tab=logs&page={{ next }}{{ log_filter_qs }}" hx-get="/system?tab=logs&page={{ next }}{{ log_filter_qs }}" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true">Older &rarr;</a>
     {% endif %}
-</div>
+    <form class="logs-jump" method="get" action="/system"
+          hx-get="/system" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true"
+          hx-on::config:request="dropEmptyLogParams(event)">
+        <input type="hidden" name="tab" value="logs">
+        {% if !filter_level.is_empty() %}<input type="hidden" name="level" value="{{ filter_level }}">{% endif %}
+        {% if !filter_category.is_empty() %}<input type="hidden" name="category" value="{{ filter_category }}">{% endif %}
+        {% if !filter_search.is_empty() %}<input type="hidden" name="search" value="{{ filter_search }}">{% endif %}
+        <label for="logs-jump-page" class="logs-jump-label">Page</label>
+        <input type="number" id="logs-jump-page" name="page" class="log-filter-input logs-jump-input" min="1" max="{{ log_pages }}" value="{{ log_page }}" onchange="this.form.requestSubmit()">
+        <span class="logs-jump-label">of {{ log_pages }}</span>
+    </form>
+</nav>
 {% endif %}
+</div>{# /#logs-panel #}
 
 {% else if tab == "rss" %}
 <div class="rss-panel">
@@ -523,7 +548,7 @@
 {% endblock %}
 
 {% block page_js %}
-{% if tab == "review" %}<script src="/static/js/needs_review.js" defer></script>{% endif %}
-{% if tab == "misgrabs" %}<script src="/static/js/misgrabs.js" defer></script>{% endif %}
-<script src="/static/js/system.js" defer></script>
+{% if tab == "review" %}<script src="/static/js/needs_review.js?v={{ crate::asset_version() }}" defer></script>{% endif %}
+{% if tab == "misgrabs" %}<script src="/static/js/misgrabs.js?v={{ crate::asset_version() }}" defer></script>{% endif %}
+<script src="/static/js/system.js?v={{ crate::asset_version() }}" defer></script>
 {% endblock %}

@@ -77,6 +77,12 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    /* Basis 0, not auto: measured at its content width the filter row
+       plus the actions no longer fit the System page's column, and
+       the whole row broke onto two lines. From 0 it takes what the
+       actions leave and the search box gives way first. */
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .log-filter-select {
@@ -88,7 +94,7 @@
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 6px 10px;
+    padding: 6px 30px 6px 10px; /* right: chevron room */
     font-size: 13px;
     font-family: var(--font-body);
     cursor: pointer;
@@ -113,7 +119,12 @@
     padding: 6px 10px;
     font-size: 13px;
     font-family: var(--font-body);
-    width: 200px;
+    /* Flexes between 120 and 240px: at the System page's content
+       width the two selects plus a fixed 200px box no longer fit
+       beside the actions. */
+    flex: 1 1 140px;
+    min-width: 120px;
+    max-width: 240px;
 }
 
 .log-filter-input:focus {
@@ -178,10 +189,58 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 12px 16px 4px;
     margin-top: 4px;
     border-top: 1px solid var(--border);
+}
+
+/* Numbered pages: ghost buttons, the current one filled, a dim
+   ellipsis where the window skips pages, and a "Page [n] of N" jump
+   box on the toolbar field recipe. */
+.logs-page-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.logs-page-links .btn-sm {
+    min-width: 32px;
+    padding-left: 8px;
+    padding-right: 8px;
+    font-variant-numeric: tabular-nums;
+}
+
+.logs-page-current {
+    cursor: default;
+}
+
+.logs-page-gap {
+    color: var(--text-dim);
+    padding: 0 2px;
+}
+
+.logs-jump {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 8px;
+}
+
+.logs-jump-label {
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.logs-jump-input {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 64px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 .log-count {
@@ -241,7 +300,10 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
-    max-height: calc(100vh - 260px);
+    /* Leave room under the box for the page strip (about 50px plus its
+       top margin), so the numbered pages are visible without scrolling
+       the page. */
+    max-height: calc(100vh - 324px);
     overflow-y: auto;
 }
 
