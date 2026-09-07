@@ -4,6 +4,6 @@
     hx-vals='{"series_id": {{ id }}, "episode_number": {{ ep.number }}, "monitored": {% if ep.monitored %}false{% else %}true{% endif %}}'
     hx-target="this"
     hx-swap="outerHTML"
-    title="{% if ep.monitored %}Monitored &mdash; click to unmonitor{% else %}Not monitored &mdash; click to monitor{% endif %}">
+    title="{% if ep.monitored %}Unmonitor{% else %}Monitor{% endif %}">
     {% if ep.monitored %}Yes{% else %}No{% endif %}
 </button>

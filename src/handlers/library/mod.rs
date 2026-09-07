@@ -8,6 +8,7 @@ pub mod bulk;
 pub mod cleanup;
 pub mod crud;
 pub mod episodes;
+pub mod misgrabs;
 pub mod pages;
 pub mod reconcile;
 pub mod recycle;
@@ -108,6 +109,14 @@ pub(crate) fn adult_needs_indexer(is_adult: bool, indexer_count: usize) -> bool 
     is_adult && indexer_count == 0
 }
 
+/// True when an automatic search has nowhere to look: the built-in
+/// Nyaa search is switched off on its Indexers-tab card and no indexer
+/// is configured. The auto-search toast and log say so instead of
+/// reporting an empty result as if the release did not exist.
+pub(crate) fn search_has_no_source(nyaa_enabled: bool, indexer_count: usize) -> bool {
+    !nyaa_enabled && indexer_count == 0
+}
+
 #[derive(Template)]
 #[template(path = "series.html")]
 struct SeriesTemplate {
@@ -170,7 +179,6 @@ struct SeriesTemplate {
     /// series is following AL/MAL with no manual override).
     #[allow(dead_code)]
     monitor_mode: String,
-    monitor_mode_label: String,
     /// #62 — `true` when the user has manually pinned monitor_mode
     /// through the dropdown (sync's merge step skips the row). Drives
     /// a small "pinned" hint next to the dropdown.
@@ -220,6 +228,8 @@ struct SeriesTemplate {
     /// #23 — Per-series Nyaa uploader restriction. Empty string means
     /// "use the global default in config."
     restrict_to_uploader: String,
+    /// Alternate titles the user added for this series, one per line.
+    alternate_titles: String,
     /// #23 — Global defaults, surfaced as placeholder hints so the user
     /// can see what the per-series field will inherit when left blank.
     default_custom_query_tokens: String,
@@ -414,6 +424,9 @@ pub struct SetSearchOverridesForm {
     /// Nyaa uploader to restrict to (`?u=<name>`). Empty string clears.
     #[serde(default)]
     restrict_to_uploader: String,
+    /// Alternate titles, one per line. Empty string clears.
+    #[serde(default)]
+    alternate_titles: String,
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -467,5 +480,14 @@ mod adult_indexer_tests {
         assert!(!adult_needs_indexer(true, 1));
         assert!(!adult_needs_indexer(false, 0));
         assert!(!adult_needs_indexer(false, 3));
+    }
+
+    #[test]
+    fn search_has_no_source_only_when_nyaa_off_and_none_configured() {
+        use super::search_has_no_source;
+        assert!(search_has_no_source(false, 0));
+        assert!(!search_has_no_source(false, 1));
+        assert!(!search_has_no_source(true, 0));
+        assert!(!search_has_no_source(true, 2));
     }
 }

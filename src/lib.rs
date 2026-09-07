@@ -106,6 +106,26 @@ impl DownloadClientPool {
 /// lock releases before any HTTP calls.
 pub type DownloadClientsCache = Arc<RwLock<Arc<DownloadClientPool>>>;
 
+/// Cache-busting stamp for `/static/` URLs: the crate version plus the
+/// process start time, appended as `?v=` by every `<script src>` and
+/// `<link href>` in the templates. Static files are served with
+/// `Cache-Control: max-age=3600`, so without it a browser kept running
+/// the previous release's JS and CSS against the new HTML for up to an
+/// hour after an upgrade (and a developer saw nothing change after a
+/// rebuild). The start time, not just the version, so a dev-tag image
+/// or a rebuilt binary at the same version still refreshes; the cost
+/// is one re-download of the bundle per restart.
+pub fn asset_version() -> &'static str {
+    static STAMP: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        let started = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        format!("{}-{}", env!("CARGO_PKG_VERSION"), started)
+    });
+    STAMP.as_str()
+}
+
 /// Shared application state available to all handlers. Lives in the
 /// library crate (rather than `main.rs`) so integration tests can
 /// build instances of it without depending on the binary.

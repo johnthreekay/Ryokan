@@ -702,6 +702,9 @@ pub async fn grab_confirm(
     {
         let _ = crate::models::grabbed_torrents::unblock_by_hash(&state.db, &row.info_hash, new_id)
             .await;
+        // Misgrab guardrails: a release the user chose to unblock is
+        // theirs to keep; verification must not flag it again.
+        let _ = crate::models::grabbed_torrents::whitelist_by_hash(&state.db, &row.info_hash).await;
     }
 
     // Drop the pending row — the user has committed, so the sweep
@@ -1238,6 +1241,78 @@ mod tests {
             None,
             "string shouldn't coerce to bool"
         );
+    }
+
+    #[tokio::test]
+    async fn grab_confirm_with_unblock_whitelists_the_hash() {
+        // Misgrab guardrails: a release the user consciously unblocks is
+        // never flagged by verification again.
+        let db = in_memory_pool().await;
+        let series_id = crate::test_support::seed_series(&db, 304, "Unblock Series").await;
+        let hash = VALID_HASH;
+        let old = crate::models::grabbed_torrents::record_grab(
+            &db,
+            hash,
+            "[Group] Unblock - 01 [1080p]",
+            series_id,
+            &[1],
+            false,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        crate::models::grabbed_torrents::mark_failed_by_hash_with_reason(&db, hash, "misgrab")
+            .await
+            .unwrap();
+        let release_metadata = serde_json::json!({
+            "title": "[Group] Unblock - 01 [1080p]",
+            "size": "1.2 GB",
+            "seeders": 100,
+            "group": "Group",
+            "is_batch": false,
+        });
+        let file_list = serde_json::json!([
+            {"name": "[Group] Unblock - 01 [1080p].mkv", "size": 1_000_000_000_i64},
+        ]);
+        pending_grabs::create(
+            &db,
+            "pid-unblock",
+            hash,
+            "qbittorrent",
+            None,
+            Some(series_id),
+            &release_metadata.to_string(),
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+        pending_grabs::set_file_list(&db, "pid-unblock", &file_list.to_string())
+            .await
+            .unwrap();
+
+        let state = build_test_app_state(db.clone(), Some(std::sync::Arc::new(NoopClient)));
+        let res = grab_confirm(
+            State(state),
+            Json(GrabConfirmForm {
+                preview_id: "pid-unblock".into(),
+                wanted_indices: vec![0],
+                unblock: true,
+            }),
+        )
+        .await;
+        assert!(res.is_ok(), "confirm with unblock should succeed: {res:?}");
+        assert!(
+            crate::models::grabbed_torrents::is_whitelisted_hash(&db, hash).await,
+            "unblocking whitelists the hash"
+        );
+        let old_state: String =
+            sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+                .bind(old)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(old_state, "replaced");
     }
 
     #[tokio::test]

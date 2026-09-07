@@ -571,6 +571,9 @@ pub async fn set_monitoring(
             "next sync tick will apply the AL/MAL-derived monitor_mode",
         )
         .await;
+        let monitored_episodes = monitoring::get_monitored_episode_numbers(&state.db, series_id)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         return Ok(monitoring_response(
             is_htmx,
             serde_json::json!({
@@ -580,6 +583,8 @@ pub async fn set_monitoring(
                 "monitor_mode_manual_override": false,
                 "monitored_count": summary.monitored_count,
                 "total_count": summary.total_count,
+                "all_monitored": summary.total_count > 0 && summary.monitored_count >= summary.total_count,
+                "monitored_episodes": monitored_episodes,
             }),
         ));
     }
@@ -662,6 +667,9 @@ pub async fn set_monitoring(
         }
     }
 
+    let monitored_episodes = monitoring::get_monitored_episode_numbers(&state.db, series_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(monitoring_response(
         is_htmx,
         serde_json::json!({
@@ -671,29 +679,65 @@ pub async fn set_monitoring(
             "monitor_mode_manual_override": true,
             "monitored_count": summary.monitored_count,
             "total_count": summary.total_count,
+            "all_monitored": summary.total_count > 0 && summary.monitored_count >= summary.total_count,
+            "monitored_episodes": monitored_episodes,
         }),
     ))
 }
 
-/// HTMX path returns empty 200 + `HX-Refresh: true` so htmx triggers
-/// a real `window.location.reload()` — equivalent to the prior JS
-/// `location.reload()` in setMonitoring + confirmMonitoring without
-/// the imperative fetch wrapper. Non-HTMX callers (`toggleMonitorAll`
-/// in `series_episode_actions.js` which updates many DOM elements
-/// imperatively) keep getting the JSON summary they consume.
+/// Above this many monitored episodes the HTMX response falls back to
+/// a full refresh rather than carrying the list in a header: browsers
+/// take multi-kilobyte headers fine, but a list that long is unusual
+/// enough that the reload is the honest answer.
+const MONITORING_EVENT_MAX_EPISODES: usize = 2000;
+
+/// The HTMX path used to answer with `HX-Refresh: true`, a leftover of
+/// the pre-HTMX `location.reload()`. Nothing about a mode change needs
+/// the reload: what changes on the page is every episode's Yes / No
+/// pill, the "(N monitored)" note, the bookmark button, and the
+/// dropdown, so the response is now an empty 200 with the same
+/// `HX-Trigger: ryokan-monitoring-changed` event the per-episode pill
+/// sends, plus the monitored list (`series_episode_actions.js` applies
+/// it). Numbers, booleans, and the mode slug only, so the header is
+/// ASCII by construction. Non-HTMX callers (`toggleMonitorAll`, which
+/// updates the DOM itself) keep getting the JSON summary.
 fn monitoring_response(is_htmx: bool, body: serde_json::Value) -> Response {
-    if is_htmx {
-        (
+    if !is_htmx {
+        return Json(body).into_response();
+    }
+    let too_many = body["monitored_episodes"]
+        .as_array()
+        .map(|a| a.len() > MONITORING_EVENT_MAX_EPISODES)
+        .unwrap_or(true);
+    if too_many {
+        return (
             [(
                 axum::http::header::HeaderName::from_static("hx-refresh"),
                 "true",
             )],
             StatusCode::OK,
         )
-            .into_response()
-    } else {
-        Json(body).into_response()
+            .into_response();
     }
+    let payload = serde_json::json!({
+        "ryokan-monitoring-changed": {
+            "monitor_mode": body["monitor_mode"],
+            "monitor_mode_manual_override": body["monitor_mode_manual_override"],
+            "monitored_count": body["monitored_count"],
+            "total_count": body["total_count"],
+            "all_monitored": body["all_monitored"],
+            "monitored_episodes": body["monitored_episodes"],
+        }
+    });
+    let mut resp = StatusCode::OK.into_response();
+    resp.headers_mut().insert(
+        "HX-Trigger",
+        payload
+            .to_string()
+            .parse()
+            .expect("numeric and slug-only JSON must parse as a HeaderValue"),
+    );
+    resp
 }
 
 #[utoipa::path(
@@ -721,6 +765,16 @@ pub async fn set_episode_monitoring(
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // The series' new totals, read back rather than recomputed:
+    // `recompute_series_monitoring` re-applies the mode and would undo
+    // the very toggle that was just made. The page's "(N monitored)"
+    // note and its Monitor-all button follow these without a reload.
+    let states = monitoring::get_series_states(&state.db, form.series_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let total_count = states.len();
+    let monitored_count = states.iter().filter(|s| s.monitored).count();
+    let all_monitored = total_count > 0 && monitored_count >= total_count;
     // HTMX migration (issue #129) — the per-episode monitor button on
     // the series detail page uses `hx-target="this" hx-swap="outerHTML"`,
     // so the response body must be the swapped button HTML. The partial
@@ -737,12 +791,34 @@ pub async fn set_episode_monitoring(
         }
         .render()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        Ok(Html(html).into_response())
+        // The swap only replaces the button; the rest of the page learns
+        // the new totals from this event (`series_episode_actions.js`).
+        // Numbers and booleans only, so the header is ASCII by
+        // construction (see `episode_delete_trigger` for why).
+        let payload = serde_json::json!({
+            "ryokan-monitoring-changed": {
+                "monitored_count": monitored_count,
+                "total_count": total_count,
+                "all_monitored": all_monitored,
+            }
+        });
+        let mut resp = Html(html).into_response();
+        resp.headers_mut().insert(
+            "HX-Trigger",
+            payload
+                .to_string()
+                .parse()
+                .expect("numeric JSON must parse as a HeaderValue"),
+        );
+        Ok(resp)
     } else {
         Ok(Json(serde_json::json!({
             "ok": true,
             "episode_number": form.episode_number,
             "monitored": form.monitored,
+            "monitored_count": monitored_count,
+            "total_count": total_count,
+            "all_monitored": all_monitored,
         }))
         .into_response())
     }
@@ -868,6 +944,7 @@ pub async fn set_search_overrides(
         form.series_id,
         &form.custom_query_tokens,
         &form.restrict_to_uploader,
+        &form.alternate_titles,
     )
     .await;
 
@@ -921,6 +998,7 @@ pub async fn set_search_overrides(
         "ok": true,
         "series_id": form.series_id,
         "custom_query_tokens": form.custom_query_tokens.trim(),
+        "alternate_titles": series::normalize_alternate_titles(&form.alternate_titles),
         "restrict_to_uploader": form.restrict_to_uploader.trim(),
     }))
     .into_response())

@@ -1,7 +1,7 @@
 // ── Logs tab ────────────────────────────────────────────────────────────
 
 // Per-page JS files are re-executed by hx-boost on every nav-back to a
-// previously-visited page (htmx 2.x evaluates inserted `<script src>`
+// previously-visited page (htmx evaluates inserted `<script src>`
 // tags). Without a one-shot guard around `addEventListener` calls,
 // every visit attaches another copy of the listener — by the Nth visit,
 // every event fires N callbacks. Surfaced as the "Episode 10 deleted ×7"
@@ -26,6 +26,14 @@ if (!window.__ryokanSystemListeners) {
         }
         menu.classList.remove('open');
     });
+
+    // A filter change or page jump swaps #logs-panel in from the
+    // server with the Live checkbox in its default state; put the
+    // user's choice back.
+    document.body.addEventListener('htmx:after:swap', function () {
+        const toggle = document.getElementById('poll-toggle');
+        if (toggle) toggle.checked = window.__ryokanLogsLive;
+    });
 }
 
 // `var` (not `let`) at module scope is deliberate across every per-page
@@ -44,14 +52,32 @@ var latestId = (function () {
     return firstRow ? parseInt(firstRow.dataset.id, 10) || 0 : 0;
 })();
 
-function applyFilters() {
-    const level = document.getElementById('filter-level').value;
-    const category = document.getElementById('filter-category').value;
-    const search = document.getElementById('filter-search').value;
-    const params = new URLSearchParams({tab: 'logs', level});
-    if (category) params.set('category', category);
-    if (search) params.set('search', search);
-    window.location.href = '/system?' + params.toString();
+// The Live toggle's state outlives the panel: every filter change and
+// page jump swaps #logs-panel (and its checkbox) back in from the
+// server, so the choice is kept here and re-applied after each swap.
+window.__ryokanLogsLive = window.__ryokanLogsLive !== false;
+
+function setLogsLive(on) {
+    window.__ryokanLogsLive = !!on;
+    if (on) startPolling(); else stopPolling();
+}
+
+// The filter and jump forms send every field, so an untouched
+// category or search would push `&category=&search=` into the URL;
+// drop empty values before the request goes out.
+function dropEmptyLogParams(ev) {
+    const body = ev && ev.detail && ev.detail.ctx && ev.detail.ctx.request && ev.detail.ctx.request.body;
+    if (!body || typeof body.delete !== 'function') return;
+    for (const [key, value] of Array.from(body.entries())) {
+        if (value === '') body.delete(key);
+    }
+}
+
+// Re-render the panel for the current filters (page 1) without a
+// reload: submitting the filter form runs its hx-get.
+function refreshLogsPanel() {
+    const form = document.getElementById('logs-filter-form');
+    if (form) form.requestSubmit();
 }
 
 async function clearLogs() {
@@ -64,7 +90,7 @@ async function clearLogs() {
     try {
         const r = await fetch('/api/logs/clear', {method: 'POST', headers: {'Content-Type': 'application/json'}});
         await r.json();
-        location.reload();
+        refreshLogsPanel();
     } catch (err) {
         console.error('Failed to clear logs:', err);
         window.ryokanToast({kind: 'error', title: 'Clear logs failed', body: err && err.message ? err.message : 'Unknown error'});
@@ -90,12 +116,25 @@ function escapeHtml(s) {
 function pollLogs() {
     const toggle = document.getElementById('poll-toggle');
     if (!toggle || !toggle.checked) return;
+    // Only the newest page receives live rows: prepending them to an
+    // older page put the newest entries above page 3's, which read as
+    // "it jumped back to page 1".
+    const panel = document.getElementById('logs-panel');
+    if (!panel || panel.dataset.page !== '1') return;
+    // The cursor is the top row of whatever the panel currently shows
+    // (a filter change or page jump swaps the rows under us), so the
+    // poll asks for rows newer than that and matching the same
+    // filters, search included.
+    const firstRow = document.querySelector('#log-tbody tr[data-id]');
+    latestId = firstRow ? parseInt(firstRow.dataset.id, 10) || 0 : 0;
 
     const level = document.getElementById('filter-level').value;
     const category = document.getElementById('filter-category').value;
+    const search = (document.getElementById('filter-search') || {}).value || '';
     const params = new URLSearchParams({after: latestId});
     if (level) params.set('level', level);
     if (category) params.set('category', category);
+    if (search) params.set('search', search);
 
     fetch('/api/logs/poll?' + params.toString())
         .then(r => r.json())
@@ -115,7 +154,7 @@ function pollLogs() {
                 tr.innerHTML = `
                     <td class="log-col-time" title="${escapeHtml(e.timestamp)}">${escapeHtml(e.timestamp)}</td>
                     <td class="log-col-level"><span class="log-badge log-badge-${e.level}">${escapeHtml(e.level)}</span></td>
-                    <td class="log-col-cat">${escapeHtml(e.category)}</td>
+                    <td class="log-col-cat">${escapeHtml(e.category_label || e.category)}</td>
                     <td class="log-col-msg">
                         <span class="log-message">${escapeHtml(e.message)}</span>
                         ${e.detail ? `<span class="log-detail" title="${escapeHtml(e.detail)}">${escapeHtml(e.detail)}</span>` : ''}
@@ -156,18 +195,11 @@ window.ryokanRegisterPageInit('system-logs-poll', {
     mount: function () {
         const pollToggle = document.getElementById('poll-toggle');
         if (!pollToggle) return; // defensive; check() should preclude this
-        // `data-bound` flag mirrors the pattern in settings.js: a
-        // re-mount on the SAME page (rare — shouldn't happen via
-        // boost since check() returning the same truthy doesn't
-        // re-fire mount, but a future htmx.process call elsewhere
-        // could trigger it) is idempotent w.r.t. event listeners.
-        if (!pollToggle.dataset.ryokanBound) {
-            pollToggle.addEventListener('change', function () {
-                if (this.checked) startPolling(); else stopPolling();
-            });
-            pollToggle.dataset.ryokanBound = '1';
-        }
-        startPolling();
+        // The checkbox carries its own `onchange` (setLogsLive), so a
+        // freshly swapped-in panel needs no binding; the toggle only
+        // has to show the state kept across swaps.
+        pollToggle.checked = window.__ryokanLogsLive;
+        if (window.__ryokanLogsLive) startPolling(); else stopPolling();
     },
     unmount: function () {
         stopPolling();
@@ -285,11 +317,14 @@ function forceRunTask(btn, taskKey) {
         .then(({ ok, data }) => {
             // Queue across the reload — `location.reload()` below
             // tears down the DOM and a non-queued toast disappears
-            // before the user can read it.
+            // before the user can read it. A 200 with `ok: false`
+            // (task skipped as already running, or partly failed)
+            // reads as a warning, not a success.
+            const good = ok && !(data && data.ok === false);
             if (data && data.message) {
                 window.ryokanQueueToast({
-                    kind: ok ? 'success' : 'error',
-                    title: ok ? 'Task complete' : 'Task failed',
+                    kind: good ? 'success' : (ok ? 'warn' : 'error'),
+                    title: good ? 'Task complete' : (ok ? 'Task not completed' : 'Task failed'),
                     body: data.message,
                 });
             } else if (!ok) {
@@ -362,9 +397,13 @@ function runDebugAction(btn, opts) {
     .then(async r => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.message || opts.failureTitle);
+        // A 200 with `ok: false` is a run that did not fully succeed
+        // (some series failed) or one skipped because the same sweep
+        // is already running. Say so instead of celebrating.
+        const partial = data.ok === false;
         window.ryokanToast({
-            kind: 'success',
-            title: opts.successTitle,
+            kind: partial ? 'warn' : 'success',
+            title: partial ? (opts.warnTitle || opts.failureTitle) : opts.successTitle,
             body: data.message || opts.successBody || '',
         });
     })
@@ -411,6 +450,7 @@ async function rebuildAniListCache(btn) {
         startBody: 'This can take a while for large libraries.',
         successTitle: 'Metadata cache rebuilt',
         successBody: 'Metadata cache rebuild complete.',
+        warnTitle: 'Metadata cache rebuild',
         failureTitle: 'Rebuild failed',
     });
 }
@@ -495,7 +535,7 @@ function openNotificationAddModal() {
     );
 }
 // Kind-flip + clear-secret + in-modal Send-test wiring. Called on
-// every htmx:afterSettle into `#notif-modal-body` so the freshly-
+// every htmx:after:settle into `#notif-modal-body` so the freshly-
 // rendered form picks up behavior without per-template inline JS.
 function bindNotifModalForm(form) {
     if (!form || form.dataset.ryokanNotifFormBound === '1') return;
@@ -561,7 +601,7 @@ async function notifTestClickHandler() {
 // of system.js don't accumulate listener copies on every nav-back.
 if (!window.__ryokanSystemNotifModule) {
     window.__ryokanSystemNotifModule = true;
-    document.body.addEventListener('htmx:afterSettle', function(ev) {
+    document.body.addEventListener('htmx:after:settle', function(ev) {
         if (ev.target && ev.target.id === 'notif-modal-body') {
             var form = ev.target.querySelector('form');
             if (form) bindNotifModalForm(form);
@@ -572,8 +612,8 @@ if (!window.__ryokanSystemNotifModule) {
     // Re-bind backdrop-click after every section-partial swap. The
     // modal element is replaced when #notif-section re-renders, so
     // a one-shot listener attached at boot would lose its target.
-    document.body.addEventListener('htmx:afterSwap', function(ev) {
-        if (ev.target && ev.target.id === 'notif-section') {
+    document.body.addEventListener('htmx:after:swap', function(ev) {
+        if (window.ryokanSwapTargetId(ev) === 'notif-section') {
             bindNotificationModalDismiss();
         }
     });
@@ -641,6 +681,20 @@ var bindBackupTab = function () {
     const button = document.getElementById('restore-upload');
     const out = document.getElementById('restore-result');
     if (!fileInput || !button || !out) return;
+    // The upload button sleeps until a file is chosen; a staged
+    // restore (data-pending) keeps it asleep either way.
+    const nameEl = document.getElementById('restore-file-name');
+    const pending = button.getAttribute('data-pending') === '1';
+    const syncFile = () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (nameEl) {
+            nameEl.textContent = file ? file.name : 'No file chosen';
+            nameEl.classList.toggle('has-file', !!file);
+        }
+        button.disabled = pending || !file;
+    };
+    fileInput.addEventListener('change', syncFile);
+    syncFile();
     // Server strings (error bodies, manifest fields) are rendered as
     // text nodes, never markup, so nothing from an uploaded archive
     // can reach innerHTML.

@@ -1,12 +1,22 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::LazyLock;
 
 use sqlx::SqlitePool;
 
 use crate::models::log::LogCategory;
 use crate::models::{config, local_metadata, metadata_cache, series};
-use crate::services::{anilist, artwork, jikan, kitsu, logger};
+use crate::services::{anilist, anime_relations, artwork, jikan, kitsu, logger};
 
 const MAX_RELATION_TREE_NODES: usize = 64;
+
+/// Serializes the two library-wide sweeps, the 12h refresh and the
+/// manual rebuild. Same `try_lock` shape as `RSS_SYNC_LOCK`: a rebuild
+/// click while a sweep is running answers "already running" instead of
+/// starting a second sweep over the same rows. Issue #235's log showed
+/// exactly that, two "Rebuilt cached metadata" lines two seconds apart
+/// for one series.
+pub static METADATA_SWEEP_LOCK: LazyLock<tokio::sync::Mutex<()>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 /// `true` when `detail` is the canonical AL row for `tracked` — used to
 /// decide whether to replace the stored `anilist_id` column with
@@ -164,7 +174,9 @@ async fn fetch_live_detail_for_ids(
         }
     }
 
-    if let Some(mid) = mal_id {
+    // `Some(0)` is the external-sync merge's "unknown" placeholder, not a
+    // MAL id; Jikan answers it with 400 and the mapping lookup with nothing.
+    if let Some(mid) = mal_id.filter(|m| *m > 0) {
         match jikan::get_anime_detail_cached(mid).await {
             Ok(detail) => return Ok(detail),
             Err(err) => {
@@ -207,6 +219,16 @@ async fn fetch_live_detail_for_ids(
     anilist::get_anime_detail_with_options(provider_id, mal_id, force_mal_fallback).await
 }
 
+fn preferred_title_for_log(detail: &anilist::AnimeDetail) -> &str {
+    if !detail.title_english.trim().is_empty() {
+        &detail.title_english
+    } else if !detail.title_romaji.trim().is_empty() {
+        &detail.title_romaji
+    } else {
+        &detail.title_native
+    }
+}
+
 fn episode_needs_kitsu_backfill<F>(ep_count: i32, mut has_jikan_title: F) -> bool
 where
     F: FnMut(i32) -> bool,
@@ -238,11 +260,6 @@ async fn build_episode_cache(
         HashMap::new()
     };
 
-    let kitsu_titles = vec![
-        detail.title_english.clone(),
-        detail.title_romaji.clone(),
-        detail.title_native.clone(),
-    ];
     let should_try_kitsu = ep_count > 1
         && (force_kitsu_fallback
             || episode_needs_kitsu_backfill(ep_count, |ep_num| {
@@ -253,11 +270,38 @@ async fn build_episode_cache(
             }));
 
     let kitsu_eps = if should_try_kitsu {
-        kitsu::fetch_episode_titles_fallback(db, &kitsu_titles, detail.season_year, Some(ep_count))
-            .await
+        kitsu::fetch_episode_titles_fallback(db, detail.id_mal).await
     } else {
         HashMap::new()
     };
+    // Say so in System → Logs when Kitsu actually supplies titles. Until
+    // #235 the hand-off from MAL to Kitsu left no trace in the UI, so a
+    // series wearing another provider's titles had no line to explain
+    // it. Quiet when Kitsu had nothing, so relation-tree entries with no
+    // mapping don't spam the log.
+    if !kitsu_eps.is_empty() {
+        let reason = if force_kitsu_fallback {
+            "forced"
+        } else {
+            "mal_empty"
+        };
+        logger::info(
+            db,
+            LogCategory::Kitsu,
+            &format!(
+                "Episode titles for {} came from Kitsu",
+                preferred_title_for_log(detail)
+            ),
+            &format!(
+                "mal_id={:?}, reason={}, kitsu_episodes={}, jikan_episodes={}",
+                detail.id_mal,
+                reason,
+                kitsu_eps.len(),
+                jikan_eps.len()
+            ),
+        )
+        .await;
+    }
 
     let mut merged = Vec::new();
     for ep_num in 1..=ep_count {
@@ -378,6 +422,81 @@ async fn cache_provider_detail(
         .await;
     }
     Ok(())
+}
+
+/// #206 — One `AniList` info line when a series takes its
+/// absolute-numbering offset from the vendored anime-relations file
+/// and the stored value changes, so System → Logs shows why a `- 105`
+/// release imports as episode 7.
+pub async fn log_rule_offset(
+    db: &SqlitePool,
+    tracked: &series::Series,
+    rule: &anime_relations::Offset,
+) {
+    logger::info(
+        db,
+        LogCategory::AniList,
+        &format!(
+            "Absolute-numbering offset for {} set from anime-relations: {}",
+            tracked.title, rule.episodes
+        ),
+        &format!(
+            "series_id={}, anilist_id={}, mal_id={:?}, source_anilist_id={:?}, source_mal_id={:?}",
+            tracked.id, tracked.anilist_id, tracked.mal_id, rule.source.anilist, rule.source.mal
+        ),
+    )
+    .await;
+}
+
+/// #206 — Make sure a rule's source entry sits in
+/// `provider_metadata_cache`, so the search path can read its titles
+/// (`anime_relations::source_titles`) without touching AniList. The
+/// source is usually already there as a cached PREQUEL, but the rules
+/// exist precisely for the entries AniList does not link (Dragon Ball
+/// Kai for Kai 2014), so this is the one place a missing source is
+/// fetched. Soft-fails: a rate-limited AniList just means no franchise
+/// aliases until the next refresh.
+pub async fn hydrate_rule_source(
+    db: &SqlitePool,
+    series_provider_id: i64,
+    rule: &anime_relations::Offset,
+    force_kitsu_fallback: bool,
+) {
+    let Some(source_id) = rule.source.anilist else {
+        return;
+    };
+    if source_id == series_provider_id {
+        return;
+    }
+    match metadata_cache::get_by_provider_id(db, source_id).await {
+        Ok(Some(_)) => return,
+        Ok(None) => {}
+        Err(e) => {
+            tracing::debug!(
+                target: "ryokan::metadata_sync",
+                "anime-relations source {source_id} cache read failed: {e}"
+            );
+            return;
+        }
+    }
+    match anilist::get_anime_detail(source_id).await {
+        Ok(detail) => {
+            if let Err(e) =
+                cache_provider_detail(db, source_id, &detail, force_kitsu_fallback).await
+            {
+                tracing::debug!(
+                    target: "ryokan::metadata_sync",
+                    "anime-relations source {source_id} cache write failed: {e}"
+                );
+            }
+        }
+        Err(e) => {
+            tracing::debug!(
+                target: "ryokan::metadata_sync",
+                "anime-relations source {source_id} fetch failed: {e}"
+            );
+        }
+    }
 }
 
 async fn hydrate_relation_tree(
@@ -553,6 +672,25 @@ async fn refresh_series_metadata_inner(
     let authoritative_detail = is_authoritative_detail(tracked, &detail);
     let trustworthy_write = is_trustworthy_write(tracked, &detail);
 
+    // The manual rebuild promises a re-fetch, so drop this series' Jikan
+    // episode cache before the merges below read it. Without this a
+    // `__RYOKAN_EMPTY__` row left by an empty or cold Tenrai answer
+    // survived every rebuild for its 7-day TTL and kept the Kitsu
+    // fallback in charge of the titles (#235). Relations hydrated below
+    // stay cache-driven: one Tenrai episodes request per tracked series
+    // per rebuild, paced by the sweep's inter-series delay.
+    if allow_degraded_cache_rebuild
+        && let Some(mid) = detail.id_mal.filter(|m| *m > 0)
+        && let Err(err) = jikan::invalidate_episode_cache(db, mid).await
+    {
+        tracing::warn!(
+            target: "ryokan::metadata_sync",
+            series_id = tracked.id,
+            mal_id = mid,
+            "failed to drop the Jikan episode cache before rebuild: {err}"
+        );
+    }
+
     let force_kitsu_fallback = config::get_config(db)
         .await
         .ok()
@@ -654,8 +792,15 @@ async fn refresh_series_metadata_inner(
         // absolute-numbered Nyaa titles against relative-numbered AL
         // episodes. Must run AFTER hydrate_relation_tree so the cache
         // covers the whole chain, not just the immediate neighbors.
-        let cumulative =
-            local_metadata::compute_cumulative_prior_episodes(db, stored_anilist_id).await;
+        //
+        // #206 — A curated anime-relations rule for this entry wins
+        // over the walk; see `services::anime_relations`.
+        let (cumulative, offset_source) = anime_relations::cumulative_prior_episodes(
+            db,
+            stored_anilist_id,
+            detail.id_mal.or(tracked.mal_id),
+        )
+        .await;
         if let Err(err) = series::update_cumulative_prior_episodes(db, tracked.id, cumulative).await
         {
             tracing::warn!(
@@ -663,6 +808,11 @@ async fn refresh_series_metadata_inner(
                 series_id = tracked.id,
                 "failed to persist cumulative_prior_episodes: {err}"
             );
+        } else if let anime_relations::OffsetSource::Rule(rule) = offset_source {
+            if cumulative != tracked.cumulative_prior_episodes {
+                log_rule_offset(db, tracked, &rule).await;
+            }
+            hydrate_rule_source(db, stored_anilist_id, &rule, force_kitsu_fallback).await;
         }
 
         if !authoritative_detail {
@@ -725,7 +875,10 @@ pub async fn refresh_series_metadata(
 /// Bounded by `MAX_RETRY_ROUNDS` so a sustained AniList outage doesn't
 /// pin the sweep forever; anything still deferred at the end counts as
 /// failed and the next periodic refresh will pick it up.
-async fn run_metadata_sweep(db: &SqlitePool, rebuild_artifacts: bool) -> (usize, usize) {
+async fn run_metadata_sweep(
+    db: &SqlitePool,
+    rebuild_artifacts: bool,
+) -> Result<(usize, usize), String> {
     const MAX_RETRY_ROUNDS: usize = 3;
     const COOLDOWN_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
     // Inter-series spacing: AniList allows 30 req/min for anonymous
@@ -758,6 +911,11 @@ async fn run_metadata_sweep(db: &SqlitePool, rebuild_artifacts: bool) -> (usize,
         "Metadata refresh failed"
     };
 
+    // Held for the whole sweep, retry rounds included.
+    let _sweep_guard = METADATA_SWEEP_LOCK
+        .try_lock()
+        .map_err(|_| format!("{} is already running", sweep_label))?;
+
     let tracked = match series::get_all(db).await {
         Ok(items) => items,
         Err(err) => {
@@ -768,7 +926,7 @@ async fn run_metadata_sweep(db: &SqlitePool, rebuild_artifacts: bool) -> (usize,
                 &err.to_string(),
             )
             .await;
-            return (0, 1);
+            return Ok((0, 1));
         }
     };
 
@@ -964,18 +1122,23 @@ async fn run_metadata_sweep(db: &SqlitePool, rebuild_artifacts: bool) -> (usize,
         .await;
     }
 
-    (succeeded, failed)
+    Ok((succeeded, failed))
 }
 
-pub async fn rebuild_cached_metadata_for_all(db: &SqlitePool) -> (usize, usize, usize) {
-    let (rebuilt, failed) = run_metadata_sweep(db, true).await;
+/// `Err` only when another sweep holds `METADATA_SWEEP_LOCK`; per-series
+/// failures are counted in the tuple, not surfaced as `Err`.
+pub async fn rebuild_cached_metadata_for_all(
+    db: &SqlitePool,
+) -> Result<(usize, usize, usize), String> {
+    let (rebuilt, failed) = run_metadata_sweep(db, true).await?;
     // The middle "skipped" counter has been zero for a while — the
     // sweep doesn't have a "skip without trying" branch — but the
     // tuple shape is part of the handler contract so keep it.
-    (rebuilt, 0, failed)
+    Ok((rebuilt, 0, failed))
 }
 
-pub async fn refresh_all_series_metadata(db: &SqlitePool) -> (usize, usize) {
+/// Same `Err` contract as `rebuild_cached_metadata_for_all`.
+pub async fn refresh_all_series_metadata(db: &SqlitePool) -> Result<(usize, usize), String> {
     run_metadata_sweep(db, false).await
 }
 
@@ -1005,6 +1168,7 @@ mod tests {
             allow_pt_upgrades: false,
             custom_query_tokens: String::new(),
             restrict_to_uploader: String::new(),
+            alternate_titles: String::new(),
             cumulative_prior_episodes: 0,
             monitor_mode_manual_override: false,
             user_score: None,
@@ -1270,9 +1434,33 @@ mod tests {
         // and returns (0 refreshed, 0 failed). The shape of the tuple
         // is part of the handler contract for `system::api_metadata_refresh`.
         let db = crate::test_support::in_memory_pool().await;
-        let (refreshed, failed) = refresh_all_series_metadata(&db).await;
+        let (refreshed, failed) = refresh_all_series_metadata(&db)
+            .await
+            .expect("no other sweep holds the lock");
         assert_eq!(refreshed, 0);
         assert_eq!(failed, 0);
+    }
+
+    #[tokio::test]
+    async fn sweeps_report_already_running_while_the_lock_is_held() {
+        // #235: two rebuild sweeps ran over the same series two
+        // seconds apart. Both entry points now share
+        // `METADATA_SWEEP_LOCK` with the `try_lock` shape the other
+        // supervised tasks use, so the second caller gets a readable
+        // Err instead of a duplicate sweep.
+        let db = crate::test_support::in_memory_pool().await;
+        let guard = METADATA_SWEEP_LOCK.lock().await;
+        let err = refresh_all_series_metadata(&db)
+            .await
+            .expect_err("refresh must not run while the lock is held");
+        assert_eq!(err, "Metadata refresh is already running");
+        let err = rebuild_cached_metadata_for_all(&db)
+            .await
+            .expect_err("rebuild must not run while the lock is held");
+        assert_eq!(err, "Cached metadata rebuild is already running");
+        drop(guard);
+        // Released: the same call goes through again.
+        assert_eq!(refresh_all_series_metadata(&db).await, Ok((0, 0)));
     }
 
     #[tokio::test]
@@ -1281,7 +1469,9 @@ mod tests {
         // handler contract even though the middle slot has been
         // hard-coded zero since the sweep refactor.
         let db = crate::test_support::in_memory_pool().await;
-        let (rebuilt, skipped, failed) = rebuild_cached_metadata_for_all(&db).await;
+        let (rebuilt, skipped, failed) = rebuild_cached_metadata_for_all(&db)
+            .await
+            .expect("no other sweep holds the lock");
         assert_eq!(rebuilt, 0);
         assert_eq!(skipped, 0);
         assert_eq!(failed, 0);

@@ -386,12 +386,7 @@ pub struct SettingsForm {
     finished_series_quality: String,
     media_root: String,
     title_language: String,
-    rss_enabled: Option<String>,
     rss_interval_minutes: i32,
-    /// Nyaa-specific RSS opt-out. Lives in the General
-    /// tab next to `rss_enabled` / `rss_interval_minutes`. Checkbox →
-    /// `Some(_)` when checked, `None` when not.
-    disable_nyaa_rss: Option<String>,
     post_processing_enabled: Option<String>,
     post_processing_mode: String,
     /// v1.3.0 — opt-in: trigger auto-search when a series's
@@ -401,11 +396,17 @@ pub struct SettingsForm {
     /// Settings → General.
     #[serde(default)]
     manual_search_auto_add: Option<String>,
+    #[serde(default)]
+    misgrab_auto_remove: Option<String>,
     /// Recycle bin (#123). Settings → General.
     #[serde(default)]
     recycle_bin_path: String,
     #[serde(default = "default_recycle_bin_age_days")]
     recycle_bin_age_days: i64,
+    /// Import robustness (#205): hours a finished download may sit with
+    /// nothing importable before it is marked failed; 0 = never.
+    #[serde(default = "default_import_stall_hours")]
+    import_stall_hours: i64,
     prefer_subs: String,
     sonarr_enabled: Option<String>,
     sonarr_api_key: Option<String>,
@@ -414,13 +415,16 @@ pub struct SettingsForm {
     upgrade_search_enabled: Option<String>,
     seadex_enabled: Option<String>,
     default_custom_query_tokens: Option<String>,
-    default_restrict_to_uploader: Option<String>,
     /// Issue #83 — interactive file-picker trigger policy. `batches_only`
     /// (default) opens the modal for multi-file torrents; `never`
-    /// preserves 1.3.0 one-click behavior. Omitted from forms before
-    /// Falls back to the existing config value (or default).
+    /// preserves 1.3.0 one-click behavior. Lives on the General tab
+    /// (Grabbing) since the frontend cleanup; other tabs' saves fall
+    /// back to the existing config value (or default).
     #[serde(default)]
     grab_preview_mode: Option<String>,
+    /// General tab, Grabbing. Both used to sit on System → Debug.
+    #[serde(default)]
+    auto_grab_on_add: Option<String>,
     /// Issue #62 — watch-list sync cadence in minutes. Clamped
     /// to 15..=10080 (15 minutes .. 7 days) on save per decision #5.
     /// `None` means "field absent from this form submission" and
@@ -518,9 +522,6 @@ pub struct IntegrationsForm {
     radarr_enabled: Option<String>,
     #[serde(default)]
     radarr_api_key: Option<String>,
-    /// #83 — Interactive file-picker trigger policy.
-    #[serde(default)]
-    grab_preview_mode: Option<String>,
     /// #62 — watch-list sync cadence in minutes. `None` means
     /// the field was absent from this submission (e.g. no account
     /// linked, so the input wasn't rendered) and the existing
@@ -558,8 +559,6 @@ pub struct QualityForm {
     seadex_enabled: Option<String>,
     #[serde(default)]
     default_custom_query_tokens: Option<String>,
-    #[serde(default)]
-    default_restrict_to_uploader: Option<String>,
 }
 
 #[derive(Template)]
@@ -580,16 +579,16 @@ pub struct QualityFormPartial {
 pub struct GeneralForm {
     media_root: String,
     title_language: String,
-    /// Checkbox: unchecked omits the field from the POST entirely;
-    /// `#[serde(default)]` makes serde_urlencoded map the absence to
-    /// `None` rather than failing deserialization. Same shape every
-    /// other Option<String> on the per-tab forms uses.
+    /// The RSS master switch (every source: Nyaa, indexers, direct
+    /// feeds). Checkbox: unchecked omits the field from the POST
+    /// entirely; `#[serde(default)]` makes serde_urlencoded map the
+    /// absence to `None` rather than failing deserialization. Same
+    /// shape every other Option<String> on the per-tab forms uses.
+    /// The Nyaa feed's own toggle lives on the Nyaa card
+    /// (`/settings/indexers/nyaa`).
     #[serde(default)]
-    rss_enabled: Option<String>,
+    rss_master_enabled: Option<String>,
     rss_interval_minutes: i32,
-    /// Nyaa-specific RSS opt-out.
-    #[serde(default)]
-    disable_nyaa_rss: Option<String>,
     #[serde(default)]
     post_processing_enabled: Option<String>,
     post_processing_mode: String,
@@ -602,12 +601,24 @@ pub struct GeneralForm {
     /// no-op when a grabbed release isn't in the library yet.
     #[serde(default)]
     manual_search_auto_add: Option<String>,
+    #[serde(default)]
+    misgrab_auto_remove: Option<String>,
+    /// Grabbing section: the interactive file picker (#83) and the two
+    /// switches that used to live on System → Debug.
+    #[serde(default)]
+    grab_preview_mode: Option<String>,
+    #[serde(default)]
+    auto_grab_on_add: Option<String>,
     /// Recycle bin (#123). Empty disables recycle.
     #[serde(default)]
     recycle_bin_path: String,
     /// Purge horizon in days; 0 = never auto-purge.
     #[serde(default = "default_recycle_bin_age_days")]
     recycle_bin_age_days: i64,
+    /// Import robustness (#205): hours a finished download may sit with
+    /// nothing importable before it is marked failed; 0 = never.
+    #[serde(default = "default_import_stall_hours")]
+    import_stall_hours: i64,
     /// Naming templates (#124). Empty falls back to the default so a
     /// form that omits them (or a cleared field) never stores a blank.
     #[serde(default)]
@@ -645,6 +656,10 @@ fn default_recycle_bin_age_days() -> i64 {
     14
 }
 
+fn default_import_stall_hours() -> i64 {
+    24
+}
+
 #[derive(Template)]
 #[template(path = "partials/settings/general_form.html")]
 pub struct GeneralFormPartial {
@@ -677,18 +692,18 @@ impl ConnectionTestResultPartial {
 
 /// Resolve the `grab_preview_mode` value to persist on save.
 ///
-/// The picker dropdown lives on the Integrations tab, so Integrations
-/// saves (and the rare no-tab POST) honor the form value, while saves
-/// from other tabs (Quality, Library, etc.) pass through the existing
-/// config value so they can't accidentally reset the picker. Unknown
-/// form values coerce to `batches_only` — the safe default that
-/// matches a fresh install.
+/// The picker dropdown lives on the General tab (Grabbing section),
+/// so General saves (and the rare no-tab POST) honor the form value,
+/// while saves from other tabs (Quality, Integrations, etc.) pass
+/// through the existing config value so they can't accidentally reset
+/// the picker. Unknown form values coerce to `batches_only` — the safe
+/// default that matches a fresh install.
 pub(crate) fn resolve_grab_preview_mode(
     form_value: Option<&str>,
     tab: Option<&str>,
     existing: Option<&str>,
 ) -> String {
-    if tab == Some("integrations") || tab.is_none() {
+    if tab == Some("general") || tab.is_none() {
         match form_value.unwrap_or("") {
             "never" => "never".to_string(),
             _ => "batches_only".to_string(),
@@ -1041,6 +1056,16 @@ pub async fn settings_submit(
         .unwrap_or(false);
 
     let cfg = config::Config {
+        // Misgrab guardrails: only the General tab owns this checkbox;
+        // any other tab's save preserves the stored value.
+        misgrab_auto_remove: if form.tab.as_deref() == Some("general") {
+            form.misgrab_auto_remove.is_some()
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.misgrab_auto_remove)
+                .unwrap_or(true)
+        },
         active_client: match form.active_client.trim() {
             "deluge" => "deluge".to_string(),
             "transmission" => "transmission".to_string(),
@@ -1200,14 +1225,13 @@ pub async fn settings_submit(
                 .unwrap_or_else(|| "english".to_string())
         },
         force_mal_fallback: current_force_mal_fallback,
-        rss_enabled: if form.tab.as_deref() == Some("general") {
-            form.rss_enabled.is_some()
-        } else {
-            existing_cfg
-                .as_ref()
-                .map(|c| c.rss_enabled)
-                .unwrap_or(false)
-        },
+        // Nyaa-card fields (rss_enabled, disable_nyaa_rss, allow_non_english,
+        // default_restrict_to_uploader, nyaa_enabled, nyaa_download_client_id)
+        // are owned by `/settings/indexers/nyaa`; every tab save preserves them.
+        rss_enabled: existing_cfg
+            .as_ref()
+            .map(|c| c.rss_enabled)
+            .unwrap_or(false),
         rss_interval_minutes: if form.tab.as_deref() == Some("general") {
             form.rss_interval_minutes.clamp(1, 60)
         } else {
@@ -1226,14 +1250,14 @@ pub async fn settings_submit(
             .as_ref()
             .map(|cfg| cfg.rss_master_enabled)
             .unwrap_or(true),
-        disable_nyaa_rss: if form.tab.as_deref() == Some("general") {
-            form.disable_nyaa_rss.is_some()
-        } else {
-            existing_cfg
-                .as_ref()
-                .map(|c| c.disable_nyaa_rss)
-                .unwrap_or(false)
-        },
+        disable_nyaa_rss: existing_cfg
+            .as_ref()
+            .map(|c| c.disable_nyaa_rss)
+            .unwrap_or(false),
+        nyaa_enabled: existing_cfg
+            .as_ref()
+            .map(|c| c.nyaa_enabled)
+            .unwrap_or(true),
         force_kitsu_fallback: current_force_kitsu_fallback,
         post_processing_enabled: if form.tab.as_deref() == Some("general") {
             form.post_processing_enabled.is_some()
@@ -1254,10 +1278,14 @@ pub async fn settings_submit(
                 .map(|c| c.post_processing_mode.clone())
                 .unwrap_or_else(|| "hardlink".to_string())
         },
-        auto_grab_on_add: existing_cfg
-            .as_ref()
-            .map(|c| c.auto_grab_on_add)
-            .unwrap_or(true),
+        auto_grab_on_add: if form.tab.as_deref() == Some("general") {
+            form.auto_grab_on_add.is_some()
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.auto_grab_on_add)
+                .unwrap_or(true)
+        },
         search_on_monitoring_change: if form.tab.as_deref() == Some("general") {
             form.search_on_monitoring_change.is_some()
         } else {
@@ -1351,22 +1379,13 @@ pub async fn settings_submit(
                 .map(|c| c.default_custom_query_tokens.clone())
                 .unwrap_or_default()
         },
-        default_restrict_to_uploader: if form.tab.as_deref() == Some("quality")
-            || form.tab.is_none()
-        {
-            form.default_restrict_to_uploader
-                .unwrap_or_default()
-                .trim()
-                .to_string()
-        } else {
-            existing_cfg
-                .as_ref()
-                .map(|c| c.default_restrict_to_uploader.clone())
-                .unwrap_or_default()
-        },
-        // #83 — Interactive file-picker lives on the Integrations tab
-        // alongside the other download-client knobs. Preserve on
-        // other-tab saves. Unknown values coerce to `batches_only`.
+        default_restrict_to_uploader: existing_cfg
+            .as_ref()
+            .map(|c| c.default_restrict_to_uploader.clone())
+            .unwrap_or_default(),
+        // #83 — Interactive file-picker lives on the General tab
+        // (Grabbing). Preserve on other-tab saves. Unknown values
+        // coerce to `batches_only`.
         grab_preview_mode: resolve_grab_preview_mode(
             form.grab_preview_mode.as_deref(),
             form.tab.as_deref(),
@@ -1453,6 +1472,14 @@ pub async fn settings_submit(
                 .as_ref()
                 .map(|c| c.recycle_bin_age_days)
                 .unwrap_or(14)
+        },
+        import_stall_hours: if form.tab.as_deref() == Some("general") {
+            form.import_stall_hours.clamp(0, 720)
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.import_stall_hours)
+                .unwrap_or(24)
         },
     };
 
@@ -1693,9 +1720,8 @@ pub async fn settings_general_submit(
             "romaji" | "english" | "native" => form.title_language,
             _ => "english".to_string(),
         },
-        rss_enabled: form.rss_enabled.is_some(),
+        rss_master_enabled: form.rss_master_enabled.is_some(),
         rss_interval_minutes: form.rss_interval_minutes.clamp(1, 60),
-        disable_nyaa_rss: form.disable_nyaa_rss.is_some(),
         post_processing_enabled: form.post_processing_enabled.is_some(),
         post_processing_mode: match form.post_processing_mode.as_str() {
             "move" | "copy" | "hardlink" => form.post_processing_mode,
@@ -1703,12 +1729,20 @@ pub async fn settings_general_submit(
         },
         search_on_monitoring_change: form.search_on_monitoring_change.is_some(),
         manual_search_auto_add: form.manual_search_auto_add.is_some(),
+        misgrab_auto_remove: form.misgrab_auto_remove.is_some(),
+        grab_preview_mode: resolve_grab_preview_mode(
+            form.grab_preview_mode.as_deref(),
+            Some("general"),
+            Some(existing_cfg.grab_preview_mode.as_str()),
+        ),
+        auto_grab_on_add: form.auto_grab_on_add.is_some(),
         recycle_bin_path: form
             .recycle_bin_path
             .trim()
             .trim_end_matches('/')
             .to_string(),
         recycle_bin_age_days: form.recycle_bin_age_days.clamp(0, 3650),
+        import_stall_hours: form.import_stall_hours.clamp(0, 720),
         series_folder_format: naming_or_default(
             &form.series_folder_format,
             TemplateKind::SeriesFolder,
@@ -2061,11 +2095,6 @@ pub async fn settings_quality_submit(
             .unwrap_or_default()
             .trim()
             .to_string(),
-        default_restrict_to_uploader: form
-            .default_restrict_to_uploader
-            .unwrap_or_default()
-            .trim()
-            .to_string(),
         ..existing_cfg
     };
 
@@ -2235,11 +2264,9 @@ pub async fn settings_integrations_submit(
         sonarr_api_key: form.sonarr_api_key.unwrap_or_default().trim().to_string(),
         radarr_enabled: form.radarr_enabled.is_some(),
         radarr_api_key: form.radarr_api_key.unwrap_or_default().trim().to_string(),
-        grab_preview_mode: resolve_grab_preview_mode(
-            form.grab_preview_mode.as_deref(),
-            Some("integrations"),
-            Some(existing_cfg.grab_preview_mode.as_str()),
-        ),
+        // The picker moved to General → Grabbing; an Integrations save
+        // never touches it.
+        grab_preview_mode: existing_cfg.grab_preview_mode.clone(),
         external_sync_interval_minutes: resolve_external_sync_interval_minutes(
             form.external_sync_interval_minutes,
             Some("integrations"),

@@ -18,6 +18,7 @@ use crate::services::{
 
 mod aliases;
 mod pack_detection;
+mod provenance;
 mod release_parse;
 mod scoring;
 mod seadex_lookup;
@@ -25,17 +26,20 @@ mod search_target;
 
 use aliases::{SiblingRejectPrecompute, sibling_match_rejects};
 pub use aliases::{
-    collect_aliases, collect_extended_aliases, collect_sibling_aliases, dedupe_strings,
-    matches_target, normalize_title, sequel_variant_aliases, token_overlap_ratio, token_set,
+    classify_match, collect_aliases, collect_extended_aliases, collect_sibling_aliases,
+    dedupe_strings, distinctive_overlap_ratio, is_generic_title_token, matches_target,
+    names_more_than_the_series, normalize_title, sequel_variant_aliases, token_overlap_ratio,
+    token_set, with_alternate_titles,
 };
 pub use pack_detection::{
     TRANSITIVE_WALK_MAX_FETCHES, detect_sibling_entries_in_pack,
     expand_parent_with_transitive_relations, is_transitive_walk_source,
 };
+pub use provenance::{AliasMatch, MatchKind, MatchPhase, MatchProvenance, history_summary};
 pub(crate) use release_parse::is_media_filename;
 pub use release_parse::{
     has_selective_discriminator, infer_season_from_detail, parse_release_numbers,
-    pick_wanted_file_indices,
+    parse_release_season, pick_wanted_file_indices,
 };
 use release_parse::{
     normalize_subtitle, season_mismatch, trailing_subtitle_of, within_episode_slack,
@@ -102,6 +106,8 @@ pub async fn find_all_for_target(
         indexers_snapshot.as_slice();
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
+    let (aliases, canonical_aliases) =
+        add_alternate_aliases(aliases, canonical_aliases, &series_ctx.alternate_titles);
     let queries = append_custom_tokens(
         build_queries_mixed(
             &canonical_aliases,
@@ -142,7 +148,7 @@ pub async fn find_all_for_target(
     let expected_season = infer_season_from_detail(detail);
     let sibling_aliases = collect_sibling_aliases(detail, &aliases);
     let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases);
-    let categories = quality::nyaa_categories_for_format(&detail.format, config.allow_non_english);
+    let categories = nyaa_search_categories(config, &detail.format);
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
 
@@ -150,13 +156,14 @@ pub async fn find_all_for_target(
     // guaranteed to show up in the interactive search UI even when
     // Nyaa's text search would miss them entirely (smol-style
     // megapacks titled by season rather than entry).
-    for result in seadex_payload.candidates {
+    for mut result in seadex_payload.candidates {
         let dedupe_key = if !result.info_hash.is_empty() {
             result.info_hash.clone()
         } else {
             result.title.to_lowercase()
         };
         if seen.insert(dedupe_key) {
+            result.match_provenance = Some(MatchProvenance::seadex(MatchPhase::SeadexSeed));
             candidates.push(result);
         }
     }
@@ -164,6 +171,7 @@ pub async fn find_all_for_target(
     let indexer_categories =
         crate::services::indexers::search_categories(&detail.format, detail.is_adult);
     let ctx = InteractiveQueryCtx {
+        phase: MatchPhase::Primary,
         aliases: &aliases,
         indexer_categories: &indexer_categories,
         sibling_precompute: &sibling_precompute,
@@ -198,6 +206,7 @@ pub async fn find_all_for_target(
             let all_aliases = [aliases.clone(), extended].concat();
             let ext_precompute = SiblingRejectPrecompute::build(&all_aliases, &sibling_aliases);
             let ext_ctx = InteractiveQueryCtx {
+                phase: MatchPhase::Extended,
                 aliases: &all_aliases,
                 sibling_precompute: &ext_precompute,
                 ..ctx
@@ -214,10 +223,24 @@ pub async fn find_all_for_target(
     // pass to avoid paying N × round-trip cost for zero coverage.
     if !preferred_groups.is_empty() && series_ctx.restrict_user.is_empty() {
         let group_queries = append_custom_tokens(
-            build_group_queries(detail, target, &preferred_groups),
+            build_group_queries(
+                detail,
+                target,
+                &preferred_groups,
+                &series_ctx.alternate_titles,
+            ),
             &series_ctx.custom_tokens,
         );
-        run_queries_interactive(&group_queries, ctx, &mut seen, &mut candidates).await;
+        run_queries_interactive(
+            &group_queries,
+            InteractiveQueryCtx {
+                phase: MatchPhase::PreferredGroup,
+                ..ctx
+            },
+            &mut seen,
+            &mut candidates,
+        )
+        .await;
     }
 
     // #30: franchise-root aliases + absolute episode number.
@@ -250,6 +273,7 @@ pub async fn find_all_for_target(
             &series_ctx.custom_tokens,
         );
         let franchise_ctx = InteractiveQueryCtx {
+            phase: MatchPhase::Franchise,
             aliases: &series_ctx.franchise_aliases,
             sibling_precompute: &franchise_precompute,
             target: &absolute_target,
@@ -342,7 +366,7 @@ pub async fn find_best_for_target(
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
 ) -> Option<SearchResult> {
-    collect_scored_for_target(
+    find_best_for_target_with_diag(
         db,
         detail,
         config,
@@ -353,8 +377,35 @@ pub async fn find_best_for_target(
         indexers_cache,
     )
     .await
-    .into_iter()
-    .next()
+    .0
+}
+
+/// `find_best_for_target` plus the titles that matched the series only
+/// fuzzily and were therefore not considered, so the caller can tell
+/// the user what it saw and that an alternate title would admit it.
+#[allow(clippy::too_many_arguments)]
+pub async fn find_best_for_target_with_diag(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    target: &SearchTarget,
+    allow_batch: bool,
+    batch_episode_match: bool,
+    cfs: &[CompiledCustomFormat],
+    indexers_cache: &crate::IndexerCache,
+) -> (Option<SearchResult>, Vec<String>) {
+    let (scored, fuzzy_only) = collect_scored_for_target(
+        db,
+        detail,
+        config,
+        target,
+        allow_batch,
+        batch_episode_match,
+        cfs,
+        indexers_cache,
+    )
+    .await;
+    (scored.into_iter().next(), fuzzy_only)
 }
 
 /// Same multi-phase auto-search as `find_best_for_target`, but picks the
@@ -381,10 +432,33 @@ pub async fn find_best_batch_for_target(
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
 ) -> Option<SearchResult> {
-    collect_scored_batches_for_target(db, detail, config, target, cfs, indexers_cache)
+    find_best_batch_for_target_with_diag(db, detail, config, target, cfs, indexers_cache)
         .await
-        .into_iter()
-        .next()
+        .0
+}
+
+/// `find_best_batch_for_target` plus the titles the exact title gate
+/// turned away, so the caller can say "looked close" instead of
+/// "nothing found".
+pub async fn find_best_batch_for_target_with_diag(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    target: &SearchTarget,
+    cfs: &[CompiledCustomFormat],
+    indexers_cache: &crate::IndexerCache,
+) -> (Option<SearchResult>, Vec<String>) {
+    let (scored, rejected) = collect_scored_batches_for_target_with_diag(
+        db,
+        detail,
+        config,
+        target,
+        cfs,
+        indexers_cache,
+        true,
+    )
+    .await;
+    (scored.into_iter().next(), rejected)
 }
 
 /// Collection + scoring variant focused on batch releases.
@@ -401,9 +475,36 @@ pub async fn collect_scored_batches_for_target(
     target: &SearchTarget,
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
+    require_verbatim: bool,
 ) -> Vec<SearchResult> {
+    collect_scored_batches_for_target_with_diag(
+        db,
+        detail,
+        config,
+        target,
+        cfs,
+        indexers_cache,
+        require_verbatim,
+    )
+    .await
+    .0
+}
+
+/// `collect_scored_batches_for_target` plus the titles the exact title
+/// gate turned away (empty when `require_verbatim` is false).
+pub async fn collect_scored_batches_for_target_with_diag(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    target: &SearchTarget,
+    cfs: &[CompiledCustomFormat],
+    indexers_cache: &crate::IndexerCache,
+    require_verbatim: bool,
+) -> (Vec<SearchResult>, Vec<String>) {
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
+    let (aliases, canonical_aliases) =
+        add_alternate_aliases(aliases, canonical_aliases, &series_ctx.alternate_titles);
     let preferred_groups = quality::parse_group_list(&config.preferred_groups);
     let preferred_res = preferred_resolution_search_value(config);
     let is_finished = detail.is_finished();
@@ -436,24 +537,29 @@ pub async fn collect_scored_batches_for_target(
     // view URLs. See `find_all_for_target` for the rationale — the
     // text-query sweep can't find batches whose titles don't carry
     // the target's alias tokens.
-    for result in seadex_payload.candidates {
+    for mut result in seadex_payload.candidates {
         let dedupe_key = if !result.info_hash.is_empty() {
             result.info_hash.clone()
         } else {
             result.title.to_lowercase()
         };
         if seen.insert(dedupe_key) {
+            result.match_provenance = Some(MatchProvenance::seadex(MatchPhase::SeadexSeed));
             candidates.push(result);
         }
     }
 
-    let categories = quality::nyaa_categories_for_format(&detail.format, config.allow_non_english);
+    let categories = nyaa_search_categories(config, &detail.format);
     let indexers_arc = indexers_cache.read().await.clone();
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
+    let fuzzy_rejected = std::sync::Mutex::new(Vec::new());
     let indexer_categories =
         crate::services::indexers::search_categories(&detail.format, detail.is_adult);
     let ctx = AutoQueryCtx {
+        phase: MatchPhase::Primary,
+        require_verbatim,
+        fuzzy_rejected: &fuzzy_rejected,
         aliases: &aliases,
         indexer_categories: &indexer_categories,
         sibling_precompute: &sibling_precompute,
@@ -490,7 +596,16 @@ pub async fn collect_scored_batches_for_target(
         quality::batch_probe_queries(&aliases),
         &series_ctx.custom_tokens,
     );
-    run_queries(&batch_queries, ctx, &mut seen, &mut candidates).await;
+    run_queries(
+        &batch_queries,
+        AutoQueryCtx {
+            phase: MatchPhase::BatchProbe,
+            ..ctx
+        },
+        &mut seen,
+        &mut candidates,
+    )
+    .await;
 
     // Preferred-group queries, scoped to batches. Same fallback rule as
     // `collect_scored_for_target`: only fire if no preferred-group hit
@@ -506,10 +621,24 @@ pub async fn collect_scored_batches_for_target(
     // already active.
     if !has_preferred_hit && !preferred_groups.is_empty() && series_ctx.restrict_user.is_empty() {
         let group_queries = append_custom_tokens(
-            build_group_queries(detail, target, &preferred_groups),
+            build_group_queries(
+                detail,
+                target,
+                &preferred_groups,
+                &series_ctx.alternate_titles,
+            ),
             &series_ctx.custom_tokens,
         );
-        run_queries(&group_queries, ctx, &mut seen, &mut candidates).await;
+        run_queries(
+            &group_queries,
+            AutoQueryCtx {
+                phase: MatchPhase::PreferredGroup,
+                ..ctx
+            },
+            &mut seen,
+            &mut candidates,
+        )
+        .await;
     }
 
     // Drop non-batches before the classify/rescore pass so we don't pay
@@ -587,7 +716,23 @@ pub async fn collect_scored_batches_for_target(
     }
 
     scored.sort_by(|a, b| b.score.cmp(&a.score).then(b.seeders.cmp(&a.seeders)));
-    scored
+    // Misgrab guardrails: never hand back a release the blocklist knows,
+    // by hash (any series) or by exact title (this series). One read per
+    // search; the interactive picker deliberately skips this so its
+    // "previously blocklisted, unblock and continue" flow keeps working.
+    let blocklist = crate::models::grabbed_torrents::blocklist_snapshot(db, detail.id).await;
+    if !blocklist.is_empty() {
+        let before = scored.len();
+        scored.retain(|c| !blocklist.rejects(&c.info_hash, &c.title));
+        if scored.len() != before {
+            tracing::debug!(
+                "blocklist: dropped {} candidate(s) for anilist_id={}",
+                before - scored.len(),
+                detail.id
+            );
+        }
+    }
+    (scored, fuzzy_rejected.into_inner().unwrap_or_default())
 }
 
 /// Internal: run the full auto-search query sweep (Phase 1 primary →
@@ -610,9 +755,12 @@ async fn collect_scored_for_target(
     batch_episode_match: bool,
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
-) -> Vec<SearchResult> {
+) -> (Vec<SearchResult>, Vec<String>) {
+    let require_verbatim = true;
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
+    let (aliases, canonical_aliases) =
+        add_alternate_aliases(aliases, canonical_aliases, &series_ctx.alternate_titles);
     let queries = append_custom_tokens(
         build_queries_mixed(
             &canonical_aliases,
@@ -665,7 +813,7 @@ async fn collect_scored_for_target(
     // bypassing the setting. SeaDex curation does not override the
     // user's batch-allowed policy; it only overrides the heuristic
     // title-matching gate inside `run_queries`.
-    for result in seadex_payload.candidates {
+    for mut result in seadex_payload.candidates {
         if !allow_batch && result.is_batch {
             continue;
         }
@@ -675,17 +823,22 @@ async fn collect_scored_for_target(
             result.title.to_lowercase()
         };
         if seen.insert(dedupe_key) {
+            result.match_provenance = Some(MatchProvenance::seadex(MatchPhase::SeadexSeed));
             candidates.push(result);
         }
     }
 
-    let categories = quality::nyaa_categories_for_format(&detail.format, config.allow_non_english);
+    let categories = nyaa_search_categories(config, &detail.format);
     let indexers_arc = indexers_cache.read().await.clone();
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
+    let fuzzy_rejected = std::sync::Mutex::new(Vec::new());
     let indexer_categories =
         crate::services::indexers::search_categories(&detail.format, detail.is_adult);
     let ctx = AutoQueryCtx {
+        phase: MatchPhase::Primary,
+        require_verbatim,
+        fuzzy_rejected: &fuzzy_rejected,
         aliases: &aliases,
         indexer_categories: &indexer_categories,
         sibling_precompute: &sibling_precompute,
@@ -719,6 +872,7 @@ async fn collect_scored_for_target(
             let all_aliases = [aliases.clone(), extended].concat();
             let ext_precompute = SiblingRejectPrecompute::build(&all_aliases, &sibling_aliases);
             let ext_ctx = AutoQueryCtx {
+                phase: MatchPhase::Extended,
                 aliases: &all_aliases,
                 sibling_precompute: &ext_precompute,
                 ..ctx
@@ -740,10 +894,24 @@ async fn collect_scored_for_target(
     // already active.
     if !has_preferred_hit && !preferred_groups.is_empty() && series_ctx.restrict_user.is_empty() {
         let group_queries = append_custom_tokens(
-            build_group_queries(detail, target, &preferred_groups),
+            build_group_queries(
+                detail,
+                target,
+                &preferred_groups,
+                &series_ctx.alternate_titles,
+            ),
             &series_ctx.custom_tokens,
         );
-        run_queries(&group_queries, ctx, &mut seen, &mut candidates).await;
+        run_queries(
+            &group_queries,
+            AutoQueryCtx {
+                phase: MatchPhase::PreferredGroup,
+                ..ctx
+            },
+            &mut seen,
+            &mut candidates,
+        )
+        .await;
     }
 
     // Phase 3: for finished series with BD preference, probe for BD releases.
@@ -759,7 +927,16 @@ async fn collect_scored_for_target(
                 quality::bd_probe_queries(&aliases),
                 &series_ctx.custom_tokens,
             );
-            run_queries(&bd_queries, ctx, &mut seen, &mut candidates).await;
+            run_queries(
+                &bd_queries,
+                AutoQueryCtx {
+                    phase: MatchPhase::BdProbe,
+                    ..ctx
+                },
+                &mut seen,
+                &mut candidates,
+            )
+            .await;
         }
     }
 
@@ -787,6 +964,7 @@ async fn collect_scored_for_target(
             &series_ctx.custom_tokens,
         );
         let franchise_ctx = AutoQueryCtx {
+            phase: MatchPhase::Franchise,
             aliases: &series_ctx.franchise_aliases,
             sibling_precompute: &franchise_precompute,
             target: &absolute_target,
@@ -863,7 +1041,23 @@ async fn collect_scored_for_target(
     }
 
     scored.sort_by(|a, b| b.score.cmp(&a.score).then(b.seeders.cmp(&a.seeders)));
-    scored
+    // Misgrab guardrails: never hand back a release the blocklist knows,
+    // by hash (any series) or by exact title (this series). One read per
+    // search; the interactive picker deliberately skips this so its
+    // "previously blocklisted, unblock and continue" flow keeps working.
+    let blocklist = crate::models::grabbed_torrents::blocklist_snapshot(db, detail.id).await;
+    if !blocklist.is_empty() {
+        let before = scored.len();
+        scored.retain(|c| !blocklist.rejects(&c.info_hash, &c.title));
+        if scored.len() != before {
+            tracing::debug!(
+                "blocklist: dropped {} candidate(s) for anilist_id={}",
+                before - scored.len(),
+                detail.id
+            );
+        }
+    }
+    (scored, fuzzy_rejected.into_inner().unwrap_or_default())
 }
 
 /// Shared context for `run_queries` — everything that stays constant
@@ -875,8 +1069,28 @@ async fn collect_scored_for_target(
 /// order. Named fields make the swap impossible. Derive `Copy` so the
 /// Phase 1.5 alias override can reuse most fields via
 /// `AutoQueryCtx { aliases: &all_aliases, ..ctx }`.
+impl AutoQueryCtx<'_> {
+    /// Remember a release the verbatim gate turned away, once. The same
+    /// release comes back from every query and category of a sweep,
+    /// and the report lists these titles.
+    fn note_rejected(&self, title: &str) {
+        let mut rejected = self.fuzzy_rejected.lock().unwrap();
+        if !rejected.iter().any(|t| t.eq_ignore_ascii_case(title)) {
+            rejected.push(title.to_string());
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct AutoQueryCtx<'a> {
+    /// Which query pass this context runs; stamped on every candidate.
+    phase: MatchPhase,
+    /// Automatic paths take only verbatim (or SeaDex-curated) matches;
+    /// a fuzzy hit is dropped and its title kept for the report. The
+    /// interactive batch list passes `false` and keeps fuzzy matches
+    /// for the person choosing.
+    require_verbatim: bool,
+    fuzzy_rejected: &'a std::sync::Mutex<Vec<String>>,
     aliases: &'a [String],
     /// Torznab / newznab categories to ask indexers for (see
     /// `indexers::search_categories`).
@@ -934,6 +1148,8 @@ struct AutoQueryCtx<'a> {
 /// smaller shared context and no batch override.
 #[derive(Clone, Copy)]
 struct InteractiveQueryCtx<'a> {
+    /// Which query pass this context runs; stamped on every candidate.
+    phase: MatchPhase,
     aliases: &'a [String],
     /// Torznab / newznab categories to ask indexers for (see
     /// `indexers::search_categories`).
@@ -1082,18 +1298,24 @@ async fn run_queries(
         .map(|r| r.into_search_result())
         .collect();
 
+    // Releases the gate turned away in this call. They stay out of
+    // `seen` so a later pass with more aliases can admit them, but the
+    // same release comes back from every query and category here and
+    // re-classifying it (an anitomy parse plus the alias loop) each
+    // time is pure waste.
+    let mut rejected_here: HashSet<String> = HashSet::new();
     for resp in responses {
         let results = match resp {
             Ok(v) => v.results,
             Err(_) => continue,
         };
-        for result in results {
+        for mut result in results {
             let dedupe_key = if !result.info_hash.is_empty() {
                 result.info_hash.clone()
             } else {
                 result.title.to_lowercase()
             };
-            if !seen.insert(dedupe_key) {
+            if seen.contains(&dedupe_key) || rejected_here.contains(&dedupe_key) {
                 continue;
             }
             // SeaDex trusts its AniList-ID-based curation over any
@@ -1114,9 +1336,15 @@ async fn run_queries(
             if !ctx.allow_batch && result.is_batch {
                 continue;
             }
-            let is_seadex_best = is_seadex_match(&result.info_hash, ctx.seadex_hashes);
-            if !is_seadex_best {
-                if !matches_target(
+            let provenance = if is_seadex_match(&result.info_hash, ctx.seadex_hashes) {
+                tracing::debug!(
+                    "seadex: bypassing heuristic filters for SeaDex-best release title={:?} hash={}",
+                    result.title,
+                    result.info_hash
+                );
+                MatchProvenance::seadex(ctx.phase)
+            } else {
+                match classify_match(
                     &result.title,
                     ctx.aliases,
                     ctx.sibling_precompute,
@@ -1125,15 +1353,29 @@ async fn run_queries(
                     ctx.batch_episode_match && result.is_batch,
                     ctx.absolute_offset,
                 ) {
-                    continue;
+                    Some(m) if ctx.require_verbatim && m.kind == MatchKind::Fuzzy => {
+                        ctx.note_rejected(&result.title);
+                        rejected_here.insert(dedupe_key);
+                        continue;
+                    }
+                    Some(m)
+                        if ctx.require_verbatim
+                            && m.kind == MatchKind::Verbatim
+                            && aliases::names_more_than_the_series(&result.title, ctx.aliases) =>
+                    {
+                        ctx.note_rejected(&result.title);
+                        rejected_here.insert(dedupe_key);
+                        continue;
+                    }
+                    Some(m) => m.into_provenance(ctx.phase),
+                    None => continue,
                 }
-            } else {
-                tracing::debug!(
-                    "seadex: bypassing heuristic filters for SeaDex-best release title={:?} hash={}",
-                    result.title,
-                    result.info_hash
-                );
-            }
+            };
+            // Only an accepted candidate counts as seen: a release a later
+            // pass can admit (an alternate title in the extended pass) must
+            // not be shadowed by its rejection here.
+            seen.insert(dedupe_key);
+            result.match_provenance = Some(provenance);
             candidates.push(result);
         }
     }
@@ -1143,21 +1385,22 @@ async fn run_queries(
     // key (info_hash | title) catches the case of an indexer
     // surfacing a release Nyaa already returned via Prowlarr's
     // Nyaa indexer — no double-counting.
-    for result in indexer_responses {
+    for mut result in indexer_responses {
         let dedupe_key = if !result.info_hash.is_empty() {
             result.info_hash.clone()
         } else {
             result.title.to_lowercase()
         };
-        if !seen.insert(dedupe_key) {
+        if seen.contains(&dedupe_key) || rejected_here.contains(&dedupe_key) {
             continue;
         }
         if !ctx.allow_batch && result.is_batch {
             continue;
         }
-        let is_seadex_best = is_seadex_match(&result.info_hash, ctx.seadex_hashes);
-        if !is_seadex_best
-            && !matches_target(
+        let provenance = if is_seadex_match(&result.info_hash, ctx.seadex_hashes) {
+            MatchProvenance::seadex(ctx.phase)
+        } else {
+            match classify_match(
                 &result.title,
                 ctx.aliases,
                 ctx.sibling_precompute,
@@ -1165,10 +1408,30 @@ async fn run_queries(
                 ctx.expected_season,
                 ctx.batch_episode_match && result.is_batch,
                 ctx.absolute_offset,
-            )
-        {
-            continue;
-        }
+            ) {
+                Some(m) if ctx.require_verbatim && m.kind == MatchKind::Fuzzy => {
+                    ctx.note_rejected(&result.title);
+                    rejected_here.insert(dedupe_key);
+                    continue;
+                }
+                Some(m)
+                    if ctx.require_verbatim
+                        && m.kind == MatchKind::Verbatim
+                        && aliases::names_more_than_the_series(&result.title, ctx.aliases) =>
+                {
+                    ctx.note_rejected(&result.title);
+                    rejected_here.insert(dedupe_key);
+                    continue;
+                }
+                Some(m) => m.into_provenance(ctx.phase),
+                None => continue,
+            }
+        };
+        // Only an accepted candidate counts as seen: a release a later
+        // pass can admit (an alternate title in the extended pass) must
+        // not be shadowed by its rejection here.
+        seen.insert(dedupe_key);
+        result.match_provenance = Some(provenance);
         candidates.push(result);
     }
 }
@@ -1295,7 +1558,7 @@ async fn fan_out_indexers_for_interactive(
 /// same relaxed-alias / sibling-rejection / season / episode gate
 /// without code duplication.
 fn apply_interactive_filter_and_push(
-    result: SearchResult,
+    mut result: SearchResult,
     ctx: &InteractiveQueryCtx<'_>,
     seen: &mut HashSet<String>,
     candidates: &mut Vec<SearchResult>,
@@ -1343,6 +1606,7 @@ fn apply_interactive_filter_and_push(
             result.title,
             result.info_hash
         );
+        result.match_provenance = Some(MatchProvenance::seadex(ctx.phase));
         candidates.push(result);
         return;
     }
@@ -1351,15 +1615,17 @@ fn apply_interactive_filter_and_push(
     // Animation" release can't ride in on the format words alone.
     let normalized_title = normalize_title(&result.title);
     let title_tokens = token_set(&normalized_title);
-    let alias_match = ctx.aliases.iter().any(|alias| {
-        let normalized_alias = normalize_title(alias);
-        normalized_title.contains(&normalized_alias)
-            || aliases::distinctive_overlap_ratio(&title_tokens, &token_set(&normalized_alias))
-                >= 0.5
-    });
-    if !alias_match {
+    // Relaxed alias matching: lower threshold than auto search and no
+    // surplus budget, so users see a broader set of candidates to pick
+    // from. The fuzzy half scores distinctive tokens only (#219).
+    let Some(alias_match) = aliases::best_alias_match(
+        &normalized_title,
+        &title_tokens,
+        ctx.aliases,
+        aliases::RELAXED_ALIAS_POLICY,
+    ) else {
         return;
-    }
+    };
     // Sibling rejection: same sequel/prequel guard as the auto path —
     // a release that matches a sibling more tightly than us is almost
     // certainly for the sibling.
@@ -1385,6 +1651,7 @@ fn apply_interactive_filter_and_push(
             return;
         }
     }
+    result.match_provenance = Some(alias_match.into_provenance(ctx.phase));
     candidates.push(result);
 }
 
@@ -1413,13 +1680,18 @@ fn build_group_queries(
     detail: &AnimeDetail,
     target: &SearchTarget,
     preferred_groups: &[String],
+    alternate_titles: &[String],
 ) -> Vec<String> {
     // Skip `collect_aliases_with_variants` here — that helper also
     // builds the combined own+variant list (for `matches_target`'s
     // alias pool), which `build_group_queries` never consumes. Fetch
     // the two pieces we actually need directly and leave the combined
     // allocation to the call sites that use it.
-    let canonical_aliases = collect_aliases(detail);
+    let canonical_aliases = if alternate_titles.is_empty() {
+        collect_aliases(detail)
+    } else {
+        dedupe_strings([collect_aliases(detail), alternate_titles.to_vec()].concat())
+    };
     let variant_aliases = sequel_variant_aliases(&canonical_aliases);
     let mut queries = Vec::new();
 
@@ -1516,6 +1788,13 @@ struct SeriesSearchCtx {
     /// never in the candidate pool — loosening the filter alone is
     /// not enough. Empty for first-season entries.
     franchise_aliases: Vec<String>,
+    /// The user's alternate titles for the series (one per line on the
+    /// series page). First-class aliases: they drive the primary
+    /// queries and count as an exact match at the title gate, the same
+    /// as the AniList titles. Read off the series row here rather than
+    /// the metadata detail so a title added a minute ago counts on the
+    /// next search, cache or no cache.
+    alternate_titles: Vec<String>,
 }
 
 /// Resolve per-series search overrides + the cumulative-prior-episodes
@@ -1543,8 +1822,21 @@ async fn resolve_search_overrides(
             // Sonarr-shim searches for unadded series.
             absolute_offset: 0,
             franchise_aliases: Vec::new(),
+            alternate_titles: Vec::new(),
         },
     }
+}
+
+/// Nyaa categories for one series, or none at all when the built-in
+/// Nyaa search is switched off on its Indexers-tab card. An empty list
+/// builds no Nyaa queries, so every collector then runs on the
+/// configured indexers alone; the fan-out and merge need no other
+/// change.
+fn nyaa_search_categories(config: &Config, format: &str) -> Vec<String> {
+    if !config.nyaa_enabled {
+        return Vec::new();
+    }
+    quality::nyaa_categories_for_format(format, config.allow_non_english)
 }
 
 /// Async entry-point variant — hits the DB for franchise aliases when
@@ -1557,8 +1849,24 @@ async fn resolve_search_overrides_from_row_async(
 ) -> SeriesSearchCtx {
     let mut ctx = resolve_search_overrides_from_row(series, config);
     if ctx.absolute_offset > 0 && series.anilist_id != 0 {
-        ctx.franchise_aliases =
-            crate::models::local_metadata::resolve_franchise_aliases(db, series.anilist_id).await;
+        // #206 — When the offset came from an anime-relations rule the
+        // rule names the entry whose title absolute-numbered releases
+        // carry, which is not always the PREQUEL-chain root. Its titles
+        // come from the provider cache (the metadata refresh hydrates
+        // them); an uncached source falls back to the walk so this is
+        // never worse than before.
+        let mut aliases = Vec::new();
+        if let Some(rule) =
+            crate::services::anime_relations::offset_for(series.anilist_id, series.mal_id)
+        {
+            aliases = crate::services::anime_relations::source_titles(db, &rule).await;
+        }
+        if aliases.is_empty() {
+            aliases =
+                crate::models::local_metadata::resolve_franchise_aliases(db, series.anilist_id)
+                    .await;
+        }
+        ctx.franchise_aliases = aliases;
     }
     ctx
 }
@@ -1585,7 +1893,25 @@ fn resolve_search_overrides_from_row(
         // the async variant. Tests pin the sync variant's behavior on
         // the other fields only.
         franchise_aliases: Vec::new(),
+        alternate_titles: series.alternate_title_list(),
     }
+}
+
+/// Fold the series' alternate titles into both alias lists: the
+/// combined list the title gate matches against and the canonical list
+/// the queries are built from.
+fn add_alternate_aliases(
+    aliases: Vec<String>,
+    canonical: Vec<String>,
+    alternate_titles: &[String],
+) -> (Vec<String>, Vec<String>) {
+    if alternate_titles.is_empty() {
+        return (aliases, canonical);
+    }
+    (
+        dedupe_strings([aliases, alternate_titles.to_vec()].concat()),
+        dedupe_strings([canonical, alternate_titles.to_vec()].concat()),
+    )
 }
 
 /// #23 — Append user-supplied custom query tokens to every query in
@@ -1917,6 +2243,7 @@ mod tests {
         // lets both through.
         use std::collections::HashSet;
         let nyaa_result = SearchResult {
+            match_provenance: None,
             title: "[smol] Nisemonogatari".to_string(),
             link: String::new(),
             magnet: String::new(),
@@ -1955,6 +2282,7 @@ mod tests {
         let seadex_hashes = std::collections::HashSet::new();
         let categories = vec!["1_2".to_string()];
         let ctx = InteractiveQueryCtx {
+            phase: MatchPhase::Primary,
             aliases: &aliases,
             indexer_categories: &[],
             sibling_precompute: &sibling_precompute,
@@ -2002,6 +2330,7 @@ mod tests {
     async fn interactive_filter_still_dedups_within_a_single_source() {
         use std::collections::HashSet;
         let nyaa_result = SearchResult {
+            match_provenance: None,
             title: "[smol] Nisemonogatari".to_string(),
             link: String::new(),
             magnet: String::new(),
@@ -2035,6 +2364,7 @@ mod tests {
         let seadex_hashes = std::collections::HashSet::new();
         let categories = vec!["1_2".to_string()];
         let ctx = InteractiveQueryCtx {
+            phase: MatchPhase::Primary,
             aliases: &aliases,
             indexer_categories: &[],
             sibling_precompute: &sibling_precompute,
@@ -2244,6 +2574,7 @@ mod tests {
             allow_pt_upgrades: false,
             custom_query_tokens: tokens.to_string(),
             restrict_to_uploader: user.to_string(),
+            alternate_titles: String::new(),
             cumulative_prior_episodes: 0,
             monitor_mode_manual_override: false,
             user_score: None,
@@ -2586,5 +2917,128 @@ mod tests {
                 .any(|a| a.contains("Frieren") || a.contains("Sousou")),
             "canonical must carry a recognizable token from the input"
         );
+    }
+
+    #[test]
+    fn interactive_filter_stamps_provenance_kind_and_phase() {
+        use std::collections::HashSet;
+        fn mk(title: &str, hash: &str) -> SearchResult {
+            SearchResult {
+                match_provenance: None,
+                title: title.to_string(),
+                link: String::new(),
+                magnet: String::new(),
+                torrent: String::new(),
+                size: String::new(),
+                size_bytes: 0,
+                seeders: 10,
+                leechers: 0,
+                downloads: 0,
+                group: "G".to_string(),
+                resolution: "1080".to_string(),
+                quality_label: String::new(),
+                source: String::new(),
+                web_kind: String::new(),
+                is_remux: false,
+                is_bdmv: false,
+                is_batch: false,
+                is_trusted: false,
+                score: 0,
+                info_hash: hash.to_string(),
+                score_breakdown: Vec::new(),
+                upload_date: String::new(),
+                indexer_id: None,
+                indexer_name: String::new(),
+            }
+        }
+        let aliases = vec!["Sousou no Frieren".to_string()];
+        let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &[]);
+        let preferred_groups: Vec<String> = Vec::new();
+        let target = SearchTarget::Single;
+        let seadex_hashes: HashSet<String> = ["cafebabe".to_string()].into_iter().collect();
+        let categories = vec!["1_2".to_string()];
+        let ctx = InteractiveQueryCtx {
+            phase: MatchPhase::Extended,
+            aliases: &aliases,
+            sibling_precompute: &sibling_precompute,
+            preferred_groups: &preferred_groups,
+            preferred_resolution: "1080p",
+            target: &target,
+            expected_season: 0,
+            seadex_hashes: &seadex_hashes,
+            restrict_user: "",
+            absolute_offset: 0,
+            categories: &categories,
+            indexers: &[],
+            indexer_categories: &[],
+        };
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut candidates: Vec<SearchResult> = Vec::new();
+
+        apply_interactive_filter_and_push(
+            mk("[G] Sousou no Frieren - 01 [1080p]", "aaaa"),
+            &ctx,
+            &mut seen,
+            &mut candidates,
+        );
+        // "sousou frieren 02": 2 of 2 distinctive tokens but not a
+        // substring, so fuzzy at 1.0 under the relaxed policy.
+        apply_interactive_filter_and_push(
+            mk("[G] Sousou Frieren - 02 [1080p]", "bbbb"),
+            &ctx,
+            &mut seen,
+            &mut candidates,
+        );
+        apply_interactive_filter_and_push(
+            mk("[smol] Something Else Entirely", "cafebabe"),
+            &ctx,
+            &mut seen,
+            &mut candidates,
+        );
+        apply_interactive_filter_and_push(
+            mk("[G] Unrelated Show - 01", "dddd"),
+            &ctx,
+            &mut seen,
+            &mut candidates,
+        );
+
+        assert_eq!(candidates.len(), 3, "the unrelated title must be rejected");
+        let p0 = candidates[0].match_provenance.as_ref().expect("stamped");
+        assert_eq!(
+            (p0.kind, p0.phase),
+            (MatchKind::Verbatim, MatchPhase::Extended)
+        );
+        assert_eq!(p0.alias, "Sousou no Frieren");
+        let p1 = candidates[1].match_provenance.as_ref().expect("stamped");
+        assert_eq!(p1.kind, MatchKind::Fuzzy);
+        assert!((p1.ratio - 1.0).abs() < f32::EPSILON);
+        let p2 = candidates[2].match_provenance.as_ref().expect("stamped");
+        assert_eq!(p2.kind, MatchKind::SeadexCurated);
+        assert!(p2.alias.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod nyaa_gate_tests {
+    use super::*;
+
+    #[test]
+    fn nyaa_off_builds_no_categories_and_on_matches_the_quality_table() {
+        let mut config = Config {
+            allow_non_english: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            nyaa_search_categories(&config, "TV"),
+            quality::nyaa_categories_for_format("TV", true)
+        );
+        config.allow_non_english = false;
+        assert_eq!(
+            nyaa_search_categories(&config, "MUSIC"),
+            quality::nyaa_categories_for_format("MUSIC", false)
+        );
+        config.nyaa_enabled = false;
+        assert!(nyaa_search_categories(&config, "TV").is_empty());
+        assert!(nyaa_search_categories(&config, "MUSIC").is_empty());
     }
 }

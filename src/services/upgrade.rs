@@ -158,9 +158,14 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
         }
 
         // We need an AnimeDetail for find_best_for_target. Use the metadata cache
-        // to avoid hitting external APIs during background tasks.
+        // to avoid hitting external APIs during background tasks. The
+        // series' alternate titles ride along: the exact title gate is
+        // verbatim-only, so a show that only auto-searches through an
+        // alternate title would otherwise never upgrade.
         let detail = match metadata_cache::get_by_series_id(&state.db, row.id).await {
-            Ok(Some(cached)) => cached.detail,
+            Ok(Some(cached)) => {
+                auto_search::with_alternate_titles(cached.detail, &row.alternate_titles)
+            }
             _ => {
                 logger::debug(
                     &state.db,
@@ -354,11 +359,14 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                         LogCategory::Grab,
                         &format!("Upgrade grabbed: {}", result.title),
                         &format!(
-                            "series={}, target={}, group={}, tier={}",
+                            "series={}, target={}, group={}, tier={}{}",
                             title,
                             label,
                             result.group,
-                            incoming_classification.label()
+                            incoming_classification.label(),
+                            crate::services::auto_search::MatchProvenance::log_suffix(
+                                result.match_provenance.as_ref()
+                            )
                         ),
                     )
                     .await;
@@ -390,6 +398,12 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                     .await
                     .ok()
                     .flatten();
+                    // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+                    if let Some(gid) = grab_id {
+                        let _ =
+                            crate::models::grabbed_torrents::set_source_url(&state.db, gid, &url)
+                                .await;
+                    }
                     if let Some(gid) = grab_id {
                         let _ = crate::models::grabbed_torrents::set_download_client(
                             &state.db,
@@ -418,7 +432,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                         .await;
                     }
                     for ep_num in &ep_nums {
-                        let _ = episode_tags::record_grab(
+                        let _ = episode_tags::record_grab_with_match(
                             &state.db,
                             row.id,
                             *ep_num,
@@ -427,6 +441,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                             &result.group,
                             result.size_bytes,
                             result.is_batch,
+                            result.match_provenance.as_ref(),
                         )
                         .await;
                     }

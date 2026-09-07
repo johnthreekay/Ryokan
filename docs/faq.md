@@ -4,7 +4,7 @@
 
 Sonarr was built for general-purpose TV; its anime support is real but bolted on. Ryokan is anime-only and tunes its release-classification logic, search shape, and metadata for that. The concrete differences:
 
-- **Batch releases are a first-class search target, not a fan-out.** Sonarr's anime mode searches every episode individually, which scales poorly with multiple indexers since searches time out before results aggregate. Ryokan sends one search per batch.
+- **Batch releases are a first-class search target, not a fan-out.** Sonarr's anime mode searches every episode individually, which multiplies search time and indexer hits with every episode and indexer (and, in our experience, times out before the results aggregate). Ryokan sends one search per batch.
 - **Anime release-name parsing is the default-handled path, not an edge case.** [Anitomy](https://github.com/erengy/anitomy) (a parser specifically for anime release titles) handles tokenization; Custom Formats can match against anitomy fields directly; AniList is the primary metadata source.
 - **[SeaDex](https://releases.moe) is integrated as an authoritative-pick layer.** Sonarr has nothing equivalent.
 - **Source classification combines multiple signals** (filename, Nyaa description scrape, release-group reputation table, ffprobe output, directory walk, and a temporal "is this still airing?" heuristic) before deciding whether a release is BD or WEB. Sonarr decides quality from the release title plus Custom Formats; for anime, that misclassifies often enough that the manual-review pile stays large.
@@ -15,7 +15,7 @@ No. Different language (Rust vs C#), different architecture, different release e
 
 ## Can it manage manga, light novels, or webtoons?
 
-Not yet. Ryokan only manages anime in the current 1.x line. Manga, light novels, and similar long-form formats need different metadata sources, different naming conventions, and different file-organization patterns; supporting them properly is the focus of v2.0 rather than something to graft on partially.
+No. Ryokan only manages anime in the current 1.x line. Manga, light novels, and webtoons were going to be the focus of 2.x, but that work has been pushed back to concentrate on making Ryokan a true Sonarr replacement for anime first. They need different metadata sources, naming conventions, and file layouts, so they won't be grafted on partially.
 
 ## Can I run multiple Ryokan instances?
 
@@ -29,7 +29,7 @@ Not supported and not on the roadmap. Single-admin only. The reasoning matches S
 
 ## Can I use the API directly?
 
-Yes. Ryokan exposes a Swagger UI at `/api-docs` and the OpenAPI JSON at `/api-docs/openapi.json`. Two auth paths:
+Yes. Ryokan exposes a Swagger UI at `/api-docs` and the OpenAPI JSON at `/api-docs/openapi.json`. Both sit behind the web login, so open them in a browser where you are already signed in. Three auth paths for the endpoints themselves:
 
 - **Cookie auth** for the web-UI-facing endpoints (whatever the browser uses; you log in with username + password).
 - **API-key auth** for the Sonarr / Radarr-compatible shim that Seerr and friends call (`X-Api-Key` header or `?apikey=` query string, configured in **Settings → Connections**).
@@ -37,7 +37,9 @@ Yes. Ryokan exposes a Swagger UI at `/api-docs` and the OpenAPI JSON at `/api-do
 
 ## How do I back up?
 
-The whole `/data` volume captures everything: the SQLite database, the artwork cache, the encryption key, the OAuth tokens (encrypted at rest), and config sentinels. Standard SQLite backup tools work, or just stop Ryokan and copy the volume.
+Ryokan has a built-in backup on [System → Backup](system.md#backup): download a snapshot, save one to the backup folder, schedule daily or weekly backups under Settings → General, and restore by uploading an archive. That is the supported path; a plain file copy taken while Ryokan is running can miss writes.
+
+If you would rather copy the volume yourself, stop Ryokan first. The whole `/data` volume captures everything: the SQLite database, the artwork cache, the encryption key, the OAuth tokens (encrypted at rest), and config sentinels. Standard SQLite backup tools work, or just stop Ryokan and copy the volume.
 
 The encryption key is the load-bearing bit. Lose it but keep the database, and every encrypted OAuth token in `external_accounts` becomes unrecoverable; you'll need to re-link those accounts. The key lives at `/data/.ryokan-key` by default; back it up alongside the DB.
 
@@ -45,4 +47,4 @@ If you're using the [quick start's](quick-start.md) `/srv/docker/ryokan` bind-mo
 
 ---
 
-*Last updated: 2026-05-09.*
+*Last updated: 2026-08-29.*

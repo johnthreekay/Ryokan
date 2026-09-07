@@ -141,6 +141,13 @@ pub struct SearchResult {
     /// grab-history records that join on the search payload).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub indexer_name: String,
+    /// How this release's title matched the series (which alias,
+    /// verbatim or fuzzy, which search phase). Stamped by the auto-search
+    /// collectors when the candidate passes the title gate; `None` for
+    /// manual-search results and for JSON written before the field
+    /// existed. Scoring turns it into the "Title Match Confidence" line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_provenance: Option<crate::services::auto_search::MatchProvenance>,
 }
 
 impl SearchResult {

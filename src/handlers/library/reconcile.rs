@@ -22,7 +22,7 @@ use sqlx::SqlitePool;
 
 use crate::models::log::LogCategory;
 use crate::models::{config, metadata_cache, series};
-use crate::services::{anilist, jikan, kitsu, logger, metadata_sync};
+use crate::services::{anilist, anime_relations, jikan, kitsu, logger, metadata_sync};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ReconcileReport {
@@ -89,6 +89,28 @@ pub(super) async fn maybe_hydrate_cumulative_offset(
     let t = tracked?;
     if t.cumulative_prior_episodes != 0 {
         return Some(t);
+    }
+    // #206 — A curated anime-relations rule answers without the
+    // AniList walk, and it fires even when AniList lists no TV
+    // prequel (that gap is what the rules are for). The rule's source
+    // entry is cached so the search can read franchise aliases.
+    if let Some(rule) = anime_relations::offset_for(t.anilist_id, t.mal_id) {
+        return match series::update_cumulative_prior_episodes(db, t.id, rule.episodes).await {
+            Ok(()) => {
+                metadata_sync::log_rule_offset(db, &t, &rule).await;
+                let force_kitsu = force_kitsu_fallback_enabled(db).await;
+                metadata_sync::hydrate_rule_source(db, t.anilist_id, &rule, force_kitsu).await;
+                series::get_by_id(db, t.id).await.ok().flatten().or(Some(t))
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "ryokan::library",
+                    series_id = t.id,
+                    "failed to persist anime-relations offset: {e}"
+                );
+                Some(t)
+            }
+        };
     }
     let has_tv_prequel = detail
         .relations
@@ -249,7 +271,25 @@ async fn maybe_reconcile_mal_entry(
     Some((refreshed, detail))
 }
 
+/// The series row (when tracked), the provider id, and the detail every
+/// search path works from. The series' alternate titles are folded into
+/// the detail's synonyms here, once, on every path the resolver takes
+/// (cache hit, live AniList fetch, MAL, Kitsu), so a title the user
+/// added a minute ago counts before the first metadata sync.
 pub(super) async fn resolve_series_context(
+    db: &SqlitePool,
+    request_id: i64,
+) -> Result<(Option<series::Series>, i64, anilist::AnimeDetail), String> {
+    let (row, provider_id, detail) = resolve_series_context_raw(db, request_id).await?;
+    let alt = row
+        .as_ref()
+        .map(|s| s.alternate_titles.as_str())
+        .unwrap_or("");
+    let detail = crate::services::auto_search::with_alternate_titles(detail, alt);
+    Ok((row, provider_id, detail))
+}
+
+async fn resolve_series_context_raw(
     db: &SqlitePool,
     request_id: i64,
 ) -> Result<(Option<series::Series>, i64, anilist::AnimeDetail), String> {

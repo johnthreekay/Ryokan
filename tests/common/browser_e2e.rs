@@ -140,11 +140,42 @@ pub async fn try_connect_browser() -> Result<fantoccini::Client, String> {
         serde_json::Value::Object(firefox_opts),
     );
 
-    ClientBuilder::native()
-        .capabilities(caps)
-        .connect(&url)
+    // `rustls()` rather than `native()`: fantoccini is built with
+    // `default-features = false, features = ["rustls-tls"]` so the
+    // native-tls / openssl stack stays out of the lock (see Cargo.toml).
+    // geckodriver holds one session; the previous test's `close()` can
+    // still be tearing it down when the next test connects. Retry that
+    // one condition briefly instead of skipping.
+    let mut last_err = String::new();
+    for attempt in 0..8 {
+        let mut builder =
+            ClientBuilder::rustls().map_err(|e| format!("WebDriver TLS connector: {e}"))?;
+        builder.capabilities(caps.clone());
+        match builder.connect(&url).await {
+            Ok(client) => return Ok(client),
+            Err(e) => {
+                last_err = format!("WebDriver at {url} unavailable: {e}");
+                if !last_err.contains("Session is already started") || attempt == 7 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(400)).await;
+            }
+        }
+    }
+    Err(last_err)
+}
+
+/// Script errors a fixture page captured (`window.__ryokanFixtureErrors`,
+/// installed by every `__test/*` fixture before the vendored scripts).
+/// Include this in assertion messages so "the toast never appeared"
+/// says whether a script threw first.
+pub async fn fixture_errors(client: &fantoccini::Client) -> Vec<String> {
+    client
+        .execute("return window.__ryokanFixtureErrors || [];", vec![])
         .await
-        .map_err(|e| format!("WebDriver at {url} unavailable: {e}"))
+        .ok()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default()
 }
 
 fn resolve_browser_binary() -> Option<String> {
@@ -394,8 +425,12 @@ pub async fn wait_for_row_removed(
             .execute(
                 r#"
                 const marker = arguments[0];
-                return Array.from(document.querySelectorAll('tr'))
-                    .some(tr => tr.textContent.includes(marker));
+                // Rows are <tr> in the table-shaped sections and
+                // <article> in the card grids (indexers). The confirm
+                // modal also quotes the marker, so never scan the whole
+                // body.
+                return Array.from(document.querySelectorAll('tr, article'))
+                    .some(el => el.textContent.includes(marker));
                 "#,
                 vec![serde_json::json!(unique_marker)],
             )
@@ -550,7 +585,7 @@ pub async fn click_delete_for(
             const forms = Array.from(document.querySelectorAll('form'));
             const target = forms.find(f =>
                 (f.getAttribute('data-ryokan-confirm-body') || '').includes(marker)
-                || f.closest('tr')?.textContent.includes(marker));
+                || f.closest('tr, article')?.textContent.includes(marker));
             if (!target) throw new Error('no delete form found for marker: ' + marker);
             const btn = target.querySelector('button[type="submit"]');
             if (!btn) throw new Error('delete form has no submit button');

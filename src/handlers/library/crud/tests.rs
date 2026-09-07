@@ -119,6 +119,77 @@ mod crud_ci {
     }
 
     #[tokio::test]
+    async fn set_monitoring_htmx_sends_the_monitored_set_instead_of_a_refresh() {
+        // The dropdown's HTMX request used to get `HX-Refresh: true`, a
+        // leftover of the pre-HTMX `location.reload()`. It now gets the
+        // same `ryokan-monitoring-changed` event the per-episode pill
+        // sends, carrying every monitored episode so the page can set
+        // each pill, the count, the bookmark button, and the dropdown
+        // in place. The list is what the recompute wrote, so a mode of
+        // `all` on a three-episode series lists 1..=3 and `none` lists
+        // nothing.
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 22, "Three Episodes").await;
+        sqlx::query("UPDATE series SET episodes = 3 WHERE id = ?")
+            .bind(series_id)
+            .execute(&db)
+            .await
+            .unwrap();
+        let state = build_test_app_state(db, None);
+
+        let event = |resp: Response| -> serde_json::Value {
+            assert!(
+                resp.headers().get("hx-refresh").is_none(),
+                "no full refresh for a series this size"
+            );
+            let raw = resp
+                .headers()
+                .get("HX-Trigger")
+                .expect("HX-Trigger header")
+                .to_str()
+                .unwrap()
+                .to_string();
+            serde_json::from_str::<serde_json::Value>(&raw).unwrap()["ryokan-monitoring-changed"]
+                .clone()
+        };
+
+        let resp = set_monitoring(
+            State(state.clone()),
+            axum_htmx::HxRequest(true),
+            axum::Form(super::super::SetMonitoringForm {
+                series_id,
+                monitor_mode: "all".to_string(),
+                auto_grab: Some(false),
+            }),
+        )
+        .await
+        .expect("HTMX call returns Ok");
+        let ev = event(resp);
+        assert_eq!(ev["monitor_mode"], "all");
+        assert_eq!(ev["monitor_mode_manual_override"], true);
+        assert_eq!(ev["monitored_count"], 3);
+        assert_eq!(ev["total_count"], 3);
+        assert_eq!(ev["all_monitored"], true);
+        assert_eq!(ev["monitored_episodes"], serde_json::json!([1, 2, 3]));
+
+        let resp = set_monitoring(
+            State(state),
+            axum_htmx::HxRequest(true),
+            axum::Form(super::super::SetMonitoringForm {
+                series_id,
+                monitor_mode: "none".to_string(),
+                auto_grab: Some(false),
+            }),
+        )
+        .await
+        .expect("HTMX call returns Ok");
+        let ev = event(resp);
+        assert_eq!(ev["monitored_count"], 0);
+        assert_eq!(ev["all_monitored"], false);
+        assert_eq!(ev["monitored_episodes"], serde_json::json!([]));
+    }
+
+    #[tokio::test]
     async fn set_monitoring_accepts_none_mode_without_triggering_autosearch() {
         // `None` short-circuits the auto-grab branch regardless
         // of auto_grab flag. Pin the property — a refactor that
@@ -250,6 +321,64 @@ mod crud_ci {
     }
 
     // ─── set_episode_monitoring ──────────────────────────────
+
+    #[tokio::test]
+    async fn set_episode_monitoring_htmx_reports_the_series_totals() {
+        // The Yes / No pill swaps only itself, so the handler tells the
+        // page the series' new count and whether every episode is still
+        // monitored through `HX-Trigger`, and the note beside the
+        // Monitoring dropdown plus the Monitor-all button follow
+        // without a reload. Read back, not recomputed: a recompute
+        // would re-apply the mode and undo the toggle.
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 601, "Toggle Totals").await;
+        crate::models::monitoring::replace_series_states(
+            &db,
+            series_id,
+            &(1..=3)
+                .map(|n| crate::models::monitoring::EpisodeMonitorState {
+                    episode_number: n,
+                    monitored: true,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .await
+        .expect("seed states");
+        let state = build_test_app_state(db.clone(), None);
+
+        let resp = set_episode_monitoring(
+            State(state),
+            HxRequest(true),
+            Form(SetEpisodeMonitoringForm {
+                series_id,
+                episode_number: 2,
+                monitored: false,
+            }),
+        )
+        .await
+        .expect("toggle");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let trigger = resp
+            .headers()
+            .get("HX-Trigger")
+            .expect("HX-Trigger header")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let v: serde_json::Value = serde_json::from_str(&trigger).unwrap();
+        let ev = &v["ryokan-monitoring-changed"];
+        assert_eq!(ev["monitored_count"], 2);
+        assert_eq!(ev["total_count"], 3);
+        assert_eq!(ev["all_monitored"], false);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(
+            body.contains("ep-mon-no"),
+            "swapped pill shows the new state: {body}"
+        );
+    }
 
     #[tokio::test]
     async fn set_episode_monitoring_flips_monitored_flag() {
@@ -477,6 +606,8 @@ mod crud_ci {
             series_id,
             custom_query_tokens: "  1080p BD  ".to_string(),
             restrict_to_uploader: "TrustedUser".to_string(),
+
+            alternate_titles: String::new(),
         };
         let resp =
             set_search_overrides(State(state), axum_htmx::HxRequest(false), axum::Form(form))
@@ -511,6 +642,8 @@ mod crud_ci {
                 series_id,
                 custom_query_tokens: "initial".to_string(),
                 restrict_to_uploader: "User".to_string(),
+
+                alternate_titles: String::new(),
             }),
         )
         .await
@@ -524,6 +657,8 @@ mod crud_ci {
                 series_id,
                 custom_query_tokens: String::new(),
                 restrict_to_uploader: String::new(),
+
+                alternate_titles: String::new(),
             }),
         )
         .await
@@ -551,6 +686,8 @@ mod crud_ci {
                 series_id,
                 custom_query_tokens: "bd 1080p".to_string(),
                 restrict_to_uploader: String::new(),
+
+                alternate_titles: String::new(),
             }),
         )
         .await

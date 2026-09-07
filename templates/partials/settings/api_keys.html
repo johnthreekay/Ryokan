@@ -19,12 +19,7 @@
     <div class="api-keys-section-header">
         <div>
             <h3 class="settings-section-title">API Keys</h3>
-            <p class="settings-section-hint">
-                External applications are required to have an API key in
-                order to communicate with Ryokan. Each key is scoped to a
-                set of permissions; pick a name that identifies the
-                integration the key will live in.
-            </p>
+            <p class="settings-section-hint">Apps that talk to Ryokan need an API key. Each key gets its own set of permissions.</p>
         </div>
     </div>
 
@@ -70,15 +65,15 @@
                             class="btn btn-ghost btn-sm api-key-show-btn"
                             data-api-key-id="{{ key.id }}"
                             data-api-key-name="{{ key.name }}"
-                            title="Reveal the plaintext key">Show</button>
+                            title="Show key">Show</button>
                     <button type="button"
                             class="btn btn-ghost btn-sm api-key-copy-btn"
                             data-api-key-id="{{ key.id }}"
                             data-api-key-name="{{ key.name }}"
-                            title="Copy the plaintext key">Copy</button>
+                            title="Copy key">Copy</button>
                 </div>
                 <div class="api-key-card-footer">
-                    <label class="api-key-switch" title="{% if key.enabled %}Disable this key{% else %}Enable this key{% endif %}">
+                    <label class="api-key-switch" title="{% if key.enabled %}Disable{% else %}Enable{% endif %}">
                         <input type="checkbox"
                                class="api-key-enabled-toggle"
                                data-api-key-id="{{ key.id }}"
@@ -149,7 +144,7 @@
                            required
                            maxlength="80"
                            autocomplete="off">
-                    <p class="api-keys-form-hint">Shown in the key list and in audit logs. Pick something that names the integration this key will live in.</p>
+                    <p class="api-keys-form-hint">Name the app this key is for.</p>
                 </div>
 
                 <div class="api-keys-form-row">
@@ -237,9 +232,7 @@
            in the create flow" rather than a one-shot reveal. #}
         <div id="api-keys-create-result-step" hidden>
             <div class="api-keys-reveal">
-                <p class="api-keys-form-hint" style="margin: 0 0 12px">
-                    Key created. Copy it now to drop into your integration, or use the per-card Show button on the keys list to reveal it later.
-                </p>
+                <p class="api-keys-form-hint" style="margin: 0 0 12px">Key created. Copy it now, or reveal it later with Show on its card.</p>
                 <div class="api-keys-reveal-key-row">
                     <input type="text"
                            id="api-keys-plaintext"

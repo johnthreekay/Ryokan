@@ -3,7 +3,9 @@
 //!   * `set_session_cookie_with_secure` / `clear_session_cookie_with_secure`
 //!     — pure-function tests pinning the cookie attributes (`HttpOnly`,
 //!     `SameSite=Lax`, `Path=/`, `Max-Age=604800` on set, `Max-Age=0`
-//!     on clear, `Secure` only when the flag is on).
+//!     on clear, `Secure` only when the flag is on), plus
+//!     `cookie_secure_for_with`: forced flag, or `X-Forwarded-Proto:
+//!     https` only while proxy headers are trusted.
 //!   * HTTP round-trip through `handler_router` — anonymous hits to
 //!     `/api/health` redirect, a valid `session=<token>` cookie
 //!     passes, an unknown token is rejected.
@@ -12,7 +14,9 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use tower::ServiceExt;
 
-use crate::handlers::auth::{clear_session_cookie_with_secure, set_session_cookie_with_secure};
+use crate::handlers::auth::{
+    clear_session_cookie_with_secure, cookie_secure_for_with, set_session_cookie_with_secure,
+};
 use crate::test_support::{
     build_test_app_state, handler_router, in_memory_pool, logged_in_session,
 };
@@ -51,6 +55,60 @@ fn set_session_cookie_appends_secure_when_flag_on() {
         cookie.contains("Secure"),
         "Secure should be present when flag is on: {cookie}"
     );
+}
+
+// ─── Secure decision: forced flag vs. trusted X-Forwarded-Proto ─────
+
+fn xfp(value: &str) -> axum::http::HeaderMap {
+    let mut h = axum::http::HeaderMap::new();
+    h.insert("x-forwarded-proto", value.parse().unwrap());
+    h
+}
+
+#[test]
+fn secure_forced_on_wins_regardless_of_headers_or_trust() {
+    assert!(cookie_secure_for_with(
+        &axum::http::HeaderMap::new(),
+        true,
+        false
+    ));
+    assert!(cookie_secure_for_with(&xfp("http"), true, true));
+}
+
+#[test]
+fn secure_off_by_default_over_plain_http() {
+    assert!(!cookie_secure_for_with(
+        &axum::http::HeaderMap::new(),
+        false,
+        false
+    ));
+    assert!(!cookie_secure_for_with(
+        &axum::http::HeaderMap::new(),
+        false,
+        true
+    ));
+}
+
+#[test]
+fn secure_ignores_forwarded_proto_when_proxy_untrusted() {
+    // Direct exposure: any client can send the header, and a Secure
+    // cookie set over plain HTTP would never come back.
+    assert!(!cookie_secure_for_with(&xfp("https"), false, false));
+}
+
+#[test]
+fn secure_follows_forwarded_proto_when_proxy_trusted() {
+    assert!(cookie_secure_for_with(&xfp("https"), false, true));
+    assert!(cookie_secure_for_with(&xfp("HTTPS"), false, true));
+    assert!(!cookie_secure_for_with(&xfp("http"), false, true));
+}
+
+#[test]
+fn secure_reads_the_leftmost_forwarded_proto_hop() {
+    // Client → TLS edge → plain internal hop: the client's scheme wins.
+    assert!(cookie_secure_for_with(&xfp("https, http"), false, true));
+    assert!(!cookie_secure_for_with(&xfp("http, https"), false, true));
+    assert!(cookie_secure_for_with(&xfp("  https  "), false, true));
 }
 
 // ─── Cookie shape — clear path ─────────────────────────────────────

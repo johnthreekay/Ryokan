@@ -114,4 +114,4 @@
 {% endif %}
 {% endblock %}
 
-{% block page_js %}<script src="/static/js/recycle.js" defer></script>{% endblock %}
+{% block page_js %}<script src="/static/js/recycle.js?v={{ crate::asset_version() }}" defer></script>{% endblock %}

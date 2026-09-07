@@ -45,7 +45,7 @@ The feed defaults to the next 30 days. If you want a wider or narrower window, a
 Air times come from AniList. Ryokan refreshes them every 12 hours and stores its own copy, so the calendar page doesn't have to call AniList every time you load it. Two things to know:
 
 - A newly-added series shows up within seconds. Ryokan grabs its air times right after you add it, not on the next 12-hour refresh.
-- If AniList updates an episode's air time, you'll see the change within 12 hours. If you want it sooner, go to **System → Tasks → airing_refresh** and click Run now.
+- If AniList updates an episode's air time, you'll see the change within 12 hours. If you want it sooner, go to **System → Scheduled Tasks**, find **Episode air-date refresh**, and click **Run now**.
 
 ## Series Ryokan adds via MAL
 
@@ -53,4 +53,4 @@ A few series in your library may have come from MAL instead of AniList. These ar
 
 ---
 
-*Last updated: 2026-05-09.*
+*Last updated: 2026-08-29.*

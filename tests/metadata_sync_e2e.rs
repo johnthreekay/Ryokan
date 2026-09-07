@@ -683,17 +683,23 @@ async fn refresh_series_metadata_tv_format_falls_back_to_series_title_when_jikan
         .expect(1..)
         .mount(&mock)
         .await;
-    // Kitsu also returns no candidates — without this, `best_candidate`
-    // hits real kitsu.io and may match something for "Test TV Show",
-    // which would feed the kitsu_eps merge ladder with "Episode N"
-    // synthetic titles (kitsu.rs:594) and break the fallback assertion.
-    // .expect(1..) pins line 247's `force_kitsu_fallback || backfill`
-    // OR + line 251's closure: when Jikan returns empty, all closure
-    // results are false → backfill needed → Kitsu IS fetched.
+    // Kitsu has no mapping for the MAL id — without this, the fallback
+    // hits real kitsu.io. .expect(1..) pins line 247's
+    // `force_kitsu_fallback || backfill` OR + line 251's closure: when
+    // Jikan returns empty, all closure results are false → backfill
+    // needed → Kitsu IS consulted. Since #235 that consultation is the
+    // `/mappings` lookup by MAL id; the title search below must stay
+    // untouched when a MAL id is known.
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [], "included": []})))
+        .expect(1..)
+        .mount(&mock)
+        .await;
     Mock::given(method("GET"))
         .and(path("/anime"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
-        .expect(1..)
+        .expect(0)
         .mount(&mock)
         .await;
 
@@ -862,12 +868,259 @@ async fn refresh_all_series_metadata_skips_when_anilist_is_unreachable() {
     let db = in_memory_pool().await;
     seed_minimal_series(&db, 9999).await;
 
-    let (refreshed, failed) = metadata_sync::refresh_all_series_metadata(&db).await;
+    let (refreshed, failed) = metadata_sync::refresh_all_series_metadata(&db)
+        .await
+        .expect("no other sweep holds the lock");
     assert_eq!(refreshed, 0);
     assert_eq!(failed, 1);
 
     unsafe {
         std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+}
+
+/// One `episode_cache` row shaped like the Jikan negative-cache
+/// sentinel (`episode_number = 0`, `title = "__RYOKAN_EMPTY__"`), the
+/// state a `data: []` Tenrai answer leaves behind for seven days.
+async fn seed_jikan_sentinel(db: &SqlitePool, mal_id: i64) {
+    sqlx::query(
+        "INSERT INTO episode_cache (mal_id, episode_number, title, aired) \
+         VALUES (?, 0, '__RYOKAN_EMPTY__', '')",
+    )
+    .bind(mal_id)
+    .execute(db)
+    .await
+    .unwrap();
+}
+
+async fn jikan_sentinel_rows(db: &SqlitePool, mal_id: i64) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM episode_cache WHERE mal_id = ? AND episode_number = 0")
+        .bind(mal_id)
+        .fetch_one(db)
+        .await
+        .unwrap()
+}
+
+fn jikan_three_episodes() -> serde_json::Value {
+    json!({
+        "data": [
+            { "mal_id": 1, "episode_id": 1, "title": "Pilot Episode",
+              "aired": "2024-01-01T00:00:00+00:00" },
+            { "mal_id": 2, "episode_id": 2, "title": "Second Steps",
+              "aired": "2024-01-08T00:00:00+00:00" },
+            { "mal_id": 3, "episode_id": 3, "title": "Resolution",
+              "aired": "2024-01-15T00:00:00+00:00" },
+        ]
+    })
+}
+
+#[tokio::test]
+async fn manual_rebuild_drops_the_jikan_negative_cache_and_refetches_titles() {
+    // #235: a sentinel left by an empty Tenrai answer survived every
+    // manual rebuild for its 7-day TTL, so "Rebuild metadata cache"
+    // kept serving the Kitsu fallback's titles. The rebuild path now
+    // drops the series' Jikan episode cache first and reads Tenrai
+    // again; `.expect(1..)` on the episodes mock is the assertion.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("Media(id"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tv_media_detail_response(5556, 88888)),
+        )
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/88888/episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(jikan_three_episodes()))
+        .expect(1..)
+        .mount(&mock)
+        .await;
+    // Neither Kitsu surface may be touched once Tenrai has titles.
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [], "included": []})))
+        .expect(0)
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
+        .expect(0)
+        .mount(&mock)
+        .await;
+
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+        std::env::set_var("JIKAN_API_BASE", mock.uri());
+        std::env::set_var("RYOKAN_KITSU_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    let series_id = seed_minimal_series_tv(&db, 5556).await;
+    seed_jikan_sentinel(&db, 88888).await;
+
+    let (rebuilt, skipped, failed) = metadata_sync::rebuild_cached_metadata_for_all(&db)
+        .await
+        .expect("no other sweep holds the lock");
+    assert_eq!((rebuilt, skipped, failed), (1, 0, 0));
+
+    assert_eq!(
+        jikan_sentinel_rows(&db, 88888).await,
+        0,
+        "the rebuild must drop the negative-cache sentinel"
+    );
+    let episodes = local_metadata::get_episode_map_for_series(&db, series_id)
+        .await
+        .unwrap();
+    assert_eq!(episodes.len(), 3);
+    assert_eq!(
+        episodes
+            .get(&1)
+            .map(|e| (e.title.as_str(), e.source.as_str())),
+        Some(("Pilot Episode", "jikan"))
+    );
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+        std::env::remove_var("JIKAN_API_BASE");
+        std::env::remove_var("RYOKAN_KITSU_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+}
+
+#[tokio::test]
+async fn refresh_with_a_jikan_sentinel_takes_kitsu_titles_by_mal_id_not_by_title() {
+    // The periodic refresh still honors the sentinel (no Tenrai call),
+    // so the Kitsu fallback runs. It must resolve the entry through
+    // Kitsu's MAL-id mapping and never the title search: #235's wrong
+    // titles came from the fuzz picking "Gabriel DropOut Specials"
+    // for "Dropout". `.expect(0)` on `/anime` is the assertion.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("Media(id"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tv_media_detail_response(5557, 77777)),
+        )
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/77777/episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(jikan_three_episodes()))
+        .expect(0)
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(wiremock::matchers::query_param(
+            "filter[externalId]",
+            "77777",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": [{ "id": "1", "type": "mappings" }],
+            "included": [{
+                "id": "4242",
+                "type": "anime",
+                "attributes": {
+                    "canonicalTitle": "Right Show",
+                    "titles": { "en_jp": "Right Show" },
+                    "subtype": "TV",
+                    "status": "finished",
+                    "episodeCount": 3,
+                    "startDate": "2024-01-01"
+                }
+            }]
+        })))
+        .expect(1..)
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/4242/episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": [
+                { "id": "1", "type": "episodes", "attributes": {
+                    "canonicalTitle": "Kitsu One", "number": 1, "relativeNumber": 1,
+                    "airDate": "2024-01-01" } },
+                { "id": "2", "type": "episodes", "attributes": {
+                    "canonicalTitle": "Kitsu Two", "number": 2, "relativeNumber": 2,
+                    "airDate": "2024-01-08" } },
+                { "id": "3", "type": "episodes", "attributes": {
+                    "canonicalTitle": "Kitsu Three", "number": 3, "relativeNumber": 3,
+                    "airDate": "2024-01-15" } }
+            ],
+            "links": {}
+        })))
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
+        .expect(0)
+        .mount(&mock)
+        .await;
+
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+        std::env::set_var("JIKAN_API_BASE", mock.uri());
+        std::env::set_var("RYOKAN_KITSU_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    let series_id = seed_minimal_series_tv(&db, 5557).await;
+    seed_jikan_sentinel(&db, 77777).await;
+    let tracked = series::get_by_id(&db, series_id).await.unwrap().unwrap();
+
+    metadata_sync::refresh_series_metadata(&db, &tracked, false)
+        .await
+        .expect("refresh should succeed against the wiremock fixture");
+
+    assert_eq!(
+        jikan_sentinel_rows(&db, 77777).await,
+        1,
+        "a plain refresh keeps the sentinel; only the rebuild drops it"
+    );
+    let episodes = local_metadata::get_episode_map_for_series(&db, series_id)
+        .await
+        .unwrap();
+    assert_eq!(episodes.len(), 3);
+    assert_eq!(
+        episodes
+            .get(&2)
+            .map(|e| (e.title.as_str(), e.source.as_str())),
+        Some(("Kitsu Two", "kitsu"))
+    );
+    // The hand-off is visible in System → Logs.
+    let kitsu_lines: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT level, message, detail FROM logs WHERE category = 'kitsu' ORDER BY id",
+    )
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert!(!kitsu_lines.is_empty(), "expected a Kitsu hand-off line");
+    assert_eq!(kitsu_lines[0].0, "info");
+    assert_eq!(
+        kitsu_lines[0].1,
+        "Episode titles for Test TV Show EN came from Kitsu"
+    );
+    assert!(
+        kitsu_lines[0].2.contains("mal_id=Some(77777)")
+            && kitsu_lines[0].2.contains("reason=mal_empty"),
+        "{}",
+        kitsu_lines[0].2
+    );
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+        std::env::remove_var("JIKAN_API_BASE");
+        std::env::remove_var("RYOKAN_KITSU_API_BASE");
     }
     anilist::reset_state_for_tests();
 }

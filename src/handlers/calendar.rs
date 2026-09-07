@@ -437,7 +437,7 @@ fn group_by_day(episodes: &[EpisodeView]) -> Vec<DayBucket> {
 
 /// Query string for the iCal endpoint. Both fields opt-in; the
 /// default behavior is "next 30 days, every airing series."
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct IcalQuery {
     /// Forward window in days. Capped at 90 server-side so a
     /// `?days=10000` request can't blow up the AL fetch budget.
@@ -456,6 +456,19 @@ const MAX_DAYS: i64 = 90;
 /// `GET /api/calendar.ics`. Wired in `main.rs` behind the
 /// `require_calendar_scope` middleware so only `calendar`-scoped
 /// API keys reach it.
+#[utoipa::path(
+    get,
+    path = "/api/calendar.ics",
+    tag = "Calendar",
+    summary = "iCal feed of upcoming episodes",
+    description = "Airing schedule for library series as an iCalendar file. Requires an API key with the calendar scope, via X-Api-Key header or ?apikey= query, since calendar apps cannot carry cookies. Days is clamped to 90.",
+    params(IcalQuery),
+    responses(
+        (status = 200, description = "text/calendar feed"),
+        (status = 401, description = "Missing or invalid API key"),
+        (status = 503, description = "Config not yet available"),
+    ),
+)]
 pub async fn ical_feed(
     State(state): State<AppState>,
     Query(params): Query<IcalQuery>,

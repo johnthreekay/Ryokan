@@ -10,6 +10,10 @@
     const yesBtn = document.getElementById('ryokan-confirm-yes');
     const noBtn = document.getElementById('ryokan-confirm-no');
     const closeBtn = document.getElementById('ryokan-confirm-close');
+    // base.html always ships the modal; a page that doesn't (test
+    // fixtures, an error page) must not take the rest of this file
+    // down with it.
+    if (!modal || !titleEl || !bodyEl || !extrasEl || !yesBtn || !noBtn || !closeBtn) return;
 
     function collectExtras() {
         const out = {};
@@ -87,6 +91,7 @@
     const bodyEl = document.getElementById('ryokan-alert-body');
     const okBtn = document.getElementById('ryokan-alert-ok');
     const closeBtn = document.getElementById('ryokan-alert-close');
+    if (!modal || !titleEl || !bodyEl || !okBtn || !closeBtn) return;
 
     function close() {
         if (!current) return;
@@ -133,6 +138,7 @@
     const okBtn = document.getElementById('ryokan-prompt-ok');
     const cancelBtn = document.getElementById('ryokan-prompt-cancel');
     const closeBtn = document.getElementById('ryokan-prompt-close');
+    if (!modal || !titleEl || !bodyEl || !labelEl || !inputEl || !errorEl || !okBtn || !cancelBtn || !closeBtn) return;
 
     function close(result) {
         if (!current) return;
@@ -206,15 +212,39 @@
 
 (function () {
     // Transient toast notifications. window.ryokanToast({kind, title,
-    // body, category, duration}) pushes a new toast into the top-right
-    // stack. kind ∈ {info, success, warn, error}. Auto-dismiss after
-    // duration ms (default 4000, 0 disables auto-dismiss). Pause on
-    // hover. Every toast is also mirrored to POST /api/logs/client
-    // so it persists in the System → Logs tab after the transient
-    // UI disappears. Pass `category` to classify the log row; falls
-    // back to `system` on the server. Pass `log: false` to opt out
-    // of persistence (e.g. purely decorative toasts).
-    const stack = document.getElementById('ryokan-toast-stack');
+    // body, category, duration, sticky, busy, log, actions}) pushes a
+    // new toast into the top-right stack. kind ∈ {info, success, warn,
+    // error}. Auto-dismiss after duration ms (default 4000, 0 disables
+    // auto-dismiss). Pause on hover. `busy: true` shows a spinner next
+    // to the title until `update({busy: false})` or `finalize()`. Every
+    // toast is also mirrored to POST /api/logs/client so it persists in
+    // the System → Logs tab after the transient UI disappears. Pass
+    // `category` to classify the log row; falls back to `system` on the
+    // server. Pass `log: false` to opt out of persistence (e.g. purely
+    // decorative toasts).
+    //
+    // Toasts follow the user across pages. base.js re-executes on every
+    // boosted swap and the stack element is part of the swapped body,
+    // so the live toasts are kept on `window.__ryokanToastRuntime`
+    // (which survives re-execution) and re-appended to the new stack
+    // with their timers, action buttons, and progress followers intact.
+    // A full page load (reload, `location.href`) starts from the
+    // sessionStorage record the runtime keeps of its live toasts:
+    // transient ones come back with their remaining time, progress
+    // toasts re-attach to their job (see `ryokanProgressToast`). Action
+    // buttons do not survive a full load; their closures are gone.
+    const STORAGE_KEY = 'ryokanLiveToasts';
+    const KINDS = ['info', 'success', 'warn', 'error'];
+    const runtime = window.__ryokanToastRuntime || (window.__ryokanToastRuntime = {
+        live: [],
+        restored: false,
+    });
+
+    // Looked up on every use: a module-scope snapshot goes stale after
+    // a body swap (templates/AGENTS.md).
+    function getStack() {
+        return document.getElementById('ryokan-toast-stack');
+    }
 
     function persistToast(kind, category, title, body) {
         // Fire-and-forget. A failing log write must never surface
@@ -240,24 +270,115 @@
         }
     }
 
-    function dismiss(toast) {
-        if (!toast || toast.dataset.dismissed === '1') return;
-        toast.dataset.dismissed = '1';
-        toast.classList.add('ryokan-toast-leaving');
+    // Write the live set to sessionStorage (same-tab, cleared when the
+    // tab closes: the lifetime of "show me what I kicked off"). Called
+    // on every change so a reload at any moment restores the truth.
+    function save() {
+        try {
+            const records = [];
+            runtime.live.forEach(function (e) {
+                if (e.dismissed) return;
+                records.push({
+                    id: e.id,
+                    kind: e.kind,
+                    title: e.titleEl.textContent,
+                    body: e.bodyEl.textContent,
+                    category: e.category || null,
+                    sticky: e.sticky,
+                    busy: e.busy,
+                    // Armed: absolute deadline. Paused (hovered): what
+                    // is left. Sticky: neither.
+                    expiresAt: !e.sticky && e.timer ? e.timerStart + e.remaining : null,
+                    remaining: !e.sticky && !e.timer ? e.remaining : null,
+                    progressId: e.progressId || null,
+                });
+            });
+            if (records.length) {
+                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            } else {
+                sessionStorage.removeItem(STORAGE_KEY);
+            }
+        } catch (_) {
+            // Storage unavailable (private mode, quota): toasts still
+            // work for this page, they just do not survive a reload.
+        }
+    }
+
+    function forget(entry) {
+        const i = runtime.live.indexOf(entry);
+        if (i >= 0) runtime.live.splice(i, 1);
+        save();
+    }
+
+    function dismiss(entry) {
+        if (!entry || entry.dismissed) return;
+        entry.dismissed = true;
+        if (entry.timer) { clearTimeout(entry.timer); entry.timer = null; }
+        forget(entry);
+        entry.el.classList.add('ryokan-toast-leaving');
         setTimeout(function () {
-            if (toast.parentNode) toast.parentNode.removeChild(toast);
+            if (entry.el.parentNode) entry.el.parentNode.removeChild(entry.el);
         }, 200);
+    }
+
+    function setKind(entry, kind) {
+        if (KINDS.indexOf(kind) < 0) return;
+        KINDS.forEach(function (k) { entry.el.classList.remove('ryokan-toast-' + k); });
+        entry.el.classList.add('ryokan-toast-' + kind);
+        entry.el.setAttribute('role', kind === 'error' || kind === 'warn' ? 'alert' : 'status');
+        entry.kind = kind;
+    }
+
+    function setBusy(entry, busy) {
+        entry.busy = !!busy;
+        entry.spinner.style.display = entry.busy ? '' : 'none';
+    }
+
+    function applyPatch(entry, patch) {
+        patch = patch || {};
+        if (patch.kind) setKind(entry, patch.kind);
+        if (patch.title != null) {
+            entry.titleEl.textContent = patch.title;
+            entry.titleRow.style.display = patch.title ? '' : 'none';
+        }
+        if (patch.body != null) {
+            entry.bodyEl.textContent = patch.body;
+            entry.bodyEl.style.display = patch.body ? '' : 'none';
+        }
+        if (patch.busy != null) setBusy(entry, patch.busy);
+        save();
+    }
+
+    function armTimer(entry) {
+        if (entry.sticky || entry.dismissed || entry.timer) return;
+        entry.timerStart = Date.now();
+        entry.timer = setTimeout(function () { dismiss(entry); }, Math.max(entry.remaining, 0));
+        save();
+    }
+
+    function pauseTimer(entry) {
+        if (!entry.timer) return;
+        clearTimeout(entry.timer);
+        entry.timer = null;
+        // Never let a hovered toast run out while paused: it would
+        // stay forever, since a timer never re-arms at zero.
+        entry.remaining = Math.max(entry.remaining - (Date.now() - entry.timerStart), 250);
+        save();
+    }
+
+    function newId() {
+        return 't_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     }
 
     window.ryokanToast = function (opts) {
         opts = opts || {};
-        const kind = opts.kind && ['info', 'success', 'warn', 'error'].indexOf(opts.kind) >= 0
-            ? opts.kind : 'info';
+        const kind = KINDS.indexOf(opts.kind) >= 0 ? opts.kind : 'info';
         // `sticky: true` disables auto-dismiss — use for long-running
         // jobs where the toast represents live state and should only
         // close on explicit user action (or when `handle.finalize()`
         // upgrades it to a normal auto-dismissing toast).
-        const duration = opts.sticky ? 0 : (opts.duration != null ? Number(opts.duration) : 4000);
+        const sticky = !!opts.sticky;
+        const duration = sticky ? 0 : (opts.duration != null ? Number(opts.duration) : 4000);
 
         if (opts.log !== false) {
             persistToast(kind, opts.category, opts.title, opts.body);
@@ -273,16 +394,43 @@
 
         const content = document.createElement('div');
         content.className = 'ryokan-toast-content';
+        const titleRow = document.createElement('div');
+        titleRow.className = 'ryokan-toast-title-row';
+        const spinner = document.createElement('span');
+        spinner.className = 'ryokan-toast-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
+        titleRow.appendChild(spinner);
         const titleEl = document.createElement('div');
         titleEl.className = 'ryokan-toast-title';
         titleEl.textContent = opts.title || '';
-        if (!opts.title) titleEl.style.display = 'none';
-        content.appendChild(titleEl);
+        titleRow.appendChild(titleEl);
+        if (!opts.title) titleRow.style.display = 'none';
+        content.appendChild(titleRow);
         const bodyEl = document.createElement('div');
         bodyEl.className = 'ryokan-toast-body';
         bodyEl.textContent = opts.body || '';
         if (!opts.body) bodyEl.style.display = 'none';
         content.appendChild(bodyEl);
+
+        const entry = {
+            id: opts.id || newId(),
+            el: toast,
+            titleRow: titleRow,
+            titleEl: titleEl,
+            bodyEl: bodyEl,
+            spinner: spinner,
+            kind: kind,
+            category: opts.category || null,
+            sticky: sticky,
+            busy: false,
+            remaining: duration,
+            timerStart: 0,
+            timer: null,
+            dismissed: false,
+            progressId: opts.progressId || null,
+        };
+        setBusy(entry, opts.busy);
+
         // Optional action buttons (`opts.action` or `opts.actions: [...]`),
         // e.g. "Undo" after a recycle-bin delete. The click handler gets a
         // small handle so it can repaint or dismiss the toast; the button
@@ -302,22 +450,8 @@
                     if (!actionsEl.children.length) actionsEl.remove();
                     if (typeof a.onClick !== 'function') return;
                     a.onClick({
-                        dismiss: function () { dismiss(toast); },
-                        update: function (patch) {
-                            patch = patch || {};
-                            if (patch.kind && ['info', 'success', 'warn', 'error'].indexOf(patch.kind) >= 0) {
-                                toast.classList.remove('ryokan-toast-info', 'ryokan-toast-success', 'ryokan-toast-warn', 'ryokan-toast-error');
-                                toast.classList.add('ryokan-toast-' + patch.kind);
-                            }
-                            if (patch.title != null) {
-                                titleEl.textContent = patch.title;
-                                titleEl.style.display = patch.title ? '' : 'none';
-                            }
-                            if (patch.body != null) {
-                                bodyEl.textContent = patch.body;
-                                bodyEl.style.display = patch.body ? '' : 'none';
-                            }
-                        }
+                        dismiss: function () { dismiss(entry); },
+                        update: function (patch) { applyPatch(entry, patch); },
                     });
                 });
                 actionsEl.appendChild(b);
@@ -331,74 +465,110 @@
         close.className = 'ryokan-toast-close';
         close.setAttribute('aria-label', 'Dismiss');
         close.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-        close.addEventListener('click', function () { dismiss(toast); });
+        close.addEventListener('click', function () { dismiss(entry); });
         toast.appendChild(close);
 
-        stack.appendChild(toast);
+        runtime.live.push(entry);
+        const stack = getStack();
+        if (stack) stack.appendChild(toast);
 
-        let remaining = duration;
-        let timerStart = Date.now();
-        let timer = null;
-        function armTimer() {
-            if (remaining <= 0) return;
-            timerStart = Date.now();
-            timer = setTimeout(function () { dismiss(toast); }, remaining);
-        }
-        function pauseTimer() {
-            if (timer) {
-                clearTimeout(timer);
-                timer = null;
-                remaining -= (Date.now() - timerStart);
-            }
-        }
-        toast.addEventListener('mouseenter', pauseTimer);
-        toast.addEventListener('mouseleave', armTimer);
-        armTimer();
+        toast.addEventListener('mouseenter', function () { pauseTimer(entry); });
+        toast.addEventListener('mouseleave', function () { armTimer(entry); });
+        armTimer(entry);
+        save();
 
         return {
-            dismiss: function () { dismiss(toast); },
+            dismiss: function () { dismiss(entry); },
             // Mutate the live toast in place. Used by ryokanProgressToast
             // to repaint title/body/kind as stage events arrive. Does not
             // re-arm the auto-dismiss timer — a sticky toast that's been
             // updating should stay sticky until `finalize()` ends it.
-            update: function (patch) {
-                patch = patch || {};
-                if (patch.kind && ['info', 'success', 'warn', 'error'].indexOf(patch.kind) >= 0) {
-                    toast.classList.remove('ryokan-toast-info', 'ryokan-toast-success', 'ryokan-toast-warn', 'ryokan-toast-error');
-                    toast.classList.add('ryokan-toast-' + patch.kind);
-                    toast.setAttribute('role', patch.kind === 'error' || patch.kind === 'warn' ? 'alert' : 'status');
-                }
-                if (patch.title != null) {
-                    titleEl.textContent = patch.title;
-                    titleEl.style.display = patch.title ? '' : 'none';
-                }
-                if (patch.body != null) {
-                    bodyEl.textContent = patch.body;
-                    bodyEl.style.display = patch.body ? '' : 'none';
-                }
-            },
+            update: function (patch) { applyPatch(entry, patch); },
             // Convert a sticky toast into a terminal one that auto-dismisses
             // after `duration` ms (default 4000 for success/info, 0 for
             // warn/error so the user has time to read). Also persists the
             // final state to /api/logs/client once, matching the log
-            // persistence behavior of a one-shot ryokanToast call.
+            // persistence behavior of a one-shot ryokanToast call. The
+            // spinner goes with the sticky state.
             finalize: function (final) {
                 final = final || {};
-                if (final.kind || final.title != null || final.body != null) {
-                    this.update(final);
-                }
-                const finalKind = final.kind || kind;
+                applyPatch(entry, {kind: final.kind, title: final.title, body: final.body, busy: false});
+                entry.progressId = null;
                 if (final.log !== false) {
-                    persistToast(finalKind, opts.category, titleEl.textContent, bodyEl.textContent);
+                    persistToast(entry.kind, entry.category, entry.titleEl.textContent, entry.bodyEl.textContent);
                 }
                 const finalDuration = final.duration != null
                     ? Number(final.duration)
-                    : (finalKind === 'error' || finalKind === 'warn' ? 0 : 4000);
-                if (timer) { clearTimeout(timer); timer = null; }
-                remaining = finalDuration;
-                armTimer();
+                    : (entry.kind === 'error' || entry.kind === 'warn' ? 0 : 4000);
+                if (entry.timer) { clearTimeout(entry.timer); entry.timer = null; }
+                entry.sticky = finalDuration <= 0;
+                entry.remaining = finalDuration;
+                armTimer(entry);
+                save();
             },
         };
+    };
+
+    // Boosted swap: the previous body took the old stack with it. Put
+    // every live toast back, timers and followers untouched. Runs now
+    // (base.js re-executes with the swapped body) and on every
+    // `htmx.onLoad`, so the carry-over does not depend on where the
+    // script tags sit.
+    function carryOver() {
+        const stack = getStack();
+        if (!stack) return;
+        runtime.live.forEach(function (e) {
+            if (!e.dismissed && e.el.parentNode !== stack) stack.appendChild(e.el);
+        });
+    }
+    carryOver();
+    if (!runtime.onLoadBound && window.htmx && typeof window.htmx.onLoad === 'function') {
+        runtime.onLoadBound = true;
+        window.htmx.onLoad(function () { carryOver(); });
+    }
+
+    // Full page load: rebuild the live set from the stored record.
+    // Runs once per document, after `ryokanProgressToast` is defined
+    // (progress toasts re-attach through it), so the caller below in
+    // this file invokes it.
+    window.__ryokanRestoreToasts = function () {
+        if (runtime.restored) return;
+        runtime.restored = true;
+        let records = [];
+        try {
+            records = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]');
+        } catch (_) {
+            records = [];
+        }
+        try { sessionStorage.removeItem(STORAGE_KEY); } catch (_) {}
+        if (!Array.isArray(records)) return;
+        const now = Date.now();
+        records.forEach(function (r) {
+            if (!r || typeof r !== 'object' || !r.id) return;
+            if (runtime.live.some(function (e) { return e.id === r.id; })) return;
+            let duration = 0;
+            if (!r.sticky) {
+                duration = r.remaining != null ? Number(r.remaining) : Number(r.expiresAt) - now;
+                if (!(duration > 0)) return;
+            }
+            const base = {
+                id: r.id,
+                kind: r.kind,
+                title: r.title || '',
+                body: r.body || '',
+                category: r.category || undefined,
+                log: false,
+            };
+            if (r.sticky && r.progressId && window.ryokanProgressToast) {
+                base.progressId = r.progressId;
+                window.ryokanProgressToast(base);
+            } else {
+                base.sticky = !!r.sticky;
+                base.duration = duration;
+                base.busy = !!r.busy;
+                window.ryokanToast(base);
+            }
+        });
     };
 })();
 
@@ -470,11 +640,19 @@ window.ryokanProgressToast = function (opts) {
     opts = opts || {};
     if (!opts.progressId) throw new Error('ryokanProgressToast requires opts.progressId');
     const toast = window.ryokanToast({
+        id: opts.id,
         kind: opts.kind || 'info',
         title: opts.title || 'Working…',
         body: opts.body || null,
         category: opts.category || 'system',
         sticky: true,
+        // The spinner says "still running" until the terminal event;
+        // `finalize()` clears it with the sticky state.
+        busy: true,
+        // Recorded so a full page load can re-attach to the job: the
+        // stream replays the buffer from the start (`poll` is
+        // non-destructive), so a resumed toast repaints every event.
+        progressId: opts.progressId,
         // The terminal event will persist to logs via `finalize()`.
         // Skipping the initial log write avoids a "Working…" row in
         // System → Logs that gets immediately superseded.
@@ -621,6 +799,13 @@ window.ryokanProgressToast = function (opts) {
     };
 };
 
+// A full page load rebuilds the toasts the previous page still had
+// (see the toast runtime above). This has to run after
+// `ryokanProgressToast` exists; a boosted swap is a no-op here.
+if (typeof window.__ryokanRestoreToasts === 'function') {
+    window.__ryokanRestoreToasts();
+}
+
 // Auto-promote any `[data-ryokan-toast]` element on the page into a
 // ryokanToast on DOM ready. Lets server-side flash banners (Settings,
 // System Debug) double as toast notifications without duplicating the
@@ -672,24 +857,30 @@ function ryokanConfirmFromAttrs(elt) {
     });
 }
 
-// HTMX migration (issue #129) — forms split into two paths:
+// Forms split into two paths:
 //
-//   1. Native form-POST forms (no hx-* attrs) — submit listener
-//      intercepts, shows modal, calls `form.submit()` on confirm.
-//      Same as the original pre-HTMX behavior.
+//   1. Forms htmx drives — any hx-* verb, or boosted by the body-wide
+//      `hx-boost:inherited` (every plain form except the
+//      `hx-boost="false"` opt-outs) — are gated through the
+//      `htmx:confirm` bridge below. Not via the submit listener:
+//      htmx's own submit handler runs first, so the request would
+//      already be in flight by the time we prevented anything.
+//   2. Forms htmx leaves alone (`hx-boost="false"`) — the submit
+//      listener intercepts, shows the modal, and calls
+//      `form.submit()` on confirm.
 //
-//   2. HTMX-driven forms (any hx-* attr) — handled below via the
-//      `htmx:confirm` event. NOT via the submit listener, because
-//      htmx's own submit listener fires before this one (registration
-//      order: htmx loads first), so by the time we'd `preventDefault`
-//      the AJAX request is already in flight. `htmx:confirm` is
-//      htmx's first-class hook for gating the request itself.
+// Which path applies is decided at submit time: htmx marks the
+// elements it boosted on `elt._htmx.boosted`, which is not set yet
+// when this DOMContentLoaded handler runs.
+function ryokanFormIsHtmxDriven(form) {
+    if (form._htmx && form._htmx.boosted) return true;
+    return form.matches('[hx-get], [hx-post], [hx-put], [hx-patch], [hx-delete]');
+}
+
 window.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('form[data-ryokan-confirm-title]').forEach(function (form) {
-        if (form.matches('[hx-get], [hx-post], [hx-put], [hx-patch], [hx-delete]')) {
-            return; // handled by htmx:confirm bridge
-        }
         form.addEventListener('submit', function (ev) {
+            if (ryokanFormIsHtmxDriven(form)) return; // htmx:confirm bridge owns it
             ev.preventDefault();
             ryokanConfirmFromAttrs(form).then(function (result) {
                 if (!result || !result.ok) return;
@@ -702,28 +893,54 @@ window.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-// HTMX migration (issue #129) — bridge `data-ryokan-confirm-*` into
-// htmx's request-confirmation hook. Fires for EVERY htmx request, so
-// we filter on the opt-in attr. `evt.preventDefault()` stops the
-// request from going out; on user-confirm we call
-// `evt.detail.issueRequest(true)` to proceed (the `true` argument
-// skips this hook on the re-issue so we don't re-prompt).
+// Bridge `data-ryokan-confirm-*` into htmx's request-confirmation hook.
 //
-// Listener attached to <body> rather than per-form because htmx
-// processes elements added by swaps automatically; per-form
-// registration would miss any element added to the DOM after
-// initial load (e.g., a row added by a future upsert response).
+// htmx 4 fires `htmx:confirm` only for a request whose context carries
+// a confirm (`ctx.confirm`, normally from `hx-confirm`). Rather than
+// sprinkle `hx-confirm` over every opt-in element, `htmx:config:request`
+// (which fires before the confirm check) stamps a marker onto the
+// context for any source element that opted in. The marker is never
+// shown: the `htmx:confirm` listener always `preventDefault()`s for
+// those elements, which tells htmx to wait for `issueRequest()` /
+// `dropRequest()` instead of falling through to `window.confirm`.
+// Elements without the opt-in never get a confirm and htmx never
+// fires the event for them.
+//
+// Both listeners sit on <body> rather than per element because htmx
+// processes swapped-in content automatically; per-element registration
+// would miss anything added to the DOM after initial load.
+document.body.addEventListener('htmx:config:request', function (ev) {
+    var ctx = ev.detail && ev.detail.ctx;
+    var elt = ctx && ctx.sourceElement;
+    if (elt && elt.hasAttribute && elt.hasAttribute('data-ryokan-confirm-title')) {
+        ctx.confirm = 'ryokan';
+    }
+});
 document.body.addEventListener('htmx:confirm', function (ev) {
-    var elt = ev.detail && ev.detail.elt;
-    if (!elt || !elt.hasAttribute('data-ryokan-confirm-title')) return;
+    var detail = ev.detail || {};
+    var elt = detail.ctx && detail.ctx.sourceElement;
+    if (!elt || !elt.hasAttribute || !elt.hasAttribute('data-ryokan-confirm-title')) return;
     ev.preventDefault();
     ryokanConfirmFromAttrs(elt).then(function (result) {
         if (result && result.ok) {
-            ev.detail.issueRequest(true);
+            detail.issueRequest();
+        } else {
+            detail.dropRequest();
         }
-        // Cancel: request stays prevented; row stays put. Nothing to do.
     });
 });
+
+// The element an `htmx:after:swap` event swapped. htmx 4 dispatches
+// that event on the request's *source* element (re-pointed at the
+// target when the source was detached by an outerHTML swap of its own
+// section, and at `document` only if both are gone), so `ev.target`
+// no longer identifies the swapped region. Section re-bind listeners
+// compare this instead.
+window.ryokanSwapTargetId = function (ev) {
+    var ctx = ev && ev.detail && ev.detail.ctx;
+    var target = ctx && ctx.target;
+    return (target && target.id) || '';
+};
 
 // HTML-escape a string for safe concatenation into an `innerHTML`
 // sink. Use this wherever a user-controlled value (release title, CF
@@ -904,4 +1121,34 @@ window.ryokanCopyInput = function (inputId, btn) {
         window.htmx.onLoad(refresh);
     }
     setInterval(refresh, 30000);
+})();
+
+// ── Click outside a modal dismisses it ────────────────────────────
+// Every modal is a `.modal-backdrop` with the dialog box inside it, so
+// a click whose target is the backdrop itself landed outside the box.
+// Dismiss through the modal's own close control when it has one (the
+// header × or a `data-modal-close` button), so any teardown that
+// control runs (cancelling a grab preview, resetting a form) still
+// happens; hide the backdrop directly only when there is no control.
+// Backdrops that carry their own `onclick` already handle this.
+// The mousedown check keeps a text selection that starts inside the
+// box and ends on the backdrop from counting as a dismiss.
+(function () {
+    if (window.__ryokanBackdropDismiss) return;
+    window.__ryokanBackdropDismiss = true;
+    var pressedOn = null;
+    document.addEventListener('mousedown', function (ev) { pressedOn = ev.target; }, true);
+    document.addEventListener('click', function (ev) {
+        var el = ev.target;
+        if (!el || !el.classList || !el.classList.contains('modal-backdrop')) return;
+        if (pressedOn !== el) return;
+        if (el.hasAttribute('onclick')) return;
+        if (el.style.display === 'none' || el.hidden) return;
+        var close = el.querySelector('[data-modal-close], .modal-header .btn-icon[aria-label="Close"], .modal-header .btn-icon');
+        if (close) {
+            close.click();
+        } else {
+            el.style.display = 'none';
+        }
+    });
 })();

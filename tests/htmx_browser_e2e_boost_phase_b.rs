@@ -65,8 +65,12 @@ async fn click_tabbar_link(
 /// visit. This test fails LOUDLY in that case.
 #[tokio::test]
 async fn boosted_nav_into_downloads_starts_queue_poller() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -124,8 +128,12 @@ async fn boosted_nav_into_downloads_starts_queue_poller() {
 /// `/api/torrents` faster on every visit.
 #[tokio::test]
 async fn boosted_nav_out_of_downloads_clears_queue_poller() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -183,8 +191,12 @@ async fn boosted_nav_out_of_downloads_clears_queue_poller() {
 /// handles and only the third's handle is alive.
 #[tokio::test]
 async fn pingpong_nav_does_not_stack_pollers() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;
@@ -316,8 +328,12 @@ async fn pingpong_nav_does_not_stack_pollers() {
 /// one via `record_grab` before navigating.
 #[tokio::test]
 async fn data_ts_rebinds_after_boosted_nav() {
-    let Ok(client) = try_connect_browser().await else {
-        return;
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;

@@ -1,5 +1,6 @@
 pub mod airing_refresh;
 pub mod anilist;
+pub mod anime_relations;
 pub mod calendar;
 pub mod crypto;
 pub mod download_client;
@@ -36,6 +37,7 @@ pub mod rss;
 pub mod monitoring;
 
 pub mod metadata_sync;
+pub mod misgrab;
 
 pub mod artwork;
 

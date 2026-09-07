@@ -14,7 +14,7 @@ use crate::services::naming;
 
 use super::{NAMING_FIELDS, naming_or_default, naming_path_preview};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct NamingPreviewRequest {
     #[serde(default)]
     pub series_folder_format: String,
@@ -26,6 +26,17 @@ pub struct NamingPreviewRequest {
 
 /// Always 200 so the page can render a rejection inline; `ok` is per
 /// field. Nothing is saved here.
+#[utoipa::path(
+    post,
+    path = "/api/settings/naming-preview",
+    tag = "Settings",
+    summary = "Preview naming templates",
+    description = "Validates the three naming templates and renders a sample path. Always 200; each field carries its own ok flag and error. Saves nothing.",
+    request_body = NamingPreviewRequest,
+    responses(
+        (status = 200, description = "Per-field verdicts plus the combined sample path", body = serde_json::Value),
+    ),
+)]
 pub async fn naming_preview(
     State(state): State<AppState>,
     Json(req): Json<NamingPreviewRequest>,

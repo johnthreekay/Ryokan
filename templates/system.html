@@ -45,30 +45,43 @@
 
 {% if tab == "logs" %}
 <!-- Logs Tab -->
+{# `#logs-panel` is what the filter form, the page links, and the jump
+   box swap: each is an hx-get of this same page with the new query,
+   `hx-select` picks the panel out of the full response, and the URL
+   is pushed so reload and back/forward keep the view. `data-page`
+   tells the live poller (system.js) whether this is the newest page;
+   it only prepends new entries on page 1. `log_filter_qs` is the
+   active filter as an encoded query-string tail so paging never
+   drops the filter (a search like `foo & bar` would otherwise split
+   into a second parameter). #}
+<div id="logs-panel" data-page="{{ log_page }}">
 <div class="logs-toolbar">
-    <div class="logs-filters">
-        <select id="filter-level" class="log-filter-select" onchange="applyFilters()">
+    <form class="logs-filters" id="logs-filter-form" method="get" action="/system"
+          hx-get="/system" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true"
+          hx-on::config:request="dropEmptyLogParams(event)">
+        <input type="hidden" name="tab" value="logs">
+        <select id="filter-level" name="level" class="log-filter-select" onchange="this.form.requestSubmit()">
             <option value="trace" {% if filter_level == "trace" %}selected{% endif %}>Trace</option>
             <option value="debug" {% if filter_level == "debug" %}selected{% endif %}>Debug</option>
             <option value="info" {% if filter_level == "info" %}selected{% endif %}>Info</option>
             <option value="warn" {% if filter_level == "warn" %}selected{% endif %}>Warn</option>
             <option value="error" {% if filter_level == "error" %}selected{% endif %}>Error</option>
         </select>
-        <select id="filter-category" class="log-filter-select" onchange="applyFilters()">
+        <select id="filter-category" name="category" class="log-filter-select" onchange="this.form.requestSubmit()">
             <option value="">All Categories</option>
             {% for cat in categories %}
             <option value="{{ cat.0 }}" {% if filter_category == cat.0 %}selected{% endif %}>{{ cat.1 }}</option>
             {% endfor %}
         </select>
-        <input type="text" id="filter-search" class="log-filter-input" placeholder="Filter messages..." value="{{ filter_search }}" onkeydown="if(event.key==='Enter')applyFilters()">
-        <button class="btn btn-ghost btn-sm" onclick="applyFilters()" title="Apply filters">
+        <input type="text" id="filter-search" name="search" class="log-filter-input" placeholder="Filter messages..." value="{{ filter_search }}">
+        <button class="btn btn-ghost btn-sm" type="submit" title="Apply filters">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         </button>
-    </div>
+    </form>
     <div class="logs-actions">
-        <span class="log-count">{{ log_count }} entries</span>
-        <label class="log-poll-toggle" title="Auto-refresh">
-            <input type="checkbox" id="poll-toggle" checked>
+        <span class="log-count">{{ log_count }} entr{% if log_count == 1 %}y{% else %}ies{% endif %}</span>
+        <label class="log-poll-toggle" title="Show new entries as they arrive (first page only)">
+            <input type="checkbox" id="poll-toggle" checked onchange="setLogsLive(this.checked)">
             <span class="log-poll-label">Live</span>
         </label>
         {# Download presets — each link triggers a server-rendered TSV
@@ -104,7 +117,7 @@
             <tr class="log-row log-level-{{ entry.level }}" data-id="{{ entry.id }}">
                 <td class="log-col-time" title="{{ entry.timestamp }}">{{ entry.timestamp }}</td>
                 <td class="log-col-level"><span class="log-badge log-badge-{{ entry.level }}">{{ entry.level }}</span></td>
-                <td class="log-col-cat">{{ entry.category }}</td>
+                <td class="log-col-cat">{{ entry.category_label }}</td>
                 <td class="log-col-msg">
                     <span class="log-message">{{ entry.message }}</span>
                     {% if !entry.detail.is_empty() %}
@@ -120,29 +133,41 @@
     {% endif %}
 </div>
 
-{# Cursor-based pagination. `log_older_id` is the id of the oldest
-   visible row when there's more history beyond this page; `None`
-   on the last page. `log_before_id` is the current page's cursor;
-   `None` on the first/newest page (so the "Newest" link only
-   renders when the user has navigated backwards). Both controls
-   propagate the active filter state via query params so paginating
-   doesn't reset the filter dropdowns. #}
-{# `|urlencode` on every interpolated filter value: `filter_search` is
-   user-controlled (the "Filter messages..." input), and a search like
-   `foo & bar` would otherwise produce an href the browser parses as a
-   new query parameter starting at `& bar`, breaking pagination
-   silently. The same applies to category / level for any future
-   non-ascii or `&`-bearing values. #}
-{% if log_older_id.is_some() || log_before_id.is_some() %}
-<div class="logs-pagination">
-    {% if log_before_id.is_some() %}
-    <a class="btn btn-ghost btn-sm" href="/system?tab=logs{% if !filter_level.is_empty() %}&level={{ filter_level|urlencode }}{% endif %}{% if !filter_category.is_empty() %}&category={{ filter_category|urlencode }}{% endif %}{% if !filter_search.is_empty() %}&search={{ filter_search|urlencode }}{% endif %}">← Newest</a>
+{# Numbered pages, 200 entries each, over the active filter. Every
+   link and the jump box carry `log_filter_qs`. #}
+{% if log_pages > 1 %}
+<nav class="logs-pagination" aria-label="Log pages">
+    {% if let Some(prev) = log_prev_page %}
+    <a class="btn btn-ghost btn-sm" href="/system?tab=logs&page={{ prev }}{{ log_filter_qs }}" hx-get="/system?tab=logs&page={{ prev }}{{ log_filter_qs }}" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true">&larr; Newer</a>
     {% endif %}
-    {% if let Some(older) = log_older_id %}
-    <a class="btn btn-ghost btn-sm" href="/system?tab=logs&before_id={{ older }}{% if !filter_level.is_empty() %}&level={{ filter_level|urlencode }}{% endif %}{% if !filter_category.is_empty() %}&category={{ filter_category|urlencode }}{% endif %}{% if !filter_search.is_empty() %}&search={{ filter_search|urlencode }}{% endif %}">Older →</a>
+    <div class="logs-page-links">
+    {% for link in log_page_links %}
+        {% if link.gap %}
+        <span class="logs-page-gap" aria-hidden="true">&hellip;</span>
+        {% else if link.current %}
+        <span class="btn btn-secondary btn-sm logs-page-current" aria-current="page">{{ link.number }}</span>
+        {% else %}
+        <a class="btn btn-ghost btn-sm" href="/system?tab=logs&page={{ link.number }}{{ log_filter_qs }}" hx-get="/system?tab=logs&page={{ link.number }}{{ log_filter_qs }}" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true">{{ link.number }}</a>
+        {% endif %}
+    {% endfor %}
+    </div>
+    {% if let Some(next) = log_next_page %}
+    <a class="btn btn-ghost btn-sm" href="/system?tab=logs&page={{ next }}{{ log_filter_qs }}" hx-get="/system?tab=logs&page={{ next }}{{ log_filter_qs }}" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true">Older &rarr;</a>
     {% endif %}
-</div>
+    <form class="logs-jump" method="get" action="/system"
+          hx-get="/system" hx-target="#logs-panel" hx-select="#logs-panel" hx-swap="outerHTML" hx-push-url="true"
+          hx-on::config:request="dropEmptyLogParams(event)">
+        <input type="hidden" name="tab" value="logs">
+        {% if !filter_level.is_empty() %}<input type="hidden" name="level" value="{{ filter_level }}">{% endif %}
+        {% if !filter_category.is_empty() %}<input type="hidden" name="category" value="{{ filter_category }}">{% endif %}
+        {% if !filter_search.is_empty() %}<input type="hidden" name="search" value="{{ filter_search }}">{% endif %}
+        <label for="logs-jump-page" class="logs-jump-label">Page</label>
+        <input type="number" id="logs-jump-page" name="page" class="log-filter-input logs-jump-input" min="1" max="{{ log_pages }}" value="{{ log_page }}" onchange="this.form.requestSubmit()">
+        <span class="logs-jump-label">of {{ log_pages }}</span>
+    </form>
+</nav>
 {% endif %}
+</div>{# /#logs-panel #}
 
 {% else if tab == "rss" %}
 <div class="rss-panel">
@@ -234,11 +259,7 @@
            and there's nothing else in the section header to anchor.
            Section gets a one-liner hint instead so the page has a
            reason to start where it does. #}
-        <p class="form-hint" style="margin:0 0 12px">
-            Background jobs Ryokan schedules. Cadence + last run state for each.
-            Use <strong>Run now</strong> to trigger a job out-of-band — useful for
-            picking up new metadata or RSS items immediately after a settings change.
-        </p>
+        <p class="form-hint" style="margin:0 0 12px">Background jobs and when they last ran. Run now starts one right away.</p>
         {% if scheduled_tasks.is_empty() %}
         <div class="logs-empty">No scheduled task definitions registered yet.</div>
         {% else %}
@@ -249,9 +270,8 @@
                         <th>Task</th>
                         <th>Schedule</th>
                         <th>Enabled</th>
-                        <th>Last status</th>
-                        <th>Last started</th>
-                        <th>Last finished</th>
+                        <th class="nowrap">Last status</th>
+                        <th class="nowrap">Last run</th>
                         <th>Detail</th>
                         <th></th>
                     </tr>
@@ -259,22 +279,15 @@
                 <tbody>
                     {% for task in scheduled_tasks %}
                     <tr>
-                        <td>
-                            <div>{{ task.display_name }}</div>
-                            <div class="rss-release-meta">{{ task.task_key }}</div>
-                        </td>
+                        <td title="{{ task.task_key }}">{{ task.display_name }}</td>
                         <td>{{ task.schedule_label }}</td>
                         <td>{% if task.enabled %}<span class="log-badge log-badge-info">enabled</span>{% else %}<span class="log-badge log-badge-warn">disabled</span>{% endif %}</td>
                         <td>{% if task.last_status == "ok" %}<span class="log-badge log-badge-info">ok</span>{% else if task.last_status == "warn" %}<span class="log-badge log-badge-warn">warn</span>{% else if task.last_status == "error" %}<span class="log-badge log-badge-error">error</span>{% else if task.last_status == "running" %}<span class="log-badge log-badge-debug">running</span>{% else %}<span class="log-badge">{{ task.last_status }}</span>{% endif %}</td>
-                        {# Render the absolute timestamp directly (no
-                           data-ts) so the time formatter doesn't flash
-                           the relative-time replacement on page load.
-                           For run-state info the exact time is more
-                           useful than "5m ago" anyway — users want to
-                           correlate with other events. #}
-                        <td>{% if let Some(started) = task.last_started_at %}<span class="task-time">{{ started }}</span>{% else %}—{% endif %}</td>
-                        <td>{% if let Some(finished) = task.last_finished_at %}<span class="task-time">{{ finished }}</span>{% else %}—{% endif %}</td>
-                        <td class="task-detail-cell"><div class="task-detail-text">{{ task.last_detail }}</div></td>
+                        {# One relative time; the exact UTC stamp is the
+                           tooltip. A task that has started but not
+                           finished shows when it started. #}
+                        <td>{% if let Some(finished) = task.last_finished_at %}<span class="task-time nowrap" title="Finished {{ finished }} UTC">{{ crate::services::relative_time::humanize_sqlite_short_now(finished) }}</span>{% else if let Some(started) = task.last_started_at %}<span class="task-time nowrap" title="Started {{ started }} UTC">running since {{ crate::services::relative_time::humanize_sqlite_short_now(started) }}</span>{% else %}<span class="task-time">never</span>{% endif %}</td>
+                        <td class="task-detail-cell" title="{{ task.last_detail }}"><div class="task-detail-text">{{ task.last_detail }}</div></td>
                         <td><button type="button" class="btn btn-secondary btn-sm task-run-btn" onclick="forceRunTask(this, '{{ task.task_key }}')">Run now</button></td>
                     </tr>
                     {% endfor %}
@@ -294,7 +307,7 @@
            the source of truth for the copy. #}
         <div class="logs-empty" id="review-empty-state" {% if !review_entries.is_empty() %}hidden{% endif %}>
             <p>No episodes currently flagged for review.</p>
-            <p class="form-hint">This view fills up when the classifier lands on a low-confidence verdict: either no single layer was strong enough, or two strong layers disagreed. Manual overrides and post-download ffprobe checks usually keep it empty.</p>
+            <p class="form-hint">Episodes land here when Ryokan is unsure of a file's source or resolution. Pick the right tag and apply it.</p>
         </div>
         {% if !review_entries.is_empty() %}
         {# Bulk bar always visible — rows are pre-selected by default,
@@ -387,57 +400,41 @@
         {% endif %}
     </div>
 </div>
+{% else if tab == "misgrabs" %}
+{%~ include "partials/system/misgrabs.html" ~%}
 {% else if tab == "notifications" %}
 {%~ include "partials/system/notifications.html" ~%}
 {% else if tab == "backup" %}
 {%~ include "partials/system/backup.html" ~%}
 {% else if tab == "debug" %}
 <div class="debug-panel">
-    {# The form wraps just the two checkbox cards. Maintenance and RSS
+    {# The form wraps just the provider-fallback card. Maintenance and RSS
        cards live outside the form since each of their buttons posts to
-       its own endpoint. The Save button at the bottom uses the HTML5
-       `form="debug-settings-form"` attribute to submit the form from
-       outside, so visually it sits at the end of the debug tab. #}
+       its own endpoint, and Save sits inside the one card it saves. #}
     <form id="debug-settings-form" method="post" action="/system" class="settings-form">
         <div class="cf-section">
             <div class="cf-section-header">
                 <h3>Provider fallback</h3>
             </div>
-            <p class="cf-section-desc">Force specific metadata providers for testing the fallback chain.</p>
-            <div class="form-check">
-                <label class="checkbox-row">
+            <p class="cf-section-desc">Skip AniList and use a fallback provider. For testing only.</p>
+            <div class="setting-rows">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Force MAL/Tenrai fallback for search and tracked fallback entries</span>
+                        <span class="setting-row-desc">Entries without a MAL id stay on AniList.</span>
+                    </span>
                     <input type="checkbox" name="force_mal_fallback" id="force_mal_fallback" {% if force_mal_fallback %}checked{% endif %}>
-                    <span>Force MAL/Tenrai fallback for search and tracked fallback entries</span>
                 </label>
-                <span class="form-hint">Debug option for testing the fallback path after AniList comes back. AniList-only entries without a MAL ID cannot be forced into fallback mode.</span>
-            </div>
-            <div class="form-check">
-                <label class="checkbox-row">
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Force Kitsu fallback for episode titles and air dates</span>
+                        <span class="setting-row-desc">Only affects episode titles and air dates on series pages.</span>
+                    </span>
                     <input type="checkbox" name="force_kitsu_fallback" id="force_kitsu_fallback" {% if force_kitsu_fallback %}checked{% endif %}>
-                    <span>Force Kitsu fallback for episode titles and air dates</span>
                 </label>
-                <span class="form-hint">Debug option for testing Kitsu episode metadata even when Tenrai (MAL) returns titles. This only affects series episode metadata on the detail page.</span>
             </div>
-        </div>
-
-        <div class="cf-section">
-            <div class="cf-section-header">
-                <h3>Grab behavior</h3>
-            </div>
-            <p class="cf-section-desc">Control when and how Ryokan auto-grabs releases.</p>
-            <div class="form-check">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="auto_grab_on_add" id="auto_grab_on_add" {% if auto_grab_on_add %}checked{% endif %}>
-                    <span>Auto-grab monitored episodes when adding a new series</span>
-                </label>
-                <span class="form-hint">When enabled (default), Ryokan automatically searches for and grabs all monitored episodes after you add a series to the library. Disable to add series without triggering an immediate download.</span>
-            </div>
-            <div class="form-check">
-                <label class="checkbox-row">
-                    <input type="checkbox" name="allow_non_english" id="allow_non_english" {% if allow_non_english %}checked{% endif %}>
-                    <span>Allow non-English releases in auto grabs</span>
-                </label>
-                <span class="form-hint">When disabled (default), auto-search and RSS use Nyaa's English-translated category. Enable to search all anime categories instead. Interactive search always searches all categories.</span>
+            <div class="settings-inline-actions" style="margin-top: 16px">
+                <button type="submit" class="btn btn-primary">Save</button>
             </div>
         </div>
     </form>
@@ -446,19 +443,19 @@
         <div class="cf-section-header">
             <h3>Maintenance actions</h3>
         </div>
-        <p class="cf-section-desc">One-shot operations against the library and metadata cache. Each runs immediately, independent of the Save button below.</p>
+        <p class="cf-section-desc">Each action runs right away.</p>
         <div class="debug-actions-group">
             <div class="debug-action-row">
                 <button type="button" class="btn btn-secondary" onclick="rebuildAniListCache(this)">Rebuild metadata cache</button>
-                <span class="form-hint">Re-fetch AniList (and MAL/Kitsu fallback) metadata for every tracked series. Use when you've noticed stale titles, wrong episode counts, or missing relations after a provider outage or schema change.</span>
+                <span class="form-hint">Fetch fresh metadata for every series.</span>
             </div>
             <div class="debug-action-row">
                 <button type="button" class="btn btn-secondary" onclick="reconcileFallbacks(this)">Reconcile fallback entries</button>
-                <span class="form-hint">Look at every series that was added under a MAL or Kitsu fallback ID and try to upgrade it to its AniList entry. Safe to click repeatedly; only upgrades entries that now resolve on AniList.</span>
+                <span class="form-hint">Move series added under a MAL or Kitsu id to their AniList entry when one exists.</span>
             </div>
             <div class="debug-action-row">
                 <button type="button" class="btn btn-secondary" onclick="classifyLibrary(this)">Classify imported files</button>
-                <span class="form-hint">Walk every tracked series folder and run the source/resolution classifier on files that don't yet have a structured tag. Useful after migrating from another PVR or dropping files in manually.</span>
+                <span class="form-hint">Tag files that have no source and resolution tag yet. Useful after copying a library in by hand.</span>
             </div>
         </div>
     </div>
@@ -467,57 +464,12 @@
         <div class="cf-section-header">
             <h3>RSS grab history</h3>
         </div>
-        <p class="cf-section-desc">Clear the RSS grab history so previously grabbed episodes can be re-evaluated on the next sync. Use this if you deleted a file from disk and want Ryokan to re-grab it.</p>
+        <p class="cf-section-desc">Forget which episodes the RSS poller already grabbed so it can grab them again.</p>
         <div class="debug-action-row">
             <button type="button" class="btn btn-secondary" onclick="clearRssHistory(this)">Clear grab history</button>
         </div>
     </div>
 
-    <div class="settings-inline-actions" style="margin-top:16px">
-        <button type="submit" form="debug-settings-form" class="btn btn-primary">Save Debug Settings</button>
-    </div>
-</div>
-
-{% else if tab == "scoring" %}
-<!-- Scoring Tab -->
-<div class="help-content">
-    <section class="help-section">
-        <h3>How Scoring Works</h3>
-        <p>Each result receives a composite score based on multiple factors. Higher scores are preferred when Ryokan automatically picks a release.</p>
-        <table class="help-table">
-            <thead><tr><th>Factor</th><th>Points</th></tr></thead>
-            <tbody>
-                <tr><td>Seeders &gt; 100</td><td>+30</td></tr>
-                <tr><td>Seeders &gt; 50</td><td>+25</td></tr>
-                <tr><td>Seeders &gt; 10</td><td>+20</td></tr>
-                <tr><td>Seeders &gt; 0</td><td>+10</td></tr>
-                <tr><td>Zero seeders</td><td>-10</td></tr>
-                <tr><td>Preferred release group (ordered)</td><td>+140 / +120 / +100 / ...</td></tr>
-                <tr><td>Non-preferred group</td><td>-15</td></tr>
-                <tr><td>Preferred resolution</td><td>+20</td></tr>
-                <tr><td>Batch release</td><td>+15</td></tr>
-                <tr><td>Trusted uploader</td><td>+10</td></tr>
-                <tr><td>10bit / x265 / BD source</td><td>+5</td></tr>
-                <tr><td>Dual audio / dub (prefer subs)</td><td>-15</td></tr>
-                <tr><td>Dual audio / dub (prefer dubs)</td><td>+15</td></tr>
-                <tr><td>Downloads &gt; 10,000</td><td>+15</td></tr>
-                <tr><td>Downloads &gt; 5,000</td><td>+10</td></tr>
-                <tr><td>Downloads &gt; 1,000</td><td>+5</td></tr>
-                <tr><td>Batch under 25 GB</td><td>+10</td></tr>
-            </tbody>
-        </table>
-    </section>
-
-    <section class="help-section">
-        <h3>Search Tips</h3>
-        <p>Use the uploader field to filter by a specific release group's Nyaa account. The category filter lets you narrow to English-translated or raw releases. "Trusted only" shows releases from verified Nyaa uploaders.</p>
-        <p>Try searching for batch releases by including "batch" in your query, e.g. "Jujutsu Kaisen batch 1080p".</p>
-    </section>
-
-    <section class="help-section">
-        <h3>Grabbing Releases</h3>
-        <p>Click the <strong>Grab</strong> button next to any result to send it to your download client. The torrent will be added with your configured scoping label (or category on qBittorrent). Make sure the client is running and the connection is configured in Settings.</p>
-    </section>
 </div>
 
 {% else if tab == "credits" %}
@@ -539,7 +491,7 @@
     <section class="credits-section">
         <h3>Where the releases come from</h3>
         <p>
-            Every search result comes from <a href="https://nyaa.si" target="_blank" rel="noopener noreferrer">Nyaa</a>, at least until torznab support ships. Public indexer, no gatekeeping, curated by community tags and the honor system.
+            Ryokan's built-in search reads <a href="https://nyaa.si" target="_blank" rel="noopener noreferrer">Nyaa</a> directly: a public indexer, no gatekeeping, curated by community tags and the honor system. Private trackers and Usenet arrive through the torznab and newznab indexers you add from <a href="https://prowlarr.com" target="_blank" rel="noopener noreferrer">Prowlarr</a> or <a href="https://github.com/Jackett/Jackett" target="_blank" rel="noopener noreferrer">Jackett</a>, direct RSS feeds such as <a href="https://subsplease.org" target="_blank" rel="noopener noreferrer">SubsPlease</a>'s, and announces pushed by <a href="https://autobrr.com" target="_blank" rel="noopener noreferrer">autobrr</a>. Every source merges into one ranked list.
         </p>
     </section>
 
@@ -558,9 +510,23 @@
     </section>
 
     <section class="credits-section">
+        <h3>Continuous numbering</h3>
+        <p>
+            Fansub groups often number a sequel as if the show never ended, so episode 105 of "Dragon Ball Kai" is really episode 7 of the 2014 series. Ryokan works that offset out from AniList's sequel chain, and where that chain is missing a link it defers to <a href="https://github.com/erengy/anime-relations" target="_blank" rel="noopener noreferrer">anime-relations</a>, the community-maintained redirect table behind Taiga. A snapshot ships inside Ryokan and is refreshed with each release. Public domain (<a href="/static/licenses/anime-relations-LICENSE.txt" target="_blank" rel="noopener noreferrer">CC0</a>).
+        </p>
+    </section>
+
+    <section class="credits-section">
         <h3>Custom formats</h3>
         <p>
-            On a fresh install, Ryokan ships 28 Custom Formats already baked in. They come from <a href="https://trash-guides.info" target="_blank" rel="noopener noreferrer">TRaSH Guides</a>, the de-facto quality-profile reference for the whole *arr ecosystem. You can edit them, delete them, or reset to defaults from Settings → Custom Formats. MIT-licensed (<a href="/static/licenses/trash-guides-LICENSE.txt" target="_blank" rel="noopener noreferrer">license text</a>).
+            On a fresh install, Ryokan ships eight Custom Formats already baked in. Their shape and their release-group tiers follow <a href="https://trash-guides.info" target="_blank" rel="noopener noreferrer">TRaSH Guides</a>, the de-facto quality reference for the whole *arr ecosystem, and any TRaSH Custom Format pastes straight in. You can edit them, delete them, or reset to defaults from Settings → Custom Formats. MIT-licensed (<a href="/static/licenses/trash-guides-LICENSE.txt" target="_blank" rel="noopener noreferrer">license text</a>).
+        </p>
+    </section>
+
+    <section class="credits-section">
+        <h3>Under the hood</h3>
+        <p>
+            Every page is driven by <a href="https://htmx.org" target="_blank" rel="noopener noreferrer">htmx</a>, vendored so Ryokan never loads a script from a CDN. Release names are tokenized by <a href="https://github.com/erengy/anitomy" target="_blank" rel="noopener noreferrer">anitomy</a>, compiled in through its Rust bindings under the Mozilla Public License 2.0. Every Rust crate Ryokan ships with is listed, with its license text, in the <a href="https://github.com/johnthreekay/Ryokan/blob/main/licenses/THIRD_PARTY_LICENSES.html" target="_blank" rel="noopener noreferrer">third-party notices</a> in the repository.
         </p>
     </section>
 
@@ -568,6 +534,9 @@
         <h3>Fonts used</h3>
         <p>
             The brand mark, page headers, and series titles are set in <a href="https://fonts.google.com/specimen/Murecho" target="_blank" rel="noopener noreferrer">Murecho</a>, a variable mincho-adjacent typeface by Positype. Self-hosted under <code>static/fonts/</code>, licensed <a href="/static/fonts/Murecho-OFL.txt" target="_blank" rel="noopener noreferrer">SIL Open Font License 1.1</a>.
+        </p>
+        <p>
+            Everything else is set in <a href="https://fonts.google.com/specimen/Noto+Sans" target="_blank" rel="noopener noreferrer">Noto Sans</a>, with Japanese text from <a href="https://fonts.google.com/specimen/Noto+Sans+JP" target="_blank" rel="noopener noreferrer">Noto Sans JP</a> and tags, numbers, and paths in <a href="https://fonts.google.com/specimen/Noto+Sans+Mono" target="_blank" rel="noopener noreferrer">Noto Sans Mono</a>, all from the Noto project by Google and Adobe. Self-hosted under <code>static/fonts/</code>, licensed under the SIL Open Font License 1.1 (<a href="/static/fonts/NotoSans-OFL.txt" target="_blank" rel="noopener noreferrer">Noto Sans</a>, <a href="/static/fonts/NotoSansJP-OFL.txt" target="_blank" rel="noopener noreferrer">Noto Sans JP</a>, <a href="/static/fonts/NotoSansMono-OFL.txt" target="_blank" rel="noopener noreferrer">Noto Sans Mono</a>).
         </p>
     </section>
 </div>
@@ -579,6 +548,7 @@
 {% endblock %}
 
 {% block page_js %}
-{% if tab == "review" %}<script src="/static/js/needs_review.js" defer></script>{% endif %}
-<script src="/static/js/system.js" defer></script>
+{% if tab == "review" %}<script src="/static/js/needs_review.js?v={{ crate::asset_version() }}" defer></script>{% endif %}
+{% if tab == "misgrabs" %}<script src="/static/js/misgrabs.js?v={{ crate::asset_version() }}" defer></script>{% endif %}
+<script src="/static/js/system.js?v={{ crate::asset_version() }}" defer></script>
 {% endblock %}

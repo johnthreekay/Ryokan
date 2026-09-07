@@ -1,10 +1,19 @@
 name: Rust
 
+# Every branch push runs the verify pass, so a feature branch has
+# checks before its PR is opened and a PR into `dev` (which used to
+# get nothing) shows them on its head commit. `gh-pages` is the docs
+# deploy target and has no Cargo project; pushes there come from the
+# docs workflow's GITHUB_TOKEN, which never triggers other workflows,
+# so the exclusion is belt and braces. The `pull_request` trigger is
+# kept for fork PRs, whose branches live outside this repo and never
+# fire the push event; the job-level `if` below skips it for same-repo
+# PRs so those don't run twice.
 on:
   push:
-    branches: [ "main", "dev" ]
+    branches: [ "**", "!gh-pages" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "dev" ]
 
 concurrency:
   group: rust-${{ github.ref }}
@@ -22,6 +31,7 @@ env:
 
 jobs:
   build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     # GitHub's per-job default is 6h; the verify pass should never
     # exceed ~10 min on ubuntu-latest, so 30 min is a generous ceiling
@@ -88,6 +98,7 @@ jobs:
     # noisy MSRV-unrelated churn on older toolchains and the signal we
     # care about here is strictly "does the code compile on 1.95?"
     name: MSRV (1.95)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     # MSRV build is just `cargo build --workspace --locked` — even on a
     # cold cache it runs in ~5 min. 20 min ceiling guards against a

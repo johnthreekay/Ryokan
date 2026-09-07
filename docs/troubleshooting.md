@@ -8,7 +8,7 @@ Before drilling into a specific symptom below, three quick checks resolve most i
 
 - **System → Logs**, filtered by category to whatever subsystem you suspect (AniList, Jikan, Kitsu, Grab, AutoSearch, Nyaa, DownloadClient, Jellyfin, PostProcess, etc.). Pick the one matching what you were doing when the issue appeared.
 - **Test connection** on each download-client row (Settings → Download Clients) and each indexer row (Settings → Indexers). Connection tests catch most config issues at config time rather than at grab time. The [Download clients](download-clients.md) page lists per-client gotchas.
-- **The grab-history modal** on each episode (click the episode in the library page, then the History button) shows every release ever grabbed for that episode, with state (`grabbed` / `completed` / `failed` / `removed` / `replaced`) and timestamp. Useful for "why is this episode in this state?" questions.
+- **The grab-history modal** on each episode (click the episode on its series page, then the **Grab History** section of the episode modal) shows every release ever grabbed for that episode, with state (`grabbed` / `completed` / `failed` / `removed` / `replaced`) and timestamp. Useful for "why is this episode in this state?" questions.
 
 ## SAB downloads disappear from Ryokan but still download in SAB
 
@@ -62,6 +62,12 @@ The poller saw the torrent reach 100% but the post-processing tick hasn't moved 
 - **Post-processing is disabled** in Settings → General. Ryokan correctly leaves the file at the download client's path; the row shouldn't be showing "Importing…" in this state. If it is, force-refresh the page (Ctrl+Shift+R); there's a known race where the per-row state can lag the global toggle.
 - **Post-processing is on but the import is failing.** Check System → Logs filtered to `PostProcess`. Common causes: `media_root` isn't writable by the runtime user, the media filesystem is full, or Ryokan can't see the download client's complete path (per-client `download_path` mismatch; see [Download clients → Per-client download paths](download-clients.md#per-client-download-paths)).
 
+Ryokan does not wait forever. Once a finished download has gone 24 hours (Settings → General → Give up on stuck imports) with nothing to import, it is marked failed with a `PostProcess` log line saying how long it sat, the episode shows as failed, and the release appears under Downloads → Blocklist. Fix the path problem, remove the entry from the blocklist, and search again. The download itself stays in the client and Ryokan does not look at it again, so delete it there too if you no longer want it. After a restart Ryokan waits 15 minutes before giving up on anything, so a download folder that mounts after Ryokan starts gets its retries first.
+
+## Files ending in `.ryokan-tmp` or `.ryokan-new` in the library
+
+These are partial copies from an import that stopped mid-copy (a restart or crash while moving a large file across filesystems, or while replacing a file during an upgrade). Media servers may index them as broken episodes. The hourly cleanup removes any that are older than two hours, waiting for a running import to finish first; a fresh one is a copy in progress, so leave it alone. A `.ryokan-tmp` is deleted outright because it is never the only copy. A `.ryokan-new` is a complete file that an upgrade was about to swap in, so it goes to the recycle bin when one is configured, listed under the name of its series folder. Restore puts the hidden temporary file back exactly as it was, and the next cleanup sweeps it again. To keep the file, rename it in the season folder instead: drop the leading dot and the `.ryokan-new` ending.
+
 ## Finished downloads stay in the client
 
 Since 1.9.3 Ryokan removes a download from its client once the download is imported and nothing is left to seed. If one is still there:
@@ -73,7 +79,7 @@ Since 1.9.3 Ryokan removes a download from its client once the download is impor
 
 ## Series-page state is stale
 
-Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. If something looks wrong:
+Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. A download the client has paused says **Paused** on its progress bar, and the episode's grab history (click the episode) shows what the client is doing with a torrent it still holds in the **State** column: `seeding` or `paused` in place of `grabbed` or `completed`, with the progress, speed, or the reason underneath. If something looks wrong:
 
 1. **Refresh the page** (F5). The server-rendered page is the ground truth; if refresh fixes it, it's a JS-side staleness bug worth filing.
 2. If refresh *doesn't* fix it, the underlying DB state is what you're seeing. Check the grab-history modal for an authoritative view of that episode's grab state.
@@ -98,10 +104,24 @@ Ryokan's migrations are idempotent by design (each `ALTER TABLE … ADD COLUMN` 
 2. Back up the DB: `cp /srv/docker/ryokan/ryokan.db /srv/docker/ryokan/ryokan.db.backup` (path is wherever you put `/data` in your compose).
 3. Check integrity: `sqlite3 /srv/docker/ryokan/ryokan.db "PRAGMA integrity_check;"`. If it returns `ok`, the DB itself is fine and the migration error is something else (network during migration? unusual). If it returns anything other than `ok`, the DB is corrupt; restore from your backup or accept losing the DB and starting fresh (delete the file, restart Ryokan, the first-run setup runs again).
 
----
+## Auto search saw releases but grabbed none
 
-*Last updated: 2026-05-07.*
+Automatic search only takes a release whose name contains one of the series' titles as written, or an alternate title you added, and names nothing beyond it, so a sequel titled by subtitle ("Dr. Stone New World") is not mistaken for the first season. When the only releases on offer name the show some other way, the search toast reads "looked close but none named the series exactly" and lists examples, and System → Logs has the full list. If one of those is the right show, add that name on the series page under **Advanced search overrides**, **Alternate titles**, and search again. See [How releases are scored](scoring.md#what-automatic-search-will-and-will-not-grab).
+
+## Ryokan removed a download it decided was the wrong series
+
+Ryokan compares the files inside every download with the series it was grabbed for. When the file names clearly belong to a different show, it removes the download, blocklists the release, and searches again. Open System, Misgrabs to see what was caught and why: the row shows the file names Ryokan looked at.
+
+If the release was actually correct, click **Restore**. Ryokan adds it back to the download client and never flags that release again. If a series keeps producing misgrabs, its AniList titles probably do not match how groups name it; check the series page's title and any synonyms, and check which indexers you have configured, since any-word search on some indexers returns unrelated releases.
+
+Ryokan stops searching again automatically after three misgrabs for the same series in a day. Fix the cause, then search from the series page.
+
+If you would rather decide yourself, turn off "Remove and blocklist detected misgrabs" under Settings, General. Downloads are then held in the client and listed on the Misgrabs tab until you restore or dismiss them.
 
 ## I deleted an episode or series by accident
 
-If a recycle bin path is configured under Settings > General, nothing is gone yet: open the Library page and click **Recycle Bin**. Each deleted episode (with its NFO, subtitles, and thumbnail) or series folder is listed by the day it was deleted with a **Restore** button that puts it back exactly where it came from. Restoring a series folder brings the files back but not the library entry. Re-add the series from Search afterwards and Ryokan will pick the files up on disk. Entries purge automatically after the configured number of days (14 by default), so restore before then. If the path was empty at the time of the delete, the files were removed permanently. If the path was set but not writable, the delete was refused and the file is still where it was.
+If a recycle bin path is configured under Settings → General, nothing is gone yet: open the Library page and click the recycle-bin icon in the toolbar (it appears once the bin has items), or go to `/library/recycle`. Each deleted episode (with its NFO, subtitles, and thumbnail) or series folder is listed by the day it was deleted with a **Restore** button that puts it back exactly where it came from. Restoring a series folder brings the files back but not the library entry. Re-add the series from Search afterwards and Ryokan will pick the files up on disk. Entries purge automatically after the configured number of days (14 by default), so restore before then. If the path was empty at the time of the delete, the files were removed permanently. If the path was set but not writable, the delete was refused and the file is still where it was.
+
+---
+
+*Last updated: 2026-08-29.*

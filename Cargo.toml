@@ -1,6 +1,6 @@
 [package]
 name = "ryokan"
-version = "1.9.3"
+version = "2.0.0"
 edition = "2024"
 authors = ["John K"]
 license = "GPL-3.0-or-later"
@@ -86,8 +86,18 @@ path = "tests/jikan_e2e.rs"
 required-features = ["test-support"]
 
 [[test]]
+name = "kitsu_e2e"
+path = "tests/kitsu_e2e.rs"
+required-features = ["test-support"]
+
+[[test]]
 name = "rss_user_feed_e2e"
 path = "tests/rss_user_feed_e2e.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "rss_sync_blocklist_e2e"
+path = "tests/rss_sync_blocklist_e2e.rs"
 required-features = ["test-support"]
 
 [[test]]
@@ -301,7 +311,7 @@ walkdir = "2"
 # `statvfs` for the free-disk-space precheck before a backup runs.
 tar = "0.4"
 flate2 = "1"
-nix = { version = "0.30", features = ["fs"] }
+nix = { version = "0.31", features = ["fs"] }
 
 # fantoccini: WebDriver client for browser-driven e2e tests of HTMX
 # UI flows. `optional = true` + the `browser-e2e` feature gate means

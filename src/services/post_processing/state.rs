@@ -17,16 +17,16 @@ use crate::services::{logger, media};
 
 use super::POST_PROC_LOCK;
 
-pub fn grab_is_stale(grabbed_at: &str, max_age_secs: i64) -> bool {
-    // grabbed_at is SQLite CURRENT_TIMESTAMP format: "YYYY-MM-DD HH:MM:SS"
-    let Some(grab_time) =
-        chrono::NaiveDateTime::parse_from_str(grabbed_at, "%Y-%m-%d %H:%M:%S").ok()
-    else {
-        return false;
-    };
+/// Seconds elapsed since a SQLite `CURRENT_TIMESTAMP` value
+/// (`"YYYY-MM-DD HH:MM:SS"`, UTC). `None` when the text does not parse.
+pub fn sqlite_age_secs(timestamp: &str) -> Option<i64> {
+    let then = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").ok()?;
     let now = chrono::Utc::now().naive_utc();
-    let elapsed = now.signed_duration_since(grab_time).num_seconds();
-    elapsed > max_age_secs
+    Some(now.signed_duration_since(then).num_seconds())
+}
+
+pub fn grab_is_stale(grabbed_at: &str, max_age_secs: i64) -> bool {
+    sqlite_age_secs(grabbed_at).is_some_and(|elapsed| elapsed > max_age_secs)
 }
 
 pub(super) fn fallback_ep_offset(raw_ep_num: i32, cumulative_prior_episodes: i32) -> i32 {

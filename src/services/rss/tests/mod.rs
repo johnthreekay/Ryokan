@@ -3,5 +3,6 @@
 //! module exceeds ~1500 LoC).
 
 mod evaluate_candidate;
+mod exact_title;
 mod parse_release;
 mod source;

@@ -215,6 +215,7 @@ fn event_label(kind: &str) -> &'static str {
         "Grabbed" => "Grabbed",
         "Imported" => "Imported",
         "ImportFailed" => "Import failed",
+        "Misgrabbed" => "Misgrab detected",
         "ClassifierNeedsReview" => "Classifier needs review",
         "IndexerDown" => "Indexer down",
         "DownloadClientUnreachable" => "Download client unreachable",
@@ -232,6 +233,9 @@ fn event_description(kind: &str) -> &'static str {
         "Grabbed" => "A release was sent to the download client.",
         "Imported" => "A file was hardlinked / copied / moved into the library.",
         "ImportFailed" => "Post-processing couldn't import a file.",
+        "Misgrabbed" => {
+            "The files inside a grab named a different series. Ryokan removed and blocklisted it, or flagged it when auto-remove is off."
+        }
         "ClassifierNeedsReview" => {
             "Quality classifier flagged a low-confidence verdict. Can be noisy during reclassify sweeps."
         }

@@ -184,7 +184,8 @@ async fn resolve_cover_url(event: &NotificationEvent, db: &SqlitePool) -> Option
         NotificationEvent::Grabbed { series_id, .. }
         | NotificationEvent::Imported { series_id, .. }
         | NotificationEvent::ClassifierNeedsReview { series_id, .. } => Some(*series_id),
-        NotificationEvent::ImportFailed { series_id, .. } => Some(*series_id),
+        NotificationEvent::ImportFailed { series_id, .. }
+        | NotificationEvent::Misgrabbed { series_id, .. } => Some(*series_id),
         _ => None,
     };
     let id = series_id?;
@@ -319,6 +320,17 @@ fn title_for(event: &NotificationEvent) -> String {
             Some(n) => format!("Import failed: {series_title} E{:02}", n),
             None => format!("Import failed: {series_title}"),
         },
+        NotificationEvent::Misgrabbed {
+            series_title,
+            action,
+            ..
+        } => {
+            if action == "flagged" {
+                format!("Misgrab flagged: {series_title}")
+            } else {
+                format!("Misgrab removed: {series_title}")
+            }
+        }
         NotificationEvent::ClassifierNeedsReview {
             series_title,
             episode_number,
@@ -344,6 +356,7 @@ fn color_for(event: &NotificationEvent) -> u32 {
         }
         NotificationEvent::ClassifierNeedsReview { .. } => COLOR_NEEDS_REVIEW,
         NotificationEvent::ImportFailed { .. }
+        | NotificationEvent::Misgrabbed { .. }
         | NotificationEvent::IndexerDown { .. }
         | NotificationEvent::DownloadClientUnreachable { .. }
         | NotificationEvent::ExternalSyncReLinkRequired { .. } => COLOR_FAILURE,
@@ -389,6 +402,24 @@ fn fields_for(event: &NotificationEvent) -> Vec<Value> {
         } => vec![
             field("Reason", reason, false),
             field("Source", &code_wrap(source_path), false),
+        ],
+        NotificationEvent::Misgrabbed {
+            release_title,
+            files,
+            action,
+            ..
+        } => vec![
+            field("Release", &code_wrap(release_title), false),
+            field(
+                "Files",
+                &code_wrap(&if files.is_empty() {
+                    "(none listed)".to_string()
+                } else {
+                    files.join("\n")
+                }),
+                false,
+            ),
+            field("Action", action, true),
         ],
         NotificationEvent::ClassifierNeedsReview {
             confidence,

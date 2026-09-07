@@ -99,16 +99,9 @@ fn admit_log_event_zero_max_rejects_everything() {
 
 #[test]
 fn normalize_system_tab_recognized_values_pass_through() {
-    for tab in ["scoring", "debug", "rss", "tasks", "review", "credits"] {
+    for tab in ["debug", "rss", "tasks", "review", "credits"] {
         assert_eq!(normalize_system_tab(Some(tab.to_string())), tab);
     }
-}
-
-#[test]
-fn normalize_system_tab_legacy_help_alias_maps_to_scoring() {
-    // The "scoring" tab used to be called "help" — the alias
-    // covers stale bookmarks from before the rename.
-    assert_eq!(normalize_system_tab(Some("help".to_string())), "scoring");
 }
 
 #[test]

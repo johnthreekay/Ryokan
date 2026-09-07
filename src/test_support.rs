@@ -159,6 +159,11 @@ pub async fn seed_grabbed_torrent(
         episode_numbers
     };
     let eps_json = serde_json::to_string(eps).expect("serialize episode_numbers");
+    // The id comes off the insert's own connection: a separate
+    // `SELECT last_insert_rowid()` can land on another pool connection
+    // and answer 0, which silently turns every follow-up UPDATE by id
+    // into a no-op (a flaky test that passes when the pool happens to
+    // reuse the connection).
     sqlx::query(
         "INSERT INTO grabbed_torrents (series_id, hash, torrent_name, episode_numbers, state) \
          VALUES (?, ?, ?, ?, 'pending')",
@@ -169,11 +174,8 @@ pub async fn seed_grabbed_torrent(
     .bind(eps_json)
     .execute(db)
     .await
-    .expect("seed grabbed_torrent");
-    sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
-        .fetch_one(db)
-        .await
-        .expect("fetch grab id")
+    .expect("seed grabbed_torrent")
+    .last_insert_rowid()
 }
 
 /// Count `grabbed_torrents` rows for a given series — quick helper
@@ -303,7 +305,8 @@ mod e2e {
 <head>
 <meta charset="utf-8">
 <title>Browser-e2e fixture</title>
-<script src="/static/vendor/htmx-2.0.9.min.js"></script>
+<script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
+<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
 </head>
 <body>
 <button class="ep-mon-btn {% if monitored %}ep-mon-yes{% else %}ep-mon-no{% endif %}"
@@ -339,7 +342,8 @@ mod e2e {
 <head>
 <meta charset="utf-8">
 <title>Connection-test fixture</title>
-<script src="/static/vendor/htmx-2.0.9.min.js"></script>
+<script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
+<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
 </head>
 <body>
 <form id="jellyfin-form">
@@ -350,12 +354,12 @@ mod e2e {
             hx-include="closest form"
             hx-target="#jellyfin-test-result"
             hx-swap="innerHTML"
-            hx-disabled-elt="this">Test</button>
+            hx-disable="this">Test</button>
     <button type="button" id="btn-jellyfin-refresh"
             hx-post="/api/jellyfin/refresh"
             hx-target="#jellyfin-test-result"
             hx-swap="innerHTML"
-            hx-disabled-elt="this">Refresh Library</button>
+            hx-disable="this">Refresh Library</button>
     <span id="jellyfin-test-result"></span>
 </form>
 <form id="dc-form">
@@ -369,9 +373,20 @@ mod e2e {
             hx-include="closest form"
             hx-target="next .dc-test-result"
             hx-swap="innerHTML"
-            hx-disabled-elt="this">Test connection</button>
+            hx-disable="this">Test connection</button>
     <span class="dc-test-result"></span>
 </form>
+<!-- The handler answers with an empty body and an `HX-Trigger:
+     {"ryokan-dc-test-result": {ok, message}}` header; settings.js turns
+     that into a toast. The fixture writes the message into the slot
+     instead so the test can assert on the event having been dispatched
+     through htmx. -->
+<script>
+document.body.addEventListener('ryokan-dc-test-result', function (ev) {
+    document.querySelector('.dc-test-result').textContent =
+        (ev.detail && ev.detail.message) || '';
+});
+</script>
 </body>
 </html>
 "##,
@@ -404,13 +419,21 @@ mod e2e {
 <head>
 <meta charset="utf-8">
 <title>Progress-toast fixture</title>
-<script src="/static/vendor/htmx-2.0.9.min.js"></script>
-<script src="/static/js/page_lifecycle.js"></script>
-<script src="/static/js/base.js"></script>
+<script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
 </head>
-<body>
+<body hx-boost:inherited="true">
+<div id="fixture-page" data-fixture-progress="{{ progress_id }}"></div>
+<a id="fixture-nav" href="/__test/progress-toast-fixture?progress_id={{ progress_id }}-hop">Boosted hop</a>
 <div id="ryokan-toast-stack"></div>
+{# Same shape as base.html: the scripts sit at the end of the body,
+   so a boosted swap re-executes them with the new body. #}
+<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/js/page_lifecycle.js" defer></script>
+<script src="/static/js/base.js" defer></script>
 <script>
+// DOMContentLoaded fires once per document, so a boosted swap that
+// lands this body again does not open a second toast: the toast the
+// first visit opened is what the swap must carry over.
 window.addEventListener('DOMContentLoaded', function () {
     window.__ryokanTestToast = window.ryokanProgressToast({
         progressId: "{{ progress_id }}",
@@ -470,6 +493,55 @@ window.addEventListener('DOMContentLoaded', function () {
         axum::http::StatusCode::OK
     }
 
+    /// Fixture for the `hx-on::` attributes (htmx 4 event names). One
+    /// checkbox whose POST is always rejected, so the
+    /// `hx-on::response:error` handler must revert it, and one button
+    /// whose POST succeeds, so the `hx-on::after:request` handler
+    /// must read the status off `event.detail.ctx.response`. Mirrors
+    /// the series-page toggles in `templates/series.html`.
+    #[derive(Template)]
+    #[template(
+        source = r##"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>hx-on fixture</title>
+<script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
+<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+</head>
+<body>
+<label>
+    <input type="checkbox" id="hx-on-toggle" checked
+           hx-post="/__test/hx-on-reject"
+           hx-trigger="change"
+           hx-vals='js:{allow: this.checked}'
+           hx-swap="none"
+           hx-on::response:error="this.checked = !this.checked; window.__hxOnErrorStatus = event.detail.ctx.response.status">
+    Toggle (server always rejects)
+</label>
+<button type="button" id="hx-on-accept"
+        hx-post="/__test/hx-on-accept"
+        hx-swap="none"
+        hx-on::after:request="window.__hxOnAfterRequestOk = event.detail.ctx.response.status < 400">Accept</button>
+</body>
+</html>
+"##,
+        ext = "html"
+    )]
+    struct HxOnFixturePage;
+
+    pub(crate) async fn hx_on_fixture() -> Html<String> {
+        Html(HxOnFixturePage.render().unwrap_or_default())
+    }
+
+    pub(crate) async fn hx_on_reject() -> (axum::http::StatusCode, &'static str) {
+        (axum::http::StatusCode::BAD_REQUEST, "rejected on purpose")
+    }
+
+    pub(crate) async fn hx_on_accept() -> axum::http::StatusCode {
+        axum::http::StatusCode::OK
+    }
+
     /// Browser-e2e fixture for the per-episode delete HX-Trigger
     /// listener (Phase 2 migration in PR `ac19049`). The fixture
     /// renders a minimal `.episode-table` with a single on-disk row
@@ -494,9 +566,10 @@ window.addEventListener('DOMContentLoaded', function () {
 <head>
 <meta charset="utf-8">
 <title>Episode-delete listener fixture</title>
-<script src="/static/vendor/htmx-2.0.9.min.js"></script>
-<script src="/static/js/page_lifecycle.js"></script>
-<script src="/static/js/base.js"></script>
+<script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
+<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/js/page_lifecycle.js" defer></script>
+<script src="/static/js/base.js" defer></script>
 </head>
 <body>
 <!-- series.js's `SD` Proxy reads `series-data`'s dataset on every
@@ -519,7 +592,16 @@ window.addEventListener('DOMContentLoaded', function () {
     </tbody>
 </table>
 <div id="ryokan-toast-stack"></div>
-<script src="/static/js/series.js"></script>
+<!-- Same module order as templates/series.html: the
+     `ryokan-episode-deleted` listener lives in series_episode_modal.js
+     and `updateEpisodeRow` in series.js. -->
+<script src="/static/js/series_helpers.js" defer></script>
+<script src="/static/js/series_config.js" defer></script>
+<script src="/static/js/series_episode_actions.js" defer></script>
+<script src="/static/js/series_episode_modal.js" defer></script>
+<script src="/static/js/series_interactive_search.js" defer></script>
+<script src="/static/js/series_lifecycle.js" defer></script>
+<script src="/static/js/series.js" defer></script>
 </body>
 </html>
 "##,
@@ -588,6 +670,9 @@ window.addEventListener('DOMContentLoaded', function () {
             // to coordinate timing across the EventSource handshake.
             .route("/__test/progress-toast-fixture", get(progress_toast_fixture))
             .route("/__test/progress-emit", post(progress_seed_events))
+            .route("/__test/hx-on-fixture", get(hx_on_fixture))
+            .route("/__test/hx-on-reject", post(hx_on_reject))
+            .route("/__test/hx-on-accept", post(hx_on_accept))
             // Per-episode delete HX-Trigger listener fixture (Phase 2
             // migration in PR `ac19049`). Minimal episode-table with
             // one row + series.js loaded; the test dispatches a
@@ -620,6 +705,14 @@ window.addEventListener('DOMContentLoaded', function () {
             .route(
                 "/api/downloads/blocklist/remove",
                 post(crate::handlers::downloads::api_blocklist_remove),
+            )
+            .route(
+                "/api/library/misgrabs/{id}/restore",
+                post(crate::handlers::library::misgrabs::restore_misgrab),
+            )
+            .route(
+                "/api/library/misgrabs/{id}/dismiss",
+                post(crate::handlers::library::misgrabs::dismiss_misgrab),
             )
             .route(
                 "/api/jellyfin/test",

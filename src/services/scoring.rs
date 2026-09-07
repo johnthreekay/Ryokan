@@ -314,6 +314,7 @@ mod tests {
 
     fn result(seeders: i32, title: &str) -> SearchResult {
         SearchResult {
+            match_provenance: None,
             title: title.to_string(),
             link: String::new(),
             magnet: String::new(),

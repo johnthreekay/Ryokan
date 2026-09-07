@@ -197,7 +197,8 @@ async fn d2_d3_cancel_pending_deletes_from_client() {
     // handler looks up.
     let anilist_id: i64 = 54321;
     let series_id = test_support::seed_series(&pool, anilist_id, "D2/D3 Test Series").await;
-    test_support::seed_grabbed_torrent(&pool, series_id, &hash, "d2-d3-test.torrent", &[1]).await;
+    crate::test_support::seed_grabbed_torrent(&pool, series_id, &hash, "d2-d3-test.torrent", &[1])
+        .await;
     assert_eq!(
         test_support::count_grabs_for_series(&pool, series_id).await,
         1,
@@ -748,11 +749,161 @@ mod episodes_ci {
             speed: 0,
             state: "stalledUP".to_string(),
             state_kind: crate::services::download_client::DownloadItemState::SeedingStalled,
+            hash: "abc".to_string(),
+            imported: true,
+            seeding_done: false,
         };
         let v = serde_json::to_value(&p).unwrap();
         assert_eq!(v["episode"], 5);
         assert_eq!(v["state"], "stalledUP");
         assert_eq!(v["state_kind"], "seeding-stalled");
+        // The poller keys its seeding / paused labels off these two.
+        assert_eq!(v["imported"], true);
+        assert_eq!(v["seeding_done"], false);
+    }
+
+    // ─── episode_download_progress: imported grab still in the client ─
+
+    /// A client that reports a fixed list of items.
+    struct ListingClient(Vec<crate::services::download_client::DownloadItem>);
+
+    #[async_trait::async_trait]
+    impl crate::services::download_client::DownloadClient for ListingClient {
+        async fn test(&self) -> Result<String, String> {
+            Ok("stub".into())
+        }
+        async fn add_torrent(
+            &self,
+            _u: &str,
+            _h: &str,
+        ) -> Result<crate::services::download_client::AddOutcome, String> {
+            Ok(crate::services::download_client::AddOutcome::Added)
+        }
+        async fn add_torrent_with_file_filter(
+            &self,
+            _u: &str,
+            _h: &str,
+            _p: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
+        ) -> Result<crate::services::download_client::SelectiveOutcome, String> {
+            Ok(crate::services::download_client::SelectiveOutcome::FullDownload)
+        }
+        async fn list_scoped(
+            &self,
+        ) -> Result<Vec<crate::services::download_client::DownloadItem>, String> {
+            Ok(self.0.clone())
+        }
+        async fn get_files(
+            &self,
+            _h: &str,
+        ) -> Result<Vec<crate::services::download_client::DownloadFile>, String> {
+            Ok(vec![])
+        }
+        async fn pause(&self, _h: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn resume(&self, _h: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn delete(&self, _h: &str, _df: bool) -> Result<(), String> {
+            Ok(())
+        }
+        async fn set_file_wanted(&self, _h: &str, _f: &[usize], _w: bool) -> Result<(), String> {
+            Ok(())
+        }
+        fn sonarr_impl_name(&self) -> &'static str {
+            "QBittorrent"
+        }
+    }
+
+    fn client_item(
+        hash: &str,
+        progress: f64,
+        state_kind: crate::services::download_client::DownloadItemState,
+        seeding_done: bool,
+    ) -> crate::services::download_client::DownloadItem {
+        crate::services::download_client::DownloadItem {
+            hash: hash.to_string(),
+            name: "item".to_string(),
+            size: 1_000,
+            progress,
+            dlspeed: 0,
+            state: "native".to_string(),
+            category: "ryokan".to_string(),
+            eta: 0,
+            save_path: String::new(),
+            content_path: String::new(),
+            state_kind,
+            seeding_done,
+        }
+    }
+
+    #[tokio::test]
+    async fn episode_download_progress_reports_imported_grabs_still_in_the_client() {
+        // The series page shows SEEDING / PAUSED after the quality tag
+        // of an imported episode whose torrent is still in the client,
+        // and "Paused · 42%" on a paused download. Both come out of the
+        // same endpoint: imported rows carry `imported: true` and the
+        // client's `seeding_done`, pending rows `imported: false`. An
+        // imported grab whose item is gone from every client is not
+        // reported at all (the finished-seed sweep owns that stamp),
+        // and a pending row for the same episode as an imported one
+        // comes *after* it, so the poller's episode map keeps the
+        // download in flight.
+        use crate::services::download_client::DownloadItemState;
+        let db = in_memory_pool().await;
+        let anilist_id: i64 = 503;
+        let series_id = seed_series(&db, anilist_id, "Seeding After Import").await;
+        let seeding_hash = "1111111111111111111111111111111111111111";
+        let stopped_hash = "2222222222222222222222222222222222222222";
+        let gone_hash = "3333333333333333333333333333333333333333";
+        let paused_hash = "4444444444444444444444444444444444444444";
+        for (hash, eps) in [
+            (seeding_hash, &[1][..]),
+            (stopped_hash, &[2][..]),
+            (gone_hash, &[3][..]),
+        ] {
+            let id =
+                crate::test_support::seed_grabbed_torrent(&db, series_id, hash, "pack", eps).await;
+            crate::models::grabbed_torrents::mark_imported(&db, id)
+                .await
+                .expect("mark imported");
+        }
+        // Episode 1 also has an upgrade in flight, paused in the client.
+        let _ =
+            crate::test_support::seed_grabbed_torrent(&db, series_id, paused_hash, "upgrade", &[1])
+                .await;
+
+        let client: std::sync::Arc<dyn crate::services::download_client::DownloadClient> =
+            std::sync::Arc::new(ListingClient(vec![
+                client_item(seeding_hash, 1.0, DownloadItemState::Seeding, false),
+                client_item(stopped_hash, 1.0, DownloadItemState::PausedComplete, true),
+                client_item(paused_hash, 0.42, DownloadItemState::Paused, false),
+            ]));
+        let state = build_test_app_state(db, Some(client));
+
+        let AxumJson(progress) = episode_download_progress(State(state), Path(anilist_id))
+            .await
+            .expect("progress must succeed");
+
+        let by_ep_and_phase: Vec<(i32, bool, DownloadItemState, bool)> = progress
+            .iter()
+            .map(|p| (p.episode, p.imported, p.state_kind, p.seeding_done))
+            .collect();
+        assert_eq!(
+            by_ep_and_phase,
+            vec![
+                (1, true, DownloadItemState::Seeding, false),
+                (2, true, DownloadItemState::PausedComplete, true),
+                (1, false, DownloadItemState::Paused, false),
+            ],
+            "imported rows first (seeding, then stopped at its limit), the gone item skipped, the in-flight upgrade last"
+        );
+        let paused = progress.iter().find(|p| !p.imported).unwrap();
+        assert!((paused.progress - 0.42).abs() < f64::EPSILON);
+        assert_eq!(
+            paused.hash, paused_hash,
+            "the modal matches history rows by hash"
+        );
     }
 }
 

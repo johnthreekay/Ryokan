@@ -27,10 +27,12 @@
                 </select>
             </div>
         </div>
-        <div class="form-group">
-            <label class="checkbox-label">
+        <div class="setting-rows">
+            <label class="setting-row">
+                <span class="setting-row-text">
+                    <span class="setting-row-title">Enabled</span>
+                </span>
                 <input type="checkbox" name="enabled" checked>
-                Enabled
             </label>
         </div>
 
@@ -41,17 +43,17 @@
             <div class="form-group">
                 <label for="notif-add-webhook-url">URL</label>
                 <input id="notif-add-webhook-url" type="url" name="webhook_url" placeholder="https://example.com/hook">
-                <span class="form-hint">Any HTTPS receiver that accepts POST + JSON. Examples: ntfy, Apprise, n8n, custom scripts.</span>
+                <span class="form-hint">Any receiver that accepts a JSON POST, such as ntfy, Apprise, or n8n.</span>
             </div>
             <div class="form-group">
                 <label for="notif-add-webhook-secret">HMAC secret <span class="form-hint">(optional)</span></label>
                 <input id="notif-add-webhook-secret" type="password" name="webhook_secret" autocomplete="new-password">
-                <span class="form-hint">If set, every send carries an <code>X-Ryokan-Signature: sha256=&lt;hex&gt;</code> header (HMAC over the raw body bytes). Receivers can use off-the-shelf GitHub-style verification code.</span>
+                <span class="form-hint">Adds an <code>X-Ryokan-Signature</code> header the receiver can verify, GitHub style.</span>
             </div>
             <div class="form-group">
                 <label for="notif-add-webhook-headers">Custom headers <span class="form-hint">(optional)</span></label>
                 <textarea id="notif-add-webhook-headers" name="webhook_headers" rows="3" placeholder="X-Title: Ryokan grab&#10;X-Priority: high"></textarea>
-                <span class="form-hint">One per line, <code>Header-Name: value</code>. Blank lines and <code>#</code> comments allowed. Reserved names (<code>Content-Type</code>, <code>X-Ryokan-Signature</code>) are rejected at save.</span>
+                <span class="form-hint">One per line as <code>Header-Name: value</code>.</span>
             </div>
         </div>
 
@@ -61,20 +63,25 @@
             <div class="form-group">
                 <label for="notif-add-discord-webhook-url">Discord webhook URL</label>
                 <input id="notif-add-discord-webhook-url" type="password" name="discord_webhook_url" autocomplete="new-password" placeholder="https://discord.com/api/webhooks/...">
-                <span class="form-hint">From Discord: Server Settings → Integrations → Webhooks → Copy Webhook URL. The URL is itself the secret (token in the path); rendered masked here.</span>
+                <span class="form-hint">From Discord: Server Settings → Integrations → Webhooks → Copy Webhook URL. Keep it secret.</span>
             </div>
         </div>
 
         <fieldset class="settings-subform" style="margin-top: 12px">
             <legend>Events</legend>
-            <p class="form-hint">Which events should this provider receive? Per-event toggles take effect on the next dispatch with no restart.</p>
+            <div class="setting-rows">
             {% for ev in notification_event_toggles %}
-            <label class="checkbox-row">
-                <input type="checkbox" name="event_{{ ev.kind }}" {% if ev.enabled %}checked{% endif %}>
-                <strong>{{ ev.label }}</strong>
-                <span class="form-hint">{{ ev.description }}</span>
-            </label>
+                <div class="setting-rows">
+                    <label class="setting-row">
+                        <span class="setting-row-text">
+                            <span class="setting-row-title">{{ ev.label }}</span>
+                            <span class="setting-row-desc">{{ ev.description }}</span>
+                        </span>
+                        <input type="checkbox" name="event_{{ ev.kind }}" {% if ev.enabled %}checked{% endif %}>
+                    </label>
+                </div>
             {% endfor %}
+            </div>
         </fieldset>
     </div>
     <div class="modal-footer">

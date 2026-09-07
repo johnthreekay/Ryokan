@@ -69,7 +69,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
-           --model claude-fable-5
+           --model claude-fable-5-1
 
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |

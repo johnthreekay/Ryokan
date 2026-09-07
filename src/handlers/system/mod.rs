@@ -83,8 +83,6 @@ struct SystemTemplate {
     tab: String,
     force_mal_fallback: bool,
     force_kitsu_fallback: bool,
-    auto_grab_on_add: bool,
-    allow_non_english: bool,
     debug_message: Option<String>,
     debug_error: Option<String>,
     logs: Vec<log::LogEntry>,
@@ -92,14 +90,17 @@ struct SystemTemplate {
     filter_level: String,
     filter_category: String,
     filter_search: String,
-    /// Current page's cursor (the `before_id` query param value, or
-    /// `None` for the first/newest page). Used in the template to
-    /// render the "Newest" reset link conditionally.
-    log_before_id: Option<i64>,
-    /// Cursor for the "Older →" link, set to the `id` of the oldest
-    /// entry on the current page. `None` when the page is the last
-    /// (or when there are no entries at all).
-    log_older_id: Option<i64>,
+    /// Numbered Logs pages, `LOG_PAGE_SIZE` rows each, over the active
+    /// filter: the current page (clamped to the last one), how many
+    /// there are, the neighbors for the Newer / Older links, the
+    /// windowed links to render, and the filter as an encoded
+    /// query-string tail every link and the jump box carry.
+    log_page: i64,
+    log_pages: i64,
+    log_prev_page: Option<i64>,
+    log_next_page: Option<i64>,
+    log_page_links: Vec<LogPageLink>,
+    log_filter_qs: String,
     /// Mirrors `log_before_id` for the RSS tab — the active cursor
     /// the user navigated to (drives the "← Newest" link).
     rss_before_id: Option<i64>,
@@ -116,6 +117,9 @@ struct SystemTemplate {
     /// populated when `tab == "review"`; empty on every other tab so
     /// the serial fan-out stays cheap.
     review_entries: Vec<episode_tags::NeedsReviewEntry>,
+    /// Misgrab guardrails: detected misgrabs awaiting Restore or Dismiss;
+    /// populated only when `tab == "misgrabs"`.
+    misgrab_entries: Vec<crate::models::grabbed_torrents::MisgrabEntry>,
     title_language: String,
     /// Issue gh-121 — notification provider rows for the System →
     /// Notifications tab. Empty until the user adds the first one.
@@ -144,29 +148,81 @@ pub struct SystemQuery {
     search: Option<String>,
     message: Option<String>,
     error: Option<String>,
-    /// Cursor for "Older →" pagination on the logs tab. When set,
+    /// Cursor for "Older →" pagination on the RSS tab. When set,
     /// the query fetches entries with `id < before_id`. Omitted on
     /// the first page so the user always lands on the newest
     /// entries.
     before_id: Option<i64>,
+    /// 1-based page of the Logs tab (numbered pages over the active
+    /// filter). Missing or below 1 is the first page; past the last
+    /// page lands on the last page.
+    page: Option<i64>,
+}
+
+/// Rows per page on the Logs tab.
+const LOG_PAGE_SIZE: i64 = 200;
+
+/// One entry of the Logs tab's page strip: a page number, the current
+/// page (rendered as the filled button), or a gap where the window
+/// skips pages.
+pub struct LogPageLink {
+    number: i64,
+    current: bool,
+    gap: bool,
+}
+
+/// The page strip: the first and last page, the current page with two
+/// neighbors on each side, and a gap wherever the sequence skips.
+fn page_links(current: i64, total: i64) -> Vec<LogPageLink> {
+    let mut pages: Vec<i64> = vec![1, total];
+    pages.extend((current - 2..=current + 2).filter(|p| *p >= 1 && *p <= total));
+    pages.sort_unstable();
+    pages.dedup();
+    let mut links = Vec::with_capacity(pages.len() * 2);
+    let mut prev = 0;
+    for p in pages {
+        if prev > 0 && p - prev > 1 {
+            links.push(LogPageLink {
+                number: 0,
+                current: false,
+                gap: true,
+            });
+        }
+        links.push(LogPageLink {
+            number: p,
+            current: p == current,
+            gap: false,
+        });
+        prev = p;
+    }
+    links
+}
+
+/// The active filter as a query-string tail (`&level=…&category=…
+/// &search=…`, values encoded) for the page links and the jump box.
+fn log_filter_query_string(level: &str, category: &str, search: &str) -> String {
+    let mut qs = String::new();
+    for (key, value) in [("level", level), ("category", category), ("search", search)] {
+        if !value.is_empty() {
+            qs.push_str(&format!("&{key}={}", urlencoding::encode(value)));
+        }
+    }
+    qs
 }
 
 #[derive(Deserialize)]
 pub struct DebugSettingsForm {
     force_mal_fallback: Option<String>,
     force_kitsu_fallback: Option<String>,
-    auto_grab_on_add: Option<String>,
-    allow_non_english: Option<String>,
 }
 
 fn normalize_system_tab(tab: Option<String>) -> String {
     match tab.as_deref() {
-        Some("scoring") => "scoring".to_string(),
-        Some("help") => "scoring".to_string(), // legacy alias
         Some("debug") => "debug".to_string(),
         Some("rss") => "rss".to_string(),
         Some("tasks") => "tasks".to_string(),
         Some("review") => "review".to_string(),
+        Some("misgrabs") => "misgrabs".to_string(),
         Some("credits") => "credits".to_string(),
         Some("notifications") => "notifications".to_string(),
         Some("backup") => "backup".to_string(),
@@ -219,35 +275,31 @@ pub async fn system_page(
     // these six queries sequentially — the wall time was the sum of all
     // RTTs. With `tokio::join!` each future races on its own pool
     // connection and the handler waits on the slowest one only.
-    let logs_before_id = params.before_id;
+    let log_page_requested = params.page.unwrap_or(1).max(1);
+    let log_query = log::LogQuery {
+        level: Some(filter_level.clone()),
+        category: (!filter_category.is_empty()).then(|| filter_category.clone()),
+        search: (!filter_search.is_empty()).then(|| filter_search.clone()),
+        limit: LOG_PAGE_SIZE,
+        offset: (log_page_requested - 1) * LOG_PAGE_SIZE,
+        before_id: None,
+    };
     let logs_fut = async {
         if tab == "logs" {
-            log::query(
-                &state.db,
-                &log::LogQuery {
-                    level: Some(filter_level.clone()),
-                    category: if filter_category.is_empty() {
-                        None
-                    } else {
-                        Some(filter_category.clone())
-                    },
-                    search: if filter_search.is_empty() {
-                        None
-                    } else {
-                        Some(filter_search.clone())
-                    },
-                    // Fetch one extra row so the template can tell
-                    // whether there's an "Older" page to link to
-                    // (without a separate COUNT query). Drop the
-                    // extra below before passing to the template.
-                    limit: 201,
-                    before_id: logs_before_id,
-                },
-            )
-            .await
-            .unwrap_or_default()
+            log::query(&state.db, &log_query).await.unwrap_or_default()
         } else {
             Vec::new()
+        }
+    };
+    // The count that sizes the page strip is over the same filter as
+    // the rows; other tabs keep the plain total for the debug view.
+    let log_count_fut = async {
+        if tab == "logs" {
+            log::count_filtered(&state.db, &log_query)
+                .await
+                .unwrap_or(0)
+        } else {
+            log::count(&state.db).await.unwrap_or(0)
         }
     };
     let rss_before_id = params.before_id;
@@ -266,6 +318,21 @@ pub async fn system_page(
     let scheduled_tasks_fut = async {
         if tab == "tasks" {
             scheduled_tasks::list(&state.db).await.unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
+    let misgrab_entries_fut = async {
+        if tab == "misgrabs" {
+            let title_language = crate::models::config::get_config(&state.db)
+                .await
+                .ok()
+                .flatten()
+                .map(|c| c.title_language)
+                .unwrap_or_else(|| "romaji".to_string());
+            crate::models::grabbed_torrents::list_misgrabs(&state.db, &title_language)
+                .await
+                .unwrap_or_default()
         } else {
             Vec::new()
         }
@@ -311,6 +378,7 @@ pub async fn system_page(
         scheduled_tasks,
         log_count_res,
         review_entries,
+        misgrab_entries,
         (notification_providers, notification_event_toggles),
     ) = tokio::join!(
         logs_fut,
@@ -318,13 +386,14 @@ pub async fn system_page(
         rss::latest_run(&state.db),
         rss_recent_fut,
         scheduled_tasks_fut,
-        log::count(&state.db),
+        log_count_fut,
         review_entries_fut,
+        misgrab_entries_fut,
         notification_payload_fut,
     );
     let cfg = cfg_res.ok().flatten();
     let rss_last_run = rss_last_run_res.unwrap_or(None);
-    let log_count = log_count_res.unwrap_or(0);
+    let log_count = log_count_res;
 
     let force_mal_fallback = cfg
         .as_ref()
@@ -334,12 +403,10 @@ pub async fn system_page(
         .as_ref()
         .map(|cfg| cfg.force_kitsu_fallback)
         .unwrap_or(false);
-    let auto_grab_on_add = cfg.as_ref().map(|cfg| cfg.auto_grab_on_add).unwrap_or(true);
-    let allow_non_english = cfg
+    let rss_enabled = cfg
         .as_ref()
-        .map(|cfg| cfg.allow_non_english)
+        .map(|cfg| cfg.rss_master_enabled)
         .unwrap_or(false);
-    let rss_enabled = cfg.as_ref().map(|cfg| cfg.rss_enabled).unwrap_or(false);
     let rss_interval_minutes = cfg
         .as_ref()
         .map(|cfg| cfg.rss_interval_minutes)
@@ -376,7 +443,29 @@ pub async fn system_page(
     // COUNT. If we got the extra row, drop it and stash the oldest
     // visible row's id as the `before_id` for the next page; if we
     // got fewer than the limit, this is the last page.
-    let (logs, log_older_id) = truncate_to_page(logs, 200, |e| e.id);
+    // Numbered pages over the filtered count. A page past the end (a
+    // stale link after entries were pruned) lands on the last page,
+    // which means one more query for that rare case.
+    let log_pages = (log_count.max(0) + LOG_PAGE_SIZE - 1) / LOG_PAGE_SIZE;
+    let log_pages = log_pages.max(1);
+    let log_page = log_page_requested.min(log_pages);
+    let logs = if tab == "logs" && log_page != log_page_requested {
+        log::query(
+            &state.db,
+            &log::LogQuery {
+                offset: (log_page - 1) * LOG_PAGE_SIZE,
+                ..log_query
+            },
+        )
+        .await
+        .unwrap_or_default()
+    } else {
+        logs
+    };
+    let log_prev_page = (log_page > 1).then(|| log_page - 1);
+    let log_next_page = (log_page < log_pages).then(|| log_page + 1);
+    let log_page_links = page_links(log_page, log_pages);
+    let log_filter_qs = log_filter_query_string(&filter_level, &filter_category, &filter_search);
     let (rss_recent, rss_older_id) = truncate_to_page(rss_recent, 200, |e| e.id);
     let recycle_unwritable = crate::services::recycle::is_unwritable();
     let backup_view = if tab == "backup" {
@@ -389,8 +478,6 @@ pub async fn system_page(
         tab,
         force_mal_fallback,
         force_kitsu_fallback,
-        auto_grab_on_add,
-        allow_non_english,
         recycle_unwritable,
         backup: backup_view,
         debug_message: params.message,
@@ -400,8 +487,12 @@ pub async fn system_page(
         filter_level,
         filter_category,
         filter_search,
-        log_before_id: logs_before_id,
-        log_older_id,
+        log_page,
+        log_pages,
+        log_prev_page,
+        log_next_page,
+        log_page_links,
+        log_filter_qs,
         rss_before_id,
         rss_older_id,
         categories,
@@ -411,6 +502,7 @@ pub async fn system_page(
         rss_recent,
         scheduled_tasks,
         review_entries,
+        misgrab_entries,
         title_language,
         notification_providers,
         notification_event_toggles,
@@ -430,8 +522,6 @@ pub async fn debug_settings_submit(
 
     cfg.force_mal_fallback = form.force_mal_fallback.is_some();
     cfg.force_kitsu_fallback = form.force_kitsu_fallback.is_some();
-    cfg.allow_non_english = form.allow_non_english.is_some();
-    cfg.auto_grab_on_add = form.auto_grab_on_add.is_some();
 
     let result = config::save_config(&state.db, &cfg).await;
     let (message, error) = match result {
@@ -490,8 +580,6 @@ pub async fn debug_settings_submit(
         tab: "debug".to_string(),
         force_mal_fallback: cfg.force_mal_fallback,
         force_kitsu_fallback: cfg.force_kitsu_fallback,
-        auto_grab_on_add: cfg.auto_grab_on_add,
-        allow_non_english: cfg.allow_non_english,
         recycle_unwritable,
         backup: None,
         debug_message: message,
@@ -501,8 +589,12 @@ pub async fn debug_settings_submit(
         filter_level: "info".to_string(),
         filter_category: String::new(),
         filter_search: String::new(),
-        log_before_id: None,
-        log_older_id: None,
+        log_page: 1,
+        log_pages: 1,
+        log_prev_page: None,
+        log_next_page: None,
+        log_page_links: Vec::new(),
+        log_filter_qs: String::new(),
         rss_before_id: None,
         rss_older_id: None,
         categories: vec![
@@ -525,12 +617,13 @@ pub async fn debug_settings_submit(
             ("external_sync", LogCategory::ExternalSync.label()),
             ("notifications", LogCategory::Notifications.label()),
         ],
-        rss_enabled: cfg.rss_enabled,
+        rss_enabled: cfg.rss_master_enabled,
         rss_interval_minutes: cfg.rss_interval_minutes,
         rss_last_run: rss::latest_run(&state.db).await.unwrap_or(None),
         rss_recent: Vec::new(),
         scheduled_tasks: scheduled_tasks::list(&state.db).await.unwrap_or_default(),
         review_entries: Vec::new(),
+        misgrab_entries: Vec::new(),
         title_language: cfg.title_language.clone(),
         notification_providers: Vec::new(),
         notification_event_toggles: Vec::new(),
@@ -543,6 +636,9 @@ pub struct LogPollQuery {
     after: Option<i64>,
     level: Option<String>,
     category: Option<String>,
+    /// The page's message / detail substring filter, so a filtered
+    /// page only receives rows it would show.
+    search: Option<String>,
 }
 
 #[utoipa::path(
@@ -550,7 +646,7 @@ pub struct LogPollQuery {
     path = "/api/logs/poll",
     tag = "System",
     summary = "Poll log entries",
-    description = "Retrieve recent log entries, optionally filtered by level and category. Supports long-polling via the `after` parameter.",
+    description = "Retrieve recent log entries, optionally filtered by level, category, and a message search. Supports long-polling via the `after` parameter.",
     params(LogPollQuery),
     responses(
         (status = 200, description = "Log entries", body = Vec<log::LogEntry>),
@@ -572,6 +668,7 @@ pub async fn api_logs_poll(
         100,
         params.level.as_deref(),
         params.category.as_deref(),
+        params.search.as_deref(),
     )
     .await
     .unwrap_or_default();
@@ -622,6 +719,18 @@ pub async fn api_rebuild_cached_metadata(
     // the scheduled 12h `refresh_all_series_metadata` status row
     // when the two overlap — they're semantically different
     // operations and the audit trail for each should stand alone.
+    // Probe the sweep lock before writing a `running` row, so a click
+    // during the 12h refresh (or a double-fired button, #235) answers
+    // "already running" instead of a second sweep over the same rows.
+    // The sweep takes the lock itself; this only keeps the audit row
+    // and the toast honest.
+    if metadata_sync::METADATA_SWEEP_LOCK.try_lock().is_err() {
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "message": "Metadata rebuild is already running",
+        })));
+    }
+
     let db = state.db.clone();
     let outer = tokio::spawn(async move {
         let middle_db = db.clone();
@@ -637,46 +746,49 @@ pub async fn api_rebuild_cached_metadata(
             let inner = tokio::spawn(async move {
                 metadata_sync::rebuild_cached_metadata_for_all(&rebuild_db).await
             });
-            inner.await // Result<(usize, usize, usize), JoinError>
+            inner.await // Result<Result<(usize, usize, usize), String>, JoinError>
         });
 
-        let (status, detail, payload): (&str, String, Option<(usize, usize, usize)>) =
-            match middle.await {
-                Ok(Ok((rebuilt, skipped, failed))) => {
-                    let st = if failed > 0 { "warn" } else { "ok" };
-                    (
-                        st,
-                        format!("rebuilt={rebuilt}, skipped={skipped}, failed={failed}"),
-                        Some((rebuilt, skipped, failed)),
-                    )
-                }
-                Ok(Err(join_err)) => {
-                    // Inner panicked. The middle task caught it and
-                    // bubbled it up cleanly.
-                    let kind = if join_err.is_panic() {
-                        "panicked"
-                    } else {
-                        "join error"
-                    };
-                    ("error", format!("rebuild sweep {kind}: {join_err}"), None)
-                }
-                Err(join_err) => {
-                    // Middle itself panicked — e.g. `mark_started`
-                    // internals, or something between the nested
-                    // spawns. Still mark the run finished so the
-                    // status row exits `running`.
-                    let kind = if join_err.is_panic() {
-                        "panicked"
-                    } else {
-                        "join error"
-                    };
-                    (
-                        "error",
-                        format!("rebuild orchestration task {kind}: {join_err}"),
-                        None,
-                    )
-                }
-            };
+        type Outcome = Result<(usize, usize, usize), String>;
+        let (status, detail, payload): (&str, String, Option<Outcome>) = match middle.await {
+            Ok(Ok(Ok((rebuilt, skipped, failed)))) => {
+                let st = if failed > 0 { "warn" } else { "ok" };
+                (
+                    st,
+                    format!("rebuilt={rebuilt}, skipped={skipped}, failed={failed}"),
+                    Some(Ok((rebuilt, skipped, failed))),
+                )
+            }
+            // Lost the lock race to a sweep that started between the
+            // probe above and the spawn: nothing was rebuilt.
+            Ok(Ok(Err(busy))) => ("warn", busy.clone(), Some(Err(busy))),
+            Ok(Err(join_err)) => {
+                // Inner panicked. The middle task caught it and
+                // bubbled it up cleanly.
+                let kind = if join_err.is_panic() {
+                    "panicked"
+                } else {
+                    "join error"
+                };
+                ("error", format!("rebuild sweep {kind}: {join_err}"), None)
+            }
+            Err(join_err) => {
+                // Middle itself panicked — e.g. `mark_started`
+                // internals, or something between the nested
+                // spawns. Still mark the run finished so the
+                // status row exits `running`.
+                let kind = if join_err.is_panic() {
+                    "panicked"
+                } else {
+                    "join error"
+                };
+                (
+                    "error",
+                    format!("rebuild orchestration task {kind}: {join_err}"),
+                    None,
+                )
+            }
+        };
         let _ = scheduled_tasks::mark_finished(&db, "metadata_rebuild", status, &detail).await;
         payload
     });
@@ -688,7 +800,7 @@ pub async fn api_rebuild_cached_metadata(
         )
     })?;
 
-    let Some((rebuilt, skipped, failed)) = payload else {
+    let Some(outcome) = payload else {
         // Inner panicked — we already wrote an "error" row into
         // scheduled_task_runs so operators can see what happened.
         // Surface a 500 to the client (on the happy path where they
@@ -698,6 +810,15 @@ pub async fn api_rebuild_cached_metadata(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             "Rebuild task panicked; see scheduled tasks for details.".to_string(),
         ));
+    };
+    let (rebuilt, skipped, failed) = match outcome {
+        Ok(counts) => counts,
+        Err(busy) => {
+            return Ok(Json(serde_json::json!({
+                "ok": false,
+                "message": busy,
+            })));
+        }
     };
 
     let message = format!(
@@ -1087,18 +1208,42 @@ pub async fn api_force_metadata_refresh(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
     detached_task(async move {
+        // Same probe as the rebuild: a refresh during a rebuild (or the
+        // 12h tick) answers "already running" instead of queuing.
+        if metadata_sync::METADATA_SWEEP_LOCK.try_lock().is_err() {
+            return Ok::<_, (StatusCode, String)>(Json(serde_json::json!({
+                "ok": false,
+                "message": "Metadata refresh is already running",
+            })));
+        }
         let _ = scheduled_tasks::mark_started(
             &state.db,
             "metadata_refresh",
             "Manual metadata refresh started",
         )
         .await;
-        let (refreshed, failed) = metadata_sync::refresh_all_series_metadata(&state.db).await;
+        let (refreshed, failed) =
+            match metadata_sync::refresh_all_series_metadata(&state.db).await {
+                Ok(counts) => counts,
+                Err(busy) => {
+                    let _ = scheduled_tasks::mark_finished(
+                        &state.db,
+                        "metadata_refresh",
+                        "warn",
+                        &busy,
+                    )
+                    .await;
+                    return Ok(Json(serde_json::json!({
+                        "ok": false,
+                        "message": busy,
+                    })));
+                }
+            };
         let status = if failed > 0 { "warn" } else { "ok" };
         let detail = format!("refreshed={}, failed={}", refreshed, failed);
         let _ =
             scheduled_tasks::mark_finished(&state.db, "metadata_refresh", status, &detail).await;
-        Ok::<_, (StatusCode, String)>(Json(serde_json::json!({
+        Ok(Json(serde_json::json!({
             "ok": failed == 0,
             "message": format!("Metadata refresh complete. Refreshed: {}. Failed: {}.", refreshed, failed),
         })))
@@ -1459,3 +1604,42 @@ mod endpoint_tests;
 mod tasks_endpoint_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod log_pages_tests {
+    use super::*;
+
+    fn render(links: &[LogPageLink]) -> String {
+        links
+            .iter()
+            .map(|l| {
+                if l.gap {
+                    "…".to_string()
+                } else if l.current {
+                    format!("[{}]", l.number)
+                } else {
+                    l.number.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn page_strip_windows_around_the_current_page() {
+        assert_eq!(render(&page_links(1, 1)), "[1]");
+        assert_eq!(render(&page_links(2, 5)), "1 [2] 3 4 5");
+        assert_eq!(render(&page_links(6, 42)), "1 … 4 5 [6] 7 8 … 42");
+        assert_eq!(render(&page_links(42, 42)), "1 … 40 41 [42]");
+        assert_eq!(render(&page_links(3, 42)), "1 2 [3] 4 5 … 42");
+    }
+
+    #[test]
+    fn filter_tail_encodes_and_skips_empty_values() {
+        assert_eq!(log_filter_query_string("", "", ""), "");
+        assert_eq!(
+            log_filter_query_string("info", "grab", "foo & bar"),
+            "&level=info&category=grab&search=foo%20%26%20bar"
+        );
+    }
+}

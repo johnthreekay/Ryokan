@@ -399,6 +399,11 @@ pub async fn webhook_autobrr(
     .await
     .ok()
     .flatten();
+    // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+    if let Some(gid) = grab_id {
+        let _ =
+            crate::models::grabbed_torrents::set_source_url(&state.db, gid, &download_url).await;
+    }
     if let Some(gid) = grab_id {
         let respected = download_client::apply_indexer_seed_rules(
             &state.db,

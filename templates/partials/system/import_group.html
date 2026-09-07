@@ -7,7 +7,7 @@
         <div class="import-group-title">
             <span class="import-kind-badge import-kind-{{ g.kind }}">{{ g.kind_label }}</span>
             <h3>{{ g.parsed_title }}{% if !g.season_label.is_empty() %} <span class="import-season">{{ g.season_label }}</span>{% endif %}</h3>
-            <span class="import-group-meta">{{ g.file_count }} file{% if g.file_count != 1 %}s{% endif %} &middot; {{ g.size }}{% if !g.year_label.is_empty() %} &middot; {{ g.year_label }}{% endif %}{% if g.title_from_folder %} &middot; <span title="The series name was read from the folder, not the filenames">name from folder</span>{% endif %}</span>
+            <span class="import-group-meta">{{ g.file_count }} file{% if g.file_count != 1 %}s{% endif %} &middot; {{ g.size }}{% if !g.year_label.is_empty() %} &middot; {{ g.year_label }}{% endif %}{% if g.title_from_folder %} &middot; <span title="Name taken from the folder">name from folder</span>{% endif %}</span>
         </div>
         <div class="import-group-actions">
             {% if g.skipped %}
@@ -42,8 +42,8 @@
                 {% if !p.year.is_empty() %}<span class="tag tag-res">{{ p.year }}</span>{% endif %}
                 <span class="tag tag-res">{{ p.episodes }}</span>
                 {% if g.kind == "merge" %}<span class="tag import-tag-merge">In your library as <a href="/series/{{ g.existing_anilist_id }}">{{ g.existing_title }}</a></span>{% endif %}
-                {% if g.low_confidence %}<span class="tag import-tag-warn" title="The matched title shares little with the parsed one">Check this match</span>{% endif %}
-                {% if !g.duplicate_of.is_empty() %}<span class="tag import-tag-warn" title="Two folders resolved to the same series; both would import into it">Also matched by &ldquo;{{ g.duplicate_of }}&rdquo;</span>{% endif %}
+                {% if g.low_confidence %}<span class="tag import-tag-warn" title="Weak match">Check this match</span>{% endif %}
+                {% if !g.duplicate_of.is_empty() %}<span class="tag import-tag-warn" title="Two folders matched this series">Also matched by &ldquo;{{ g.duplicate_of }}&rdquo;</span>{% endif %}
             </div>
         </div>
         {% else %}
@@ -134,7 +134,7 @@
                         </form>
                     </td>
                     <td><span class="import-path" title="{{ f.rel_path }}">{{ f.rel_path }}</span></td>
-                    <td class="import-nowrap">{{ f.episode_label }}{% if !f.episode_note.is_empty() %} <span class="import-have" title="Renumbered into the AniList entry's own numbering">{{ f.episode_note }}</span>{% endif %}</td>
+                    <td class="import-nowrap">{{ f.episode_label }}{% if !f.episode_note.is_empty() %} <span class="import-have" title="Renumbered">{{ f.episode_note }}</span>{% endif %}</td>
                     <td class="import-nowrap">{{ f.quality_label }}</td>
                     <td class="import-nowrap">
                         <span class="import-status import-status-{{ f.status_class }}">{{ f.status_label }}</span>

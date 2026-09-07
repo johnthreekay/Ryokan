@@ -15,8 +15,7 @@
     <form method="post" action="/settings/quality" class="settings-form"
           hx-post="/settings/quality"
           hx-target="#settings-quality-region"
-          hx-swap="outerHTML"
-          hx-disinherit="hx-target hx-swap">
+          hx-swap="outerHTML">
 {%~ include "partials/settings/quality.html" ~%}
         <button type="submit" class="btn btn-primary">Save Settings</button>
     </form>

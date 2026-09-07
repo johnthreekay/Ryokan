@@ -487,7 +487,6 @@ pub async fn series_detail(
     // without a read-your-writes race. Everything *after* this point is
     // read-only and fans out in parallel.
     let mut monitor_mode = "future".to_string();
-    let mut monitor_mode_label = monitoring::MonitorMode::Future.label().to_string();
     let monitor_mode_manual_override = db_series
         .as_ref()
         .map(|s| s.monitor_mode_manual_override)
@@ -497,10 +496,8 @@ pub async fn series_detail(
             monitoring_service::ensure_series_monitoring_rows(&state.db, tracked).await
         {
             monitor_mode = summary.mode.as_str().to_string();
-            monitor_mode_label = summary.mode.label().to_string();
         } else {
             monitor_mode = tracked.monitor_mode.clone();
-            monitor_mode_label = tracked.monitor_mode_enum().label().to_string();
         }
     }
 
@@ -719,6 +716,10 @@ pub async fn series_detail(
         .as_ref()
         .map(|s| s.restrict_to_uploader.clone())
         .unwrap_or_default();
+    let alternate_titles = db_series
+        .as_ref()
+        .map(|s| s.alternate_titles.clone())
+        .unwrap_or_default();
     let default_custom_query_tokens = cfg
         .as_ref()
         .map(|c| c.default_custom_query_tokens.clone())
@@ -760,7 +761,6 @@ pub async fn series_detail(
         adult_without_indexers,
         recycle_enabled,
         monitor_mode,
-        monitor_mode_label,
         monitor_mode_manual_override,
         can_sync_from_external_account,
         sync_provider_label,
@@ -773,6 +773,7 @@ pub async fn series_detail(
         allow_pt_upgrades,
         custom_query_tokens,
         restrict_to_uploader,
+        alternate_titles,
         default_custom_query_tokens,
         default_restrict_to_uploader,
         post_processing_enabled,
@@ -924,17 +925,7 @@ pub(super) async fn build_episodes(
                     .unwrap_or(false)
             }));
     let kitsu_eps: HashMap<i32, kitsu::EpisodeInfo> = if should_try_kitsu {
-        kitsu::fetch_episode_titles_fallback(
-            db,
-            &[
-                detail.title_english.clone(),
-                detail.title_romaji.clone(),
-                detail.title_native.clone(),
-            ],
-            detail.season_year,
-            detail.episodes,
-        )
-        .await
+        kitsu::fetch_episode_titles_fallback(db, detail.id_mal).await
     } else {
         HashMap::new()
     };

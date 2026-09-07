@@ -15,8 +15,6 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 13px;
-    font-weight: 500;
 }
 
 .calendar-ical-btn svg {
@@ -34,33 +32,9 @@
     border-bottom: 1px solid var(--border);
 }
 
-.calendar-range-tabs {
-    display: inline-flex;
-    gap: 2px;
-    background: var(--bg-elevated);
-    padding: 3px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-}
 
-.calendar-range-tab {
-    padding: 6px 12px;
-    color: var(--text-dim);
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 500;
-    border-radius: 6px;
-    transition: color 0.15s, background 0.15s;
-}
 
-.calendar-range-tab:hover {
-    color: var(--text);
-}
 
-.calendar-range-tab.active {
-    color: var(--accent);
-    background: var(--bg-card);
-}
 
 /* Filters row — search input + per-mode toggle pills sit to the
    right of the range tabs. On mobile they stack via the existing
@@ -74,9 +48,9 @@
 
 .calendar-series-search {
     width: 220px;
-    height: 36px;
-    padding: 0 12px;
-    background: var(--bg-elevated);
+    height: 32px;
+    padding: 0 10px;
+    background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
@@ -226,7 +200,7 @@
     flex-shrink: 0;
     width: 48px;
     height: 68px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     object-fit: cover;
     background: var(--bg-elevated);
 }
@@ -273,22 +247,17 @@
 }
 
 .calendar-episode-badge {
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 10px;
-    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 
 .calendar-episode-badge-monitored {
-    color: var(--green, #a6e3a1);
-    background: rgba(166, 227, 161, 0.18);
+    color: var(--green);
+    background: rgba(var(--green-rgb), 0.18);
 }
 
 .calendar-episode-badge-unmon {
     color: var(--text-dim);
-    background: rgba(108, 112, 134, 0.18);
+    background: rgba(var(--text-dim-rgb), 0.18);
 }
 
 /* "Premiere" — first episode of a Ryokan series. Each anime
@@ -298,7 +267,7 @@
    are common. */
 .calendar-episode-badge-premiere {
     color: var(--accent);
-    background: rgba(168, 124, 255, 0.16);
+    background: rgba(var(--accent-rgb), 0.16);
 }
 
 .calendar-empty {
@@ -417,7 +386,7 @@
     align-items: baseline;
     gap: 6px;
     padding: 3px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 11px;
     line-height: 1.3;
     text-decoration: none;
@@ -436,7 +405,7 @@
 }
 
 .calendar-month-pill-monitored {
-    border-left-color: var(--green, #a6e3a1);
+    border-left-color: var(--green);
 }
 
 .calendar-month-pill-unmon {

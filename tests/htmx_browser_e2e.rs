@@ -163,3 +163,97 @@ async fn episode_monitor_button_swaps_in_browser() {
         "DB row must reflect the post-click state; got {ep1:?}"
     );
 }
+
+/// The two `hx-on::` shapes the series page relies on, under htmx 4's
+/// colon-separated event names: a rejected POST reverts the checkbox
+/// through `hx-on::response:error`, and `hx-on::after:request` reads
+/// the outcome from `event.detail.ctx.response.status` (htmx 4 has no
+/// `detail.successful`). Under htmx 2 spellings these attributes
+/// silently bind to events that never fire.
+#[tokio::test]
+async fn hx_on_handlers_fire_under_htmx_4_event_names() {
+    let db = in_memory_pool().await;
+    let state = build_test_app_state(db.clone(), None);
+    let (_state2, cookie_value) = logged_in_session(&db).await;
+    let token = cookie_value
+        .strip_prefix("session=")
+        .expect("cookie helper returns session=<hex>")
+        .to_string();
+    let addr = spawn_app(state).await;
+
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
+    };
+
+    let result = async {
+        let base = format!("http://{addr}");
+        client.goto(&format!("{base}/login")).await?;
+        let raw = format!("session={token}; Path=/; SameSite=Lax");
+        client
+            .add_cookie(fantoccini::cookies::Cookie::parse(raw)?)
+            .await?;
+        client.goto(&format!("{base}/__test/hx-on-fixture")).await?;
+
+        // Rejected POST: the change handler flips the box, the server
+        // says 400, the response:error handler flips it back.
+        client
+            .find(Locator::Id("hx-on-toggle"))
+            .await?
+            .click()
+            .await?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            let status = client
+                .execute("return window.__hxOnErrorStatus || null;", vec![])
+                .await?;
+            if status.as_i64() == Some(400) {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                let errors = client
+                    .execute("return window.__ryokanFixtureErrors || [];", vec![])
+                    .await?;
+                panic!("hx-on::response:error never fired for the rejected POST; fixture errors: {errors}");
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let checked = client
+            .find(Locator::Id("hx-on-toggle"))
+            .await?
+            .prop("checked")
+            .await?;
+        assert_eq!(
+            checked.as_deref(),
+            Some("true"),
+            "the response:error handler must revert the checkbox to its server-side state"
+        );
+
+        // Accepted POST: after:request sees the 200.
+        client
+            .find(Locator::Id("hx-on-accept"))
+            .await?
+            .click()
+            .await?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            let ok = client
+                .execute("return window.__hxOnAfterRequestOk === true;", vec![])
+                .await?;
+            if ok.as_bool() == Some(true) {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("hx-on::after:request never saw a < 400 status for the accepted POST");
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        Ok::<(), Box<dyn std::error::Error>>(())
+    }
+    .await;
+    let _ = client.close().await;
+    result.expect("hx-on browser test");
+}

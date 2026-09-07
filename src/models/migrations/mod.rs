@@ -165,7 +165,7 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
             media_root TEXT NOT NULL DEFAULT '',
             title_language TEXT NOT NULL DEFAULT 'english',
             force_mal_fallback INTEGER NOT NULL DEFAULT 0,
-            rss_enabled INTEGER NOT NULL DEFAULT 0,
+            rss_enabled INTEGER NOT NULL DEFAULT 1,
             rss_interval_minutes INTEGER NOT NULL DEFAULT 15,
             force_kitsu_fallback INTEGER NOT NULL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -2017,6 +2017,14 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(db)
         .await
         .ok();
+    // Per-series alternate titles, one per line: the names release
+    // groups use that AniList does not list. Automatic search and RSS
+    // only grab a release that names the series exactly, and this is
+    // where the user closes that gap for one show.
+    sqlx::query("ALTER TABLE series ADD COLUMN alternate_titles TEXT NOT NULL DEFAULT ''")
+        .execute(db)
+        .await
+        .ok();
 
     // Rename `*_to_group` → `*_to_uploader` with full recovery for the
     // DBs that landed in a half-migrated state from PR #37's first-
@@ -2805,6 +2813,62 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(db)
         .await
         .ok();
+
+    // Misgrab guardrails (search side): how the title match that
+    // produced each grab was made, so a later misgrab is diagnosable
+    // from the history. `NOT NULL DEFAULT` keeps the raw INSERTs in
+    // older tests valid; legacy rows read back as empty strings.
+    for sql in [
+        "ALTER TABLE episode_grab_history ADD COLUMN match_kind TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_grab_history ADD COLUMN match_phase TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_grab_history ADD COLUMN matched_alias TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_grab_history ADD COLUMN match_ratio REAL NOT NULL DEFAULT 0",
+    ] {
+        sqlx::query(sql).execute(db).await.ok();
+    }
+
+    // Misgrab guardrails (download side). `verification` is NULL until
+    // the grab's file list has been checked against the series aliases
+    // (verified / misgrab / whitelisted / unverifiable); `misgrab_action`
+    // records what the sweep did about a misgrab (removed /
+    // removed_no_delete / flagged); `failure_reason` tells a misgrab
+    // apart from a disk-full or client error on the blocklist;
+    // `source_url` lets Restore re-add a removed grab.
+    for sql in [
+        "ALTER TABLE grabbed_torrents ADD COLUMN verification TEXT",
+        "ALTER TABLE grabbed_torrents ADD COLUMN verified_at TEXT",
+        "ALTER TABLE grabbed_torrents ADD COLUMN verification_detail TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE grabbed_torrents ADD COLUMN failure_reason TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE grabbed_torrents ADD COLUMN misgrab_action TEXT",
+        "ALTER TABLE grabbed_torrents ADD COLUMN reviewed_at TEXT",
+        "ALTER TABLE grabbed_torrents ADD COLUMN source_url TEXT NOT NULL DEFAULT ''",
+        "CREATE INDEX IF NOT EXISTS idx_grabbed_torrents_verification ON grabbed_torrents (verification) WHERE verification IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_grabbed_torrents_failed_name ON grabbed_torrents (series_id, torrent_name) WHERE state = 'failed'",
+        "ALTER TABLE config ADD COLUMN misgrab_auto_remove INTEGER NOT NULL DEFAULT 1",
+    ] {
+        sqlx::query(sql).execute(db).await.ok();
+    }
+
+    // Import robustness (#205). `completed_seen_at` is stamped by the
+    // first post-processing tick that saw the download client report
+    // the grab complete, so the "complete but never imported" timer
+    // measures the stuck window rather than the download itself.
+    // `import_stall_hours` is that window; 0 disables the escalation.
+    for sql in [
+        "ALTER TABLE grabbed_torrents ADD COLUMN completed_seen_at TEXT",
+        "ALTER TABLE config ADD COLUMN import_stall_hours INTEGER NOT NULL DEFAULT 24",
+    ] {
+        sqlx::query(sql).execute(db).await.ok();
+
+        // Built-in Nyaa card on the Indexers tab: the one switch that turns
+        // the built-in search off entirely (auto-search, interactive search,
+        // the SeaDex seed, and the Nyaa RSS feed). Default on, so an
+        // upgrade changes nothing.
+        sqlx::query("ALTER TABLE config ADD COLUMN nyaa_enabled INTEGER NOT NULL DEFAULT 1")
+            .execute(db)
+            .await
+            .ok();
+    }
 
     // Issue #228 — remove finished downloads from the client. The
     // switch is per client (Sonarr's "Remove Completed"), default on.

@@ -378,6 +378,22 @@ pub async fn get_anime_detail_by_titles(
 /// `/mappings` endpoint with a top-level `filter[externalSite]` is
 /// the supported shape.
 pub async fn get_anime_detail_by_mal_id(mal_id: i64) -> Result<Option<AnimeDetail>, String> {
+    Ok(candidate_by_mal_id(mal_id).await?.map(|candidate| {
+        let mut detail = to_anime_detail(candidate);
+        // The mapping IS the MAL identity, so carry it on the detail:
+        // `build_episode_cache` (and the series page) read `id_mal`
+        // to ask Jikan, then Kitsu, for episode titles by id instead
+        // of by title. `to_anime_detail` leaves it `None` because the
+        // title-fuzz path has no id to stamp.
+        detail.id_mal = Some(mal_id);
+        detail
+    }))
+}
+
+/// The Kitsu anime mapped to `mal_id`, or `None` when Kitsu has no
+/// mapping. Shared by the detail fallback above and the episode-title
+/// fallback, so both resolve the same entry for the same MAL id.
+async fn candidate_by_mal_id(mal_id: i64) -> Result<Option<Candidate>, String> {
     let mal_id_str = mal_id.to_string();
     let url = format!("{}/mappings", kitsu_api_base());
     let resp = HTTP_CLIENT
@@ -415,8 +431,7 @@ pub async fn get_anime_detail_by_mal_id(mal_id: i64) -> Result<Option<AnimeDetai
                 id: r.id,
                 attributes: r.attributes,
             })
-        })
-        .map(to_anime_detail))
+        }))
 }
 
 /// JSON:API response shape for `GET /mappings?...&include=item`.
@@ -546,15 +561,49 @@ async fn cache_kitsu_episodes(
     Ok(())
 }
 
+/// Episode titles and air dates from Kitsu, the fallback behind Jikan.
+///
+/// **By identity only.** The entry is resolved through Kitsu's
+/// `/mappings` lookup for the series' MAL id; the title search is never
+/// consulted for episode titles. No MAL id, no Kitsu mapping, or a
+/// failed lookup yields nothing rather than a guess. The mapping is a
+/// Kitsu endpoint, so this still works while MAL itself is down, which
+/// is what the fallback is for.
+///
+/// Issue #235 is why: Kitsu's text search does not surface its NSFW
+/// entries, so for "Dropout" (MAL 31886) the fuzz scored "Gabriel
+/// DropOut Specials" as the best of what it did return (two episodes,
+/// a year apart, title contained twice), and that show's episode
+/// titles were stamped onto the series. A wrong title from another
+/// show is worse than a blank one, and blanks still get the
+/// "Episode N" treatment downstream. `best_candidate` remains the
+/// *detail* fallback for a series with no MAL id (`get_anime_detail_by_titles`).
 pub async fn fetch_episode_titles_fallback(
     db: &SqlitePool,
-    titles: &[String],
-    wanted_year: Option<i32>,
-    wanted_eps: Option<i32>,
+    mal_id: Option<i64>,
 ) -> HashMap<i32, EpisodeInfo> {
-    let candidate = match best_candidate(titles, wanted_year, wanted_eps).await {
+    let Some(mid) = mal_id.filter(|id| *id > 0) else {
+        return HashMap::new();
+    };
+    let candidate = match candidate_by_mal_id(mid).await {
         Ok(Some(c)) => c,
-        _ => return HashMap::new(),
+        Ok(None) => {
+            tracing::debug!(
+                target: "ryokan::kitsu",
+                mal_id = mid,
+                "Kitsu has no mapping for this MAL id; not guessing episode titles by title"
+            );
+            return HashMap::new();
+        }
+        Err(err) => {
+            tracing::warn!(
+                target: "ryokan::kitsu",
+                mal_id = mid,
+                error = %err,
+                "Kitsu mapping lookup failed; skipping the episode-title fallback"
+            );
+            return HashMap::new();
+        }
     };
 
     if let Ok(Some(cached)) = get_cached_kitsu_episodes(db, candidate.id).await {

@@ -96,7 +96,15 @@ pub fn known_category_ids(caps_json: &str) -> Vec<i32> {
 
 /// The indexer's reported categories as `id name` lines for the edit
 /// form, parents first, custom ids last.
-pub fn reported_categories(caps_json: &str) -> Vec<String> {
+/// One category an indexer's caps report, for the categories field's
+/// chip list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReportedCategory {
+    pub id: i32,
+    pub name: String,
+}
+
+pub fn reported_categories(caps_json: &str) -> Vec<ReportedCategory> {
     let Ok(caps) = serde_json::from_str::<IndexerCaps>(caps_json) else {
         return Vec::new();
     };
@@ -111,7 +119,7 @@ pub fn reported_categories(caps_json: &str) -> Vec<String> {
     flat.sort_by_key(|(id, _)| *id);
     flat.dedup_by_key(|(id, _)| *id);
     flat.into_iter()
-        .map(|(id, name)| format!("{id} {name}"))
+        .map(|(id, name)| ReportedCategory { id, name })
         .collect()
 }
 
@@ -639,6 +647,7 @@ impl Release {
         let indexer_id = self.indexer_id;
         let indexer_name = self.indexer_name;
         crate::services::nyaa::SearchResult {
+            match_provenance: None,
             title: self.title,
             link: self.link.clone(),
             magnet: self.magnet,

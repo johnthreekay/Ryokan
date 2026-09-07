@@ -34,8 +34,7 @@ use services::{
 #[openapi(
     info(
         title = "Ryokan API",
-        version = "0.1.0",
-        description = "Self-hosted anime PVR — search, download, and manage your anime library.",
+        description = "Self-hosted anime PVR: search, download, and manage your anime library.",
     ),
     paths(
         // Library
@@ -75,6 +74,8 @@ use services::{
         handlers::downloads::api_resume_torrent,
         handlers::downloads::api_delete_torrent,
         handlers::downloads::api_blocklist_remove,
+        handlers::library::misgrabs::restore_misgrab,
+        handlers::library::misgrabs::dismiss_misgrab,
         // System
         handlers::settings::api_health,
         handlers::settings::jellyfin_test,
@@ -101,7 +102,8 @@ use services::{
         handlers::settings::download_clients::settings_download_clients_edit_form,
         handlers::settings::download_clients::settings_download_clients_add_form,
         handlers::settings::download_clients::settings_download_clients_status,
-        handlers::settings::download_clients::settings_indexers_nyaa_pin,
+        handlers::settings::indexers::settings_indexers_nyaa_form,
+        handlers::settings::indexers::settings_indexers_nyaa_save,
         // Settings — autobrr API key rotation (issue #28)
         handlers::settings::autobrr_key::settings_autobrr_regenerate_key,
         // Webhooks (issue #28)
@@ -129,6 +131,44 @@ use services::{
         handlers::grab::grab_heartbeat,
         handlers::grab::grab_confirm,
         handlers::grab::grab_cancel,
+        // Library bulk actions + recycle bin (#123)
+        handlers::library::bulk::bulk_delete,
+        handlers::library::bulk::bulk_monitor,
+        handlers::library::crud::bulk_manual_override,
+        handlers::library::recycle::restore,
+        handlers::library::recycle::purge_entry,
+        handlers::library::recycle::empty,
+        // Progress stream
+        handlers::progress::stream_progress,
+        // Settings: indexer section, forms, and tests
+        handlers::settings::indexers::settings_indexers_section,
+        handlers::settings::indexers::settings_indexers_add_form,
+        handlers::settings::indexers::settings_indexers_edit_form,
+        handlers::settings::indexers::settings_indexers_test_rss,
+        handlers::settings::indexers::settings_indexers_test_stateless,
+        // Settings: direct RSS feeds
+        handlers::settings::direct_rss_feeds::settings_direct_rss_feeds_upsert,
+        handlers::settings::direct_rss_feeds::settings_direct_rss_feeds_delete,
+        handlers::settings::direct_rss_feeds::settings_direct_rss_feeds_test,
+        // Settings: naming preview (#124)
+        handlers::settings::naming::naming_preview,
+        // Scoped API keys (#114)
+        handlers::api_keys::list,
+        handlers::api_keys::create,
+        handlers::api_keys::toggle,
+        handlers::api_keys::delete,
+        handlers::api_keys::reveal,
+        // Calendar feed (#116)
+        handlers::calendar::ical_feed,
+        // Notifications (#118)
+        handlers::notifications::test_provider,
+        // Backup / restore (#126)
+        handlers::system::backup::api_backup_download,
+        handlers::system::backup::api_backup_run,
+        handlers::system::backup::api_backup_file,
+        handlers::system::backup::backup_file_delete,
+        handlers::system::backup::api_restore_upload,
+        handlers::system::backup::restore_cancel,
     ),
     components(schemas(
         services::anilist::AnimeEntry,
@@ -166,7 +206,7 @@ use services::{
         handlers::settings::download_clients::DownloadClientUpsertForm,
         handlers::settings::download_clients::DownloadClientIdForm,
         handlers::settings::download_clients::DownloadClientTestForm,
-        handlers::settings::download_clients::NyaaPinForm,
+        handlers::settings::indexers::NyaaSettingsForm,
         handlers::settings::custom_formats::CustomFormatUpsertForm,
         handlers::settings::custom_formats::CfTestRequest,
         handlers::settings::custom_formats::CustomFormatDeleteForm,
@@ -181,15 +221,27 @@ use services::{
         handlers::grab::GrabCancelForm,
     )),
     tags(
-        (name = "Library", description = "Anime library management — add, remove, search, and monitor series"),
+        (name = "Library", description = "Anime library management: add, remove, search, and monitor series"),
         (name = "Search", description = "Nyaa torrent search and grabbing"),
-        (name = "Downloads", description = "qBittorrent download management"),
+        (name = "Downloads", description = "Download queue management across the configured download clients"),
         (name = "System", description = "Health checks, logs, RSS sync, and background tasks"),
-        (name = "Settings", description = "Settings management — Custom Formats CRUD, import/export, and scoring thresholds"),
-        (name = "Grab", description = "Interactive file-picker grab flow (#83) — preview, heartbeat, confirm, cancel"),
+        (name = "Settings", description = "Settings management: Custom Formats CRUD, import/export, and scoring thresholds"),
+        (name = "Grab", description = "Interactive file-picker grab flow (#83): preview, heartbeat, confirm, cancel"),
+        (name = "Backup", description = "Backup and restore of the database, encryption key, and artwork (#126)"),
+        (name = "Calendar", description = "Airing calendar feed for scoped API keys (#116)"),
+        (name = "Webhook", description = "Inbound push receivers such as autobrr"),
     ),
 )]
 struct ApiDoc;
+
+/// The OpenAPI document with the version stamped from `Cargo.toml`.
+/// utoipa's `info(version = ...)` only takes a literal, and a hardcoded
+/// string drifted to `0.1.0` while the crate sat at 1.x.
+fn api_doc() -> utoipa::openapi::OpenApi {
+    let mut doc = ApiDoc::openapi();
+    doc.info.version = env!("CARGO_PKG_VERSION").to_string();
+    doc
+}
 
 /// Run a supervising loop around a background tick future.
 ///
@@ -876,6 +928,14 @@ async fn main() {
             post(handlers::downloads::api_blocklist_remove),
         )
         .route(
+            "/api/library/misgrabs/{id}/restore",
+            post(handlers::library::misgrabs::restore_misgrab),
+        )
+        .route(
+            "/api/library/misgrabs/{id}/dismiss",
+            post(handlers::library::misgrabs::dismiss_misgrab),
+        )
+        .route(
             "/settings",
             get(handlers::settings::settings_page).post(handlers::settings::settings_submit),
         )
@@ -1000,8 +1060,12 @@ async fn main() {
             get(handlers::settings::indexers::settings_indexers_edit_form),
         )
         .route(
-            "/settings/indexers/nyaa-pin",
-            post(handlers::settings::download_clients::settings_indexers_nyaa_pin),
+            "/settings/indexers/nyaa",
+            post(handlers::settings::indexers::settings_indexers_nyaa_save),
+        )
+        .route(
+            "/settings/indexers/nyaa/edit-form",
+            get(handlers::settings::indexers::settings_indexers_nyaa_form),
         )
         .route(
             "/settings/indexers/test-rss",
@@ -1186,7 +1250,6 @@ async fn main() {
             post(handlers::system::api_anibridge_reload),
         )
         .route("/api/system/tasks", get(handlers::system::api_system_tasks))
-        .route("/help", get(handlers::help::help_page))
         // Issue #116 — in-app calendar page. Cookie-auth gated
         // (rest of protected_routes); the iCal feed at
         // /api/calendar.ics is the parallel scoped-key surface
@@ -1214,7 +1277,7 @@ async fn main() {
         // the rate-limited /login and /setup shapes. Exposing it
         // unauthenticated would hand a passing scanner a complete map of
         // the application before any auth check fires.
-        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api_doc()))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             handlers::auth::require_auth,
@@ -1637,10 +1700,19 @@ async fn main() {
                                 "Refreshing tracked series metadata",
                             )
                             .await;
-                            let (refreshed, failed) =
-                                services::metadata_sync::refresh_all_series_metadata(&db).await;
-                            let status = if failed > 0 { "warn" } else { "ok" };
-                            let detail = format!("refreshed={}, failed={}", refreshed, failed);
+                            // Err only when the manual rebuild holds
+                            // `METADATA_SWEEP_LOCK`; that sweep covers
+                            // this tick's work, so record and move on.
+                            let (status, detail) =
+                                match services::metadata_sync::refresh_all_series_metadata(&db)
+                                    .await
+                                {
+                                    Ok((refreshed, failed)) => (
+                                        if failed > 0 { "warn" } else { "ok" },
+                                        format!("refreshed={}, failed={}", refreshed, failed),
+                                    ),
+                                    Err(busy) => ("warn", busy),
+                                };
                             let _ = models::scheduled_tasks::mark_finished(
                                 &db,
                                 "metadata_refresh",
@@ -1950,11 +2022,16 @@ async fn main() {
                         // would linger until the process restarts. Hourly global
                         // sweep keeps the map bounded.
                         handlers::auth::sweep_login_failures();
+                        let cleanup_cfg = models::config::get_config(&cleanup_db)
+                            .await
+                            .ok()
+                            .flatten();
                         // Recycle-bin purge (#123). Date buckets older than
                         // `recycle_bin_age_days` are dropped; 0 disables the
                         // sweep and an empty path means no bin at all.
-                        if let Ok(Some(cfg)) = models::config::get_config(&cleanup_db).await
-                            && !cfg.recycle_bin_path.trim().is_empty()
+                        if let Some(cfg) = cleanup_cfg
+                            .as_ref()
+                            .filter(|c| !c.recycle_bin_path.trim().is_empty())
                         {
                             match services::recycle::purge_old(
                                 &cfg.recycle_bin_path,
@@ -1986,6 +2063,111 @@ async fn main() {
                                     tracing::error!("Recycle bin purge failed: {}", e);
                                 }
                                 _ => {}
+                            }
+                        }
+                        // Orphaned temp-file sweep (#205). An import that
+                        // died mid-copy leaves `<dest>.ryokan-tmp` or
+                        // `.<name>.ryokan-new` in the season folder; nothing
+                        // else ever looks at those again. The sweep removes
+                        // only under both import locks and skips the hour
+                        // when an import is running.
+                        if let Some(cfg) = cleanup_cfg
+                            .as_ref()
+                            .filter(|c| !c.media_root.trim().is_empty())
+                        {
+                            use services::post_processing::temp_sweep;
+                            match temp_sweep::sweep_orphaned_temp_files(
+                                &cleanup_db,
+                                &cfg.media_root,
+                                &cfg.recycle_bin_path,
+                                temp_sweep::ORPHAN_MIN_AGE,
+                            )
+                            .await
+                            {
+                                Ok(report) => {
+                                    if report.skipped_busy {
+                                        tracing::debug!(
+                                            "Temp-file sweep skipped: an import is running; next hour"
+                                        );
+                                    }
+                                    if !report.removed.is_empty() {
+                                        let listed: Vec<String> = report
+                                            .removed
+                                            .iter()
+                                            .take(10)
+                                            .map(|p| p.display().to_string())
+                                            .collect();
+                                        // `bytes` is what was freed: a file moved
+                                        // to the bin still occupies the disk there,
+                                        // so an all-recycled pass reports the move
+                                        // and no size.
+                                        let mut notes = Vec::new();
+                                        if report.bytes > 0 {
+                                            notes.push(format!(
+                                                "{} freed",
+                                                services::recycle::human_bytes(report.bytes)
+                                            ));
+                                        }
+                                        if report.recycled > 0 {
+                                            notes.push(format!(
+                                                "{} moved to the recycle bin",
+                                                report.recycled
+                                            ));
+                                        }
+                                        let notes = if notes.is_empty() {
+                                            String::new()
+                                        } else {
+                                            format!(" ({})", notes.join(", "))
+                                        };
+                                        services::logger::info(
+                                            &cleanup_db,
+                                            models::log::LogCategory::PostProcess,
+                                            &format!(
+                                                "Removed {} leftover temporary file{} from the media library{}",
+                                                report.removed.len(),
+                                                if report.removed.len() == 1 { "" } else { "s" },
+                                                notes
+                                            ),
+                                            &format!(
+                                                "left by an import that stopped mid-copy; older than {}h; kept_recent={} files={}{}",
+                                                temp_sweep::ORPHAN_MIN_AGE.as_secs() / 3600,
+                                                report.kept_recent,
+                                                listed.join(", "),
+                                                if report.removed.len() > listed.len() {
+                                                    ", ..."
+                                                } else {
+                                                    ""
+                                                }
+                                            ),
+                                        )
+                                        .await;
+                                    }
+                                    if !report.errors.is_empty() {
+                                        let joined = report.errors.join("; ");
+                                        cleanup_errors.push(format!("temp sweep: {joined}"));
+                                        services::logger::warn(
+                                            &cleanup_db,
+                                            models::log::LogCategory::PostProcess,
+                                            &format!(
+                                                "Temp-file sweep hit {} error{}",
+                                                report.errors.len(),
+                                                if report.errors.len() == 1 { "" } else { "s" }
+                                            ),
+                                            &joined,
+                                        )
+                                        .await;
+                                    }
+                                }
+                                Err(e) => {
+                                    cleanup_errors.push(format!("temp sweep: {}", e));
+                                    services::logger::error(
+                                        &cleanup_db,
+                                        models::log::LogCategory::PostProcess,
+                                        "Temp-file sweep failed",
+                                        &e,
+                                    )
+                                    .await;
+                                }
                             }
                         }
                         let status = if cleanup_errors.is_empty() {
@@ -2369,6 +2551,46 @@ async fn main() {
         });
     }
 
+    // Misgrab guardrails: verify unchecked grabs against their file
+    // list and remediate detected misgrabs (delete, blocklist, notify,
+    // re-search). Same one-tick-per-call shape as grab_sweep.
+    {
+        let misgrab_state = state.clone();
+        tokio::spawn(async move {
+            let registry = misgrab_state.tasks.clone();
+            supervise(&registry, "misgrab_sweep", move || {
+                let state = misgrab_state.clone();
+                async move {
+                    let mut interval = tokio::time::interval(services::misgrab::SWEEP_INTERVAL);
+                    loop {
+                        interval.tick().await;
+                        match services::misgrab::sweep_once(&state).await {
+                            Ok(summary) if summary.misgrabs > 0 || summary.remediated > 0 => {
+                                tracing::info!(
+                                    target: "ryokan::misgrab_sweep",
+                                    verified = summary.verified,
+                                    misgrabs = summary.misgrabs,
+                                    unverifiable = summary.unverifiable,
+                                    remediated = summary.remediated,
+                                    "misgrab sweep tick"
+                                );
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(
+                                    target: "ryokan::misgrab_sweep",
+                                    error = %e,
+                                    "sweep_once failed; will retry on next tick"
+                                );
+                            }
+                        }
+                    }
+                }
+            })
+            .await;
+        });
+    }
+
     // Issue #62 — watch-list sync. One of the supervised tasks.
     // Same minute-tick + minutes_since_last cadence pattern as
     // rss_sync (so a process restart respects the persisted
@@ -2512,4 +2734,33 @@ async fn main() {
     )
     .await
     .expect("Server error");
+}
+
+#[cfg(test)]
+mod api_doc_tests {
+    use super::api_doc;
+
+    #[test]
+    fn version_follows_cargo_toml() {
+        assert_eq!(api_doc().info.version, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn once_missing_routes_are_documented() {
+        let doc = api_doc();
+        for path in [
+            "/api/backup/download",
+            "/api/restore/upload",
+            "/api/library/recycle/{entry_id}/restore",
+            "/api/calendar.ics",
+            "/api/notifications/{id}/test",
+            "/api/settings/naming-preview",
+            "/api/api-keys",
+        ] {
+            assert!(
+                doc.paths.paths.contains_key(path),
+                "{path} missing from the OpenAPI document"
+            );
+        }
+    }
 }

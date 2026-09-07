@@ -37,6 +37,19 @@ use crate::services::notifications::{NotificationEvent, TestSendResult, discord,
 /// the upstream proxy here; the receiver is the unreachable origin.
 /// Serialization failures are 500 (programmer error in Ryokan, not a
 /// user-fixable state).
+#[utoipa::path(
+    post,
+    path = "/api/notifications/{id}/test",
+    tag = "System",
+    summary = "Send a test notification",
+    description = "Sends a synthetic health event to one notification provider, bypassing the per-event matrix. The status field reports what the receiver returned.",
+    params(("id" = i64, Path, description = "Notification provider id")),
+    responses(
+        (status = 200, description = "Request reached the receiver", body = TestSendResult),
+        (status = 404, description = "Provider not found or disabled"),
+        (status = 502, description = "Receiver unreachable or timed out"),
+    ),
+)]
 pub async fn test_provider(
     State(state): State<AppState>,
     Path(id): Path<i64>,

@@ -37,8 +37,12 @@ use browser_e2e::{open_with_session, seed_user_session, spawn_app, try_connect_b
 /// wired across hx-boost re-executions.
 #[tokio::test]
 async fn ryokan_episode_deleted_event_flips_row_to_missing_state() {
-    let Ok(client) = try_connect_browser().await else {
-        return; // WebDriver unreachable — skip.
+    let client = match try_connect_browser().await {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("[skip] {msg}");
+            return;
+        }
     };
 
     let db = in_memory_pool().await;

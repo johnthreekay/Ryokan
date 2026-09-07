@@ -30,39 +30,46 @@ function liveLibrarySearch(input) {
 //
 // The header renders sort as a key ('recent' / 'title' / 'score')
 // plus a direction arrow; the server and URL keep the canonical
-// six-value ?sort= vocabulary. This recomposes and navigates,
-// preserving ?list= (scope) and the live search text.
-function librarySortNavigate(sortValue) {
-    var url = new URL(window.location.href);
-    if (sortValue === 'recent') url.searchParams.delete('sort');
-    else url.searchParams.set('sort', sortValue);
+// six-value ?sort= vocabulary. Both controls carry `hx-get="/"` with
+// `hx-vals="js:{...librarySortParams(...)}"` (htmx 4 reads a `js:` value
+// as an object-literal body, so the call is spread into one): this
+// recomposes the sort
+// value and returns the query (sort, list, search) htmx sends, and
+// the response's #library-page swaps in place with the URL pushed.
+// Picking a key applies that key's default direction (newest first,
+// A to Z, highest score first); the arrow flips direction within the
+// current key.
+function librarySortParams(what, el) {
+    var keySel = document.getElementById('library-sort-key');
+    var dirBtn = document.getElementById('library-sort-dir');
+    var key = keySel ? keySel.value : 'recent';
+    var sort;
+    if (what === 'key') {
+        sort = ({ recent: 'recent', title: 'title_asc', score: 'score' })[key] || 'recent';
+    } else {
+        var wasDesc = !!(dirBtn && dirBtn.dataset.desc === 'true');
+        sort = ({
+            recent: wasDesc ? 'oldest' : 'recent',
+            title: wasDesc ? 'title_asc' : 'title_desc',
+            score: wasDesc ? 'score_asc' : 'score',
+        })[key] || 'recent';
+    }
+    // A sort change re-renders the toolbar and grid, which drops any
+    // selection; leave select mode first so the floating bar goes too.
+    if (document.body.classList.contains('bulk-selecting') && typeof toggleBulkSelectMode === 'function') {
+        toggleBulkSelectMode();
+    }
+    var params = {};
+    if (sort !== 'recent') params.sort = sort;
+    var current = new URL(window.location.href);
+    var list = current.searchParams.get('list');
+    if (list) params.list = list;
     // The search input's live value may be newer than the URL param
     // (liveLibrarySearch debounces its replaceState by 250ms).
     var search = document.getElementById('library-search');
     var q = search ? search.value.trim() : '';
-    if (q) url.searchParams.set('search', q);
-    else url.searchParams.delete('search');
-    window.location.assign(url);
-}
-
-// Picking a key applies that key's default direction — newest first,
-// A to Z, highest score first — matching the select's option values.
-function librarySortKeyChanged(sel) {
-    var defaults = { recent: 'recent', title: 'title_asc', score: 'score' };
-    librarySortNavigate(defaults[sel.value] || 'recent');
-}
-
-// The arrow flips direction within the current key.
-function librarySortDirToggled(btn) {
-    var keySel = document.getElementById('library-sort-key');
-    var key = keySel ? keySel.value : 'recent';
-    var wasDesc = btn.dataset.desc === 'true';
-    var composed = {
-        recent: wasDesc ? 'oldest' : 'recent',
-        title: wasDesc ? 'title_asc' : 'title_desc',
-        score: wasDesc ? 'score_asc' : 'score',
-    };
-    librarySortNavigate(composed[key] || 'recent');
+    if (q) params.search = q;
+    return params;
 }
 
 function _liveLibrarySearchImmediate(input) {
@@ -231,7 +238,7 @@ function selectMonitorMode(btn) {
 // payload from `confirmMonitoringVals()` via `hx-vals='js:'`, and the
 // server returns `HX-Refresh: true` so htmx reloads the page on
 // success. The pre-migration fallback `if (!_pendingSeriesId)
-// location.reload()` is preserved by `hx-on::response-error="window.
+// location.reload()` is preserved by `hx-on::response:error="window.
 // location.reload()"` plus the 400 the handler issues on missing id.
 function confirmMonitoringVals() {
     return {
@@ -655,10 +662,8 @@ function openBulkDeleteModal() {
     if (bulkSelectedIds.size === 0) return;
     var modal = document.getElementById('bulk-delete-modal');
     var count = document.getElementById('bulk-delete-count');
-    var checkbox = document.getElementById('bulk-delete-files-toggle');
     var confirmBtn = document.getElementById('bulk-delete-confirm-btn');
     if (count) count.textContent = String(bulkSelectedIds.size);
-    if (checkbox) checkbox.checked = false;
     if (confirmBtn) {
         confirmBtn.disabled = false;
         confirmBtn.textContent = 'Remove from library';
@@ -679,8 +684,9 @@ function closeBulkDeleteModal(event) {
 function confirmBulkDelete() {
     if (bulkSelectedIds.size === 0) return;
     var ids = Array.from(bulkSelectedIds);
-    var checkbox = document.getElementById('bulk-delete-files-toggle');
-    var deleteFiles = !!(checkbox && checkbox.checked);
+    // Files always go the way the recycle-bin setting says, as a single
+    // remove from the series page does; the modal copy states which.
+    var deleteFiles = true;
     var confirmBtn = document.getElementById('bulk-delete-confirm-btn');
     if (confirmBtn) {
         confirmBtn.disabled = true;

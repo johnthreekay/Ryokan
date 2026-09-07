@@ -196,8 +196,18 @@ pub struct LogEntry {
     pub timestamp: String,
     pub level: String,
     pub category: String,
+    /// The category's display name (`Download Client` for
+    /// `download_client`); the slug itself for anything unknown.
+    pub category_label: String,
     pub message: String,
     pub detail: String,
+}
+
+/// Display name for a stored category slug, falling back to the slug.
+pub fn category_display_label(slug: &str) -> String {
+    LogCategory::from_str(slug)
+        .map(|c| c.label().to_string())
+        .unwrap_or_else(|| slug.to_string())
 }
 
 /// Query parameters for fetching logs.
@@ -206,6 +216,9 @@ pub struct LogQuery {
     pub category: Option<String>,
     pub search: Option<String>,
     pub limit: i64,
+    /// Rows to skip before `limit` applies: the Logs page's numbered
+    /// pages are `(page - 1) * page_size`. `0` for the first page.
+    pub offset: i64,
     pub before_id: Option<i64>,
 }
 
@@ -216,6 +229,7 @@ impl Default for LogQuery {
             category: None,
             search: None,
             limit: 200,
+            offset: 0,
             before_id: None,
         }
     }
@@ -251,10 +265,11 @@ enum BindValue {
     Text(String),
 }
 
-/// Query log entries with optional filters. Returns newest first.
-pub async fn query(db: &SqlitePool, params: &LogQuery) -> Result<Vec<LogEntry>, sqlx::Error> {
-    let mut sql =
-        String::from("SELECT id, timestamp, level, category, message, detail FROM logs WHERE 1=1");
+/// The `WHERE` tail (level, category, search, cursor) shared by
+/// [`query`] and [`count_filtered`], so the page and its count can
+/// never disagree about what a filter means.
+fn filter_clause(params: &LogQuery) -> (String, Vec<BindValue>) {
+    let mut sql = String::new();
     let mut binds: Vec<BindValue> = Vec::new();
 
     if let Some(ref level) = params.level {
@@ -286,8 +301,34 @@ pub async fn query(db: &SqlitePool, params: &LogQuery) -> Result<Vec<LogEntry>, 
         binds.push(BindValue::Int(before));
     }
 
-    sql.push_str(" ORDER BY id DESC LIMIT ?");
+    (sql, binds)
+}
+
+/// How many entries match the query's filters (limit and offset
+/// ignored): the Logs page's "N entries" and its page count.
+pub async fn count_filtered(db: &SqlitePool, params: &LogQuery) -> Result<i64, sqlx::Error> {
+    let (clause, binds) = filter_clause(params);
+    let sql = format!("SELECT COUNT(*) FROM logs WHERE 1=1{clause}");
+    let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql));
+    for b in &binds {
+        q = match b {
+            BindValue::Int(i) => q.bind(*i),
+            BindValue::Text(t) => q.bind(t.clone()),
+        };
+    }
+    q.fetch_one(db).await
+}
+
+/// Query log entries with optional filters. Returns newest first.
+pub async fn query(db: &SqlitePool, params: &LogQuery) -> Result<Vec<LogEntry>, sqlx::Error> {
+    let (clause, mut binds) = filter_clause(params);
+    let mut sql = format!(
+        "SELECT id, timestamp, level, category, message, detail FROM logs WHERE 1=1{clause}"
+    );
+
+    sql.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
     binds.push(BindValue::Int(params.limit));
+    binds.push(BindValue::Int(params.offset.max(0)));
 
     // sqlx doesn't support dynamic bind lists easily, so we use query_as with raw SQL.
     // Build the query manually.
@@ -301,6 +342,7 @@ pub async fn query(db: &SqlitePool, params: &LogQuery) -> Result<Vec<LogEntry>, 
                 id,
                 timestamp,
                 level,
+                category_label: category_display_label(&category),
                 category,
                 message,
                 detail,
@@ -341,7 +383,9 @@ pub async fn latest_id(db: &SqlitePool) -> Result<i64, sqlx::Error> {
 ///
 /// `level` applies "at or above" semantics (matching the logs page
 /// dropdown — "warn" means warn + error). `category`, if supplied and
-/// non-empty, is an exact match. Both are pushed into the SQL query
+/// non-empty, is an exact match; `search`, likewise, is the page's
+/// message / detail substring filter, so a filtered page only ever
+/// receives rows it would have shown. All three are pushed into the SQL query
 /// so SQLite does the filtering and the round trip carries only
 /// matching rows. Previously the poll handler fetched 100 unfiltered
 /// rows every 3s and dropped the misses in-memory — cheap per row
@@ -353,6 +397,7 @@ pub async fn entries_after(
     limit: i64,
     level: Option<&str>,
     category: Option<&str>,
+    search: Option<&str>,
 ) -> Result<Vec<LogEntry>, sqlx::Error> {
     let mut sql = String::from(
         "SELECT id, timestamp, level, category, message, detail FROM logs WHERE id > ?",
@@ -375,6 +420,13 @@ pub async fn entries_after(
         binds.push(BindValue::Text(cat.to_string()));
     }
 
+    if let Some(needle) = search.filter(|s| !s.is_empty()) {
+        sql.push_str(" AND (message LIKE ? OR detail LIKE ?)");
+        let pattern = format!("%{needle}%");
+        binds.push(BindValue::Text(pattern.clone()));
+        binds.push(BindValue::Text(pattern));
+    }
+
     sql.push_str(" ORDER BY id DESC LIMIT ?");
     binds.push(BindValue::Int(limit));
 
@@ -387,6 +439,7 @@ pub async fn entries_after(
                 id,
                 timestamp,
                 level,
+                category_label: category_display_label(&category),
                 category,
                 message,
                 detail,
@@ -706,6 +759,7 @@ mod tests {
             &db,
             &LogQuery {
                 limit: 2,
+                offset: 0,
                 before_id: Some(cursor),
                 ..Default::default()
             },
@@ -730,7 +784,9 @@ mod tests {
             .await
             .unwrap();
 
-        let rows = entries_after(&db, after, 100, None, None).await.unwrap();
+        let rows = entries_after(&db, after, 100, None, None, None)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 2);
         assert!(rows.iter().all(|r| r.id > after));
     }
@@ -749,7 +805,7 @@ mod tests {
             .unwrap();
 
         // level=warn + category=grab ⇒ only the second row.
-        let rows = entries_after(&db, 0, 100, Some("warn"), Some("grab"))
+        let rows = entries_after(&db, 0, 100, Some("warn"), Some("grab"), None)
             .await
             .unwrap();
         assert_eq!(rows.len(), 1);
@@ -769,7 +825,9 @@ mod tests {
         insert(&db, LogLevel::Info, LogCategory::Grab, "g", "")
             .await
             .unwrap();
-        let rows = entries_after(&db, 0, 100, None, Some("")).await.unwrap();
+        let rows = entries_after(&db, 0, 100, None, Some(""), None)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 2);
     }
 
@@ -822,5 +880,60 @@ mod tests {
             levels_at_or_above("garbage"),
             vec!["trace", "debug", "info", "warn", "error"]
         );
+    }
+
+    #[tokio::test]
+    async fn count_filtered_and_offset_page_the_same_filter() {
+        // The Logs page asks for page N of a filter with `offset` and
+        // sizes its pagination from `count_filtered`; both must read
+        // the filter the same way, and the poll's `search` must be the
+        // same substring match so a filtered page only receives rows
+        // it would show.
+        let db = crate::test_support::in_memory_pool().await;
+        for i in 0..7 {
+            insert(
+                &db,
+                LogLevel::Info,
+                LogCategory::Grab,
+                &format!("swap {i}"),
+                "",
+            )
+            .await
+            .unwrap();
+            insert(
+                &db,
+                LogLevel::Info,
+                LogCategory::Grab,
+                &format!("other {i}"),
+                "",
+            )
+            .await
+            .unwrap();
+        }
+        let q = LogQuery {
+            level: Some("info".to_string()),
+            category: None,
+            search: Some("swap".to_string()),
+            limit: 3,
+            offset: 0,
+            before_id: None,
+        };
+        assert_eq!(count_filtered(&db, &q).await.unwrap(), 7);
+        let first = query(&db, &q).await.unwrap();
+        assert_eq!(first.len(), 3);
+        assert!(first.iter().all(|e| e.message.starts_with("swap")));
+        let third = query(&db, &LogQuery { offset: 6, ..q }).await.unwrap();
+        assert_eq!(
+            third.len(),
+            1,
+            "seven matches at three per page leave one on page three"
+        );
+        assert_eq!(third[0].message, "swap 0");
+
+        let newest_other = entries_after(&db, 0, 100, None, None, Some("other"))
+            .await
+            .unwrap();
+        assert_eq!(newest_other.len(), 7);
+        assert!(newest_other.iter().all(|e| e.message.starts_with("other")));
     }
 }

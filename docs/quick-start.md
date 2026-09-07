@@ -384,7 +384,7 @@ In Ryokan, go to **Settings → Download Clients → Add download client**. Fill
     - **Username**: `admin`
     - **Password**: the password you just set in qBit
     - **Category**: `ryokan-anime`
-    - **Default for this protocol**: on
+    - **Default client**: on
 
 === "Deluge"
 
@@ -396,7 +396,7 @@ In Ryokan, go to **Settings → Download Clients → Add download client**. Fill
     - **URL**: `http://deluge:8112`
     - **Password**: the password you set in Deluge's web UI
     - **Label**: `ryokan-anime`
-    - **Default for this protocol**: on
+    - **Default client**: on
 
 === "Transmission"
 
@@ -409,7 +409,7 @@ In Ryokan, go to **Settings → Download Clients → Add download client**. Fill
     - **Username**: `admin` (matches `USER` in the compose)
     - **Password**: whatever you set `PASS` to in the compose
     - **Label**: `ryokan-anime`
-    - **Default for this protocol**: on
+    - **Default client**: on
 
 === "rTorrent"
 
@@ -422,7 +422,7 @@ In Ryokan, go to **Settings → Download Clients → Add download client**. Fill
     - **Username**: `admin` (matches the htpasswd you generated in step 1)
     - **Password**: the password you put in the htpasswd file
     - **Label**: `ryokan-anime`
-    - **Default for this protocol**: on
+    - **Default client**: on
 
     If you skipped htpasswd in step 1 (you'll have to manually delete the `/srv/docker/rutorrent/passwd:/passwd` mount from the compose), leave Username and Password blank.
 
@@ -436,7 +436,7 @@ In Ryokan, go to **Settings → Download Clients → Add download client**. Fill
     - **URL**: `http://sabnzbd:8080` (the **container** port, not the 8081 host mapping. Ryokan reaches SAB through Docker's per-compose network where SAB is still on its native 8080; the 8081 in the compose is only for your browser to hit from the host.)
     - **API Key**: paste the full API key
     - **Category**: `ryokan-anime` (Ryokan auto-creates this in SAB if it doesn't exist)
-    - **Default for this protocol**: on
+    - **Default client**: on
 
 Click **Test connection** in Ryokan. You should see "Connected" with a version number. If not, the [Download clients page](download-clients.md) has per-client troubleshooting.
 
@@ -462,9 +462,9 @@ Click **Test connection** to confirm Ryokan can reach it.
 
 ## 7. Add a show and watch it land
 
-Go back to the library page, click **Add series**, type the name of an anime you want, and pick the right one from the dropdown. Ryokan fetches metadata from AniList by default.
+Go back to the library page, click **+ Add Series**, type the name of an anime you want, and pick the right one from the dropdown. Ryokan fetches metadata from AniList by default.
 
-When the series page opens, click an episode you want, then **Search**. You'll see a list of releases ranked by Ryokan's scoring. Pick one and click **Grab**, or hit **Auto-search** to let Ryokan pick the highest-scored release for you.
+When the series page opens, each episode row has two icon buttons: **Interactive search** lists the releases ranked by Ryokan's scoring so you can click **Grab** on one, and **Auto search** lets Ryokan grab the highest-scored release for you. **Search Monitored Episodes** at the top runs the automatic version for every monitored episode.
 
 The grab fires off to your download client. When it finishes:
 
@@ -485,4 +485,4 @@ If you want Ryokan to add new shows automatically when you mark them watching on
 
 ---
 
-*Last updated: 2026-05-07.*
+*Last updated: 2026-08-29.*

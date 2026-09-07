@@ -316,12 +316,14 @@ struct PendingCandidate {
 
 impl SeriesMeta {
     fn from_series(series: &series::Series) -> Self {
-        let aliases = auto_search::dedupe_strings(vec![
+        let mut alias_input = vec![
             series.title.clone(),
             series.title_romaji.clone(),
             series.title_english.clone(),
             series.title_native.clone(),
-        ]);
+        ];
+        alias_input.extend(series.alternate_title_list());
+        let aliases = auto_search::dedupe_strings(alias_input);
 
         let season_num = aliases
             .iter()
@@ -462,6 +464,14 @@ pub async fn sync_once(state: &AppState, trigger: &str) -> Result<SyncSummary, S
 /// invariant — Nyaa's items go in first so a release surfaced on
 /// both Nyaa and an indexer attributes to Nyaa for grab routing,
 /// matching the v1 behavior.
+/// Whether the built-in Nyaa feed is polled: the Nyaa card's RSS toggle
+/// (`rss_enabled`, with the older `disable_nyaa_rss` opt-out still
+/// honored) and the card's master switch. Indexer and direct feeds
+/// have their own per-row flags; `rss_master_enabled` above them all.
+pub fn nyaa_rss_enabled(cfg: &config::Config) -> bool {
+    cfg.nyaa_enabled && cfg.rss_enabled && !cfg.disable_nyaa_rss
+}
+
 async fn fetch_all_sources(
     state: &AppState,
     cfg: &config::Config,
@@ -474,7 +484,7 @@ async fn fetch_all_sources(
     //    (Nyaa-specific opt-out for users who only
     //    want indexer-RSS / direct-RSS feeds polled). Master flag
     //    has already been honored at the sync_once_inner top.
-    if cfg.rss_enabled && !cfg.disable_nyaa_rss {
+    if nyaa_rss_enabled(cfg) {
         match fetch_feeds(cfg.allow_non_english, has_music_series).await {
             Ok(nyaa_items) => items.extend(nyaa_items),
             Err(err) => {
@@ -769,6 +779,45 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             .await;
             continue;
         };
+
+        // Automatic paths take a release only when its title names the
+        // series (a title or alias contained verbatim, or the same words);
+        // a token-overlap match is left for interactive search.
+        //
+        // The check reads the winner `best_series_match` picked by its
+        // season- and episode-adjusted score, on purpose. When that
+        // winner is inexact and an exact match sits lower, the exact one
+        // is the series the release fits worse (a season-less entry for
+        // a `S2` release, a wrong episode range); grabbing it there would
+        // be the wrong-season misgrab the adjustments exist to prevent.
+        // Dropping the item is the safe answer, and the sequel-variant
+        // aliases (`SeriesMeta::from_series`) keep the right season exact
+        // in the common case.
+        if found.alias_score < 1.0 {
+            skipped += 1;
+            let reason = format!(
+                "Title does not name the series exactly | {}",
+                build_match_diag(&item, Some(&found), 0)
+            );
+            let _ = rss::record_decision(
+                &state.db,
+                rss::DecisionRecord {
+                    item_key: &item_key,
+                    title: &item.title,
+                    link: &item.link,
+                    series_id: Some(found.series.id),
+                    series_title: &found.series.title,
+                    group_name: &item.group,
+                    is_batch: item.is_batch,
+                    decision: "rejected",
+                    reason: &reason,
+                    source: src_str,
+                    source_id: src_id,
+                },
+            )
+            .await;
+            continue;
+        }
 
         matched += 1;
 
@@ -1113,6 +1162,42 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         // their `nzo_id` instead of the pre-computed BT-style hash.
         // For BT clients the returned id equals `info_hash` (default
         // impl), no behavior change.
+        // Misgrab guardrails: the blocklist wins over RSS matching. A
+        // release the sweep removed (or the user failed) is never
+        // re-grabbed from a feed, by hash or by exact title.
+        if crate::models::grabbed_torrents::is_blocklisted_release(
+            &state.db,
+            cand.found.series.id,
+            &info_hash,
+            &cand.item.title,
+        )
+        .await
+        {
+            skipped += 1;
+            let reason = format!(
+                "Blocklisted release | {}",
+                build_match_diag(&cand.item, Some(&cand.found), cand.score)
+            );
+            let (src_str, src_id) = source_dedup_key(&cand.item.source);
+            let _ = rss::record_decision(
+                &state.db,
+                rss::DecisionRecord {
+                    item_key: &cand.item_key,
+                    title: &cand.item.title,
+                    link: &cand.item.link,
+                    series_id: Some(cand.found.series.id),
+                    series_title: &cand.found.series.title,
+                    group_name: &cand.item.group,
+                    is_batch: cand.item.is_batch,
+                    decision: "rejected",
+                    reason: &reason,
+                    source: src_str,
+                    source_id: src_id,
+                },
+            )
+            .await;
+            continue;
+        }
         match client.add_torrent_returning_id(&grab_url, &info_hash).await {
             Ok((_outcome, canonical_id)) => {
                 grabbed += 1;
@@ -1166,6 +1251,12 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                 .await
                 .ok()
                 .flatten();
+                // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
+                if let Some(gid) = grab_id {
+                    let _ =
+                        crate::models::grabbed_torrents::set_source_url(&state.db, gid, &grab_url)
+                            .await;
+                }
                 if let Some(gid) = grab_id {
                     let _ = crate::models::grabbed_torrents::set_download_client(
                         &state.db,
@@ -2348,3 +2439,30 @@ fn group_matches_blacklist(group: &str, blacklist: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod nyaa_gate_tests {
+    use super::*;
+
+    #[test]
+    fn nyaa_feed_needs_the_card_on_and_its_rss_toggle_on() {
+        let mut cfg = config::Config {
+            rss_enabled: true,
+            disable_nyaa_rss: false,
+            nyaa_enabled: true,
+            ..Default::default()
+        };
+        assert!(nyaa_rss_enabled(&cfg));
+        cfg.nyaa_enabled = false;
+        assert!(!nyaa_rss_enabled(&cfg), "the card's master switch wins");
+        cfg.nyaa_enabled = true;
+        cfg.disable_nyaa_rss = true;
+        assert!(
+            !nyaa_rss_enabled(&cfg),
+            "the older opt-out is still honored"
+        );
+        cfg.disable_nyaa_rss = false;
+        cfg.rss_enabled = false;
+        assert!(!nyaa_rss_enabled(&cfg));
+    }
+}

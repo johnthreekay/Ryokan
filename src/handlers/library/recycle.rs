@@ -303,6 +303,19 @@ async fn nudge_jellyfin(state: &AppState) {
 }
 
 /// `POST /api/library/recycle/{entry_id}/restore`
+#[utoipa::path(
+    post,
+    path = "/api/library/recycle/{entry_id}/restore",
+    tag = "Library",
+    summary = "Restore a recycle bin entry",
+    description = "Moves the entry's files back to where they were deleted from and re-tags the episode. Fails if the original location is now occupied.",
+    params(("entry_id" = String, Path, description = "Recycle bin entry id (8 hex chars)")),
+    responses(
+        (status = 200, description = "Restored", body = serde_json::Value),
+        (status = 404, description = "No such entry"),
+        (status = 409, description = "Destination already exists"),
+    ),
+)]
 pub async fn restore(State(state): State<AppState>, Path(entry_id): Path<String>) -> Response {
     let (bin, media_root) = match bin_path(&state).await {
         Ok(b) => b,
@@ -356,6 +369,17 @@ pub async fn restore(State(state): State<AppState>, Path(entry_id): Path<String>
 
 /// `POST /api/library/recycle/{entry_id}/purge`: permanently delete one
 /// entry ("Delete now").
+#[utoipa::path(
+    post,
+    path = "/api/library/recycle/{entry_id}/purge",
+    tag = "Library",
+    summary = "Permanently delete a recycle bin entry",
+    params(("entry_id" = String, Path, description = "Recycle bin entry id (8 hex chars)")),
+    responses(
+        (status = 200, description = "Deleted; reports bytes freed", body = serde_json::Value),
+        (status = 404, description = "No such entry"),
+    ),
+)]
 pub async fn purge_entry(State(state): State<AppState>, Path(entry_id): Path<String>) -> Response {
     let (bin, _) = match bin_path(&state).await {
         Ok(b) => b,
@@ -382,6 +406,16 @@ pub async fn purge_entry(State(state): State<AppState>, Path(entry_id): Path<Str
 }
 
 /// `POST /api/library/recycle/empty`: permanently delete every entry.
+#[utoipa::path(
+    post,
+    path = "/api/library/recycle/empty",
+    tag = "Library",
+    summary = "Empty the recycle bin",
+    responses(
+        (status = 200, description = "Emptied; reports entries and bytes freed", body = serde_json::Value),
+        (status = 400, description = "No recycle bin configured"),
+    ),
+)]
 pub async fn empty(State(state): State<AppState>) -> Response {
     let (bin, _) = match bin_path(&state).await {
         Ok(b) => b,
