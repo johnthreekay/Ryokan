@@ -79,6 +79,11 @@ function showEpisodeDetail(epNum, btn) {
     // both buttons live.
     syncDeleteFileButton(epNum);
     syncCancelPendingButton(epNum);
+    // Ask the download client once now, so the grab history's State
+    // column shows "seeding" / "paused" on open even when the poller
+    // is idle; the poller keeps ticking while the modal stays open.
+    _currentEntries = null;
+    if (SD.dbId && typeof pollDownloadProgress === 'function') pollDownloadProgress();
 
     // Load grab history
     if (SD.dbId) {
@@ -92,22 +97,109 @@ function showEpisodeDetail(epNum, btn) {
     }
 }
 
+// Grab-history entries of the open modal, kept so a poll tick can
+// re-render the State column with the client's live state without
+// refetching the history.
+var _currentEntries = null;
+
+// The live client item for each history row, keyed by row id. A row
+// matches by torrent hash when both sides carry one, else the pending
+// item goes to the `grabbed` row and the imported item to the
+// `completed` row. Each client item is handed to one row only, the
+// newest (entries arrive newest first): the same torrent can have an
+// older row that is a record of the grab, not the torrent's present.
+function assignLiveItems(entries, epNum) {
+    const byHash = dlPoll.lastByHash || {};
+    const forEpisode = (dlPoll.lastItems || {})[epNum] || null;
+    const used = new Set();
+    const out = new Map();
+    for (const entry of entries) {
+        const hash = (entry.grab_hash || '').toLowerCase();
+        let item = null;
+        if (hash && byHash[hash]) {
+            item = byHash[hash];
+        } else if (forEpisode && !hash) {
+            if (entry.state === 'grabbed' && !forEpisode.imported) item = forEpisode;
+            if (entry.state === 'completed' && forEpisode.imported) item = forEpisode;
+        }
+        if (!item || used.has(item.hash)) continue;
+        used.add(item.hash);
+        out.set(entry.id, item);
+    }
+    return out;
+}
+
+// The State cell: the client's word when it still holds the torrent
+// ("seeding", "paused"), else the grab's own state; a dim second line
+// carries progress, speed, or why it is paused.
+function grabStateCell(entry, item) {
+    const dbClass = entry.state === 'failed' ? 'grab-state-failed'
+        : entry.state === 'removed' ? 'grab-state-removed'
+        : entry.state === 'replaced' ? 'grab-state-replaced'
+        : entry.state === 'completed' ? 'grab-state-completed'
+        : 'grab-state-grabbed';
+    if (!item) return { cls: dbClass, text: entry.state, title: '', detail: '' };
+    const label = clientStateLabel(item);
+    const pct = (item.progress * 100).toFixed(1) + '%';
+    if (label.key === 'seeding') {
+        return {
+            cls: 'grab-state-seeding', text: 'seeding',
+            title: item.imported ? 'Imported; the torrent is still seeding in the download client' : 'Download complete; seeding while it waits for import',
+            detail: item.imported ? '' : (window.POST_PROCESSING_ENABLED ? 'waiting for import' : 'complete'),
+        };
+    }
+    if (label.key === 'paused') {
+        return {
+            cls: 'grab-state-paused', text: 'paused',
+            title: item.seeding_done ? 'Stopped by the download client at its seeding limit' : 'Paused in the download client',
+            detail: item.seeding_done ? 'seeding limit reached' : (item.imported || item.progress >= 1 ? '' : 'at ' + pct),
+        };
+    }
+    if (label.key === 'error') {
+        return { cls: 'grab-state-failed', text: 'error', title: 'The download client reports an error for this torrent', detail: '' };
+    }
+    // Still downloading: the grab's own state, with the client's numbers under it.
+    let detail = label.key === 'downloading' ? pct : label.text.toLowerCase() + ' at ' + pct;
+    if (label.key === 'downloading' && item.speed > 0) detail += ' · ' + formatBytes(item.speed) + '/s';
+    return { cls: dbClass, text: entry.state, title: '', detail: detail };
+}
+
+// Re-render the open modal's State cells from the poller's latest
+// response. Returns true when the modal is open on an episode the
+// client still holds, so the poller keeps its 5s cadence for it.
+function syncGrabHistoryState(epNum) {
+    const modal = document.getElementById('ep-detail-modal');
+    if (!modal || modal.style.display !== 'flex' || epNum == null || epNum !== _currentEpNum) return false;
+    if (!_currentEntries) return !!(dlPoll.lastItems || {})[epNum];
+    const live = assignLiveItems(_currentEntries, epNum);
+    for (const cell of document.querySelectorAll('#grab-history-body td[data-history-id]')) {
+        const entry = _currentEntries.find(function(e) { return String(e.id) === cell.dataset.historyId; });
+        if (!entry) continue;
+        const st = grabStateCell(entry, live.get(entry.id) || null);
+        cell.className = st.cls;
+        cell.title = st.title;
+        cell.innerHTML = escHtml(st.text) + (st.detail ? '<div class="grab-state-detail">' + escHtml(st.detail) + '</div>' : '');
+    }
+    return live.size > 0;
+}
+
 function renderGrabHistory(entries, epNum) {
     const el = document.getElementById('grab-history-body');
     if (!el) return;
+    _currentEntries = entries || [];
     if (!entries || !entries.length) {
         el.textContent = 'No grab history.';
         return;
     }
     // Table lives inside a scroll container so history past 10 entries
     // scrolls within the modal rather than blowing out modal height.
+    const live = assignLiveItems(entries, epNum);
     let html = '<div class="grab-history-scroll"><table class="grab-history-table"><thead><tr><th>Quality</th><th>Release</th><th>File Name</th><th>Group</th><th>Size</th><th>Date</th><th>State</th><th></th></tr></thead><tbody>';
     for (const e of entries) {
-        const stateClass = e.state === 'failed' ? 'grab-state-failed'
-            : e.state === 'removed' ? 'grab-state-removed'
-            : e.state === 'replaced' ? 'grab-state-replaced'
-            : e.state === 'completed' ? 'grab-state-completed'
-            : 'grab-state-grabbed';
+        // The State cell says what the download client is doing with
+        // this torrent while it still has it (seeding, paused, the
+        // download's progress); the grab's own state otherwise.
+        const st = grabStateCell(e, live.get(e.id) || null);
         // Only active 'grabbed' rows expose the Mark Failed action.
         // The per-row Cancel button used to live alongside it as a
         // workaround for the modal-footer Cancel Pending button
@@ -147,7 +239,7 @@ function renderGrabHistory(entries, epNum) {
             <td>${escHtml(e.release_group)}</td>
             <td style="white-space:nowrap;color:var(--text-dim)">${sizeCell}</td>
             <td style="white-space:nowrap;color:var(--text-dim)">${escHtml(e.grabbed_at)}</td>
-            <td class="${stateClass}">${escHtml(e.state)}</td>
+            <td class="${st.cls}" data-history-id="${e.id}"${st.title ? ` title="${escHtml(st.title)}"` : ''}>${escHtml(st.text)}${st.detail ? `<div class="grab-state-detail">${escHtml(st.detail)}</div>` : ''}</td>
             <td>${canFail ? `
                 <button class="btn-mark-failed" onclick="markEpisodeFailed(${e.id}, ${epNum}, this)">Mark Failed</button>
             ` : ''}</td>

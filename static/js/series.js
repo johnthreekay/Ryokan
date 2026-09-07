@@ -268,12 +268,27 @@ var dlPoll = (window.__ryokanSeriesDlPoll = window.__ryokanSeriesDlPoll || {
     // patch (rows not already showing a progress bar updating; season
     // summary recompute).
     queuedForce: false,
+    // Episode → item from the last /download-progress response, for
+    // the episode modal's grab history: its State column shows what
+    // the client is doing with the current grab (seeding, paused).
+    lastItems: {},
+    lastByHash: {},
 });
 
-var STATUS_ICON_HAVE = '<span class="ep-status-icon ep-have" title="On disk"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
-var STATUS_ICON_MISSING = '<span class="ep-status-icon ep-missing" title="Missing"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></span>';
-var STATUS_ICON_UNAIRED = '<span class="ep-status-icon ep-unaired" title="Unaired"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>';
-var DL_PROGRESS_HTML_ZERO = '<div class="dl-progress-wrap"><div class="dl-progress-bar"><div class="dl-progress-fill" style="width:0%"></div></div><span class="dl-progress-text">0.0%</span></div>';
+// What the download client says about an item, in the words the
+// Downloads page uses. `paused` covers a torrent the client stopped at
+// its own seeding limit (`seeding_done`) as well as one paused by hand:
+// from the user's chair both are "the client is not moving this".
+function clientStateLabel(item) {
+    const kind = item.state_kind || '';
+    if (kind === 'errored') return { key: 'error', text: 'Error' };
+    if (kind === 'paused' || kind === 'paused-complete' || item.seeding_done) return { key: 'paused', text: 'Paused' };
+    if (kind.startsWith('seeding') || kind === 'checking-seed') return { key: 'seeding', text: 'Seeding' };
+    if (kind === 'downloading-stalled') return { key: 'stalled', text: 'Stalled' };
+    if (kind === 'downloading-queued') return { key: 'queued', text: 'Queued' };
+    if (kind === 'checking-download') return { key: 'checking', text: 'Checking' };
+    return { key: 'downloading', text: 'Downloading' };
+}
 
 // Sync the episode table with the server's authoritative state.
 //
@@ -541,7 +556,24 @@ function ensureDlPollRunning() {
     if (!SD.dbId || dlPoll.active) return;
     dlPoll.active = true;
     pollDownloadProgress();
-    dlPoll.timer = setInterval(pollDownloadProgress, 5000);
+}
+
+// The poller schedules itself: 5s while anything is downloading, a row
+// still needs patching, or the episode modal is open on an episode the
+// client still holds (its grab history shows the live state); it stops
+// when nothing is left. Imported episodes whose torrent is only seeding
+// don't keep it running on their own: nothing in the table shows them.
+function scheduleNextPoll(delay) {
+    if (dlPoll.timer) clearTimeout(dlPoll.timer);
+    dlPoll.timer = setTimeout(pollDownloadProgress, delay);
+}
+
+function stopDlPoll() {
+    dlPoll.active = false;
+    if (dlPoll.timer) {
+        clearTimeout(dlPoll.timer);
+        dlPoll.timer = null;
+    }
 }
 
 function pollDownloadProgress() {
@@ -552,8 +584,18 @@ function pollDownloadProgress() {
             items = items || [];
             const epMap = {};
             for (const item of items) {
-                epMap[item.episode] = item;
+                // A pending grab (an upgrade in flight) outranks the
+                // imported torrent still seeding for the same episode.
+                const cur = epMap[item.episode];
+                if (!cur || (cur.imported && !item.imported)) epMap[item.episode] = item;
             }
+            dlPoll.lastItems = epMap;
+            // Every item by hash: the modal's grab history matches its
+            // rows to the client this way, so an imported torrent still
+            // seeding shows as such even while an upgrade downloads.
+            const byHash = {};
+            for (const item of items) if (item.hash) byHash[item.hash.toLowerCase()] = item;
+            dlPoll.lastByHash = byHash;
 
             const rows = document.querySelectorAll('.episode-table tbody tr');
             let needsRefresh = false;
@@ -568,7 +610,13 @@ function pollDownloadProgress() {
                 const item = epMap[ep];
                 const showingProgress = qualityCell.querySelector('.dl-progress-wrap') !== null;
 
-                if (item) {
+                if (item && item.imported) {
+                    // The file is in the library; the torrent is only
+                    // still in the client. The row shows its quality tag
+                    // as usual; if it is still showing the bar from the
+                    // download, the import landed since the last tick.
+                    if (showingProgress) needsRefresh = true;
+                } else if (item) {
                     if (!qualityCell.dataset.originalHtml) {
                         qualityCell.dataset.originalHtml = qualityCell.innerHTML;
                     }
@@ -593,7 +641,12 @@ function pollDownloadProgress() {
                         }
                     } else {
                         const pct = (item.progress * 100).toFixed(1);
-                        qualityCell.innerHTML = `<div class="dl-progress-wrap"><div class="dl-progress-bar"><div class="dl-progress-fill" style="width:${pct}%"></div></div><span class="dl-progress-text">${pct}%</span></div>`;
+                        // A paused download keeps its bar but says so; the
+                        // bare percentage read as "still going" for as long
+                        // as the torrent sat paused in the client.
+                        const paused = kind === 'paused';
+                        const text = paused ? 'Paused · ' + pct + '%' : pct + '%';
+                        qualityCell.innerHTML = `<div class="dl-progress-wrap${paused ? ' dl-progress-paused' : ''}"><div class="dl-progress-bar"><div class="dl-progress-fill" style="width:${pct}%"></div></div><span class="dl-progress-text">${text}</span></div>`;
                     }
                 } else if (showingProgress) {
                     // Row was showing a progress bar but the download is no
@@ -602,20 +655,22 @@ function pollDownloadProgress() {
                 }
             }
 
+            // The open episode modal's grab history shows the same item.
+            const modalWatching = typeof syncGrabHistoryState === 'function' && syncGrabHistoryState(_currentEpNum);
+
             if (needsRefresh) {
                 refreshEpisodeRows();
             }
 
-            // Stop polling once everything is idle: nothing actively
-            // downloading, nothing waiting to be patched, and no stale
-            // progress bars left on the page.
+            // Next tick: fast while anything is in flight or a row still
+            // needs patching, slow when only seeding torrents remain,
+            // and stop once everything is idle.
             const stillShowingProgress = document.querySelector('.episode-table tbody .ep-col-quality .dl-progress-wrap') !== null;
-            if (items.length === 0 && !needsRefresh && !stillShowingProgress) {
-                if (dlPoll.active) {
-                    dlPoll.active = false;
-                    clearInterval(dlPoll.timer);
-                    dlPoll.timer = null;
-                }
+            const anyPending = items.some(i => !i.imported);
+            if (anyPending || needsRefresh || stillShowingProgress || modalWatching) {
+                scheduleNextPoll(5000);
+            } else {
+                stopDlPoll();
             }
         })
         .catch(() => {});
@@ -634,10 +689,9 @@ function pollDownloadProgress() {
 // before starting the new poller.
 if (SD.dbId) {
     if (dlPoll.timer) {
-        clearInterval(dlPoll.timer);
+        clearTimeout(dlPoll.timer);
         dlPoll.timer = null;
     }
-    pollDownloadProgress();
     dlPoll.active = true;
-    dlPoll.timer = setInterval(pollDownloadProgress, 5000);
+    pollDownloadProgress();
 }

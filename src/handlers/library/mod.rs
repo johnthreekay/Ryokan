@@ -179,7 +179,6 @@ struct SeriesTemplate {
     /// series is following AL/MAL with no manual override).
     #[allow(dead_code)]
     monitor_mode: String,
-    monitor_mode_label: String,
     /// #62 — `true` when the user has manually pinned monitor_mode
     /// through the dropdown (sync's merge step skips the row). Drives
     /// a small "pinned" hint next to the dropdown.

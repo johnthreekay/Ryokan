@@ -6,13 +6,77 @@
 // against globals (function declarations hoist), so the split is
 // behavior-preserving.
 
+// The "(N monitored)" count beside the Monitoring dropdown. Only the
+// count span changes; the parentheses and the "pinned" note around it
+// are the server's.
+function setMonitoredCount(text) {
+    const count = document.getElementById('monitor-count') || document.getElementById('monitor-summary');
+    if (count) count.textContent = text;
+}
+
+// One episode's Yes / No pill: text, color, tooltip, and the payload
+// its next click sends (the partial bakes the *opposite* state into
+// `hx-vals`, so an in-place update that left it alone made the next
+// click a no-op).
+function setEpisodePill(btn, monitored) {
+    btn.textContent = monitored ? 'Yes' : 'No';
+    btn.className = 'ep-mon-btn ' + (monitored ? 'ep-mon-yes' : 'ep-mon-no');
+    btn.title = monitored ? 'Unmonitor' : 'Monitor';
+    const row = btn.closest('tr');
+    const numCell = row && row.querySelector('.ep-col-num');
+    const epNum = numCell ? parseInt(numCell.textContent.trim(), 10) : NaN;
+    if (typeof SD !== 'undefined' && SD.dbId && !isNaN(epNum)) {
+        btn.setAttribute('hx-vals', JSON.stringify({ series_id: parseInt(SD.dbId, 10), episode_number: epNum, monitored: !monitored }));
+    }
+}
+
+// Apply the server's view of a whole series after a mode change: every
+// pill from the monitored list, the count, the bookmark button, the
+// "pinned" note (only meaningful when the series can follow a linked
+// list, i.e. the dropdown offers "Sync from"), and the dropdown itself.
+function applyMonitoringState(detail) {
+    if (Array.isArray(detail.monitored_episodes)) {
+        const monitored = new Set(detail.monitored_episodes.map(Number));
+        for (const row of document.querySelectorAll('.episode-table tbody tr')) {
+            const numCell = row.querySelector('.ep-col-num');
+            const btn = row.querySelector('.ep-mon-btn');
+            if (!numCell || !btn) continue;
+            setEpisodePill(btn, monitored.has(parseInt(numCell.textContent.trim(), 10)));
+        }
+    }
+    if (typeof detail.monitored_count === 'number') setMonitoredCount(`${detail.monitored_count} monitored`);
+    if (typeof detail.all_monitored === 'boolean' && typeof SD !== 'undefined') setMonitorAllButton(SD.dbId, detail.all_monitored);
+    const select = document.getElementById('monitor-mode');
+    if (typeof detail.monitor_mode_manual_override === 'boolean') {
+        const pinned = document.getElementById('monitor-pinned');
+        const canSync = !!(select && select.querySelector('option[value="sync"]'));
+        if (pinned) pinned.hidden = !(detail.monitor_mode_manual_override && canSync);
+        // A cleared override means "follow the linked list": the dropdown
+        // shows Sync, not the mode the list last derived.
+        if (select) select.value = detail.monitor_mode_manual_override ? (detail.monitor_mode || select.value) : 'sync';
+    }
+}
+
+// The bookmark button in the season header: filled when every episode
+// is monitored, outlined otherwise, and its click flips the whole set.
+function setMonitorAllButton(dbId, allMonitored) {
+    const btn = document.getElementById('btn-monitor-all');
+    if (!btn) return;
+    btn.disabled = false;
+    btn.classList.toggle('is-active', allMonitored);
+    btn.onclick = function() { toggleMonitorAll(dbId, allMonitored); };
+    btn.title = allMonitored ? 'Unmonitor all' : 'Monitor all';
+    btn.innerHTML = allMonitored
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>';
+}
+
 function toggleMonitorAll(dbId, currentlyAllMonitored) {
     if (!dbId) return;
     const btn = document.getElementById('btn-monitor-all');
-    const summary = document.getElementById('monitor-summary');
     const newMode = currentlyAllMonitored ? 'none' : 'all';
     if (btn) btn.disabled = true;
-    if (summary) summary.textContent = 'Updating…';
+    setMonitoredCount('Updating…');
     // Issue #166 — `/api/library/monitoring` switched from a Json<>
     // extractor to Form<> when the dropdown + add-modal callers
     // migrated to declarative HTMX. This call site keeps imperative
@@ -31,30 +95,31 @@ function toggleMonitorAll(dbId, currentlyAllMonitored) {
         try { data = await r.json(); } catch (_) {}
         if (!r.ok) throw new Error(data.message || 'Failed');
         const newState = newMode === 'all';
-        // Update all monitor buttons in the table
-        document.querySelectorAll('.ep-mon-btn').forEach(monBtn => {
-            monBtn.textContent = newState ? 'Yes' : 'No';
-            monBtn.className = 'ep-mon-btn ' + (newState ? 'ep-mon-yes' : 'ep-mon-no');
-            monBtn.title = newState ? 'Monitored; click to unmonitor' : 'Not monitored; click to monitor';
-        });
-        // Update the monitor-all button
-        if (btn) {
-            btn.disabled = false;
-            btn.classList.toggle('is-active', newState);
-            btn.onclick = function() { toggleMonitorAll(dbId, newState); };
-            btn.title = newState ? 'All monitored; click to unmonitor all' : 'Click to monitor all episodes';
-            btn.innerHTML = newState
-                ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>'
-                : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>';
-        }
-        if (summary) summary.textContent = `${data.monitor_mode_label || newMode} · ${data.monitored_count || 0} monitored`;
-        // Update the select dropdown
+        document.querySelectorAll('.ep-mon-btn').forEach(monBtn => setEpisodePill(monBtn, newState));
+        setMonitorAllButton(dbId, newState);
+        setMonitoredCount(`${data.monitored_count || 0} monitored`);
         const select = document.getElementById('monitor-mode');
         if (select) select.value = newMode;
+        const pinned = document.getElementById('monitor-pinned');
+        if (pinned && select) pinned.hidden = !select.querySelector('option[value="sync"]');
     })
     .catch(err => {
-        if (summary) summary.textContent = err.message || 'Failed to update monitoring';
+        setMonitoredCount(err.message || 'Failed to update monitoring');
         if (btn) btn.disabled = false;
+    });
+}
+
+// Both monitoring writes answer with `HX-Trigger: ryokan-monitoring-
+// changed`. A per-episode pill swaps only itself and sends the new
+// count and all-monitored flag; the mode dropdown swaps nothing and
+// sends the whole monitored list as well, so every pill, the count,
+// the bookmark button, and the pinned note follow without a reload.
+// One-shot guard, like the other module-scope listeners: hx-boost
+// re-runs this script on every visit to a series page.
+if (!window.__ryokanMonitoringListener) {
+    window.__ryokanMonitoringListener = true;
+    document.body.addEventListener('ryokan-monitoring-changed', function (ev) {
+        applyMonitoringState(ev.detail || {});
     });
 }
 

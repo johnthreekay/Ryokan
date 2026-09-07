@@ -216,7 +216,7 @@
                    <option value="sync"{% if monitor_mode_select_value == "sync" %} selected{% endif %}>Sync from {{ sync_provider_label }}</option>
                    {% endif %}
                    </select>
-                   <span class="form-hint" id="monitor-summary">{{ monitor_mode_label }} · {{ monitored_count }} monitored{% if monitor_mode_manual_override && can_sync_from_external_account %} · pinned{% endif %}</span>
+                   <span class="form-hint" id="monitor-summary">(<span id="monitor-count">{{ monitored_count }} monitored</span><span id="monitor-pinned"{% if !(monitor_mode_manual_override && can_sync_from_external_account) %} hidden{% endif %}> · pinned</span>)</span>
                    </div>
                    </div>
                    <div class="monitoring-divider"></div>
@@ -232,31 +232,26 @@
                    rejects (4xx/5xx). The `noSwap` config in base.html
                    keeps error bodies out of the page, so the visual
                    revert is the only client work needed. #}
-                <div class="setting-rows">
-                    <label class="setting-row">
-                        <span class="setting-row-text">
-                            <span class="setting-row-title">Allow automatic upgrades when a higher-quality release is found</span>
-                        </span>
+                <div class="monitoring-toggles">
+                    <label class="checkbox-row">
                         <input type="checkbox" id="allow-upgrades"
                                {% if allow_upgrades %}checked{% endif %}
                                hx-post="/api/library/allow-upgrades"
                                hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
                                hx-swap="none"
                                hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'Upgrades toggle failed', body: 'Failed to update upgrades toggle', log: true})">
+                        Allow automatic upgrades
                     </label>
-                    {# Issue #28 — PT upgrade opt-in. Sits below the parent
-                       toggle since "PT upgrades" is a sub-decision of
-                       "upgrades at all." #}
-                    <label class="setting-row">
-                        <span class="setting-row-text">
-                            <span class="setting-row-title">Allow upgrades from private trackers</span>
-                        </span>
+                    {# Issue #28 — PT upgrade opt-in, a sub-decision of
+                       "upgrades at all", so it sits second on the line. #}
+                    <label class="checkbox-row">
                         <input type="checkbox" id="allow-pt-upgrades"
                                {% if allow_pt_upgrades %}checked{% endif %}
                                hx-post="/api/library/allow-pt-upgrades"
                                hx-vals='js:{series_id: parseInt(SD.dbId), allow: this.checked}'
                                hx-swap="none"
                                hx-on::response:error="this.checked = !this.checked; window.ryokanToast({kind: 'error', category: 'library', title: 'PT-upgrades toggle failed', body: 'Failed to update PT-upgrades toggle', log: true})">
+                        Include private trackers
                     </label>
                 </div>
             </div>
@@ -788,7 +783,7 @@ window.GRAB_PREVIEW_MODE = {% if grab_preview_mode == "never" %}"never"{% else %
 {% include "partials/grab_picker_modal.html" %}
 {% endblock %}
 
-{% block page_js %}<script src="/static/js/grab_picker.js" defer></script>
+{% block page_js %}<script src="/static/js/grab_picker.js?v={{ crate::asset_version() }}" defer></script>
 {# Series page JS is split across multiple files. All seven load with
    `defer` so they execute in document order after parsing, which
    means cross-file global references (e.g. series_episode_modal.js
@@ -799,10 +794,10 @@ window.GRAB_PREVIEW_MODE = {% if grab_preview_mode == "never" %}"never"{% else %
 
    Load order: helpers first; series.js last because it owns the
    `if (SD.dbId)` boot that kicks off the download-progress poller. #}
-<script src="/static/js/series_helpers.js" defer></script>
-<script src="/static/js/series_config.js" defer></script>
-<script src="/static/js/series_episode_actions.js" defer></script>
-<script src="/static/js/series_episode_modal.js" defer></script>
-<script src="/static/js/series_interactive_search.js" defer></script>
-<script src="/static/js/series_lifecycle.js" defer></script>
-<script src="/static/js/series.js" defer></script>{% endblock %}
+<script src="/static/js/series_helpers.js?v={{ crate::asset_version() }}" defer></script>
+<script src="/static/js/series_config.js?v={{ crate::asset_version() }}" defer></script>
+<script src="/static/js/series_episode_actions.js?v={{ crate::asset_version() }}" defer></script>
+<script src="/static/js/series_episode_modal.js?v={{ crate::asset_version() }}" defer></script>
+<script src="/static/js/series_interactive_search.js?v={{ crate::asset_version() }}" defer></script>
+<script src="/static/js/series_lifecycle.js?v={{ crate::asset_version() }}" defer></script>
+<script src="/static/js/series.js?v={{ crate::asset_version() }}" defer></script>{% endblock %}
