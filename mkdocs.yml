@@ -57,9 +57,11 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
-  font:
-    text: Inter
-    code: JetBrains Mono
+  # No Google Fonts. Body text is the self-hosted Noto Sans declared in
+  # `docs/stylesheets/ryokan.css` (the same files the app ships under
+  # `static/fonts/`); code falls back to the reader's system monospace,
+  # as it does in the app.
+  font: false
 
 nav:
   - Getting started:
