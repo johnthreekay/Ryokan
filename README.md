@@ -14,10 +14,10 @@ I built this because Sonarr doesn't always work well for anime. The RSS sync for
 
 ## Screenshots
 
-<img width="1920" height="1079" alt="image" src="https://github.com/user-attachments/assets/24d59ff2-0f12-4788-b06f-d7ba7ce57812" />
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/72db83dd-0252-43c9-a5e6-7fb43a15e271" />
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/018ecb01-b434-4b3b-93d6-1cad3678bcc5" />
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/db443139-e72b-4cca-b220-feeb7b348ee6" />
+<img width="1920" height="1080" alt="Library: series cards with cover art, format, episode count, and completeness" src=".github/screenshots/library.webp" />
+<img width="1920" height="1080" alt="Series page: hero banner, metadata, and related entries" src=".github/screenshots/series.webp" />
+<img width="1920" height="1080" alt="Series page: monitoring, upgrades, and the episode table with per-episode quality" src=".github/screenshots/episodes.webp" />
+<img width="1920" height="1080" alt="Search: Nyaa results scored and ranked, with one-click Grab" src=".github/screenshots/search.webp" />
 
 ---
 
