@@ -28,7 +28,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use std::sync::LazyLock;
 use tokio::sync::Mutex;
-use wiremock::matchers::{body_string_contains, method, path};
+use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// One-at-a-time gate around `RYOKAN_ANILIST_API_BASE` writes so
@@ -120,8 +120,13 @@ async fn refresh_series_metadata_writes_cache_on_happy_al_response() {
     anilist::reset_state_for_tests();
 
     let mock = MockServer::start().await;
+    // The Referer matcher pins the header on the wire: AniList's
+    // "temporarily disabled" 403 refuses any request without one, so a
+    // call site that bypasses `anilist_post` would 404 here instead of
+    // quietly landing on the MAL fallback in production.
     Mock::given(method("POST"))
         .and(path("/"))
+        .and(header("referer", anilist::ANILIST_REFERER))
         .and(body_string_contains("Media(id"))
         .respond_with(ResponseTemplate::new(200).set_body_json(media_detail_response(2026)))
         .mount(&mock)
