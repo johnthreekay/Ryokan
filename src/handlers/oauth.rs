@@ -521,11 +521,9 @@ struct AniListViewer {
 async fn fetch_anilist_viewer(token: &str) -> Result<AniListViewer, String> {
     let query = r#"{"query":"query { Viewer { id name mediaListOptions { scoreFormat } } }"}"#;
     let client = http_client();
-    let resp = client
-        .post("https://graphql.anilist.co")
+    let resp = anilist::anilist_post(client)
         .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .header(reqwest::header::USER_AGENT, "Ryokan/0.1")
         .body(query.to_string())
         .send()
         .await

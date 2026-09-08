@@ -35,6 +35,27 @@ fn anilist_api_base() -> String {
         .unwrap_or_else(|| ANILIST_API_DEFAULT.to_string())
 }
 
+/// Referer sent on every AniList request. AniList's September 2026
+/// "temporarily disabled due to severe stability issues" 403 is a
+/// Referer gate, not a shutdown: a request with no Referer (what every
+/// scripted client sends by default) is refused with that body, while a
+/// request carrying any Referer is answered with normal rate-limit
+/// headers. The project URL identifies Ryokan honestly rather than
+/// posing as anilist.co; should AniList narrow the gate to its own
+/// origin, this stops working and the MAL fallback takes over as before.
+pub const ANILIST_REFERER: &str = "https://github.com/johnthreekay/Ryokan";
+
+/// Every AniList GraphQL POST starts here so the identifying headers
+/// (`User-Agent`, `Referer`) cannot be missed at a new call site. A
+/// request without the Referer is a silent regression: AniList answers
+/// 403 and the caller falls back to MAL as if AL were down.
+pub fn anilist_post(client: &reqwest::Client) -> reqwest::RequestBuilder {
+    client
+        .post(anilist_api_base())
+        .header(reqwest::header::USER_AGENT, "Ryokan/0.1")
+        .header(reqwest::header::REFERER, ANILIST_REFERER)
+}
+
 /// TTL for the search result cache. Short enough to stay fresh, long enough to
 /// absorb bursts of repeat queries (which is what actually hammers AniList/Jikan
 /// during testing or when a user re-searches the same title).
@@ -265,10 +286,8 @@ pub async fn fetch_media_list_collection(
 
     throttle_before_anilist_request().await;
 
-    let resp = HTTP_CLIENT
-        .post(anilist_api_base())
+    let resp = anilist_post(&HTTP_CLIENT)
         .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
-        .header("User-Agent", "Ryokan/0.1")
         .json(&body)
         .send()
         .await
@@ -599,13 +618,7 @@ pub async fn search_anime_with_options(
     throttle_before_anilist_request().await;
 
     let client = &*HTTP_CLIENT;
-    let resp = match client
-        .post(anilist_api_base())
-        .header("User-Agent", "Ryokan/0.1")
-        .json(&gql)
-        .send()
-        .await
-    {
+    let resp = match anilist_post(client).json(&gql).send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(
@@ -1115,9 +1128,7 @@ async fn fetch_media_detail(selector: MediaSelector) -> Result<Option<AnimeDetai
     throttle_before_anilist_request().await;
 
     let client = &*HTTP_CLIENT;
-    let resp = client
-        .post(anilist_api_base())
-        .header("User-Agent", "Ryokan/0.1")
+    let resp = anilist_post(client)
         .json(&gql)
         .send()
         .await
@@ -1458,9 +1469,7 @@ pub async fn get_anime_details_batch(ids: &[i64]) -> Result<HashMap<i64, AnimeDe
 
         throttle_before_anilist_request().await;
 
-        let resp = client
-            .post(anilist_api_base())
-            .header("User-Agent", "Ryokan/0.1")
+        let resp = anilist_post(client)
             .json(&gql)
             .send()
             .await
@@ -1614,6 +1623,26 @@ fn format_rate_limit_headers_for_log(headers: &reqwest::header::HeaderMap) -> St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn anilist_post_carries_user_agent_and_referer() {
+        let client = reqwest::Client::new();
+        let req = anilist_post(&client).build().expect("request builds");
+        assert_eq!(req.method(), reqwest::Method::POST);
+        assert_eq!(
+            req.headers()
+                .get(reqwest::header::REFERER)
+                .and_then(|v| v.to_str().ok()),
+            Some(ANILIST_REFERER),
+            "AniList refuses a request with no Referer as \"temporarily disabled\""
+        );
+        assert_eq!(
+            req.headers()
+                .get(reqwest::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok()),
+            Some("Ryokan/0.1")
+        );
+    }
 
     #[test]
     fn format_rate_limit_headers_renders_present_fields_only() {
