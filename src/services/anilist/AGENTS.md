@@ -4,6 +4,10 @@ Primary metadata provider. `mod.rs` owns the GraphQL client, `DETAIL_CACHE`, and
 
 `RYOKAN_ANILIST_API_BASE` is re-read on every request rather than cached, so the `tests/external_sync_e2e.rs` wiremock fixture can flip it per-fixture without process restart.
 
+## Request headers (the Referer gate)
+
+Every GraphQL POST is built by `anilist_post(&client)`, which sets `User-Agent: Ryokan/0.1` and `Referer: https://github.com/johnthreekay/Ryokan` (`ANILIST_REFERER`). The Referer is load-bearing since 2026-09-07: AniList's "The AniList API has been temporarily disabled due to severe stability issues" 403 is a Referer gate, not an outage. A request with no Referer (the default for every scripted client) gets that body; a request with any Referer, project URL included, gets a normal answer with `X-RateLimit-*` headers. User-Agent and Origin play no part. The project URL is an honest identifier, not an anilist.co impersonation; if AniList ever narrows the gate to its own origin the 403 path and the MAL fallback behave exactly as they did during the outage. Build new AL requests through the helper (`handlers::oauth::fetch_anilist_viewer` does too) so the header is never forgotten; the bare-`client.post` shape has no test that fails, only a library that silently reads MAL.
+
 ## Rate-limit state machine
 
 Behind `LazyLock<Mutex<_>>` in `rate_limit.rs`. Reads `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` from every AL response and adapts between two modes:

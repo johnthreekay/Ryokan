@@ -28,7 +28,7 @@ use super::rate_limit::{
     ANILIST_COOLDOWN_DEFAULT, extract_graphql_error, record_rate_limit_headers,
     set_anilist_cooldown, throttle_before_anilist_request,
 };
-use super::{HTTP_CLIENT, anilist_api_base};
+use super::{HTTP_CLIENT, anilist_post};
 
 /// One row of AL's `Page.airingSchedules` response. Exactly the
 /// shape the GraphQL query asks for; transformation into the
@@ -133,13 +133,7 @@ async fn fetch_page(
     });
 
     throttle_before_anilist_request().await;
-    let resp = match HTTP_CLIENT
-        .post(anilist_api_base())
-        .header("User-Agent", "Ryokan/0.1")
-        .json(&gql)
-        .send()
-        .await
-    {
+    let resp = match anilist_post(&HTTP_CLIENT).json(&gql).send().await {
         Ok(r) => r,
         Err(e) => {
             return Err(format!(
