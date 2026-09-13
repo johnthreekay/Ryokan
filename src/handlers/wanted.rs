@@ -507,6 +507,85 @@ mod tests {
         assert_eq!(rows[0].count(), 3);
     }
 
+    #[tokio::test]
+    async fn page_renders_both_tabs_and_the_partial() {
+        use crate::test_support::{build_test_app_state, in_memory_pool, seed_series};
+        let db = in_memory_pool().await;
+        let state = build_test_app_state(db.clone(), None);
+        // Empty library: the empty state names the library.
+        let html = page(
+            State(state.clone()),
+            HxRequest(false),
+            HxBoosted(false),
+            Query(WantedQuery::default()),
+        )
+        .await
+        .0;
+        assert!(html.contains("id=\"wanted-page\""), "full page rendered");
+        assert!(html.contains("any series in your library yet"), "{html}");
+        // A monitored series with no files: every aired episode is
+        // missing on the Missing tab, nothing on the cutoff tab.
+        let id = seed_series(&db, 1, "Show").await;
+        sqlx::query("UPDATE series SET monitor_mode = 'all', episodes = 3 WHERE id = ?")
+            .bind(id)
+            .execute(&db)
+            .await
+            .unwrap();
+        for ep in 1..=3 {
+            sqlx::query(
+                "INSERT INTO episode_monitor_state (series_id, episode_number, monitored) VALUES (?, ?, 1)",
+            )
+            .bind(id)
+            .bind(ep)
+            .execute(&db)
+            .await
+            .unwrap();
+        }
+        let partial = page(
+            State(state.clone()),
+            HxRequest(true),
+            HxBoosted(false),
+            Query(WantedQuery {
+                tab: Some("missing".to_string()),
+            }),
+        )
+        .await
+        .0;
+        assert!(!partial.contains("id=\"wanted-page\""), "partial only");
+        assert!(
+            partial.contains("E01") && partial.contains("E03"),
+            "{partial}"
+        );
+        assert!(partial.contains("3 missing"), "{partial}");
+        let cutoff = page(
+            State(state),
+            HxRequest(true),
+            HxBoosted(false),
+            Query(WantedQuery {
+                tab: Some("cutoff".to_string()),
+            }),
+        )
+        .await
+        .0;
+        assert!(cutoff.contains("Nothing is below the cutoff"), "{cutoff}");
+    }
+
+    #[tokio::test]
+    async fn search_with_no_known_series_is_a_bad_request() {
+        use crate::test_support::{build_test_app_state, in_memory_pool};
+        let db = in_memory_pool().await;
+        let state = build_test_app_state(db, None);
+        let resp = search(
+            State(state),
+            Query(crate::handlers::library::search::AutoSearchQuery::default()),
+            Json(WantedSearchRequest {
+                series_ids: vec![999],
+            }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
     #[test]
     fn missing_rows_sort_by_title() {
         let mut b = show(1, "all", Some(2), "FINISHED");
