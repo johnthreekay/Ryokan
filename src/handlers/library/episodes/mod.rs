@@ -174,7 +174,7 @@ pub async fn delete_episode_file(
     // trigger event.
     let json_err = |status: axum::http::StatusCode, msg: &str| -> Response {
         if is_htmx {
-            episode_delete_trigger(status, episode_number, false, msg, None)
+            episode_delete_trigger(status, episode_number, &[episode_number], false, msg, None)
         } else {
             let body = Json(serde_json::json!({"ok": false, "message": msg}));
             (status, body).into_response()
@@ -197,7 +197,9 @@ pub async fn delete_episode_file(
     };
 
     let files = media::scan_series_folder(&cfg.media_root, &tracked.folder_name).await;
-    let target = files.iter().find(|f| f.episode_number == episode_number);
+    // `holds`: a multi-episode file (issue #246) is the file for every
+    // episode in its span, and deleting it clears all of them.
+    let target = files.iter().find(|f| f.holds(episode_number));
 
     match target {
         None => json_err(
@@ -299,22 +301,31 @@ pub async fn delete_episode_file(
                 }
             };
 
-            let _ = episode_tags::clear_episode_tag(&state.db, tracked.id, episode_number).await;
-            // `clear_episode_tag` only touches `episode_quality_tags`;
-            // it leaves the `episode_grab_history` row untouched. After
-            // a delete the latest history entry for this episode should
-            // flip from `completed` (or `grabbed` if post-processing
-            // hadn't landed yet) to `removed` so the Grab History modal
-            // reflects the deletion. Without this call the modal kept
-            // showing the stale `completed` state indefinitely while
-            // the file was already gone from disk.
-            let _ = episode_tags::mark_grab_history_removed(&state.db, tracked.id, episode_number)
-                .await;
+            // Every episode the file held (issue #246): the file is gone
+            // for all of them.
+            let held: Vec<i32> = file.episodes().collect();
+            let mut imported_grabs: Vec<grabbed_torrents::GrabbedTorrent> = Vec::new();
+            for ep in &held {
+                let _ = episode_tags::clear_episode_tag(&state.db, tracked.id, *ep).await;
+                // `clear_episode_tag` only touches `episode_quality_tags`;
+                // it leaves the `episode_grab_history` row untouched. After
+                // a delete the latest history entry for this episode should
+                // flip from `completed` (or `grabbed` if post-processing
+                // hadn't landed yet) to `removed` so the Grab History modal
+                // reflects the deletion. Without this call the modal kept
+                // showing the stale `completed` state indefinitely while
+                // the file was already gone from disk.
+                let _ = episode_tags::mark_grab_history_removed(&state.db, tracked.id, *ep).await;
 
-            let imported_grabs =
-                grabbed_torrents::find_imported_for_episode(&state.db, tracked.id, episode_number)
+                for grab in grabbed_torrents::find_imported_for_episode(&state.db, tracked.id, *ep)
                     .await
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+                {
+                    if !imported_grabs.iter().any(|g| g.id == grab.id) {
+                        imported_grabs.push(grab);
+                    }
+                }
+            }
 
             // Inode fallback when no grab claims this episode. Pre-fix
             // wide-walk SAB grabs swept in stranger episodes from
@@ -592,6 +603,11 @@ pub async fn delete_episode_file(
                 // repeating the title.
                 let mut msg = if recycle_entry_id.is_some() {
                     "Restorable from the Recycle Bin until it is purged.".to_string()
+                } else if held.len() > 1 {
+                    format!(
+                        "Episodes {}-{} removed from disk.",
+                        file.episode_number, file.episode_last
+                    )
                 } else {
                     format!("Episode {} file removed.", episode_number)
                 };
@@ -604,6 +620,7 @@ pub async fn delete_episode_file(
                 episode_delete_trigger(
                     axum::http::StatusCode::OK,
                     episode_number,
+                    &held,
                     true,
                     &msg,
                     recycle_entry_id.as_deref(),
@@ -614,6 +631,7 @@ pub async fn delete_episode_file(
                     Json(serde_json::json!({
                         "ok": true,
                         "deleted": file.filename,
+                        "episode_numbers": held,
                         "qbit_removed": qbit_removed,
                         "recycle_entry_id": recycle_entry_id,
                     })),
@@ -646,9 +664,13 @@ pub async fn delete_episode_file(
 /// `recycle_entry_id` is the 8-hex recycle bin entry when the file was
 /// recycled (#123); the page's toast turns it into a one-click Undo. It
 /// is always ASCII, so it can't break the header-safety argument below.
+/// `episode_numbers` lists every episode the deleted file held (issue
+/// #246), so the page can stamp each row; it is the requested episode
+/// alone on an error.
 fn episode_delete_trigger(
     status: axum::http::StatusCode,
     episode_number: i32,
+    episode_numbers: &[i32],
     ok: bool,
     message: &str,
     recycle_entry_id: Option<&str>,
@@ -661,6 +683,7 @@ fn episode_delete_trigger(
         "ryokan-episode-deleted": {
             "ok": ok,
             "episode_number": episode_number,
+            "episode_numbers": episode_numbers,
             "message": safe_message,
             "recycle_entry_id": recycle_entry_id,
         }

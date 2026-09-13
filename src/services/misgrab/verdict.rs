@@ -706,6 +706,34 @@ mod tests {
     }
 
     #[test]
+    fn multi_episode_file_names_the_series() {
+        // Issue #246: the range in the episode slot is structural, not
+        // a title word, in both the dash and the SxxExx shapes.
+        let v = run(
+            &["Saimin Seishidou"],
+            &[],
+            &["[SakuraCircle] Saimin Seishidou - 05-06 (OVA催眠性指導 # 5 - 6).mkv"],
+            0,
+        );
+        assert!(matches!(v, Verdict::Verified { .. }), "{v:?}");
+        let v = run(
+            &["Sousou no Frieren"],
+            &[],
+            &["Sousou no Frieren - S01E05-E06 - Two Titles.mkv"],
+            0,
+        );
+        assert!(matches!(v, Verdict::Verified { .. }), "{v:?}");
+        // The range alone carries no title signal for another show.
+        let v = run(
+            &["Sousou no Frieren"],
+            &[],
+            &["Something Else - 05-06 [1080p].mkv"],
+            0,
+        );
+        assert!(matches!(v, Verdict::Misgrab { .. }), "{v:?}");
+    }
+
+    #[test]
     fn no_media_files_is_unverifiable() {
         let v = run(&["Sousou no Frieren"], &[], &["readme.txt", "cover.jpg"], 0);
         assert_eq!(

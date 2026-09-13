@@ -33,7 +33,11 @@ pub struct ParsedFile {
     pub title: Option<String>,
     pub title_source: TitleSource,
     pub season: Option<i32>,
+    /// The first (usually only) episode the file holds.
     pub episode: Option<i32>,
+    /// How many episodes the file holds (issue #246): 1 for the usual
+    /// file, 2 for `S01E05-E06`.
+    pub episode_count: i32,
     /// Year hint from the filename or, failing that, the folder the
     /// title came from. Feeds the match ranking; never persisted.
     pub year: Option<i32>,
@@ -290,10 +294,11 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         .map(|g| g.trim().to_string())
         .filter(|g| !g.is_empty());
 
-    let (season, episode) = match media::parse_episode_number(&file_name.to_lowercase()) {
-        Some((s, e)) => (s, Some(e)),
-        None => (None, None),
-    };
+    let (season, episode, episode_count) =
+        match media::parse_episode_span(&file_name.to_lowercase()) {
+            Some(span) => (span.season, Some(span.first), span.count()),
+            None => (None, None, 1),
+        };
 
     let mut title_source = if title.is_some() {
         TitleSource::Filename
@@ -338,6 +343,7 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         title_source,
         season,
         episode,
+        episode_count,
         year,
         group,
     }

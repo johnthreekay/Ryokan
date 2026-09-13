@@ -79,6 +79,7 @@ fn disk_file(ep: i32, quality: &str) -> media::EpisodeFile {
     media::EpisodeFile {
         filename: format!("Test Series - S01E{:02}.mkv", ep),
         episode_number: ep,
+        episode_last: ep,
         season_number: Some(1),
         quality: quality.to_string(),
         size_bytes: 1_000_000_000,

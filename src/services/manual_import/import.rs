@@ -164,15 +164,26 @@ pub async fn start_import(
     Ok(())
 }
 
-/// Files already under the series folder that parse to `episode`.
-/// Uses the library scanner rather than a `SxxExx` stem match so an
-/// externally named file (`Show - 07.mkv`) is found too.
-async fn existing_files_for_episode(media_root: &str, folder: &str, episode: i32) -> Vec<PathBuf> {
+/// Files already under the series folder whose episodes overlap
+/// `episode..episode + count` (a multi-episode file, issue #246, is
+/// found by any of its episodes), each with the span it holds. Uses the
+/// library scanner rather than a `SxxExx` stem match so an externally
+/// named file (`Show - 07.mkv`) is found too.
+async fn existing_files_for_episode(
+    media_root: &str,
+    folder: &str,
+    episode: i32,
+    count: i32,
+) -> Vec<(PathBuf, media::EpisodeSpan)> {
+    let last = episode + count.max(1) - 1;
     media::scan_series_folder(media_root, folder)
         .await
         .into_iter()
-        .filter(|f| f.episode_number == episode)
-        .map(|f| Path::new(media_root).join(folder).join(f.filename))
+        .filter(|f| f.episode_number <= last && f.episode_last >= episode)
+        .map(|f| {
+            let span = f.span();
+            (Path::new(media_root).join(folder).join(f.filename), span)
+        })
         .collect()
 }
 
@@ -233,8 +244,9 @@ async fn resolve_series_row(
 struct Touched {
     row: series::Series,
     created: bool,
-    /// `(episode, destination)` for every file that landed.
-    landed: Vec<(i32, PathBuf)>,
+    /// `(first episode, episode count, destination)` for every file
+    /// that landed.
+    landed: Vec<(i32, i32, PathBuf)>,
 }
 
 /// The job, in two phases. Phase 1 lands files: per group, resolve
@@ -415,7 +427,7 @@ pub async fn run_import(
                 &naming::SeriesNames::from_series(&row),
                 1,
             ));
-        let mut landed: Vec<(i32, PathBuf)> = Vec::new();
+        let mut landed: Vec<(i32, i32, PathBuf)> = Vec::new();
 
         for (file, fv) in group.files.iter().zip(view.files.iter()) {
             if cancel.load(Ordering::Relaxed) {
@@ -449,9 +461,30 @@ pub async fn run_import(
                 // Retire the old file(s) first, through the recycle bin
                 // when one is configured. A refused recycle must not
                 // become an overwrite: skip the file, keep the reason.
-                let old = existing_files_for_episode(&media_root, &row.folder_name, ep).await;
+                let old = existing_files_for_episode(
+                    &media_root,
+                    &row.folder_name,
+                    ep,
+                    file.episode_count,
+                )
+                .await;
+                // The same rule post-processing applies (issue #246): a
+                // file that covers fewer episodes than one it would
+                // replace is left alone, or the other episodes would go
+                // with the old file.
+                let last = ep + file.episode_count.max(1) - 1;
+                if let Some((_, wider)) = old.iter().find(|(_, s)| s.first < ep || s.last > last) {
+                    gr.errors.push(format!(
+                        "{}: the file on disk holds {}, more than this file; left alone",
+                        file.rel_path,
+                        wider.label()
+                    ));
+                    report.files_failed += 1;
+                    done_files += 1;
+                    continue;
+                }
                 let mut retire_failed = None;
-                for old_path in &old {
+                for (old_path, _) in &old {
                     if let Err(e) = recycle::recycle(
                         &state.db,
                         &cfg.recycle_bin_path,
@@ -473,8 +506,20 @@ pub async fn run_import(
                     done_files += 1;
                     continue;
                 }
-                let _ = episode_tags::mark_grab_history_replaced(&state.db, row.id, ep).await;
-                let _ = episode_tags::clear_episode_tag(&state.db, row.id, ep).await;
+                for held in ep..ep + file.episode_count.max(1) {
+                    let _ = episode_tags::mark_grab_history_replaced(&state.db, row.id, held).await;
+                    // A pinned episode keeps its override (`clear_episode_tag`
+                    // blanks a pinned row's state, which the preview never
+                    // offered to do for a second episode).
+                    let pinned = group
+                        .existing
+                        .as_ref()
+                        .and_then(|e| e.tags.get(&held))
+                        .is_some_and(|t| t.manual_override);
+                    if !pinned {
+                        let _ = episode_tags::clear_episode_tag(&state.db, row.id, held).await;
+                    }
+                }
             }
 
             let dest = season_dir.join(&file.file_name);
@@ -503,7 +548,7 @@ pub async fn run_import(
                         report.files_written += 1;
                     }
                     report.bytes_written += file.size_bytes;
-                    landed.push((ep, dest));
+                    landed.push((ep, file.episode_count.max(1), dest));
                 }
                 Err(e) => {
                     gr.errors.push(format!("{}: {e}", file.rel_path));
@@ -575,27 +620,36 @@ pub async fn run_import(
             .ok()
             .flatten()
             .and_then(|c| c.detail.duration);
-        for (ep, dest) in &t.landed {
-            let (ep_title, aired) = ep_meta
-                .get(ep)
-                .map(|m| {
-                    let title = if !m.title_english.is_empty() {
-                        m.title_english.clone()
-                    } else if !m.title.is_empty() {
-                        m.title.clone()
-                    } else {
-                        m.title_romaji.clone()
-                    };
-                    (title, m.aired.clone())
+        for (ep, count, dest) in &t.landed {
+            // One `<episodedetails>` per episode the file holds (issue
+            // #246); the usual file has one.
+            let entries: Vec<nfo::EpisodeNfoEntry> = (*ep..*ep + *count)
+                .map(|n| {
+                    let (title, aired) = ep_meta
+                        .get(&n)
+                        .map(|m| {
+                            let title = if !m.title_english.is_empty() {
+                                m.title_english.clone()
+                            } else if !m.title.is_empty() {
+                                m.title.clone()
+                            } else {
+                                m.title_romaji.clone()
+                            };
+                            (title, m.aired.clone())
+                        })
+                        .unwrap_or_default();
+                    nfo::EpisodeNfoEntry {
+                        episode: n,
+                        title,
+                        aired,
+                    }
                 })
-                .unwrap_or_default();
-            let _ = nfo::write_episode_nfo(
+                .collect();
+            let _ = nfo::write_multi_episode_nfo(
                 &dest.with_extension("nfo"),
                 &series_title,
                 1,
-                *ep,
-                &ep_title,
-                &aired,
+                &entries,
                 runtime_minutes,
             )
             .await;
@@ -745,6 +799,7 @@ mod tests {
             group: None,
             quality_label: source::classify_release_sync(&file_name, None).label(),
             selected: true,
+            episode_count: 1,
             source_episode: None,
         }
     }

@@ -59,7 +59,6 @@ struct PendingClassification {
     series_end_year: Option<i32>,
     series_root: std::path::PathBuf,
     file_path: std::path::PathBuf,
-    episode_number: i32,
     /// Sanitized on-disk filename. Used as a fallback title for L1
     /// classification when `original_torrent_name` is empty (externally
     /// imported files that Ryokan never grabbed).
@@ -73,11 +72,13 @@ struct PendingClassification {
     /// the episode shows as UNKNOWN forever. Looking up the original
     /// grab lets us classify against the unsanitized release name.
     original_torrent_name: String,
-    /// True when an `episode_quality_tags` row already exists for this
-    /// (series, episode) pair. Determines whether the persist step goes
-    /// through `update_classification` (UPDATE) or `record_grab` +
-    /// `mark_completed` (INSERT upsert + state flip).
-    row_exists: bool,
+    /// The episodes of the file's span that need a row written, each
+    /// with whether an `episode_quality_tags` row already exists (the
+    /// persist step goes through `update_classification` for those and
+    /// `record_grab` + `mark_completed` otherwise). Pinned episodes and
+    /// confidently classified ones are not in the list, so the issue
+    /// #53 skip holds per episode.
+    episodes_to_write: Vec<(i32, bool)>,
 }
 
 /// Walk every tracked series and (re-)classify on-disk video files that
@@ -230,27 +231,33 @@ async fn scan_for_unclassified(
                 // resolves via `set_manual_override`, which sets
                 // `manual_override = 1` and clears `needs_review`),
                 // so retrying is safe.
-                let tag = existing.get(&file.episode_number);
-                if let Some(t) = tag {
-                    if t.manual_override {
-                        continue;
+                //
+                // A multi-episode file (issue #246) is picked up when any
+                // episode it holds needs a row; each episode is judged on
+                // its own tag, and the persist step skips the pinned ones.
+                let needs_row = |ep: i32| -> bool {
+                    match existing.get(&ep) {
+                        None => true,
+                        Some(t) => {
+                            if t.manual_override {
+                                return false;
+                            }
+                            let src = t.source.trim();
+                            let is_unknown = src.is_empty() || src.eq_ignore_ascii_case("unknown");
+                            // Issue #53: an UNKNOWN row that was already attempted
+                            // by the full-pipeline classifier (ffprobe + dir +
+                            // group + temporal + filename) won't change verdict
+                            // on the same bytes. Skip it so we don't re-ffprobe
+                            // every six hours forever — the user can still force
+                            // a fresh attempt by clearing/re-applying a manual
+                            // override or running the sweep manually after
+                            // updating the source-pipeline rules.
+                            is_unknown && t.classification_attempted_at.is_none()
+                        }
                     }
-                    let src = t.source.trim();
-                    let is_unknown = src.is_empty() || src.eq_ignore_ascii_case("unknown");
-                    if !is_unknown {
-                        continue;
-                    }
-                    // Issue #53: an UNKNOWN row that was already attempted
-                    // by the full-pipeline classifier (ffprobe + dir +
-                    // group + temporal + filename) won't change verdict
-                    // on the same bytes. Skip it so we don't re-ffprobe
-                    // every six hours forever — the user can still force
-                    // a fresh attempt by clearing/re-applying a manual
-                    // override or running the sweep manually after
-                    // updating the source-pipeline rules.
-                    if t.classification_attempted_at.is_some() {
-                        continue;
-                    }
+                };
+                if !file.episodes().any(needs_row) {
+                    continue;
                 }
 
                 // Reconstruct the absolute path so ffprobe can read the file.
@@ -294,10 +301,13 @@ async fn scan_for_unclassified(
                     series_end_year: row.end_year,
                     series_root: series_root.clone(),
                     file_path,
-                    episode_number: file.episode_number,
                     title,
                     original_torrent_name,
-                    row_exists: tag.is_some(),
+                    episodes_to_write: file
+                        .episodes()
+                        .filter(|ep| needs_row(*ep))
+                        .map(|ep| (ep, existing.contains_key(&ep)))
+                        .collect(),
                 });
             }
         }
@@ -347,67 +357,69 @@ async fn scan_for_unclassified(
         // UPDATE, not an UPSERT). Use `record_grab` with synthetic
         // release metadata to insert-or-upsert, then flip state to
         // 'completed' since the file is already on disk.
-        if !item.row_exists {
-            // Best-effort single stat — failure just leaves size at 0.
-            let file_size = tokio::fs::metadata(&item.file_path)
+        //
+        // One row per episode the file holds (issue #246): the file is
+        // classified once and every episode that needs a row gets the
+        // verdict; pinned and already-confident episodes were left out
+        // of the list at enumeration time.
+        // Best-effort single stat, only when a row is inserted; failure
+        // just leaves size at 0.
+        let file_size = if item.episodes_to_write.iter().any(|(_, exists)| !exists) {
+            tokio::fs::metadata(&item.file_path)
                 .await
                 .map(|m| m.len() as i64)
-                .unwrap_or(0);
-            // Externally-imported file — we're creating both the quality
-            // tag and the grab history row from thin air. `is_batch` is
-            // looked up above from the optional matching grabbed_torrents
-            // row; falls back to false for truly external files.
-            let _ = episode_tags::record_grab(
-                &state.db,
-                item.series_id,
-                item.episode_number,
-                &result,
-                classify_title,
-                "",
-                file_size,
-                is_batch,
-            )
-            .await;
-            let _ = episode_tags::mark_completed(&state.db, item.series_id, &[item.episode_number])
-                .await;
-            // Issue #53: stamp classification_attempted_at so the next
-            // sweep skips this row if `result` came back UNKNOWN. The
-            // grab-time path of `record_grab` deliberately leaves the
-            // column NULL, so we set it explicitly here for the
-            // post-classify path.
-            let _ = episode_tags::stamp_classification_attempted(
-                &state.db,
-                item.series_id,
-                item.episode_number,
-            )
-            .await;
-            // Flip the fresh grab history row to 'completed' and stamp
-            // in the on-disk file basename for the episode detail modal.
-            let imported_basename = item
-                .file_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(classify_title)
-                .to_string();
-            let _ = episode_tags::mark_grab_history_completed(
-                &state.db,
-                item.series_id,
-                item.episode_number,
-                &imported_basename,
-                file_size,
-            )
-            .await;
+                .unwrap_or(0)
         } else {
-            // `update_classification` already sets
-            // classification_attempted_at internally — no extra stamp
-            // needed on this branch.
-            let _ = episode_tags::update_classification(
-                &state.db,
-                item.series_id,
-                item.episode_number,
-                &result,
-            )
-            .await;
+            0
+        };
+        let imported_basename = item
+            .file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(classify_title)
+            .to_string();
+        for (ep, row_exists) in item.episodes_to_write.iter().copied() {
+            if !row_exists {
+                // Externally-imported file — we're creating both the quality
+                // tag and the grab history row from thin air. `is_batch` is
+                // looked up above from the optional matching grabbed_torrents
+                // row; falls back to false for truly external files.
+                let _ = episode_tags::record_grab(
+                    &state.db,
+                    item.series_id,
+                    ep,
+                    &result,
+                    classify_title,
+                    "",
+                    file_size,
+                    is_batch,
+                )
+                .await;
+                let _ = episode_tags::mark_completed(&state.db, item.series_id, &[ep]).await;
+                // Issue #53: stamp classification_attempted_at so the next
+                // sweep skips this row if `result` came back UNKNOWN. The
+                // grab-time path of `record_grab` deliberately leaves the
+                // column NULL, so we set it explicitly here for the
+                // post-classify path.
+                let _ = episode_tags::stamp_classification_attempted(&state.db, item.series_id, ep)
+                    .await;
+                // Flip the fresh grab history row to 'completed' and stamp
+                // in the on-disk file basename for the episode detail modal.
+                let _ = episode_tags::mark_grab_history_completed(
+                    &state.db,
+                    item.series_id,
+                    ep,
+                    &imported_basename,
+                    file_size,
+                )
+                .await;
+            } else {
+                // `update_classification` already sets
+                // classification_attempted_at internally — no extra stamp
+                // needed on this branch.
+                let _ = episode_tags::update_classification(&state.db, item.series_id, ep, &result)
+                    .await;
+            }
         }
 
         report.files_classified += 1;
@@ -420,14 +432,16 @@ async fn scan_for_unclassified(
             // rows in one shot. Users opt in by enabling the event
             // for a provider.
             let verdict = result.label();
-            crate::services::notifications::emit_classifier_needs_review(
-                state,
-                item.series_id,
-                item.episode_number,
-                result.confidence as i32,
-                &verdict,
-            )
-            .await;
+            for (ep, _) in item.episodes_to_write.iter().copied() {
+                crate::services::notifications::emit_classifier_needs_review(
+                    state,
+                    item.series_id,
+                    ep,
+                    result.confidence as i32,
+                    &verdict,
+                )
+                .await;
+            }
         }
     }
 

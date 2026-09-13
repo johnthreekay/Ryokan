@@ -35,6 +35,10 @@ Yes. Ryokan exposes a Swagger UI at `/api-docs` and the OpenAPI JSON at `/api-do
 - **API-key auth** for the Sonarr / Radarr-compatible shim that Seerr and friends call (`X-Api-Key` header or `?apikey=` query string, configured in **Settings → Connections**).
 - **Per-tool API keys** for narrower jobs. Right now the calendar subscription feed at `/api/calendar.ics` is the main one. Create a key with the `calendar` permission on **Settings → API Keys** and the [Calendar](calendar.md) page builds the subscription URL for you.
 
+## Does Ryokan handle a file that holds two episodes?
+
+Yes. A release like `Title - 05-06` or `S01E05-E06` imports as one file named with the range (`Title - S01E05-E06 - Title A + Title B.mkv` with the default template) and both episodes show as present, so neither is searched for again. Deleting the file clears both episodes. Ryokan reads the range from the file name: numbers joined by dashes in the episode slot (`05-06`, `S01E05-E06`, or a run like `S01E01-02-03`), each at least two digits, at most six episodes in one file. A file that already holds two episodes is only replaced by a release that covers both; a single-episode release for one of them is not imported, since that would drop the other episode.
+
 ## How do I back up?
 
 Ryokan has a built-in backup on [System → Backup](system.md#backup): download a snapshot, save one to the backup folder, schedule daily or weekly backups under Settings → General, and restore by uploading an archive. That is the supported path; a plain file copy taken while Ryokan is running can miss writes.

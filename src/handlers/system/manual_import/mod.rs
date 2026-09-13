@@ -640,7 +640,7 @@ async fn render_session_page(state: &AppState, id: &str, notice: String) -> Html
                 .iter()
                 .map(|f| UnmatchedView {
                     rel_path: f.rel_path.clone(),
-                    episode_label: preview::episode_label(f.episode),
+                    episode_label: preview::episode_label(f.episode, f.episode_count),
                     quality_label: f.quality_label.clone(),
                     size: human_bytes(f.size_bytes),
                 })
