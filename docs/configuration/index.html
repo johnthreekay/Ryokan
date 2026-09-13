@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.59">
+      <meta name="generator" content="zensical-0.0.61">
     
     
       
@@ -34,7 +34,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.5da3a30f.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ce62732f.min.css">
       
         
           
@@ -1305,7 +1305,7 @@
 <li><strong>Give up on stuck imports after (hours)</strong>: when the download client reports a download finished but Ryokan still finds no video file to import after this many hours (the download folder is not visible to Ryokan, or the release turned out to be all extras), the download is marked failed, the episode shows as failed, an Import Failed notification goes out, and the release is listed under Downloads → Blocklist. Remove it from the blocklist to let a search grab it again. Default 24. <code>0</code> keeps retrying forever. Nothing is given up on in the first 15 minutes after a restart, so a download folder that mounts late is not mistaken for a stuck import. Leftover partial files from an import that stopped mid-copy (they end in <code>.ryokan-tmp</code> or <code>.ryokan-new</code>) are removed from the media library by the hourly cleanup once they are older than two hours; a <code>.ryokan-new</code> goes to the recycle bin when one is configured.</li>
 <li><strong>Preferred Title Language</strong>: <code>romaji</code> / <code>english</code> / <code>native</code>. Display-only for scoring and search, which match across all three regardless. It also picks the title the <code>{series.title}</code> naming token renders.</li>
 <li>
-<p><strong>File naming</strong>: three templates decide where an import lands. <strong>Series folder</strong> (default <code>{series.title}</code>) applies once, when a series is added. Series already in your library keep their folder, so changing it never renames anything. <strong>Season folder</strong> (default <code>Season {season.number:00}</code>) and <strong>Episode file</strong> (default <code>{series.title} - S{season.number:00}E{episode.number:00} - {episode.title}{ext}</code>) apply to every import. Files already in the library keep their names. Each field shows a sample as you type, the combined path shows underneath, and <strong>Reset</strong> puts the default back. A token with no value (a show AniList has no episode titles for, a release with no group) drops out together with its brackets or separator, so <code>[{quality.full}]</code> never leaves an empty <code>[]</code> behind. The episode template must end with <code>{ext}</code> and include <code>{episode.number}</code>, and Ryokan checks that it can read the episode number back out of the sample name, because library scans and upgrades depend on that. Characters that are not allowed in file names (<code>/ \ : * ? " &lt; &gt; |</code>) become <code>_</code>. A name that would exceed the filesystem limit is shortened at the series title so the episode number and extension always survive. On Windows a warning appears when the sample path passes 260 characters.</p>
+<p><strong>File naming</strong>: three templates decide where an import lands. <strong>Series folder</strong> (default <code>{series.title}</code>) applies once, when a series is added. Series already in your library keep their folder, so changing it never renames anything. <strong>Season folder</strong> (default <code>Season {season.number:00}</code>) and <strong>Episode file</strong> (default <code>{series.title} - S{season.number:00}E{episode.number:00} - {episode.title}{ext}</code>) apply to every import. Files already in the library keep their names. Each field shows a sample as you type, the combined path shows underneath, and <strong>Reset</strong> puts the default back. A token with no value (a show AniList has no episode titles for, a release with no group) drops out together with its brackets or separator, so <code>[{quality.full}]</code> never leaves an empty <code>[]</code> behind. The episode template must end with <code>{ext}</code> and include <code>{episode.number}</code>, and Ryokan checks that it can read the episode number back out of the sample name, because library scans and upgrades depend on that. Characters that are not allowed in file names (<code>/ \ : * ? " &lt; &gt; |</code>) become <code>_</code>. A name that would exceed the filesystem limit is shortened at the series title so the episode number and extension always survive. On Windows a warning appears when the sample path passes 260 characters. A release that holds two or more episodes in one file (<code>Title - 05-06</code>) is named with the range, <code>S01E05-E06</code> with the default template or <code>05-06</code> after a dash, and both episodes count as present in the library; Ryokan checks that the range reads back too.</p>
 <table>
 <thead>
 <tr>
@@ -1328,7 +1328,7 @@
 </tr>
 <tr>
 <td><code>{episode.number}</code></td>
-<td>Episode number. <code>{episode.number:00}</code> pads to <code>01</code>, <code>{episode.number:000}</code> to <code>001</code></td>
+<td>Episode number. <code>{episode.number:00}</code> pads to <code>01</code>, <code>{episode.number:000}</code> to <code>001</code>. A file holding several episodes renders the range, <code>S01E05-E06</code> or <code>05-06</code></td>
 </tr>
 <tr>
 <td><code>{episode.title}</code></td>
@@ -1436,10 +1436,14 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      
+      
+        
+        
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.6970bfe9.min.js"></script>
+      <script src="../assets/javascripts/bundle.df5d1f2b.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

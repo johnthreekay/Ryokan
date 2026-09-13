@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.59">
+      <meta name="generator" content="zensical-0.0.61">
     
     
       
@@ -34,7 +34,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.5da3a30f.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ce62732f.min.css">
       
         
           
@@ -1360,7 +1360,7 @@
 </ul>
 <h3 id="how-ryokan-reads-names">How Ryokan reads names<a class="headerlink" href="#how-ryokan-reads-names" title="Anchor link">&para;</a></h3>
 <p>The series name comes from the filename first (<code>[SubsPlease] Sousou no Frieren - 05 (1080p).mkv</code> reads as <em>Sousou no Frieren</em>). When a filename carries no name at all (<code>01.mkv</code>, <code>S01E05.mkv</code>, <code>Episode 07.mkv</code>), Ryokan uses the folder above it, skipping folders like <code>Season 01</code>, <code>Specials</code>, or <code>Extras</code> on the way up, so <code>Anime/Naruto/Season 01/01.mkv</code> reads as <em>Naruto</em>. A card whose series name was read from a folder says <strong>name from folder</strong> in its header.</p>
-<p>Episode numbers use the same parser as the rest of Ryokan, so the <code>E07</code> in the preview is the number the import would record. Files that Ryokan cannot number (creditless openings and endings, bare specials, files with no digits) are listed but marked <strong>No episode number</strong> and would not be imported.</p>
+<p>Episode numbers use the same parser as the rest of Ryokan, so the <code>E07</code> in the preview is the number the import would record. A file that holds several episodes (<code>Title - 05-06.mkv</code>, <code>S01E05-E06</code>) shows the range, <code>E05-E06</code>, and is recorded for each of them. Files that Ryokan cannot number (creditless openings and endings, bare specials, files with no digits) are listed but marked <strong>No episode number</strong> and would not be imported.</p>
 <p>Seasons are read from wherever the name carries them: <code>S02E01</code>, a <code>S2</code> / <code>Season 2</code> / <code>2nd Season</code> / <code>II</code> marker at the end of the title (<code>[SubsPlease] Sousou no Frieren S2 - 05</code> reads as <em>Sousou no Frieren</em>, season 2), a marker on the show's folder (<code>Overlord IV/Overlord - 03.mkv</code>), or a <code>Season 3</code> folder above the file. Files from a season past the first form their own series, because AniList lists each season as its own entry. Ryokan searches "title season 2" first and, if AniList returns nothing, falls back to the bare title and then to the title without its subtitle; the card shows whichever query matched. A year in a filename or folder name (<code>Hunter x Hunter (2011)</code>) is used to prefer the right remake.</p>
 <h3 id="seasons-by-id-not-by-name">Seasons by id, not by name<a class="headerlink" href="#seasons-by-id-not-by-name" title="Anchor link">&para;</a></h3>
 <p>Once the search has found a show, the season itself is resolved through the same TMDB mappings the Sonarr and Radarr integrations use (the anibridge dataset Ryokan already keeps). Those map every AniList entry to a TMDB show and season with episode ranges, which is the numbering a <code>Season 3</code> folder in a Jellyfin or Plex library follows. So "season 3 of Fire Force" is looked up by id rather than guessed from how AniList names the sequel. Two consequences worth knowing:</p>
@@ -1479,10 +1479,14 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      
+      
+        
+        
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.6970bfe9.min.js"></script>
+      <script src="../assets/javascripts/bundle.df5d1f2b.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       
