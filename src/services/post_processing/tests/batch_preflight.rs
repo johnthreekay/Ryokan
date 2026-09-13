@@ -412,6 +412,38 @@ fn special_of_a_tv_series_is_set_aside_instead_of_colliding() {
     assert_eq!(specials, vec![1, 2]);
     assert!(plan.superseded.is_empty());
 
+    // A bare marker with no number, and a pack's own `Specials/`
+    // subfolder with plain numbering, are specials too; the folder
+    // wins even for an unmarked `01`.
+    let files2 = vec![
+        (
+            0,
+            42,
+            None,
+            0,
+            "pack/[Group] Show - 01 (BD 1080p).mkv".to_string(),
+        ),
+        (
+            1,
+            42,
+            None,
+            0,
+            "pack/[Group] Show - OVA (BD 1080p).mkv".to_string(),
+        ),
+        (
+            2,
+            42,
+            None,
+            0,
+            "pack/Specials/[Group] Show - 01 (BD 1080p).mkv".to_string(),
+        ),
+    ];
+    let plan = validate_batch_episode_map(&files2, &tv).unwrap();
+    let mut specials: Vec<usize> = plan.specials.iter().copied().collect();
+    specials.sort_unstable();
+    assert_eq!(specials, vec![1, 2]);
+    assert_eq!(plan.slots.len(), 1);
+
     let err = validate_batch_episode_map(&files[..2], &HashSet::new()).unwrap_err();
     assert!(err.contains("no files were changed"), "{err}");
 }

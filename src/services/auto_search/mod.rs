@@ -574,7 +574,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
         prefer_revisions: series_ctx.prefer_revisions,
-        reject_specials: media::is_tv_format(&detail.format),
+        reject_specials: require_verbatim && media::is_tv_format(&detail.format),
         absolute_offset: series_ctx.absolute_offset,
         indexers,
     };
@@ -855,7 +855,7 @@ async fn collect_scored_for_target(
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
         prefer_revisions: series_ctx.prefer_revisions,
-        reject_specials: media::is_tv_format(&detail.format),
+        reject_specials: require_verbatim && media::is_tv_format(&detail.format),
         absolute_offset: series_ctx.absolute_offset,
         indexers,
     };
@@ -1136,9 +1136,10 @@ struct AutoQueryCtx<'a> {
     /// `SearchOptions.prefer_revisions`.
     prefer_revisions: bool,
     /// Drop releases that name a special (`OVA 01`, `- SP1`): true for
-    /// a TV-format target, whose specials are never the episode being
-    /// searched for. An OVA / special entry keeps them, since the
-    /// marker is part of its own title.
+    /// the automatic passes over a TV-format target, whose specials
+    /// are never the episode being searched for. The interactive
+    /// lists (`require_verbatim = false`) and an OVA / special entry
+    /// keep them.
     reject_specials: bool,
     /// #30 — Cumulative episode count across the shortest TV-format
     /// PREQUEL chain up to this target. Allows an episode-filter match
@@ -1354,7 +1355,7 @@ async fn run_queries(
                 continue;
             }
             if ctx.reject_specials && media::is_special_release(&result.title) {
-                ctx.note_rejected(&result.title);
+                tracing::debug!("auto-search: skipping special release {:?}", result.title);
                 rejected_here.insert(dedupe_key);
                 continue;
             }
@@ -1420,7 +1421,7 @@ async fn run_queries(
             continue;
         }
         if ctx.reject_specials && media::is_special_release(&result.title) {
-            ctx.note_rejected(&result.title);
+            tracing::debug!("auto-search: skipping special release {:?}", result.title);
             rejected_here.insert(dedupe_key);
             continue;
         }

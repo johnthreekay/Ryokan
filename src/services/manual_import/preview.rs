@@ -357,10 +357,15 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                     }
                 }
             };
-            if status == FileStatus::Import && folder_on_disk {
+            if matches!(status, FileStatus::Import | FileStatus::Special) && folder_on_disk {
+                let sub = if status == FileStatus::Special {
+                    post_processing::SPECIALS_FOLDER
+                } else {
+                    season_folder.as_str()
+                };
                 let dest = std::path::Path::new(ctx.media_root)
                     .join(&folder_name)
-                    .join(&season_folder)
+                    .join(sub)
                     .join(&f.file_name);
                 if dest.exists() && !post_processing::files_share_inode(&f.path, &dest) {
                     status = FileStatus::AlreadyOnDisk;

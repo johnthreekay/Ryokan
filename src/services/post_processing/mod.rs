@@ -252,13 +252,23 @@ pub(crate) fn validate_batch_episode_map(
             .and_then(|n| n.to_str())
             .unwrap_or(name);
         let lower = filename.to_lowercase();
-        let Some(span) = media::parse_episode_span(&lower) else {
-            continue;
-        };
-        if span.special && tv_series.contains(series_id) {
+        let in_specials_folder = media::path_names_specials(Path::new(name));
+        let parsed = media::parse_episode_span(&lower);
+        // A special of a TV series takes no slot: the name says so
+        // (`OVA 01`, a bare `- OVA` with no number at all), or the
+        // pack keeps it in a `Specials/` subfolder whatever it is
+        // called there.
+        if tv_series.contains(series_id)
+            && (in_specials_folder
+                || parsed.is_some_and(|s| s.special)
+                || (parsed.is_none() && media::has_special_marker(&lower)))
+        {
             specials.insert(*file_idx);
             continue;
         }
+        let Some(span) = parsed else {
+            continue;
+        };
         let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes) else {
             continue;
         };
@@ -644,11 +654,37 @@ async fn unstage_upgrade(db: &sqlx::SqlitePool, mode: &str, landing: &Path, src:
 /// scanner recognizes this name.
 pub const SPECIALS_FOLDER: &str = "Specials";
 
+/// What [`import_special_file`] did.
+enum SpecialOutcome {
+    Imported,
+    /// The destination already held the file (or a different one; a
+    /// special is never replaced, since no quality row exists to
+    /// judge an upgrade by). Counts as done for the grab.
+    AlreadyThere,
+}
+
+/// True when the grab's own release wrote the `grabbed` tag row for
+/// `ep`: the row to clear when the grab's file landed as a special.
+async fn grab_wrote_grabbed_tag(
+    state: &AppState,
+    grab: &grabbed_torrents::GrabbedTorrent,
+    ep: i32,
+) -> bool {
+    episode_tags::get_for_series(&state.db, grab.series_id)
+        .await
+        .ok()
+        .and_then(|tags| {
+            tags.get(&ep)
+                .map(|t| t.state == "grabbed" && t.release_title == grab.torrent_name)
+        })
+        .unwrap_or(false)
+}
+
 /// Place a special of a TV series (`OVA 01`, `SP1`) in the Specials
 /// folder as `S00Exx`. No tag row, no history row, no notification:
-/// the file is not an episode of the series. `Ok(false)` when the
-/// destination already exists (a special is never replaced, since no
-/// quality row exists to judge an upgrade by).
+/// the file is not an episode of the series. Two specials of one pass
+/// that render the same name (`OVA 01` and `SP 01`) get the second
+/// suffixed with its source stem, tracked in `taken`.
 async fn import_special_file(
     state: &AppState,
     cfg: &config::Config,
@@ -656,7 +692,8 @@ async fn import_special_file(
     src: &Path,
     filename_only: &str,
     span: media::EpisodeSpan,
-) -> Result<bool, String> {
+    taken: &mut HashSet<PathBuf>,
+) -> Result<SpecialOutcome, String> {
     let specials_dir = Path::new(&cfg.media_root)
         .join(&ctx.folder_name)
         .join(SPECIALS_FOLDER);
@@ -676,24 +713,40 @@ async fn import_special_file(
     name_ctx.season_number = 0;
     name_ctx.episode_absolute = None;
     let name = naming::episode_file(&cfg.episode_file_format, &name_ctx);
-    let dest = specials_dir.join(&name.file_name);
-    if dest.exists() && !files_share_inode(src, &dest) {
-        logger::info(
-            &state.db,
-            LogCategory::PostProcess,
-            &format!(
-                "Special {} of '{}' is already in the Specials folder; leaving it",
-                name_ctx.slot_label(),
-                ctx.series.title
-            ),
-            &dest.display().to_string(),
-        )
-        .await;
-        return Ok(false);
+    let mut dest = specials_dir.join(&name.file_name);
+    if taken.contains(&dest) {
+        let source_stem = Path::new(filename_only)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("special");
+        dest = specials_dir.join(format!(
+            "{} - {}.{}",
+            name.stem,
+            crate::services::media::sanitize_folder_name(source_stem),
+            ext
+        ));
+    }
+    if dest.exists() {
+        if !files_share_inode(src, &dest) {
+            logger::info(
+                &state.db,
+                LogCategory::PostProcess,
+                &format!(
+                    "Special {} of '{}' is already in the Specials folder; leaving it",
+                    name_ctx.slot_label(),
+                    ctx.series.title
+                ),
+                &dest.display().to_string(),
+            )
+            .await;
+        }
+        taken.insert(dest);
+        return Ok(SpecialOutcome::AlreadyThere);
     }
     do_file_op(&cfg.post_processing_mode, src, &dest)
         .await
         .map_err(|e| e.to_string())?;
+    taken.insert(dest.clone());
     logger::info(
         &state.db,
         LogCategory::PostProcess,
@@ -705,7 +758,7 @@ async fn import_special_file(
         &dest.display().to_string(),
     )
     .await;
-    Ok(true)
+    Ok(SpecialOutcome::Imported)
 }
 
 fn episode_name_context(
@@ -1273,9 +1326,15 @@ async fn import_torrent(
         BatchPlan::default()
     };
     let preflight_ran = requires_episode_map_preflight(grab.is_batch, video_files.len());
-    // Specials of a TV series imported into the Specials folder; they
-    // carry no episode rows, so they count apart from `imported_count`.
+    // Specials of a TV series imported into (or already in) the
+    // Specials folder; they carry no episode rows, so they count apart
+    // from `imported_count`. `specials_written` dedupes the S00 names
+    // within this pass (`OVA 01` and `SP 01` both render S00E01);
+    // `special_claims` holds the grab's episode list per special so
+    // the grab-time rows a special never fills are cleared below.
     let mut specials_imported = 0_usize;
+    let mut specials_written: HashSet<PathBuf> = HashSet::new();
+    let mut special_claims: Vec<Vec<i32>> = Vec::new();
 
     // Lazily-loaded per-series context cache. The single-series case
     // fills exactly one entry; a multi-series routed batch fills one
@@ -1485,18 +1544,42 @@ async fn import_torrent(
         // set it aside for a batch; the single-file path reads the
         // name here. It goes to the Specials folder as `S00Exx`, with
         // no tag or history row, and never fails the grab.
-        let name_span = media::parse_episode_span(&filename_only.to_lowercase());
+        let lower_name = filename_only.to_lowercase();
+        let name_span = media::parse_episode_span(&lower_name);
         let is_special = batch_episode_plan.specials.contains(file_idx)
             || (!preflight_ran
                 && media::is_tv_format(&ctx.series.format)
-                && name_span.is_some_and(|s| s.special));
-        if is_special && let Some(span) = name_span {
-            match import_special_file(state, cfg, ctx, &src, filename_only, span).await {
-                Ok(true) => {
+                && (media::path_names_specials(Path::new(&file.name))
+                    || name_span.is_some_and(|s| s.special)
+                    || (name_span.is_none() && media::has_special_marker(&lower_name))));
+        if is_special {
+            // A bare `- OVA` with no number is the show's one special.
+            let span = name_span.unwrap_or(media::EpisodeSpan {
+                season: None,
+                first: 1,
+                last: 1,
+                special: true,
+            });
+            match import_special_file(
+                state,
+                cfg,
+                ctx,
+                &src,
+                filename_only,
+                span,
+                &mut specials_written,
+            )
+            .await
+            {
+                Ok(SpecialOutcome::Imported) => {
                     specials_imported += 1;
+                    special_claims.push(grab.episode_numbers.clone());
                     imported_source_paths.push(src.display().to_string());
                 }
-                Ok(false) => {}
+                Ok(SpecialOutcome::AlreadyThere) => {
+                    specials_imported += 1;
+                    special_claims.push(grab.episode_numbers.clone());
+                }
                 Err(e) => {
                     logger::warn(
                         &state.db,
@@ -2287,6 +2370,28 @@ async fn import_torrent(
         }
     }
 
+    // The picker (and auto-expand's backfill) wrote `grabbed` tag rows
+    // for the episodes the grab claimed; a file that landed as a
+    // special never fills them, and nothing else would clear them.
+    if !special_claims.is_empty() {
+        let imported: HashSet<i32> = imported_eps_by_series
+            .get(&grab.series_id)
+            .map(|eps| eps.iter().map(|(n, _, _)| *n).collect())
+            .unwrap_or_default();
+        let mut claimed: Vec<i32> = special_claims.into_iter().flatten().collect();
+        claimed.sort_unstable();
+        claimed.dedup();
+        for ep in claimed {
+            if imported.contains(&ep) {
+                continue;
+            }
+            if grab_wrote_grabbed_tag(state, grab, ep).await {
+                let _ = episode_tags::clear_episode_tag(&state.db, grab.series_id, ep).await;
+                let _ =
+                    episode_tags::mark_grab_history_removed(&state.db, grab.series_id, ep).await;
+            }
+        }
+    }
     if imported_count == 0 {
         // Distinguish "no video files visible yet" (handled earlier as
         // NotReady) from "video files were attempted but every one
@@ -2296,8 +2401,16 @@ async fn import_torrent(
         }
         if specials_imported > 0 {
             // A release that was all specials (an OVA grabbed from the
-            // picker for a TV series) landed in full; nothing to mark
-            // per episode, but the grab is done.
+            // picker for a TV series) landed in full, or was already
+            // there; nothing to mark per episode, but the grab is done.
+            // Stamp what it took from the download folder first, so the
+            // client cleanup still sees it.
+            let _ = grabbed_torrents::stamp_imported_source_paths(
+                &state.db,
+                grab.id,
+                &imported_source_paths,
+            )
+            .await;
             return Ok(ImportOutcome::Imported);
         }
         return Ok(ImportOutcome::NotReady);

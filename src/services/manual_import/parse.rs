@@ -298,11 +298,16 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         .map(|g| g.trim().to_string())
         .filter(|g| !g.is_empty());
 
-    let (season, episode, episode_count, special) =
+    let (season, episode, episode_count, mut special) =
         match media::parse_episode_span(&file_name.to_lowercase()) {
             Some(span) => (span.season, Some(span.first), span.count(), span.special),
             None => (None, None, 1, false),
         };
+    // A `Specials/` or `Season 00` parent is authoritative whatever
+    // the file is called (the Sonarr / Jellyfin layout).
+    if media::path_names_specials(rel_path) || season == Some(0) {
+        special = true;
+    }
 
     let mut title_source = if title.is_some() {
         TitleSource::Filename
