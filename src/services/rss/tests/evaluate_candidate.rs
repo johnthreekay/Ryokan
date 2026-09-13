@@ -113,6 +113,7 @@ fn disk_file(ep: i32, quality: &str) -> media::EpisodeFile {
         size_bytes: 1_000_000_000,
         size_display: String::new(),
         modified_secs: None,
+        is_special: false,
     }
 }
 

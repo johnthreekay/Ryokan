@@ -179,6 +179,7 @@ pub(crate) fn span_from_grab_episodes(episode_numbers: &[i32]) -> Option<media::
             season: None,
             first: sorted[0],
             last,
+            special: false,
         });
     }
     Some(media::EpisodeSpan::single(None, first))
@@ -192,6 +193,10 @@ pub(crate) struct BatchPlan {
     /// File index → index of the higher-version sibling that won the
     /// same slot (issue #204). The loop skips these with an info log.
     pub(crate) superseded: HashMap<usize, usize>,
+    /// Files whose name marks a special (`OVA 01`, `SP1`) of a TV
+    /// series. They compete for no slot and land in the Specials
+    /// folder, so `01` and `OVA 01` in one pack never collide.
+    pub(crate) specials: HashSet<usize>,
 }
 
 /// Validate every wanted video in a batch before the import loop performs
@@ -223,8 +228,12 @@ pub(crate) struct BatchPlan {
 /// happened before ranges parsed at all, instead of failing the pack.
 /// Only two files of the same version and the same shape on one slot
 /// fail closed.
+/// `tv_series` holds the ids of target series whose AniList format is
+/// TV (`media::is_tv_format`): only for those does a special marker in
+/// a file name mean "special" rather than the series' own numbering.
 pub(crate) fn validate_batch_episode_map(
     files: &[(usize, i64, Option<i32>, i32, String)],
+    tv_series: &HashSet<i64>,
 ) -> Result<BatchPlan, String> {
     struct Entry<'a> {
         file_idx: usize,
@@ -235,6 +244,7 @@ pub(crate) fn validate_batch_episode_map(
         name: &'a str,
     }
     let mut entries: Vec<Entry<'_>> = Vec::new();
+    let mut specials: HashSet<usize> = HashSet::new();
 
     for (file_idx, series_id, route_offset, cumulative_prior_episodes, name) in files {
         let filename = Path::new(name)
@@ -245,6 +255,10 @@ pub(crate) fn validate_batch_episode_map(
         let Some(span) = media::parse_episode_span(&lower) else {
             continue;
         };
+        if span.special && tv_series.contains(series_id) {
+            specials.insert(*file_idx);
+            continue;
+        }
         let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes) else {
             continue;
         };
@@ -272,7 +286,10 @@ pub(crate) fn validate_batch_episode_map(
             .then(b.single.cmp(&a.single))
             .then(a.file_idx.cmp(&b.file_idx))
     });
-    let mut plan = BatchPlan::default();
+    let mut plan = BatchPlan {
+        specials,
+        ..BatchPlan::default()
+    };
     let mut taken: HashMap<(i64, i32), usize> = HashMap::new();
     for i in 0..entries.len() {
         let e = &entries[i];
@@ -622,6 +639,74 @@ async fn unstage_upgrade(db: &sqlx::SqlitePool, mode: &str, landing: &Path, src:
 /// (manual overrides included), otherwise from a filename-only pass
 /// over the source name; both are the same pre-download signals the
 /// grab itself was scored on.
+/// Folder under the series folder that holds its specials, the
+/// `Season 0` of Kodi / Jellyfin / Plex. Not a template: every
+/// scanner recognizes this name.
+pub const SPECIALS_FOLDER: &str = "Specials";
+
+/// Place a special of a TV series (`OVA 01`, `SP1`) in the Specials
+/// folder as `S00Exx`. No tag row, no history row, no notification:
+/// the file is not an episode of the series. `Ok(false)` when the
+/// destination already exists (a special is never replaced, since no
+/// quality row exists to judge an upgrade by).
+async fn import_special_file(
+    state: &AppState,
+    cfg: &config::Config,
+    ctx: &SeriesImportCtx,
+    src: &Path,
+    filename_only: &str,
+    span: media::EpisodeSpan,
+) -> Result<bool, String> {
+    let specials_dir = Path::new(&cfg.media_root)
+        .join(&ctx.folder_name)
+        .join(SPECIALS_FOLDER);
+    {
+        let dir = specials_dir.clone();
+        tokio::task::spawn_blocking(move || std::fs::create_dir_all(&dir))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| format!("could not create {}: {e}", specials_dir.display()))?;
+    }
+    let ext = Path::new(filename_only)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("mkv");
+    let mut name_ctx =
+        episode_name_context_with_tag(ctx, None, span.first, span.last, "", filename_only, ext);
+    name_ctx.season_number = 0;
+    let name = naming::episode_file(&cfg.episode_file_format, &name_ctx);
+    let dest = specials_dir.join(&name.file_name);
+    if dest.exists() && !files_share_inode(src, &dest) {
+        logger::info(
+            &state.db,
+            LogCategory::PostProcess,
+            &format!(
+                "Special {} of '{}' is already in the Specials folder; leaving it",
+                name_ctx.slot_label(),
+                ctx.series.title
+            ),
+            &dest.display().to_string(),
+        )
+        .await;
+        return Ok(false);
+    }
+    do_file_op(&cfg.post_processing_mode, src, &dest)
+        .await
+        .map_err(|e| e.to_string())?;
+    logger::info(
+        &state.db,
+        LogCategory::PostProcess,
+        &format!(
+            "Imported special {} of '{}' into the Specials folder",
+            name_ctx.slot_label(),
+            ctx.series.title
+        ),
+        &dest.display().to_string(),
+    )
+    .await;
+    Ok(true)
+}
+
 fn episode_name_context(
     ctx: &SeriesImportCtx,
     ep_num: i32,
@@ -630,7 +715,28 @@ fn episode_name_context(
     source_name: &str,
     ext: &str,
 ) -> naming::NameContext {
-    let tag = ctx.existing_tags.get(&ep_num);
+    episode_name_context_with_tag(
+        ctx,
+        ctx.existing_tags.get(&ep_num),
+        ep_num,
+        ep_last,
+        ep_title,
+        source_name,
+        ext,
+    )
+}
+
+/// `episode_name_context` with the tag row chosen by the caller: a
+/// special has no row of its own and must not read the main run's.
+fn episode_name_context_with_tag(
+    ctx: &SeriesImportCtx,
+    tag: Option<&episode_tags::EpisodeQualityTag>,
+    ep_num: i32,
+    ep_last: i32,
+    ep_title: &str,
+    source_name: &str,
+    ext: &str,
+) -> naming::NameContext {
     let (resolution, source_label, group) = match tag {
         Some(t) if !t.source.is_empty() || !t.resolution.is_empty() => (
             if t.resolution.eq_ignore_ascii_case("unknown") {
@@ -1121,6 +1227,7 @@ async fn import_torrent(
     // duplicate-destination overwrite that this preflight prevents.
     let batch_episode_plan = if requires_episode_map_preflight(grab.is_batch, video_files.len()) {
         let mut cumulative_by_series = HashMap::new();
+        let mut tv_series: HashSet<i64> = HashSet::new();
         let mut batch_files = Vec::with_capacity(video_files.len());
         for (file_idx, file) in &video_files {
             let route = routes_by_file.get(file_idx).copied();
@@ -1131,11 +1238,14 @@ async fn import_torrent(
                 if let Some(value) = cumulative_by_series.get(&target_series_id) {
                     *value
                 } else {
-                    let value = series::get_by_id(&state.db, target_series_id)
+                    let row = series::get_by_id(&state.db, target_series_id)
                         .await
                         .map_err(|e| e.to_string())?
-                        .ok_or_else(|| format!("series {} not found", target_series_id))?
-                        .cumulative_prior_episodes;
+                        .ok_or_else(|| format!("series {} not found", target_series_id))?;
+                    if media::is_tv_format(&row.format) {
+                        tv_series.insert(target_series_id);
+                    }
+                    let value = row.cumulative_prior_episodes;
                     cumulative_by_series.insert(target_series_id, value);
                     value
                 };
@@ -1147,10 +1257,14 @@ async fn import_torrent(
                 file.name.clone(),
             ));
         }
-        validate_batch_episode_map(&batch_files)?
+        validate_batch_episode_map(&batch_files, &tv_series)?
     } else {
         BatchPlan::default()
     };
+    let preflight_ran = requires_episode_map_preflight(grab.is_batch, video_files.len());
+    // Specials of a TV series imported into the Specials folder; they
+    // carry no episode rows, so they count apart from `imported_count`.
+    let mut specials_imported = 0_usize;
 
     // Lazily-loaded per-series context cache. The single-series case
     // fills exactly one entry; a multi-series routed batch fills one
@@ -1356,10 +1470,38 @@ async fn import_torrent(
             continue;
         }
 
+        // A special of a TV series (Sonarr's Season 0): the preflight
+        // set it aside for a batch; the single-file path reads the
+        // name here. It goes to the Specials folder as `S00Exx`, with
+        // no tag or history row, and never fails the grab.
+        let name_span = media::parse_episode_span(&filename_only.to_lowercase());
+        let is_special = batch_episode_plan.specials.contains(file_idx)
+            || (!preflight_ran
+                && media::is_tv_format(&ctx.series.format)
+                && name_span.is_some_and(|s| s.special));
+        if is_special && let Some(span) = name_span {
+            match import_special_file(state, cfg, ctx, &src, filename_only, span).await {
+                Ok(true) => {
+                    specials_imported += 1;
+                    imported_source_paths.push(src.display().to_string());
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    logger::warn(
+                        &state.db,
+                        LogCategory::PostProcess,
+                        &format!("Could not import special '{}': {}", filename_only, e),
+                        &format!("series={}", ctx.series.title),
+                    )
+                    .await;
+                }
+            }
+            continue;
+        }
         let resolved = if let Some(resolved) = batch_episode_plan.slots.get(file_idx) {
             *resolved
         } else {
-            let parsed = media::parse_episode_span(&filename_only.to_lowercase());
+            let parsed = name_span;
             let fallback = if video_files.len() == 1 && routes_by_file.is_empty() {
                 span_from_grab_episodes(&grab.episode_numbers)
             } else {
@@ -2138,10 +2280,16 @@ async fn import_torrent(
         // Distinguish "no video files visible yet" (handled earlier as
         // NotReady) from "video files were attempted but every one
         // failed." The latter shouldn't sit pending forever.
-        if failed_episodes.is_empty() {
-            return Ok(ImportOutcome::NotReady);
+        if !failed_episodes.is_empty() {
+            return Ok(ImportOutcome::AllFailed { failed_episodes });
         }
-        return Ok(ImportOutcome::AllFailed { failed_episodes });
+        if specials_imported > 0 {
+            // A release that was all specials (an OVA grabbed from the
+            // picker for a TV series) landed in full; nothing to mark
+            // per episode, but the grab is done.
+            return Ok(ImportOutcome::Imported);
+        }
+        return Ok(ImportOutcome::NotReady);
     }
 
     // Persist the source-side paths so the delete + series-remove

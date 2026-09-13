@@ -38,6 +38,10 @@ pub struct ParsedFile {
     /// How many episodes the file holds (issue #246): 1 for the usual
     /// file, 2 for `S01E05-E06`.
     pub episode_count: i32,
+    /// The name marks a special (`OVA 01`, `SP1`, `S00E01`). Whether
+    /// that means the Specials folder depends on the matched entry's
+    /// format (`media::is_tv_format`).
+    pub special: bool,
     /// Year hint from the filename or, failing that, the folder the
     /// title came from. Feeds the match ranking; never persisted.
     pub year: Option<i32>,
@@ -294,10 +298,10 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         .map(|g| g.trim().to_string())
         .filter(|g| !g.is_empty());
 
-    let (season, episode, episode_count) =
+    let (season, episode, episode_count, special) =
         match media::parse_episode_span(&file_name.to_lowercase()) {
-            Some(span) => (span.season, Some(span.first), span.count()),
-            None => (None, None, 1),
+            Some(span) => (span.season, Some(span.first), span.count(), span.special),
+            None => (None, None, 1, false),
         };
 
     let mut title_source = if title.is_some() {
@@ -344,6 +348,7 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         season,
         episode,
         episode_count,
+        special,
         year,
         group,
     }

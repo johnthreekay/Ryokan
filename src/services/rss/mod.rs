@@ -879,6 +879,34 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             continue;
         }
 
+        // A special (`OVA 01`, `- SP1`) of a TV series is not one of its
+        // episodes. The interactive picker is the way to grab one; the
+        // import then files it under Specials.
+        if media::is_tv_format(&found.series.format) && media::is_special_release(&item.title) {
+            skipped += 1;
+            let reason = format!(
+                "Special release of a TV series | {}",
+                build_match_diag(&item, Some(&found), 0)
+            );
+            let _ = rss::record_decision(
+                &state.db,
+                rss::DecisionRecord {
+                    item_key: &item_key,
+                    title: &item.title,
+                    link: &item.link,
+                    series_id: Some(found.series.id),
+                    series_title: &found.series.title,
+                    group_name: &item.group,
+                    is_batch: item.is_batch,
+                    decision: "rejected",
+                    reason: &reason,
+                    source: src_str,
+                    source_id: src_id,
+                },
+            )
+            .await;
+            continue;
+        }
         let monitored_eps = if let Some(cached) = monitored_cache.get(&found.series.id) {
             cached.clone()
         } else {

@@ -641,6 +641,7 @@ mod format_cutoff_target_tests {
             size_bytes: 1_000,
             size_display: String::new(),
             modified_secs: None,
+            is_special: false,
         }
     }
 

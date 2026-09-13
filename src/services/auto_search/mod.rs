@@ -574,6 +574,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
         prefer_revisions: series_ctx.prefer_revisions,
+        reject_specials: media::is_tv_format(&detail.format),
         absolute_offset: series_ctx.absolute_offset,
         indexers,
     };
@@ -854,6 +855,7 @@ async fn collect_scored_for_target(
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
         prefer_revisions: series_ctx.prefer_revisions,
+        reject_specials: media::is_tv_format(&detail.format),
         absolute_offset: series_ctx.absolute_offset,
         indexers,
     };
@@ -1133,6 +1135,11 @@ struct AutoQueryCtx<'a> {
     /// under the `do_not_prefer` proper policy. Goes straight into
     /// `SearchOptions.prefer_revisions`.
     prefer_revisions: bool,
+    /// Drop releases that name a special (`OVA 01`, `- SP1`): true for
+    /// a TV-format target, whose specials are never the episode being
+    /// searched for. An OVA / special entry keeps them, since the
+    /// marker is part of its own title.
+    reject_specials: bool,
     /// #30 — Cumulative episode count across the shortest TV-format
     /// PREQUEL chain up to this target. Allows an episode-filter match
     /// on either the relative number (target_ep, AL's own numbering)
@@ -1346,6 +1353,11 @@ async fn run_queries(
             if !ctx.allow_batch && result.is_batch {
                 continue;
             }
+            if ctx.reject_specials && media::is_special_release(&result.title) {
+                ctx.note_rejected(&result.title);
+                rejected_here.insert(dedupe_key);
+                continue;
+            }
             let provenance = if is_seadex_match(&result.info_hash, ctx.seadex_hashes) {
                 tracing::debug!(
                     "seadex: bypassing heuristic filters for SeaDex-best release title={:?} hash={}",
@@ -1405,6 +1417,11 @@ async fn run_queries(
             continue;
         }
         if !ctx.allow_batch && result.is_batch {
+            continue;
+        }
+        if ctx.reject_specials && media::is_special_release(&result.title) {
+            ctx.note_rejected(&result.title);
+            rejected_here.insert(dedupe_key);
             continue;
         }
         let provenance = if is_seadex_match(&result.info_hash, ctx.seadex_hashes) {
@@ -2521,6 +2538,7 @@ mod tests {
             size_bytes: 0,
             size_display: String::new(),
             modified_secs: None,
+            is_special: false,
         }
     }
 

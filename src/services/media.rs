@@ -87,6 +87,35 @@ static RE_OVA_EP: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^|[\s._\-])ova\s*(\d{1,3})(?:v\d)?(?:[-~](\d{1,3}))?(?:\s|\.|\[|\(|$)")
         .expect("RE_OVA_EP compiles")
 });
+/// `SP01` / `SP 1` / `Special 01` / `OAD 01`: the other marker-then-
+/// number special shapes, same rules as `RE_OVA_EP`.
+static RE_SPECIAL_EP: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?:^|[\s._\-])(?:sp|specials?|oad)\s*(\d{1,3})(?:v\d)?(?:[-~](\d{1,3}))?(?:\s|\.|\[|\(|$)",
+    )
+    .expect("RE_SPECIAL_EP compiles")
+});
+/// Sonarr's shape: the episode number followed by the marker
+/// (`- 01 OVA [1080p]`, `05 Special`). The marker has to end the
+/// segment (a bracket, a ` - `, the extension, or the end) so an
+/// episode title that starts with the word (`- 01 - Special Training`)
+/// is not one.
+static RE_NUM_THEN_SPECIAL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?:^|[\s._\-])\d{1,3}(?:v\d)?[\s._\-]+(?:ova|oad|sp|specials?)(?:\s*[\[\(]|\s*-\s|\.[a-z0-9]{2,4}$|$)",
+    )
+    .expect("RE_NUM_THEN_SPECIAL compiles")
+});
+/// A bare marker segment with no number (`Show - OVA (BD 1080p)`,
+/// `Show - OVA.mkv`, `Show [OVA]`). Only counted past the first ` - `
+/// or inside brackets, so a title that starts with the word (`Special
+/// A - 01`) keeps its name.
+static RE_BARE_SPECIAL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?:\s-\s|[\[\(])(?:ova|oad|sp|specials?)(?:\s*[\]\)\[\(]|\s*-\s|\.[a-z0-9]{2,4}$|$)",
+    )
+    .expect("RE_BARE_SPECIAL compiles")
+});
 static RE_HALF_EPISODE: LazyLock<Regex> = LazyLock::new(|| {
     // Half-episode / recap marker glued to the episode token in the
     // dash position (`- 07_5`, `- 07.5`, Erai-raws' recap convention)
@@ -234,6 +263,10 @@ pub struct EpisodeFile {
     /// the file's age (a hardlinked import keeps the download's
     /// mtime, a copy gets the import's; both are "when it arrived").
     pub modified_secs: Option<i64>,
+    /// A special (`S00E01`, `OVA 01`): kept out of the have-sets, since
+    /// its number is not an episode of the series. `scan_series_folder`
+    /// drops these; `scan_series_specials` lists them.
+    pub is_special: bool,
 }
 
 impl EpisodeFile {
@@ -258,6 +291,7 @@ impl EpisodeFile {
             season: self.season_number,
             first: self.episode_number,
             last: self.episode_last,
+            special: self.is_special,
         }
     }
 }
@@ -305,13 +339,25 @@ pub async fn scan_series_folders_batch(
 }
 
 fn scan_series_folder_blocking(media_root: &str, folder_name: &str) -> Vec<EpisodeFile> {
+    scan_series_folder_split(media_root, folder_name).0
+}
+
+/// Every video in a series folder: `(episodes, specials)`. Specials
+/// (`S00Exx`, an `OVA 01` marker) are listed apart so no have-set
+/// counts an OVA's `01` as episode 1.
+pub fn scan_series_folder_split(
+    media_root: &str,
+    folder_name: &str,
+) -> (Vec<EpisodeFile>, Vec<EpisodeFile>) {
     let series_path = Path::new(media_root).join(folder_name);
     if !series_path.is_dir() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
     let mut files = Vec::new();
     scan_dir_recursive(&series_path, &series_path, &mut files);
+    let (specials, mut files): (Vec<EpisodeFile>, Vec<EpisodeFile>) =
+        files.into_iter().partition(|f| f.is_special);
 
     // Sort by season then episode number.
     files.sort_by(|a, b| {
@@ -321,7 +367,19 @@ fn scan_series_folder_blocking(media_root: &str, folder_name: &str) -> Vec<Episo
             .then(a.episode_number.cmp(&b.episode_number))
     });
 
-    files
+    (files, specials)
+}
+
+/// The specials on disk for a series (see [`scan_series_folder_split`]).
+pub async fn scan_series_specials(media_root: &str, folder_name: &str) -> Vec<EpisodeFile> {
+    if media_root.is_empty() || folder_name.is_empty() {
+        return Vec::new();
+    }
+    let media_root = media_root.to_string();
+    let folder_name = folder_name.to_string();
+    tokio::task::spawn_blocking(move || scan_series_folder_split(&media_root, &folder_name).1)
+        .await
+        .unwrap_or_default()
 }
 
 /// List top-level directories in the media root.
@@ -410,6 +468,7 @@ fn parse_episode_file(path: &Path, series_root: &Path) -> Option<EpisodeFile> {
         size_bytes,
         size_display,
         modified_secs,
+        is_special: span.special,
     })
 }
 
@@ -446,6 +505,13 @@ pub struct EpisodeSpan {
     pub season: Option<i32>,
     pub first: i32,
     pub last: i32,
+    /// The name marks the file as a special (`OVA 01`, `- SP1`,
+    /// `01 Special`, a bare `- OVA` segment, or season 0). What that
+    /// means depends on the series: for a TV entry the file goes to
+    /// the Specials folder, for an entry that *is* the OVA / special
+    /// the marker is part of its identity and the file is an ordinary
+    /// episode. See [`is_tv_format`].
+    pub special: bool,
 }
 
 impl EpisodeSpan {
@@ -454,6 +520,7 @@ impl EpisodeSpan {
             season,
             first: episode,
             last: episode,
+            special: false,
         }
     }
 
@@ -552,6 +619,7 @@ fn scan_tails(re: &Regex, lower: &str, first_idx: usize, last_idx: usize) -> Opt
                     season: None,
                     first: a,
                     last: b,
+                    special: false,
                 });
             }
             // The first number is ASCII digits, so one byte in is a
@@ -566,14 +634,54 @@ fn scan_tails(re: &Regex, lower: &str, first_idx: usize, last_idx: usize) -> Opt
 /// branch order and every guard are the ones documented on that
 /// function; only the return shape differs.
 pub fn parse_episode_span(lower: &str) -> Option<EpisodeSpan> {
-    let parsed = parse_episode_span_inner(lower)?;
+    let mut parsed = parse_episode_span_inner(lower)?;
     // The anitomy gate runs last and only when a number was found, so
     // the (comparatively) expensive tokenizer pass is skipped for the
     // NC / bare-marker shapes the regex branches already reject.
     if is_non_episodic_extra(lower) {
         return None;
     }
+    if !parsed.special && (parsed.season == Some(0) || has_special_marker(lower)) {
+        parsed.special = true;
+    }
     Some(parsed)
+}
+
+/// True when the name carries a special marker in one of the shapes
+/// Sonarr reads (`OVA 01`, `SP1`, `01 OVA`, a bare `- OVA` segment).
+/// Underscores are read as spaces the way the episode parser does.
+pub fn has_special_marker(lower: &str) -> bool {
+    let normalized = if lower.contains('_') {
+        Some(lower.replace('_', " "))
+    } else {
+        None
+    };
+    let lower = normalized.as_deref().unwrap_or(lower);
+    RE_OVA_EP.is_match(lower)
+        || RE_SPECIAL_EP.is_match(lower)
+        || RE_NUM_THEN_SPECIAL.is_match(lower)
+        || RE_BARE_SPECIAL.is_match(lower)
+}
+
+/// True for a release title that names a special of a series rather
+/// than one of its episodes. The automatic paths reject these for a TV
+/// series (the special is never the episode they are looking for); the
+/// interactive picker keeps them, since a grab from there imports into
+/// the Specials folder.
+pub fn is_special_release(title: &str) -> bool {
+    has_special_marker(&title.to_lowercase())
+}
+
+/// Whether a special marker in a file name means "special" for this
+/// series: only for a TV entry. For an entry that is itself an OVA /
+/// ONA / special / movie the marker is part of the series' identity
+/// and its files are ordinary episodes. AniList formats: `TV`,
+/// `TV_SHORT`, `MOVIE`, `SPECIAL`, `OVA`, `ONA`, `MUSIC`.
+pub fn is_tv_format(format: &str) -> bool {
+    matches!(
+        format.trim().to_ascii_uppercase().as_str(),
+        "TV" | "TV_SHORT"
+    )
 }
 
 fn parse_episode_span_inner(lower: &str) -> Option<EpisodeSpan> {
@@ -616,6 +724,7 @@ fn parse_episode_span_inner(lower: &str) -> Option<EpisodeSpan> {
                 season: Some(s),
                 first: a,
                 last: b,
+                special: false,
             },
             Tail::Single(e) => EpisodeSpan::single(Some(s), e),
             Tail::Rejected => EpisodeSpan::single(Some(s), caps.get(2)?.as_str().parse().ok()?),
@@ -640,6 +749,7 @@ fn parse_episode_span_inner(lower: &str) -> Option<EpisodeSpan> {
                 season: None,
                 first: a,
                 last: b,
+                special: false,
             },
             Tail::Single(e) => EpisodeSpan::single(None, e),
             Tail::Rejected => EpisodeSpan::single(None, caps.get(1)?.as_str().parse().ok()?),
@@ -654,7 +764,18 @@ fn parse_episode_span_inner(lower: &str) -> Option<EpisodeSpan> {
     // digit correctly falls through here because RE_OVA_EP requires
     // a captured 1-3 digit group.
     if let Some(span) = scan_tails(&RE_OVA_EP, lower, 1, 2) {
-        return Some(span);
+        return Some(EpisodeSpan {
+            special: true,
+            ..span
+        });
+    }
+    // `SP01` / `Special 01` / `OAD 01`, the same shape with the other
+    // marker words.
+    if let Some(span) = scan_tails(&RE_SPECIAL_EP, lower, 1, 2) {
+        return Some(EpisodeSpan {
+            special: true,
+            ..span
+        });
     }
 
     // Dot-tokenized bare episode number. This covers older complete-series
@@ -1598,6 +1719,103 @@ mod tests {
         assert!(!r("Show - 05.mkv").is_newer_than(plain));
     }
 
+    // ── Specials (Sonarr's Season 0) ──────────────────────────────────
+
+    fn special_of(name: &str) -> Option<bool> {
+        super::parse_episode_span(&name.to_lowercase()).map(|s| s.special)
+    }
+
+    #[test]
+    fn special_marker_shapes() {
+        // Marker then number.
+        assert_eq!(
+            special_of("[Group] Show - OVA 01 (BD 1080p).mkv"),
+            Some(true)
+        );
+        assert_eq!(special_of("[Group] Show - SP01 (1080p).mkv"), Some(true));
+        assert_eq!(
+            special_of("[Group] Show - Special 2 [1080p].mkv"),
+            Some(true)
+        );
+        assert_eq!(special_of("[Group] Show - OAD 01.mkv"), Some(true));
+        assert_eq!(
+            special_of("[Group] Show - OVA 01-02 (BD 1080p).mkv"),
+            Some(true)
+        );
+        // Number then marker (Sonarr's shape).
+        assert_eq!(special_of("[Group] Show - 01 OVA [1080p].mkv"), Some(true));
+        assert_eq!(
+            special_of("[Group] Show - 05 Special (BD 1080p).mkv"),
+            Some(true)
+        );
+        // Our own Specials-folder naming.
+        assert_eq!(special_of("Show - S00E01 - [BD 1080p].mkv"), Some(true));
+        // Ordinary episodes stay ordinary.
+        assert_eq!(special_of("[Group] Show - 01 (BD 1080p).mkv"), Some(false));
+        assert_eq!(special_of("Show - S01E05 - Title.mkv"), Some(false));
+        // An episode title that starts with the word is not a marker.
+        assert_eq!(
+            special_of("Show - S01E05 - Special Training Arc [WEB 1080p].mkv"),
+            Some(false)
+        );
+        assert_eq!(
+            special_of("[Group] Show - 05 - Special Delivery.mkv"),
+            Some(false)
+        );
+        // A series whose title starts with the word keeps its name.
+        assert_eq!(
+            special_of("[Group] Special A - 01 (1080p).mkv"),
+            Some(false)
+        );
+        assert_eq!(special_of("[Group] Special A - S01E01.mkv"), Some(false));
+        // Underscores read as spaces.
+        assert_eq!(special_of("[Group]_Show_-_OVA_01_[1080p].mkv"), Some(true));
+    }
+
+    #[test]
+    fn special_release_titles_without_a_number_are_specials_too() {
+        use super::is_special_release;
+        assert!(is_special_release("[Group] Show - OVA (BD 1080p)"));
+        assert!(is_special_release("[Group] Show [OVA] [BD 1080p]"));
+        assert!(is_special_release("[Group] Show - SP (1080p)"));
+        assert!(!is_special_release("[Group] Show - 01 (1080p)"));
+        assert!(!is_special_release("[Group] Special A - 01 (1080p)"));
+        assert!(!is_special_release("[Group] Show Season 2 Batch (1080p)"));
+    }
+
+    #[test]
+    fn tv_formats() {
+        use super::is_tv_format;
+        assert!(is_tv_format("TV"));
+        assert!(is_tv_format("tv_short"));
+        for f in ["OVA", "ONA", "SPECIAL", "MOVIE", "MUSIC", ""] {
+            assert!(!is_tv_format(f), "{f}");
+        }
+    }
+
+    #[test]
+    fn scanner_keeps_specials_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let series = dir.path().join("Show");
+        std::fs::create_dir_all(series.join("Season 01")).unwrap();
+        std::fs::create_dir_all(series.join("Specials")).unwrap();
+        for rel in [
+            "Season 01/Show - S01E01 - A.mkv",
+            "Season 01/Show - S01E02 - B.mkv",
+            "Specials/Show - S00E01 - [BD 1080p].mkv",
+            "Show - OVA 01.mkv",
+        ] {
+            std::fs::write(series.join(rel), b"x").unwrap();
+        }
+        let root = dir.path().to_str().unwrap();
+        let (episodes, specials) = super::scan_series_folder_split(root, "Show");
+        let eps: Vec<i32> = episodes.iter().map(|f| f.episode_number).collect();
+        assert_eq!(eps, vec![1, 2]);
+        assert!(episodes.iter().all(|f| !f.is_special));
+        assert_eq!(specials.len(), 2);
+        assert!(specials.iter().all(|f| f.is_special));
+    }
+
     // ── Multi-episode spans (issue #246) ─────────────────────────────
 
     fn span(name: &str) -> Option<(Option<i32>, i32, i32)> {
@@ -1777,6 +1995,7 @@ mod tests {
             season: Some(1),
             first: 5,
             last: 6,
+            special: false,
         };
         assert!(s.is_multi());
         assert_eq!(s.count(), 2);

@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use super::{ImportSession, SeriesGroup};
 use crate::services::library_link::pick_title;
 use crate::services::recycle::human_bytes;
-use crate::services::{naming, post_processing, source};
+use crate::services::{media, naming, post_processing, source};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupKind {
@@ -70,6 +70,9 @@ pub enum FileStatus {
     /// Ryokan has no tag for it (a drop-in, or a folder scanned
     /// twice). Never overwritten: that would bypass the recycle bin.
     AlreadyOnDisk,
+    /// The name marks a special (`OVA 01`) of a TV series: it goes to
+    /// the Specials folder as `S00Exx`, with no episode row.
+    Special,
     /// Another file in this group lands on the same destination name.
     DuplicateName,
 }
@@ -88,6 +91,7 @@ impl FileStatus {
             Self::Skipped => "skipped",
             Self::AlreadyOnDisk => "on-disk",
             Self::DuplicateName => "duplicate",
+            Self::Special => "special",
         }
     }
 
@@ -104,12 +108,13 @@ impl FileStatus {
             Self::Skipped => "Skipped",
             Self::AlreadyOnDisk => "Already on disk",
             Self::DuplicateName => "Duplicate name",
+            Self::Special => "Special",
         }
     }
 
     /// Counts toward "will be written".
     pub fn writes(self) -> bool {
-        matches!(self, Self::Import | Self::WouldReplace)
+        matches!(self, Self::Import | Self::WouldReplace | Self::Special)
     }
 }
 
@@ -148,6 +153,8 @@ pub struct GroupCounts {
     pub pinned: usize,
     pub no_episode: usize,
     pub deselected: usize,
+    /// Specials of a TV entry, bound for the Specials folder.
+    pub special: usize,
     /// Untagged file already at the destination, left alone.
     pub on_disk: usize,
     /// Second file in the group with the same destination name.
@@ -297,6 +304,11 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                         FileStatus::Deselected
                     } else if f.episode.is_none() {
                         FileStatus::NoEpisodeNumber
+                    } else if f.special && picked.is_some_and(|e| media::is_tv_format(&e.format)) {
+                        // An OVA / SP file for a TV entry: not one of its
+                        // episodes, so no tag lookup and no replace
+                        // decision; it lands in the Specials folder.
+                        FileStatus::Special
                     } else {
                         let first = f.episode.unwrap_or_default();
                         let tags = group.existing.as_ref().map(|e| &e.tags);
@@ -367,12 +379,20 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                 FileStatus::Deselected => counts.deselected += 1,
                 FileStatus::AlreadyOnDisk => counts.on_disk += 1,
                 FileStatus::DuplicateName => counts.duplicate += 1,
+                FileStatus::Special => counts.special += 1,
                 FileStatus::Unmatched | FileStatus::Skipped => {}
             }
             if status.writes() {
                 counts.write_bytes += f.size_bytes;
             }
-            let dest = if status.writes() {
+            let dest = if status == FileStatus::Special {
+                dest_for(
+                    ctx.media_root,
+                    &folder_name,
+                    post_processing::SPECIALS_FOLDER,
+                    &f.file_name,
+                )
+            } else if status.writes() {
                 dest_for(ctx.media_root, &folder_name, &season_folder, &f.file_name)
             } else {
                 String::new()
@@ -509,6 +529,7 @@ mod tests {
             quality_label: source::classify_release_sync(name, None).label(),
             selected: true,
             episode_count: 1,
+            special: false,
             source_episode: None,
         }
     }

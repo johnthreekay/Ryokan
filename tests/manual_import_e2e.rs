@@ -52,6 +52,7 @@ fn file(name: &str, ep: i32) -> CandidateFile {
         quality_label: "WEB-1080p".into(),
         selected: true,
         episode_count: 1,
+        special: false,
         source_episode: None,
     }
 }

@@ -132,6 +132,8 @@ pub struct CandidateFile {
     /// How many episodes the file holds (issue #246): 1 for the usual
     /// file, 2 for `S01E05-E06`.
     pub episode_count: i32,
+    /// See `parse::ParsedFile::special`.
+    pub special: bool,
     pub year: Option<i32>,
     pub group: Option<String>,
     /// Filename-only classification label (`BD-1080p`, `WEB-720p`,
@@ -472,6 +474,7 @@ fn candidate_from_raw(f: walk::RawFile) -> CandidateFile {
         season: parsed.season,
         episode: parsed.episode,
         episode_count: parsed.episode_count,
+        special: parsed.special,
         year: parsed.year,
         group: parsed.group,
         quality_label,
@@ -938,6 +941,7 @@ mod tests {
             quality_label: "Unknown".into(),
             selected: true,
             episode_count: 1,
+            special: false,
             source_episode: None,
         }
     }

@@ -202,6 +202,7 @@ mod router_tests {
             quality_label: "WEB-1080p".into(),
             selected: true,
             episode_count: 1,
+            special: false,
             source_episode: None,
         }
     }
@@ -740,6 +741,7 @@ mod import_router_tests {
                 quality_label: "Unknown".into(),
                 selected,
                 episode_count: 1,
+                special: false,
                 source_episode: None,
             });
         }
