@@ -63,7 +63,7 @@ pub async fn recompute_series_monitoring(
         .unwrap_or_default();
 
     let disk_files = media::scan_series_folder(&cfg.media_root, &row.folder_name).await;
-    let existing_eps: HashSet<i32> = disk_files.iter().map(|f| f.episode_number).collect();
+    let existing_eps: HashSet<i32> = disk_files.iter().flat_map(|f| f.episodes()).collect();
     let episode_info = load_episode_info(db, &row).await;
     let monitored_eps =
         resolve_monitored_episodes(&row, &episode_numbers, &existing_eps, &episode_info, mode);

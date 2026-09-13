@@ -35,7 +35,7 @@ use regex_lite::Regex;
 
 use crate::models::series::Series;
 use crate::services::anilist::AnimeEntry;
-use crate::services::media::{parse_episode_number, sanitize_folder_name};
+use crate::services::media::{parse_episode_number, parse_episode_span, sanitize_folder_name};
 
 #[cfg(test)]
 mod tests;
@@ -136,7 +136,7 @@ pub const TOKEN_REFERENCE: &[(&str, &str)] = &[
     ),
     (
         "{episode.number}",
-        "episode number. {episode.number:00} pads to 01, {episode.number:000} to 001",
+        "episode number. {episode.number:00} pads to 01, {episode.number:000} to 001. A file holding several episodes renders the range, like S01E05-E06 or 05-06",
     ),
     (
         "{episode.title}",
@@ -310,7 +310,14 @@ pub struct NameContext {
     pub series_title: String,
     pub series_year: Option<i32>,
     pub season_number: i32,
+    /// The first (usually only) episode the file holds.
     pub episode_number: i32,
+    /// The last episode the file holds (issue #246). Zero or equal to
+    /// `episode_number` for the ordinary one-episode file; larger for
+    /// a multi-episode file, which renders `{episode.number}` as a
+    /// range (`05-E06` after an `E`, `05-06` elsewhere) so the name
+    /// parses back to the same span.
+    pub episode_last: i32,
     pub episode_title: String,
     /// `1080p`, `720p`, ... or empty.
     pub quality_resolution: String,
@@ -330,6 +337,24 @@ impl NameContext {
             series_year: names.year,
             season_number: 1,
             ..Default::default()
+        }
+    }
+
+    /// True when the context names a multi-episode file.
+    pub fn is_multi_episode(&self) -> bool {
+        self.episode_last > self.episode_number
+    }
+
+    /// `S01E05` / `S01E05-E06`: the display-only slot label used by log
+    /// lines and the last-resort fallback name.
+    pub fn slot_label(&self) -> String {
+        if self.is_multi_episode() {
+            format!(
+                "S{:02}E{:02}-E{:02}",
+                self.season_number, self.episode_number, self.episode_last
+            )
+        } else {
+            format!("S{:02}E{:02}", self.season_number, self.episode_number)
         }
     }
 }
@@ -425,6 +450,35 @@ fn clean_literal(text: &str) -> String {
     }
 }
 
+/// `{episode.number}` for a multi-episode file (issue #246):
+/// `05-E06` when the template's literal text right before the token
+/// ends with `E` (the `S01E05-E06` shape, Sonarr's prefixed range), else
+/// `05-06` (` - 05-06`, the dash-slot range). Both are shapes
+/// `media::parse_episode_span` reads back; the bare `05-06` after an
+/// `E` would parse too, but the prefixed form is what Sonarr, Jellyfin
+/// and Plex all document. `pad` applies to both numbers; the letter
+/// copies the literal's case.
+fn episode_range_value(pad: usize, ctx: &NameContext, preceding_literal: Option<&str>) -> String {
+    let number = |n: i32| -> String {
+        if pad > 0 {
+            format!("{n:0pad$}")
+        } else {
+            n.to_string()
+        }
+    };
+    let prefix = preceding_literal
+        .and_then(|lit| lit.chars().last())
+        .filter(|c| c.eq_ignore_ascii_case(&'e'))
+        .map(|c| c.to_string())
+        .unwrap_or_default();
+    format!(
+        "{}-{}{}",
+        number(ctx.episode_number),
+        prefix,
+        number(ctx.episode_last)
+    )
+}
+
 fn token_value(token: Token, pad: usize, ctx: &NameContext) -> String {
     let number = |n: i32| -> String {
         if pad > 0 {
@@ -457,6 +511,18 @@ fn render_stem(pieces: &[Piece<'_>], ctx: &NameContext) -> String {
     for piece in pieces {
         let next = match piece {
             Piece::Literal(text) => Segment::Literal((*text).to_string()),
+            Piece::Token {
+                token: Token::EpisodeNumber,
+                pad,
+            } if ctx.is_multi_episode() => {
+                let preceding = match segments.last() {
+                    Some(Segment::Literal(text)) => Some(text.as_str()),
+                    _ => None,
+                };
+                Segment::Value(sanitize_folder_name(&episode_range_value(
+                    *pad, ctx, preceding,
+                )))
+            }
             Piece::Token { token, pad } => {
                 let value = token_value(*token, *pad, ctx);
                 if value.is_empty() {
@@ -612,7 +678,7 @@ pub fn render_or_default(kind: TemplateKind, template: &str, ctx: &NameContext) 
         TemplateKind::SeriesFolder => "Unknown Series".to_string(),
         TemplateKind::SeasonFolder => format!("Season {:02}", ctx.season_number),
         TemplateKind::EpisodeFile => {
-            let stem = format!("S{:02}E{:02}", ctx.season_number, ctx.episode_number);
+            let stem = ctx.slot_label();
             if ctx.ext.is_empty() {
                 stem
             } else {
@@ -635,6 +701,7 @@ pub fn sample_context() -> NameContext {
         series_year: Some(2023),
         season_number: 1,
         episode_number: 7,
+        episode_last: 7,
         episode_title: "Like a Fairy Tale".to_string(),
         quality_resolution: "1080p".to_string(),
         quality_source: "WEB-DL".to_string(),
@@ -653,6 +720,17 @@ pub fn sparse_context() -> NameContext {
         episode_number: 7,
         ext: "mkv".to_string(),
         ..Default::default()
+    }
+}
+
+/// The sample as a two-episode file (issue #246): what the settings
+/// page shows under the multi-episode note, and what [`validate`]
+/// parses back to make sure the range survives the template.
+pub fn multi_episode_sample_context() -> NameContext {
+    NameContext {
+        episode_last: 8,
+        episode_title: "Like a Fairy Tale + The Land Where the Soul Rests".to_string(),
+        ..sample_context()
     }
 }
 
@@ -726,6 +804,20 @@ pub fn validate(kind: TemplateKind, template: &str) -> Result<(), String> {
                     name
                 ));
             }
+        }
+        // A file holding two episodes must read back as both (issue
+        // #246), or the library would count the second one missing and
+        // grab it again.
+        let multi = render(kind, template, &multi_episode_sample_context())
+            .map_err(|_| format!("The {label} template renders to an empty name."))?;
+        let span = parse_episode_span(&multi.name.to_lowercase());
+        let ok =
+            span.is_some_and(|s| s.first == 7 && s.last == 8 && s.season.is_none_or(|n| n == 1));
+        if !ok {
+            return Err(format!(
+                "Ryokan cannot read the episode range back from '{}'. A file that holds several episodes is named with a range like S01E07-E08. Keep S{{season.number:00}}E{{episode.number:00}} or ' - {{episode.number:00}}' in the template so both episodes count as present.",
+                multi.name
+            ));
         }
     }
     Ok(())

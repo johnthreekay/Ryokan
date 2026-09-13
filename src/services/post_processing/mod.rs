@@ -94,36 +94,87 @@ pub(crate) fn grab_claims_episode(
         || grab_episode_numbers.contains(&raw_ep_num)
 }
 
+/// The library slot(s) one file lands in: the first episode as parsed
+/// from the name, the same after the route / cumulative offset, and the
+/// last episode after the offset. A multi-episode file (issue #246,
+/// `S01E05-E06`) spans `episode..=episode_last`; the ordinary file has
+/// the two equal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ResolvedEpisode {
     raw_episode: i32,
     episode: i32,
+    episode_last: i32,
+}
+
+impl ResolvedEpisode {
+    /// Every library episode the file holds, first to last.
+    fn episodes(&self) -> std::ops::RangeInclusive<i32> {
+        self.episode..=self.episode_last
+    }
+
+    /// The same span in the file name's own numbering.
+    fn raw_episodes(&self) -> std::ops::RangeInclusive<i32> {
+        self.raw_episode..=self.raw_episode + (self.episode_last - self.episode)
+    }
+
+    /// `S01E05` / `S01E05-E06`, for log lines.
+    fn slot_label(&self, season: i32) -> String {
+        if self.episode_last > self.episode {
+            format!(
+                "S{:02}E{:02}-E{:02}",
+                season, self.episode, self.episode_last
+            )
+        } else {
+            format!("S{:02}E{:02}", season, self.episode)
+        }
+    }
 }
 
 fn resolve_episode(
-    parsed_season: Option<i32>,
-    raw_episode: i32,
+    span: media::EpisodeSpan,
     route_offset: Option<i32>,
     cumulative_prior_episodes: i32,
 ) -> Result<ResolvedEpisode, String> {
     let episode_offset = route_offset.unwrap_or_else(|| {
-        if parsed_season.is_some() {
+        if span.season.is_some() {
             0
         } else {
-            fallback_ep_offset(raw_episode, cumulative_prior_episodes)
+            fallback_ep_offset(span.first, cumulative_prior_episodes)
         }
     });
-    let episode = raw_episode - episode_offset;
+    let episode = span.first - episode_offset;
     if episode <= 0 {
         return Err(format!(
             "episode {} minus offset {} is non-positive",
-            raw_episode, episode_offset
+            span.first, episode_offset
         ));
     }
     Ok(ResolvedEpisode {
-        raw_episode,
+        raw_episode: span.first,
         episode,
+        episode_last: span.last - episode_offset,
     })
+}
+
+/// The slot a lone video with an unparseable name takes from the grab
+/// row's own episode list (issue #246): a contiguous list of at most
+/// `MAX_FILE_SPAN` episodes is the file's span, anything else narrows
+/// to the first episode the way it did before spans existed.
+pub(crate) fn span_from_grab_episodes(episode_numbers: &[i32]) -> Option<media::EpisodeSpan> {
+    let first = *episode_numbers.first()?;
+    let mut sorted: Vec<i32> = episode_numbers.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let contiguous = sorted.windows(2).all(|w| w[1] == w[0] + 1);
+    let last = *sorted.last()?;
+    if contiguous && sorted.len() > 1 && last - sorted[0] < media::MAX_FILE_SPAN {
+        return Some(media::EpisodeSpan {
+            season: None,
+            first: sorted[0],
+            last,
+        });
+    }
+    Some(media::EpisodeSpan::single(None, first))
 }
 
 /// Resolved batch plan from [`validate_batch_episode_map`].
@@ -155,6 +206,11 @@ pub(crate) struct BatchPlan {
 /// mis-parse) still fail the whole batch before any mutation — that
 /// ambiguity has no safe per-file answer, and importing either file could
 /// destroy the other.
+///
+/// A multi-episode file (issue #246) occupies every slot in its span, so
+/// `E05-E06` beside a lone `E06` is the same tie as two `E06` files, and a
+/// file that loses any one of its slots is superseded as a whole rather
+/// than imported for the slots it kept.
 pub(crate) fn validate_batch_episode_map(
     files: &[(usize, i64, Option<i32>, i32, String)],
 ) -> Result<BatchPlan, String> {
@@ -175,31 +231,29 @@ pub(crate) fn validate_batch_episode_map(
             .and_then(|n| n.to_str())
             .unwrap_or(name);
         let lower = filename.to_lowercase();
-        let Some((parsed_season, raw_episode)) = media::parse_episode_number(&lower) else {
+        let Some(span) = media::parse_episode_span(&lower) else {
             continue;
         };
-        let Ok(resolved) = resolve_episode(
-            parsed_season,
-            raw_episode,
-            *route_offset,
-            *cumulative_prior_episodes,
-        ) else {
+        let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes) else {
             continue;
         };
         // No version token reads as v1 so `E05` + `E05v2` compare 1 vs 2.
         let version = media::parse_release_version(&lower).unwrap_or(1);
-        by_slot
-            .entry((*series_id, resolved.episode))
-            .or_default()
-            .push(Candidate {
-                file_idx: *file_idx,
-                version,
-                name: filename,
-            });
+        for episode in resolved.episodes() {
+            by_slot
+                .entry((*series_id, episode))
+                .or_default()
+                .push(Candidate {
+                    file_idx: *file_idx,
+                    version,
+                    name: filename,
+                });
+        }
         resolved_by_idx.insert(*file_idx, resolved);
     }
 
     let mut plan = BatchPlan::default();
+    let mut winners: Vec<usize> = Vec::new();
     for ((series_id, episode), mut candidates) in by_slot {
         if candidates.len() > 1 {
             // Highest version first; file order breaks ties so the
@@ -213,9 +267,18 @@ pub(crate) fn validate_batch_episode_map(
             }
         }
         let winner_idx = candidates[0].file_idx;
-        plan.slots.insert(winner_idx, resolved_by_idx[&winner_idx]);
+        winners.push(winner_idx);
         for loser in candidates.into_iter().skip(1) {
-            plan.superseded.insert(loser.file_idx, winner_idx);
+            plan.superseded.entry(loser.file_idx).or_insert(winner_idx);
+        }
+    }
+    // A file is imported only when it won every slot it covers; one
+    // lost slot supersedes the whole file (a multi-episode file that
+    // lost one of its episodes to a v2 single has no safe partial
+    // import).
+    for winner_idx in winners {
+        if !plan.superseded.contains_key(&winner_idx) {
+            plan.slots.insert(winner_idx, resolved_by_idx[&winner_idx]);
         }
     }
 
@@ -544,6 +607,7 @@ async fn unstage_upgrade(db: &sqlx::SqlitePool, mode: &str, landing: &Path, src:
 fn episode_name_context(
     ctx: &SeriesImportCtx,
     ep_num: i32,
+    ep_last: i32,
     ep_title: &str,
     source_name: &str,
     ext: &str,
@@ -591,6 +655,7 @@ fn episode_name_context(
         series_year: ctx.series.season_year,
         season_number: 1,
         episode_number: ep_num,
+        episode_last: ep_last,
         episode_title: ep_title.to_string(),
         quality_resolution: resolution,
         quality_source: source_label,
@@ -1276,15 +1341,13 @@ async fn import_torrent(
         let resolved = if let Some(resolved) = batch_episode_plan.slots.get(file_idx) {
             *resolved
         } else {
-            let parsed = media::parse_episode_number(&filename_only.to_lowercase());
+            let parsed = media::parse_episode_span(&filename_only.to_lowercase());
             let fallback = if video_files.len() == 1 && routes_by_file.is_empty() {
-                grab.episode_numbers.first().copied()
+                span_from_grab_episodes(&grab.episode_numbers)
             } else {
                 None
             };
-            let Some((parsed_season, raw_episode)) =
-                parsed.or_else(|| fallback.map(|episode| (None, episode)))
-            else {
+            let Some(span) = parsed.or(fallback) else {
                 logger::warn(
                     &state.db,
                     LogCategory::PostProcess,
@@ -1295,8 +1358,7 @@ async fn import_torrent(
                 continue;
             };
             match resolve_episode(
-                parsed_season,
-                raw_episode,
+                span,
                 routes_by_file.get(file_idx).map(|(_, offset)| *offset),
                 ctx.series.cumulative_prior_episodes,
             ) {
@@ -1315,15 +1377,23 @@ async fn import_torrent(
         };
         let raw_ep_num = resolved.raw_episode;
         let ep_num = resolved.episode;
+        let ep_last = resolved.episode_last;
+        let season = 1_i32;
+        // `S01E05` / `S01E05-E06` for every log line about this file.
+        let slot = resolved.slot_label(season);
 
         // Skip stranger files. See `grab_claims_episode` doc for the
-        // full rationale and matrix of cases.
-        let claims_this_episode = grab_claims_episode(
-            grab.is_batch,
-            routes_by_file.contains_key(file_idx),
-            &grab.episode_numbers,
-            raw_ep_num,
-        );
+        // full rationale and matrix of cases. A multi-episode file is
+        // claimed when any episode it holds is (issue #246): a grab
+        // recorded from a `- 05` title still owns the `05-06` file.
+        let claims_this_episode = resolved.raw_episodes().any(|raw| {
+            grab_claims_episode(
+                grab.is_batch,
+                routes_by_file.contains_key(file_idx),
+                &grab.episode_numbers,
+                raw,
+            )
+        });
         if !claims_this_episode {
             logger::debug(
                 &state.db,
@@ -1338,47 +1408,63 @@ async fn import_torrent(
             continue;
         }
 
-        let ep_title = ctx
-            .ep_meta
-            .get(&ep_num)
-            .map(|m| {
-                if !m.title_english.is_empty() {
-                    m.title_english.clone()
-                } else if !m.title.is_empty() {
-                    m.title.clone()
-                } else {
-                    m.title_romaji.clone()
-                }
+        let title_for = |ep: i32| -> String {
+            ctx.ep_meta
+                .get(&ep)
+                .map(|m| {
+                    if !m.title_english.is_empty() {
+                        m.title_english.clone()
+                    } else if !m.title.is_empty() {
+                        m.title.clone()
+                    } else {
+                        m.title_romaji.clone()
+                    }
+                })
+                .unwrap_or_default()
+        };
+        let aired_for = |ep: i32| -> String {
+            ctx.ep_meta
+                .get(&ep)
+                .map(|m| m.aired.clone())
+                .unwrap_or_default()
+        };
+        // The file name's `{episode.title}` joins every held episode's
+        // title with ` + ` (Sonarr's multi-episode shape); the NFO gets
+        // one block per episode below.
+        let ep_title = resolved
+            .episodes()
+            .map(title_for)
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join(" + ");
+        let nfo_entries: Vec<nfo::EpisodeNfoEntry> = resolved
+            .episodes()
+            .map(|ep| nfo::EpisodeNfoEntry {
+                episode: ep,
+                title: title_for(ep),
+                aired: aired_for(ep),
             })
-            .unwrap_or_default();
-
-        let aired = ctx
-            .ep_meta
-            .get(&ep_num)
-            .map(|m| m.aired.clone())
-            .unwrap_or_default();
+            .collect();
 
         let ext = Path::new(filename_only)
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("mkv");
 
-        let season = 1_i32;
-
         // Destination name from the episode-file template (#124). The
         // quality and group tokens read the grab-time tag row when there
         // is one (it may carry a manual override), else a filename-only
         // classification of the source; the post-download reclassify
         // below still runs on the landed file, it just doesn't rename.
-        let name_ctx = episode_name_context(ctx, ep_num, &ep_title, filename_only, ext);
+        let name_ctx = episode_name_context(ctx, ep_num, ep_last, &ep_title, filename_only, ext);
         let episode_name = naming::episode_file(&cfg.episode_file_format, &name_ctx);
         if episode_name.truncated {
             logger::info(
                 &state.db,
                 LogCategory::PostProcess,
                 &format!(
-                    "Shortened the file name for S{:02}E{:02} of '{}' to fit the filesystem limit",
-                    season, ep_num, ctx.series.title
+                    "Shortened the file name for {} of '{}' to fit the filesystem limit",
+                    slot, ctx.series.title
                 ),
                 &episode_name.file_name,
             )
@@ -1388,40 +1474,89 @@ async fn import_torrent(
         let dest_nfo = ctx.season_dir.join(format!("{}.nfo", episode_name.stem));
 
         // Existing files for this episode slot (any extension). Matched
-        // by parsing each name back through `parse_episode_number`
+        // by parsing each name back through `parse_episode_span`
         // rather than by a fixed `SxxExx` substring, so the check works
         // for every template the validator accepts (it requires the
         // sample name to parse back) and still catches files named under
         // an earlier template or an episode title that changed between
-        // grabs.
+        // grabs. A file whose span overlaps the incoming one counts
+        // (issue #246): `S01E05-E06` retires a lone `S01E06`, and a lone
+        // `S01E06` retires `S01E05-E06`, since either would leave the
+        // season folder with two files claiming the same episode.
         // Walk the season directory off the runtime — a big season pack on
         // an NFS mount can make the sync read_dir/stat calls block for
         // hundreds of ms. The filter logic is cheap CPU, so we also move
         // it into the spawned task.
-        let existing_for_ep: Vec<PathBuf> = {
+        let existing_for_ep: Vec<(PathBuf, media::EpisodeSpan)> = {
             let season_dir = ctx.season_dir.clone();
-            tokio::task::spawn_blocking(move || -> Vec<PathBuf> {
+            tokio::task::spawn_blocking(move || -> Vec<(PathBuf, media::EpisodeSpan)> {
                 std::fs::read_dir(&season_dir)
                     .into_iter()
                     .flatten()
                     .filter_map(|e| e.ok())
                     .map(|e| e.path())
-                    .filter(|p| {
+                    .filter_map(|p| {
                         let is_nfo = p
                             .extension()
                             .and_then(|e| e.to_str())
                             .is_some_and(|e| e.eq_ignore_ascii_case("nfo"));
-                        !is_nfo
-                            && p.file_name()
-                                .and_then(|n| n.to_str())
-                                .and_then(|n| media::parse_episode_number(&n.to_lowercase()))
-                                .is_some_and(|(s, e)| e == ep_num && s.is_none_or(|s| s == season))
+                        if is_nfo {
+                            return None;
+                        }
+                        let span = p
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .and_then(|n| media::parse_episode_span(&n.to_lowercase()))
+                            .filter(|s| {
+                                s.first <= ep_last
+                                    && s.last >= ep_num
+                                    && s.season.is_none_or(|n| n == season)
+                            })?;
+                        Some((p, span))
                     })
                     .collect()
             })
             .await
             .unwrap_or_default()
         };
+
+        // The other direction of the overlap rule (issue #246): a
+        // release that covers fewer episodes than a file it would retire
+        // is not imported, since the import would take the other
+        // episode with it and the library would then hunt for it
+        // again. Sonarr rejects the same import ("existing file contains
+        // more episodes than this release"). The grab ends up failed,
+        // which also blocklists the release for this series.
+        if let Some((wider, wider_span)) = existing_for_ep
+            .iter()
+            .find(|(_, s)| s.first < ep_num || s.last > ep_last)
+        {
+            let reason = format!(
+                "the file on disk holds {} and this release only covers {}; not replacing it",
+                wider_span.label(),
+                slot
+            );
+            logger::warn(
+                &state.db,
+                LogCategory::PostProcess,
+                &format!(
+                    "Import of '{}' for '{}' skipped: {}",
+                    filename_only, ctx.series.title, reason
+                ),
+                &format!("existing={}", wider.display()),
+            )
+            .await;
+            crate::services::notifications::emit_import_failed(
+                state,
+                target_series_id,
+                Some(ep_num),
+                &src.display().to_string(),
+                &reason,
+            )
+            .await;
+            failed_episodes.extend(resolved.episodes());
+            continue;
+        }
 
         // Issue #202: on an upgrade, land the new file beside the
         // destination FIRST and only then retire the old one. The
@@ -1454,10 +1589,18 @@ async fn import_torrent(
             // unions across the legacy grabbed_torrents column and the
             // routes table, so a prior sibling-routed import still
             // surfaces here.
-            let old_grabs =
-                grabbed_torrents::find_imported_for_episode(&state.db, target_series_id, ep_num)
-                    .await
-                    .unwrap_or_default();
+            let mut old_grabs: Vec<grabbed_torrents::GrabbedTorrent> = Vec::new();
+            for ep in resolved.episodes() {
+                for old in
+                    grabbed_torrents::find_imported_for_episode(&state.db, target_series_id, ep)
+                        .await
+                        .unwrap_or_default()
+                {
+                    if !old_grabs.iter().any(|g| g.id == old.id) {
+                        old_grabs.push(old);
+                    }
+                }
+            }
 
             // No matching prior grab row but disk has a file for this
             // SxxExx slot — treat it as an **orphan upgrade**. The disk
@@ -1486,8 +1629,8 @@ async fn import_torrent(
                     &state.db,
                     LogCategory::PostProcess,
                     &format!(
-                        "Orphan upgrade: '{}' replacing S{:02}E{:02} file on disk (no prior imported grab)",
-                        filename_only, season, ep_num
+                        "Orphan upgrade: '{}' replacing {} file on disk (no prior imported grab)",
+                        filename_only, slot
                     ),
                     &format!(
                         "series_id={}, existing_files={}, grab_id={}",
@@ -1507,7 +1650,7 @@ async fn import_torrent(
             // it); with no bin configured this is the permanent unlink
             // the upgrade path always did.
             let mut retire_failed = false;
-            for old_file in &existing_for_ep {
+            for (old_file, _) in &existing_for_ep {
                 if let Err(e) = recycle::recycle(
                     &state.db,
                     &cfg.recycle_bin_path,
@@ -1541,8 +1684,8 @@ async fn import_torrent(
                     &state.db,
                     LogCategory::PostProcess,
                     &format!(
-                        "Upgrade for S{:02}E{:02} of '{}' skipped: the old file could not be recycled",
-                        season, ep_num, ctx.series.title
+                        "Upgrade for {} of '{}' skipped: the old file could not be recycled",
+                        slot, ctx.series.title
                     ),
                     &grab.torrent_name,
                 )
@@ -1558,7 +1701,7 @@ async fn import_torrent(
                     "the old file could not be recycled, so the upgrade was skipped",
                 )
                 .await;
-                failed_episodes.push(ep_num);
+                failed_episodes.extend(resolved.episodes());
                 continue;
             }
 
@@ -1572,9 +1715,8 @@ async fn import_torrent(
                     &state.db,
                     LogCategory::PostProcess,
                     &format!(
-                        "Upgrade for S{:02}E{:02} of '{}' stalled: the new file is staged at {} but could not be renamed into place",
-                        season,
-                        ep_num,
+                        "Upgrade for {} of '{}' stalled: the new file is staged at {} but could not be renamed into place",
+                        slot,
                         ctx.series.title,
                         landing.display()
                     ),
@@ -1592,7 +1734,7 @@ async fn import_torrent(
                     ),
                 )
                 .await;
-                failed_episodes.push(ep_num);
+                failed_episodes.extend(resolved.episodes());
                 continue;
             }
 
@@ -1600,8 +1742,8 @@ async fn import_torrent(
                 &state.db,
                 LogCategory::PostProcess,
                 &format!(
-                    "Replacing S{:02}E{:02} of '{}' with upgraded release",
-                    season, ep_num, ctx.series.title
+                    "Replacing {} of '{}' with upgraded release",
+                    slot, ctx.series.title
                 ),
                 &format!("old_grabs={}", old_grabs.len()),
             )
@@ -1680,19 +1822,19 @@ async fn import_torrent(
             // Stays inside the loop since episode_grab_history is
             // keyed on (series_id, episode_number) — one UPDATE per
             // episode is correct, not redundant.
-            let _ =
-                episode_tags::mark_grab_history_replaced(&state.db, target_series_id, ep_num).await;
+            for ep in resolved.episodes() {
+                let _ =
+                    episode_tags::mark_grab_history_replaced(&state.db, target_series_id, ep).await;
+            }
         }
 
         match placed {
             Ok(()) => {
-                let _ = nfo::write_episode_nfo(
+                let _ = nfo::write_multi_episode_nfo(
                     &dest_nfo,
                     &ctx.series_title,
                     season,
-                    ep_num,
-                    &ep_title,
-                    &aired,
+                    &nfo_entries,
                     ctx.runtime_minutes,
                 )
                 .await;
@@ -1706,10 +1848,7 @@ async fn import_torrent(
                 logger::info(
                     &state.db,
                     LogCategory::PostProcess,
-                    &format!(
-                        "Imported S{:02}E{:02} of '{}'",
-                        season, ep_num, ctx.series.title
-                    ),
+                    &format!("Imported {} of '{}'", slot, ctx.series.title),
                     &format!(
                         "mode={} dest={}",
                         cfg.post_processing_mode,
@@ -1723,12 +1862,6 @@ async fn import_torrent(
                 // Rows with manual_override = 1 are left alone by the DB
                 // helpers so user tags stick.
                 let series_root = Path::new(&cfg.media_root).join(&ctx.folder_name);
-                // Snapshot loaded once per series in `load_series_import_ctx`;
-                // see `SeriesImportCtx::existing_tags` for why refreshing
-                // per-file is unnecessary.
-                let existing_row = ctx.existing_tags.get(&ep_num);
-                let pre_source = existing_row.map(|t| t.source.clone()).unwrap_or_default();
-                let row_exists = existing_row.is_some();
                 let post = source::classify_post_download(
                     &state.db,
                     &dest_video,
@@ -1755,151 +1888,167 @@ async fn import_torrent(
                 // `scan_library_for_unclassified` uses for externally
                 // imported files), UPDATE in-place via
                 // `update_classification` otherwise.
-                // Issue #118 — fire `ClassifierNeedsReview` when the
-                // post-download classifier flips this row into needs-
-                // review. Default-off in the per-event matrix because
-                // a reclassify sweep can produce hundreds of rows in
-                // a short window; users who want it opt in. The emit
-                // is keyed on `post.needs_review` (the in-memory
-                // ClassificationResult), not the DB row, since the
-                // helper below would have to re-read.
-                if post.needs_review {
-                    let verdict = post.label();
-                    // The event field is i32 representing the
-                    // percent (0..=100). `post.confidence` is f32 in
-                    // [0.0, 1.0], so cast directly truncates 0.50
-                    // to 0 — Discord then renders "0%" for any
-                    // sub-1.0 verdict, which is every needs-review
-                    // case. Multiply by 100 first so the value sent
-                    // matches the percent the user expects.
-                    let confidence_pct = (post.confidence * 100.0).round() as i32;
-                    crate::services::notifications::emit_classifier_needs_review(
-                        state,
-                        target_series_id,
-                        ep_num,
-                        confidence_pct,
-                        &verdict,
-                    )
-                    .await;
-                }
-
-                let persist_result = if row_exists {
-                    // `update_classification` stamps
-                    // classification_attempted_at internally.
-                    episode_tags::update_classification(&state.db, target_series_id, ep_num, &post)
-                        .await
-                } else {
-                    let inserted = episode_tags::record_grab(
-                        &state.db,
-                        target_series_id,
-                        ep_num,
-                        &post,
-                        &grab.torrent_name,
-                        "",
-                        file.size,
-                        grab.is_batch,
-                    )
-                    .await
-                    .map(|_| ());
-                    // Issue #53: post-classify call of `record_grab` —
-                    // explicitly stamp the attempt timestamp so the
-                    // library scan won't keep retrying this row if
-                    // `post` came back UNKNOWN. Grab-time `record_grab`
-                    // call sites (search.rs, auto_expand.rs, etc.) do
-                    // NOT stamp — they're filename-only and the file
-                    // hasn't landed yet.
-                    let _ = episode_tags::stamp_classification_attempted(
-                        &state.db,
-                        target_series_id,
-                        ep_num,
-                    )
-                    .await;
-                    inserted
-                };
-                if let Err(e) = persist_result {
-                    logger::warn(
-                        &state.db,
-                        LogCategory::PostProcess,
-                        &format!(
-                            "Post-download tag persist failed for S{:02}E{:02}",
-                            season, ep_num
-                        ),
-                        &e.to_string(),
-                    )
-                    .await;
-                } else {
-                    logger::debug(
-                        &state.db,
-                        LogCategory::PostProcess,
-                        &format!(
-                            "Post-download classify S{:02}E{:02}: {} (conf={:.2})",
-                            season,
-                            ep_num,
-                            post.label(),
-                            post.confidence
-                        ),
-                        &format!(
-                            "pre={}, post={}, row_existed={}",
-                            pre_source,
-                            post.source.as_str(),
-                            row_exists
-                        ),
-                    )
-                    .await;
-                    // If the post-download classifier flipped into needs_review,
-                    // surface at INFO so the user can find it in the review list.
-                    if post.needs_review {
-                        logger::info(
-                            &state.db,
-                            LogCategory::PostProcess,
-                            &format!(
-                                "Needs review: {} S{:02}E{:02}",
-                                ctx.series.title, season, ep_num
-                            ),
-                            &format!(
-                                "post-download classification {} flagged for review",
-                                post.label()
-                            ),
-                        )
-                        .await;
-                    }
-                }
-
-                // Issue #118 — fire `Imported` per-file. Deliberately
-                // sequenced AFTER `update_classification` / `record_grab`
-                // so the DB lookup inside `emit_imported` reads the
-                // post-download `quality_tag`. Pre-classify the row
-                // either had the grab-time tag (often UNKNOWN) or no
-                // row at all, which surfaced as an empty Quality field
-                // in the Discord embed and a missing `quality_tag`
-                // string in the webhook JSON.
                 //
-                // Quality tag is best-effort: if `update_classification`
-                // / `record_grab` errored above, the helper's lookup
-                // falls back to `COALESCE(quality_tag, '') = ""` and
-                // the event ships with an empty tag rather than
-                // skipping the dispatch. The file did land — users
-                // legitimately want the import notification even when
-                // the persist sidecar errored, and the empty-tag UX is
-                // the same as a true UNKNOWN classification.
-                crate::services::notifications::emit_imported(
-                    state,
-                    target_series_id,
-                    ep_num,
-                    &src.display().to_string(),
-                    &dest_video.display().to_string(),
-                )
-                .await;
-
+                // One tag row, one history row, and one set of events
+                // per episode the file holds (issue #246): the file is
+                // classified once and every episode in its span gets
+                // the same verdict, so `S01E05-E06` reads as present
+                // for both episodes everywhere the tag table is read.
                 let dest_basename = dest_video
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or(filename_only)
                     .to_string();
-                imported_eps_by_series
-                    .entry(target_series_id)
-                    .or_default()
-                    .push((ep_num, file.size, dest_basename));
+                for ep in resolved.episodes() {
+                    // Snapshot loaded once per series in
+                    // `load_series_import_ctx`; see
+                    // `SeriesImportCtx::existing_tags` for why
+                    // refreshing per-file is unnecessary.
+                    let existing_row = ctx.existing_tags.get(&ep);
+                    let pre_source = existing_row.map(|t| t.source.clone()).unwrap_or_default();
+                    let row_exists = existing_row.is_some();
+                    // Issue #118 — fire `ClassifierNeedsReview` when the
+                    // post-download classifier flips this row into
+                    // needs-review. Default-off in the per-event matrix
+                    // because a reclassify sweep can produce hundreds of
+                    // rows in a short window; users who want it opt in.
+                    // The emit is keyed on `post.needs_review` (the
+                    // in-memory ClassificationResult), not the DB row,
+                    // since the helper below would have to re-read.
+                    if post.needs_review {
+                        let verdict = post.label();
+                        // The event field is i32 representing the
+                        // percent (0..=100). `post.confidence` is f32 in
+                        // [0.0, 1.0], so cast directly truncates 0.50
+                        // to 0 — Discord then renders "0%" for any
+                        // sub-1.0 verdict, which is every needs-review
+                        // case. Multiply by 100 first so the value sent
+                        // matches the percent the user expects.
+                        let confidence_pct = (post.confidence * 100.0).round() as i32;
+                        crate::services::notifications::emit_classifier_needs_review(
+                            state,
+                            target_series_id,
+                            ep,
+                            confidence_pct,
+                            &verdict,
+                        )
+                        .await;
+                    }
+
+                    let persist_result = if row_exists {
+                        // `update_classification` stamps
+                        // classification_attempted_at internally.
+                        episode_tags::update_classification(&state.db, target_series_id, ep, &post)
+                            .await
+                    } else {
+                        let inserted = episode_tags::record_grab(
+                            &state.db,
+                            target_series_id,
+                            ep,
+                            &post,
+                            &grab.torrent_name,
+                            "",
+                            file.size,
+                            grab.is_batch,
+                        )
+                        .await
+                        .map(|_| ());
+                        // Issue #53: post-classify call of `record_grab` —
+                        // explicitly stamp the attempt timestamp so the
+                        // library scan won't keep retrying this row if
+                        // `post` came back UNKNOWN. Grab-time `record_grab`
+                        // call sites (search.rs, auto_expand.rs, etc.) do
+                        // NOT stamp — they're filename-only and the file
+                        // hasn't landed yet.
+                        let _ = episode_tags::stamp_classification_attempted(
+                            &state.db,
+                            target_series_id,
+                            ep,
+                        )
+                        .await;
+                        inserted
+                    };
+                    if let Err(e) = persist_result {
+                        logger::warn(
+                            &state.db,
+                            LogCategory::PostProcess,
+                            &format!(
+                                "Post-download tag persist failed for S{:02}E{:02}",
+                                season, ep
+                            ),
+                            &e.to_string(),
+                        )
+                        .await;
+                    } else {
+                        logger::debug(
+                            &state.db,
+                            LogCategory::PostProcess,
+                            &format!(
+                                "Post-download classify S{:02}E{:02}: {} (conf={:.2})",
+                                season,
+                                ep,
+                                post.label(),
+                                post.confidence
+                            ),
+                            &format!(
+                                "pre={}, post={}, row_existed={}",
+                                pre_source,
+                                post.source.as_str(),
+                                row_exists
+                            ),
+                        )
+                        .await;
+                        // If the post-download classifier flipped into
+                        // needs_review, surface at INFO so the user can
+                        // find it in the review list.
+                        if post.needs_review {
+                            logger::info(
+                                &state.db,
+                                LogCategory::PostProcess,
+                                &format!(
+                                    "Needs review: {} S{:02}E{:02}",
+                                    ctx.series.title, season, ep
+                                ),
+                                &format!(
+                                    "post-download classification {} flagged for review",
+                                    post.label()
+                                ),
+                            )
+                            .await;
+                        }
+                    }
+
+                    // Issue #118 — fire `Imported` per episode. Deliberately
+                    // sequenced AFTER `update_classification` / `record_grab`
+                    // so the DB lookup inside `emit_imported` reads the
+                    // post-download `quality_tag`. Pre-classify the row
+                    // either had the grab-time tag (often UNKNOWN) or no
+                    // row at all, which surfaced as an empty Quality field
+                    // in the Discord embed and a missing `quality_tag`
+                    // string in the webhook JSON.
+                    //
+                    // Quality tag is best-effort: if `update_classification`
+                    // / `record_grab` errored above, the helper's lookup
+                    // falls back to `COALESCE(quality_tag, '') = ""` and
+                    // the event ships with an empty tag rather than
+                    // skipping the dispatch. The file did land — users
+                    // legitimately want the import notification even when
+                    // the persist sidecar errored, and the empty-tag UX is
+                    // the same as a true UNKNOWN classification.
+                    crate::services::notifications::emit_imported(
+                        state,
+                        target_series_id,
+                        ep,
+                        &src.display().to_string(),
+                        &dest_video.display().to_string(),
+                    )
+                    .await;
+
+                    imported_eps_by_series
+                        .entry(target_series_id)
+                        .or_default()
+                        .push((ep, file.size, dest_basename.clone()));
+                }
             }
             Err(e) => {
                 logger::error(
@@ -1933,7 +2082,7 @@ async fn import_torrent(
                 if landing.is_file() && !files_share_inode(&src, &landing) {
                     let _ = tokio::fs::remove_file(&landing).await;
                 }
-                failed_episodes.push(ep_num);
+                failed_episodes.extend(resolved.episodes());
             }
         }
     }

@@ -1304,7 +1304,7 @@ pub(crate) async fn reclassify_on_disk_episode(
                 Some(s) => s == 1,
                 None => true,
             };
-            season_ok && f.episode_number == episode_number
+            season_ok && f.holds(episode_number)
         })
         .ok_or((
             axum::http::StatusCode::NOT_FOUND,
@@ -1356,71 +1356,79 @@ pub(crate) async fn reclassify_on_disk_episode(
     .await;
 
     // Persist via the same branching as the post-download / scan paths:
-    // UPDATE when a row exists, UPSERT via record_grab otherwise.
-    let row_exists = existing_tags.contains_key(&episode_number);
-    if row_exists {
-        episode_tags::update_classification(&state.db, series_id, episode_number, &result)
-            .await
-            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        // Issue #118 — fire `ClassifierNeedsReview` for the manual
-        // reclassify path (per-episode Reclassify button on the
-        // series page). Same event shape as the sweep + post-
-        // download paths.
-        if result.needs_review {
-            let verdict = result.label();
-            crate::services::notifications::emit_classifier_needs_review(
-                state,
-                series_id,
-                episode_number,
-                result.confidence as i32,
-                &verdict,
-            )
-            .await;
+    // UPDATE when a row exists, UPSERT via record_grab otherwise. One
+    // row per episode the file holds (issue #246); a pinned sibling
+    // episode keeps its override (the requested episode's pin was
+    // refused above).
+    let file_size = tokio::fs::metadata(&file_path)
+        .await
+        .map(|m| m.len() as i64)
+        .unwrap_or(0);
+    let imported_basename = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&classify_title)
+        .to_string();
+    for ep in file.episodes() {
+        if ep != episode_number && existing_tags.get(&ep).is_some_and(|t| t.manual_override) {
+            continue;
         }
-    } else {
-        let file_size = tokio::fs::metadata(&file_path)
-            .await
-            .map(|m| m.len() as i64)
-            .unwrap_or(0);
-        episode_tags::record_grab(
-            &state.db,
-            series_id,
-            episode_number,
-            &result,
-            &classify_title,
-            "",
-            file_size,
-            is_batch,
-        )
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        episode_tags::stamp_classification_attempted(&state.db, series_id, episode_number)
+        let row_exists = existing_tags.contains_key(&ep);
+        if row_exists {
+            episode_tags::update_classification(&state.db, series_id, ep, &result)
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            // Issue #118 — fire `ClassifierNeedsReview` for the manual
+            // reclassify path (per-episode Reclassify button on the
+            // series page). Same event shape as the sweep + post-
+            // download paths.
+            if result.needs_review {
+                let verdict = result.label();
+                crate::services::notifications::emit_classifier_needs_review(
+                    state,
+                    series_id,
+                    ep,
+                    result.confidence as i32,
+                    &verdict,
+                )
+                .await;
+            }
+        } else {
+            episode_tags::record_grab(
+                &state.db,
+                series_id,
+                ep,
+                &result,
+                &classify_title,
+                "",
+                file_size,
+                is_batch,
+            )
             .await
             .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        // `record_grab` hardcodes state='grabbed' for both the tag and
-        // history rows. The file is already on disk (checked above), so
-        // flip both rows to 'completed' the same way the scan path does
-        // in `services/post_processing.rs::scan_for_unclassified`.
-        // Without this the UI renders a freshly-reclassified
-        // externally-imported episode as download-in-progress until
-        // the next 6h sweep corrects the state.
-        episode_tags::mark_completed(&state.db, series_id, &[episode_number])
+            episode_tags::stamp_classification_attempted(&state.db, series_id, ep)
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            // `record_grab` hardcodes state='grabbed' for both the tag and
+            // history rows. The file is already on disk (checked above), so
+            // flip both rows to 'completed' the same way the scan path does
+            // in `services/post_processing.rs::scan_for_unclassified`.
+            // Without this the UI renders a freshly-reclassified
+            // externally-imported episode as download-in-progress until
+            // the next 6h sweep corrects the state.
+            episode_tags::mark_completed(&state.db, series_id, &[ep])
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            episode_tags::mark_grab_history_completed(
+                &state.db,
+                series_id,
+                ep,
+                &imported_basename,
+                file_size,
+            )
             .await
             .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        let imported_basename = file_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(&classify_title)
-            .to_string();
-        episode_tags::mark_grab_history_completed(
-            &state.db,
-            series_id,
-            episode_number,
-            &imported_basename,
-            file_size,
-        )
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
     }
 
     let label = result.label();
@@ -1428,8 +1436,10 @@ pub(crate) async fn reclassify_on_disk_episode(
         &state.db,
         LogCategory::Library,
         &format!(
-            "Manual re-classify for series {} ep {}: {}",
-            series_id, episode_number, label
+            "Manual re-classify for series {} {}: {}",
+            series_id,
+            file.span().label(),
+            label
         ),
         &format!(
             "confidence={:.2}, needs_review={}",

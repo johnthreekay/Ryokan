@@ -237,11 +237,13 @@ pub fn unique_folder_name(base: &str, ctx: &ProjectionContext<'_>) -> (String, b
     (format!("{base} ({})", ctx.disk_folders.len() + 2), true)
 }
 
-/// `E18`, or `-` with no episode number. No season in the label: each
-/// AniList season is its own series in Ryokan with its own E1..En,
-/// and the card's season chip says which one this group is.
-pub fn episode_label(episode: Option<i32>) -> String {
+/// `E18`, `E05-E06` for a file holding several episodes (issue #246),
+/// or `-` with no episode number. No season in the label: each AniList
+/// season is its own series in Ryokan with its own E1..En, and the
+/// card's season chip says which one this group is.
+pub fn episode_label(episode: Option<i32>, count: i32) -> String {
     match episode {
+        Some(e) if count > 1 => format!("E{:02}-E{:02}", e, e + count - 1),
         Some(e) => format!("E{:02}", e),
         None => "-".to_string(),
     }
@@ -362,7 +364,7 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                 idx,
                 rel_path: f.rel_path.clone(),
                 file_name: f.file_name.clone(),
-                episode_label: episode_label(f.episode),
+                episode_label: episode_label(f.episode, f.episode_count),
                 episode_note: f
                     .source_episode
                     .map(|e| format!("was E{e:02}"))
@@ -489,6 +491,7 @@ mod tests {
             group: None,
             quality_label: source::classify_release_sync(name, None).label(),
             selected: true,
+            episode_count: 1,
             source_episode: None,
         }
     }

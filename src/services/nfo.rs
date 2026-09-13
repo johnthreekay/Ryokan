@@ -354,34 +354,67 @@ pub async fn write_episode_nfo(
     aired: &str,
     runtime_minutes: Option<i32>,
 ) -> std::io::Result<()> {
-    let display_title = if ep_title.trim().is_empty() {
-        format!("Episode {}", episode)
-    } else {
-        ep_title.to_string()
-    };
+    write_multi_episode_nfo(
+        path,
+        showtitle,
+        season,
+        &[EpisodeNfoEntry {
+            episode,
+            title: ep_title.to_string(),
+            aired: aired.to_string(),
+        }],
+        runtime_minutes,
+    )
+    .await
+}
 
-    let mut xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
-         <episodedetails>\n\
-         \x20\x20<title>{title}</title>\n\
-         \x20\x20<showtitle>{show}</showtitle>\n\
-         \x20\x20<season>{season}</season>\n\
-         \x20\x20<episode>{episode}</episode>\n\
-         \x20\x20<aired>{aired}</aired>\n",
-        title = xml_escape(&display_title),
-        show = xml_escape(showtitle),
-        season = season,
-        episode = episode,
-        aired = aired,
-    );
+/// One episode of a multi-episode NFO (issue #246).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EpisodeNfoEntry {
+    pub episode: i32,
+    pub title: String,
+    pub aired: String,
+}
 
-    if let Some(runtime) = runtime_minutes
-        && runtime > 0
-    {
-        xml.push_str(&format!("  <runtime>{}</runtime>\n", runtime));
+/// Write the episode NFO for a file holding one or more episodes: one
+/// `<episodedetails>` block per episode, back to back, which is the
+/// Kodi multi-episode shape Jellyfin also reads (it takes the extra
+/// blocks as the file's ending episode). A single entry is the
+/// ordinary one-block file.
+pub async fn write_multi_episode_nfo(
+    path: &Path,
+    showtitle: &str,
+    season: i32,
+    entries: &[EpisodeNfoEntry],
+    runtime_minutes: Option<i32>,
+) -> std::io::Result<()> {
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+    for entry in entries {
+        let display_title = if entry.title.trim().is_empty() {
+            format!("Episode {}", entry.episode)
+        } else {
+            entry.title.clone()
+        };
+        xml.push_str(&format!(
+            "<episodedetails>\n\
+             \x20\x20<title>{title}</title>\n\
+             \x20\x20<showtitle>{show}</showtitle>\n\
+             \x20\x20<season>{season}</season>\n\
+             \x20\x20<episode>{episode}</episode>\n\
+             \x20\x20<aired>{aired}</aired>\n",
+            title = xml_escape(&display_title),
+            show = xml_escape(showtitle),
+            season = season,
+            episode = entry.episode,
+            aired = entry.aired,
+        ));
+        if let Some(runtime) = runtime_minutes
+            && runtime > 0
+        {
+            xml.push_str(&format!("  <runtime>{}</runtime>\n", runtime));
+        }
+        xml.push_str("</episodedetails>\n");
     }
-
-    xml.push_str("</episodedetails>\n");
 
     tokio::fs::write(path, xml).await
 }
@@ -594,6 +627,45 @@ mod tests {
         assert!(xml.contains("<runtime>24</runtime>"));
         assert!(xml.contains("<title>The Title</title>"));
         assert!(xml.contains("<aired>2024-03-01</aired>"));
+    }
+
+    #[tokio::test]
+    async fn multi_episode_nfo_emits_one_block_per_episode() {
+        // Issue #246: the Kodi multi-episode shape, one `<episodedetails>`
+        // per held episode, with the shared runtime repeated in each.
+        let path = unique_temp_path("ep_multi.nfo");
+        write_multi_episode_nfo(
+            &path,
+            "Show",
+            1,
+            &[
+                EpisodeNfoEntry {
+                    episode: 5,
+                    title: "Five".to_string(),
+                    aired: "2024-03-01".to_string(),
+                },
+                EpisodeNfoEntry {
+                    episode: 6,
+                    title: String::new(),
+                    aired: String::new(),
+                },
+            ],
+            Some(24),
+        )
+        .await
+        .expect("write nfo");
+        let xml = std::fs::read_to_string(&path).expect("read nfo");
+        std::fs::remove_file(&path).ok();
+        if let Some(parent) = path.parent() {
+            std::fs::remove_dir(parent).ok();
+        }
+        assert_eq!(xml.matches("<episodedetails>").count(), 2);
+        assert_eq!(xml.matches("<?xml").count(), 1);
+        assert!(xml.contains("<episode>5</episode>"));
+        assert!(xml.contains("<episode>6</episode>"));
+        assert!(xml.contains("<title>Five</title>"));
+        assert!(xml.contains("<title>Episode 6</title>"));
+        assert_eq!(xml.matches("<runtime>24</runtime>").count(), 2);
     }
 
     #[tokio::test]

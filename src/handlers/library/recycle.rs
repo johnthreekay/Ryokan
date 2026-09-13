@@ -80,8 +80,8 @@ fn entry_label(entry: &RecycleEntry) -> String {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            match media::parse_episode_number(&name.to_lowercase()) {
-                Some((season, ep)) => format!("S{:02}E{:02}", season.unwrap_or(1), ep),
+            match media::parse_episode_span(&name.to_lowercase()) {
+                Some(span) => format!("S{:02}{}", span.season.unwrap_or(1), span.label()),
                 None => name,
             }
         }
@@ -256,9 +256,12 @@ async fn retag_restored_episode(state: &AppState, series_id: i64, final_path: &s
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let Some((_, episode_number)) = media::parse_episode_number(&name.to_lowercase()) else {
+    let Some(span) = media::parse_episode_span(&name.to_lowercase()) else {
         return;
     };
+    let episode_number = span.first;
+    // The reclassify core finds the file by any episode it holds and
+    // re-tags every one of them (issue #246).
     match crate::handlers::library::crud::reclassify_on_disk_episode(
         state,
         series_id,
@@ -271,12 +274,8 @@ async fn retag_restored_episode(state: &AppState, series_id: i64, final_path: &s
             // Pinned via manual override: the tag row survived the delete
             // with a blank state. Restore the state without touching the
             // pin.
-            let _ = crate::models::episode_tags::mark_completed(
-                &state.db,
-                series_id,
-                &[episode_number],
-            )
-            .await;
+            let held: Vec<i32> = span.episodes().collect();
+            let _ = crate::models::episode_tags::mark_completed(&state.db, series_id, &held).await;
         }
         Err((_, e)) => {
             logger::warn(

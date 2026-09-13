@@ -246,7 +246,9 @@ pub(super) async fn build_sonarr_series_from_search(
     } else {
         Vec::new()
     };
-    let on_disk = disk_files.len() as i32;
+    // Episodes, not files: a multi-episode file counts for each
+    // episode it holds (issue #246).
+    let on_disk: i32 = disk_files.iter().map(|f| f.span().count()).sum();
 
     let path = if cfg.media_root.is_empty() {
         format!("/media/{}", folder_name)
@@ -334,7 +336,9 @@ pub(super) async fn build_sonarr_series_from_tracked(
 ) -> SonarrSeries {
     let total_eps = s.episodes.unwrap_or(0).max(0);
     let disk_files = media::scan_series_folder(&cfg.media_root, &s.folder_name).await;
-    let on_disk = disk_files.len() as i32;
+    // Episodes, not files: a multi-episode file counts for each
+    // episode it holds (issue #246).
+    let on_disk: i32 = disk_files.iter().map(|f| f.span().count()).sum();
     let monitored = s.monitor_mode_enum() != monitoring::MonitorMode::None;
 
     let path = if cfg.media_root.is_empty() {

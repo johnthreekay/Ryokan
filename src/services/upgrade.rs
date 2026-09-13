@@ -142,7 +142,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
         // Check all on-disk episodes for upgrades. The monitoring system governs
         // what to *acquire* (missing/future), not what to *upgrade*, so we use
         // disk presence directly rather than monitor state.
-        let on_disk_eps: Vec<i32> = disk_files.iter().map(|f| f.episode_number).collect();
+        let on_disk_eps: Vec<i32> = disk_files.iter().flat_map(|f| f.episodes()).collect();
 
         let upgrade_targets = auto_search::build_upgrade_targets(
             &disk_files,

@@ -372,10 +372,16 @@ if (!window.__ryokanSeriesListeners) {
             });
             return;
         }
-        if (epNum) {
-            updateEpisodeRow(epNum, 'deleted');
-            refreshEpisodeRows({ force: true });
-        }
+        // A multi-episode file lists every episode it held; each row
+        // gets the stamp.
+        const held = Array.isArray(detail.episode_numbers) && detail.episode_numbers.length
+            ? detail.episode_numbers.map(function (n) { return parseInt(n, 10); }).filter(Boolean)
+            : (epNum ? [epNum] : []);
+        held.forEach(function (n) { updateEpisodeRow(n, 'deleted'); });
+        if (held.length) refreshEpisodeRows({ force: true });
+        const label = held.length > 1
+            ? `Episodes ${held[0]}-${held[held.length - 1]}`
+            : (epNum ? `Episode ${epNum}` : '');
         // Recycle bin (#123): when the file went to the bin the payload
         // carries the entry id, and the toast gets an Undo that restores
         // it in place. Longer duration so there's time to change your mind.
@@ -383,8 +389,8 @@ if (!window.__ryokanSeriesListeners) {
         window.ryokanToast({
             kind: 'success',
             category: 'library',
-            title: epNum
-                ? (entryId ? `Episode ${epNum} moved to the recycle bin` : `Episode ${epNum} deleted`)
+            title: label
+                ? (entryId ? `${label} moved to the recycle bin` : `${label} deleted`)
                 : 'Episode deleted',
             body: detail.message || 'File removed from disk.',
             duration: entryId ? 10000 : 4000,
@@ -402,7 +408,7 @@ if (!window.__ryokanSeriesListeners) {
                             if (res && res.ok) {
                                 handle.update({
                                     kind: 'success',
-                                    title: epNum ? `Episode ${epNum} restored` : 'Restored',
+                                    title: label ? `${label} restored` : 'Restored',
                                     body: res.message || 'The file is back where it was.',
                                 });
                                 if (epNum) refreshEpisodeRows({ force: true });

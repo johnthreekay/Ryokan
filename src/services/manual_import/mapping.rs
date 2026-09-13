@@ -208,6 +208,7 @@ mod tests {
             group: None,
             quality_label: "Unknown".into(),
             selected: true,
+            episode_count: 1,
             source_episode: None,
         }
     }
@@ -551,6 +552,7 @@ mod absolute_tests {
             group: None,
             quality_label: "Unknown".into(),
             selected: true,
+            episode_count: 1,
             source_episode: None,
         }
     }

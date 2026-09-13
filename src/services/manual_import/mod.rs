@@ -125,7 +125,13 @@ pub struct CandidateFile {
     pub parsed_title: Option<String>,
     pub title_source: parse::TitleSource,
     pub season: Option<i32>,
+    /// The first (usually only) episode the file holds; renumbering by
+    /// the TMDB mapping or the sequel chain moves it, and the count
+    /// below rides along.
     pub episode: Option<i32>,
+    /// How many episodes the file holds (issue #246): 1 for the usual
+    /// file, 2 for `S01E05-E06`.
+    pub episode_count: i32,
     pub year: Option<i32>,
     pub group: Option<String>,
     /// Filename-only classification label (`BD-1080p`, `WEB-720p`,
@@ -462,6 +468,7 @@ fn candidate_from_raw(f: walk::RawFile) -> CandidateFile {
         title_source: parsed.title_source,
         season: parsed.season,
         episode: parsed.episode,
+        episode_count: parsed.episode_count,
         year: parsed.year,
         group: parsed.group,
         quality_label,
@@ -926,6 +933,7 @@ mod tests {
             group: None,
             quality_label: "Unknown".into(),
             selected: true,
+            episode_count: 1,
             source_episode: None,
         }
     }
