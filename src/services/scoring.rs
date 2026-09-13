@@ -63,16 +63,6 @@ pub fn score_result_with_sub_pref(
     score_result_with_breakdown(r, opts, prefer_subs).0
 }
 
-/// Same total as `score_result_with_sub_pref`, plus the ordered
-/// list of components that contributed to the score. Invariant:
-/// `breakdown.iter().map(|c| c.delta).sum::<i32>() == total`.
-///
-/// Components are emitted in the evaluation order (seeders first,
-/// then group, resolution, and so on). Zero-delta checks are
-/// omitted — a "no preferred group configured, didn't penalize"
-/// non-event doesn't add noise to the UI. The invariant holds
-/// because we only push when we actually mutate `score`.
-#[allow(clippy::cognitive_complexity)]
 /// Score bonus for a release revision above the plain release: +10 for
 /// a v2 (or PROPER / REPACK), +5 more per further version, capped at
 /// +20. `None` for a plain release. Shared by the Nyaa scorer and the
@@ -90,6 +80,16 @@ pub fn revision_bonus(revision: crate::services::media::ReleaseRevision) -> Opti
     Some((delta, detail))
 }
 
+/// Same total as `score_result_with_sub_pref`, plus the ordered
+/// list of components that contributed to the score. Invariant:
+/// `breakdown.iter().map(|c| c.delta).sum::<i32>() == total`.
+///
+/// Components are emitted in the evaluation order (seeders first,
+/// then group, resolution, and so on). Zero-delta checks are
+/// omitted — a "no preferred group configured, didn't penalize"
+/// non-event doesn't add noise to the UI. The invariant holds
+/// because we only push when we actually mutate `score`.
+#[allow(clippy::cognitive_complexity)]
 pub fn score_result_with_breakdown(
     r: &SearchResult,
     opts: &SearchOptions,

@@ -1024,7 +1024,11 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             continue;
         }
 
-        let canonical_key = canonical_episode_key(&found, item.is_batch);
+        let canonical_key = canonical_episode_key(
+            &found,
+            item.is_batch,
+            media::parse_release_revision(&item.title).version,
+        );
         if !canonical_key.is_empty() && canonical_history.contains(&canonical_key) {
             skipped += 1;
             let reason = format!(
@@ -1264,7 +1268,11 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                         build_match_diag(&cand.item, Some(&cand.found), cand.score)
                     )
                 };
-                canonical_history.insert(canonical_episode_key(&cand.found, cand.item.is_batch));
+                canonical_history.insert(canonical_episode_key(
+                    &cand.found,
+                    cand.item.is_batch,
+                    media::parse_release_revision(&cand.item.title).version,
+                ));
                 let _ = rss::record_decision(
                     &state.db,
                     rss::DecisionRecord {
@@ -1570,7 +1578,11 @@ fn canonical_key_for_title(title: &str, all_meta: &[SeriesMeta]) -> Option<Strin
         source: RssSource::Nyaa,
     };
     let found = best_series_match(&pseudo, all_meta)?;
-    let key = canonical_episode_key(&found, pseudo.is_batch);
+    let key = canonical_episode_key(
+        &found,
+        pseudo.is_batch,
+        media::parse_release_revision(title).version,
+    );
     if key.is_empty() { None } else { Some(key) }
 }
 
@@ -1584,10 +1596,17 @@ fn compare_candidates(a: &PendingCandidate, b: &PendingCandidate) -> Ordering {
 }
 
 fn logical_bucket_key(cand: &PendingCandidate) -> String {
-    canonical_episode_key(&cand.found, cand.item.is_batch)
+    canonical_episode_key(
+        &cand.found,
+        cand.item.is_batch,
+        media::parse_release_revision(&cand.item.title).version,
+    )
 }
 
-fn canonical_episode_key(found: &MatchResult, is_batch: bool) -> String {
+/// `revision` keeps a `v2` a distinct logical item from the `v1` it
+/// fixes, so the history check (grabbed titles, the client's queue)
+/// does not swallow it before the upgrade gate can take it.
+fn canonical_episode_key(found: &MatchResult, is_batch: bool, revision: u32) -> String {
     let episode_key = if !found.canonical_abs_eps.is_empty() {
         format_episode_set(&found.canonical_abs_eps)
     } else {
@@ -1597,10 +1616,11 @@ fn canonical_episode_key(found: &MatchResult, is_batch: bool) -> String {
         return String::new();
     }
     format!(
-        "{}|{}|{}",
+        "{}|{}|{}|v{}",
         found.family_key,
         if is_batch { "batch" } else { "single" },
         episode_key,
+        revision,
     )
 }
 
@@ -1869,23 +1889,28 @@ fn evaluate_candidate(
         .filter(|ep| !existing_ep_numbers.contains(ep))
         .count() as i32;
     let mut upgrade_count: i32 = 0;
-    let mut last_rejection: Option<source::UpgradeRejection> = None;
-    for ep in parsed_eps
+    let mut first_rejection: Option<source::UpgradeRejection> = None;
+    let mut on_disk: Vec<i32> = parsed_eps
         .iter()
+        .copied()
         .filter(|ep| existing_ep_numbers.contains(ep))
-    {
+        .collect();
+    on_disk.sort_unstable();
+    for ep in &on_disk {
         match episode_is_upgradeable(ep, parsed_eps, disk_files, incoming, gate, quality_tags) {
             Ok(_) => upgrade_count += 1,
-            Err(rejection) => last_rejection = Some(rejection),
+            Err(rejection) => {
+                first_rejection.get_or_insert(rejection);
+            }
         }
     }
     let actionable = new_count + upgrade_count;
 
     if actionable == 0 {
-        // The gate's own words when it had a verdict (a `v2` from
-        // another group, a file at the cutoff); the multi-episode
-        // span rule and an unplaceable file keep the generic line.
-        let reason = match last_rejection {
+        // The gate's own words for the lowest episode it refused (a
+        // `v2` from another group, a file at the cutoff, a span the
+        // release does not cover).
+        let reason = match first_rejection {
             Some(rejection) => format!("Episode is already on disk: {rejection}"),
             None => "Episode is already on disk at or above cutoff".to_string(),
         };
@@ -1940,25 +1965,35 @@ fn episode_is_upgradeable(
     // that covers every episode it holds; the import would otherwise
     // retire the file and lose the rest (Sonarr's "same episodes" rule).
     if existing.is_multi_episode() && !existing.episodes().all(|e| parsed_eps.contains(&e)) {
-        return Err(source::UpgradeRejection::ExistingUnclassified);
+        return Err(source::UpgradeRejection::SpanNotCovered);
     }
     let tag = quality_tags.get(ep);
+    if tag.is_some_and(|t| t.manual_override) {
+        return Err(source::UpgradeRejection::Pinned);
+    }
     let existing_classification = auto_search::resolve_existing_classification(existing, tag);
-    let (release_title, release_group) = match tag {
+    // A file with no tag row has no release title: no group (so no
+    // revision) and no score. The renamed library file is not a
+    // release title and is not scored.
+    let (release_title, release_group, scorable) = match tag {
         Some(t) if !t.release_title.is_empty() => {
-            (t.release_title.as_str(), t.release_group.as_str())
+            (t.release_title.as_str(), t.release_group.as_str(), true)
         }
-        _ => (existing.filename.as_str(), ""),
+        _ => (existing.filename.as_str(), "", false),
     };
-    let existing_cf_score = crate::services::custom_formats::total_cf_score_for_release(
-        gate.cfs,
-        &existing_classification,
-        release_title,
-        release_group,
-        existing.size_bytes as i64,
-        "",
-        gate.seadex_hashes,
-    );
+    // Size 0 on both sides: RssItem carries no size, so a Size spec
+    // matching only the file on disk would tilt the comparison.
+    let existing_cf_score = scorable.then(|| {
+        crate::services::custom_formats::total_cf_score_for_release(
+            gate.cfs,
+            &existing_classification,
+            release_title,
+            release_group,
+            0,
+            "",
+            gate.seadex_hashes,
+        )
+    });
     let existing_file = source::ExistingFile {
         classification: &existing_classification,
         revision: media::parse_release_revision(release_title),

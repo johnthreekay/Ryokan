@@ -113,7 +113,11 @@ pub struct ExistingFile<'a> {
     pub revision: ReleaseRevision,
     pub release_group: &'a str,
     /// Custom Format total for the release that produced the file.
-    pub cf_score: i32,
+    /// `None` when there is no release record to score (a file with no
+    /// tag row): the renamed library file is not a release title, and
+    /// scoring it would make every pre-Ryokan file look like a
+    /// score-upgrade target.
+    pub cf_score: Option<i32>,
     /// Age of the file for the RSS revision window. `None` when the
     /// caller has no file date (the manual-import preview).
     pub age_days: Option<i64>,
@@ -154,6 +158,11 @@ impl UpgradeKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpgradeRejection {
     ExistingUnclassified,
+    /// The file is pinned (`manual_override`): nothing automatic
+    /// replaces it.
+    Pinned,
+    /// The file holds episodes the release does not cover (issue #246).
+    SpanNotCovered,
     BdmvCrossing,
     LowerQuality,
     CutoffMet,
@@ -165,38 +174,49 @@ pub enum UpgradeRejection {
     FormatScoreNotHigher,
     FormatCutoffMet,
     FormatIncrementNotMet,
+    /// The existing side has no release title to score.
+    FormatScoreUnknown,
 }
 
 impl UpgradeRejection {
-    pub fn as_str(self) -> &'static str {
+    /// The user-facing reason.
+    pub fn message(self) -> String {
         match self {
-            Self::ExistingUnclassified => "Existing file quality is unknown",
-            Self::BdmvCrossing => {
-                "Existing file is not a BDMV release; BDMV upgrades are manual only"
+            Self::ExistingUnclassified => "Existing file quality is unknown".to_string(),
+            Self::Pinned => "Existing file is pinned".to_string(),
+            Self::SpanNotCovered => {
+                "Existing file holds episodes this release does not cover".to_string()
             }
-            Self::LowerQuality => "Existing file is higher quality",
-            Self::CutoffMet => "Existing file meets the quality cutoff",
-            Self::RevisionUpgradesDisabled => "Revision upgrades are disabled",
+            Self::BdmvCrossing => {
+                "Existing file is not a BDMV release; BDMV upgrades are manual only".to_string()
+            }
+            Self::LowerQuality => "Existing file is higher quality".to_string(),
+            Self::CutoffMet => "Existing file meets the quality cutoff".to_string(),
+            Self::RevisionUpgradesDisabled => "Revision upgrades are disabled".to_string(),
             Self::RevisionGroupUnknown => {
                 "Release group is unknown; a revision must come from the group that made the file"
+                    .to_string()
             }
-            Self::RevisionGroupMismatch => "Revision is from a different release group",
-            Self::RevisionForOldFile => "Revision for a file older than 7 days",
-            Self::LowerRevision => "Existing file is a newer revision",
+            Self::RevisionGroupMismatch => "Revision is from a different release group".to_string(),
+            Self::RevisionForOldFile => {
+                format!("Revision for a file older than {PROPER_MAX_AGE_DAYS} days")
+            }
+            Self::LowerRevision => "Existing file is a newer revision".to_string(),
             Self::FormatScoreNotHigher => {
-                "Custom Format score does not improve on the existing file"
+                "Custom Format score does not improve on the existing file".to_string()
             }
-            Self::FormatCutoffMet => "Existing file meets the Custom Format cutoff",
+            Self::FormatCutoffMet => "Existing file meets the Custom Format cutoff".to_string(),
             Self::FormatIncrementNotMet => {
-                "Custom Format score gain is below the minimum increment"
+                "Custom Format score gain is below the minimum increment".to_string()
             }
+            Self::FormatScoreUnknown => "Existing file has no release record to score".to_string(),
         }
     }
 }
 
 impl std::fmt::Display for UpgradeRejection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+        f.write_str(&self.message())
     }
 }
 
@@ -238,7 +258,9 @@ pub fn judge_upgrade(
     let candidate_rank = candidate_cls.rank();
     match candidate_rank.cmp(&existing_rank) {
         std::cmp::Ordering::Greater => {
-            if !existing_cls.is_bdmv && candidate_cls.is_bdmv {
+            // The rank is higher, so the only thing `is_valid_upgrade`
+            // can still refuse is the BDMV crossing.
+            if !super::is_valid_upgrade(existing_cls, candidate_cls) {
                 return Err(UpgradeRejection::BdmvCrossing);
             }
             if existing_rank < policy.cutoff.rank() {
@@ -270,13 +292,16 @@ pub fn judge_upgrade(
             if prefer && existing.revision.is_newer_than(candidate.revision) {
                 return Err(UpgradeRejection::LowerRevision);
             }
-            if candidate.cf_score <= existing.cf_score {
+            let Some(existing_score) = existing.cf_score else {
+                return Err(UpgradeRejection::FormatScoreUnknown);
+            };
+            if candidate.cf_score <= existing_score {
                 return Err(UpgradeRejection::FormatScoreNotHigher);
             }
-            if existing.cf_score >= policy.format_cutoff_score {
+            if existing_score >= policy.format_cutoff_score {
                 return Err(UpgradeRejection::FormatCutoffMet);
             }
-            if candidate.cf_score < existing.cf_score.saturating_add(policy.format_increment) {
+            if candidate.cf_score < existing_score.saturating_add(policy.format_increment) {
                 return Err(UpgradeRejection::FormatIncrementNotMet);
             }
             Ok(UpgradeKind::FormatScore)
@@ -347,7 +372,7 @@ mod tests {
             classification: c,
             revision: rev(version),
             release_group: group,
-            cf_score: 0,
+            cf_score: Some(0),
             age_days: Some(1),
         }
     }
@@ -512,7 +537,7 @@ mod tests {
         let mut better = candidate(&c, 1, "G");
         better.cf_score = 50;
         let mut on_disk = existing(&e, 2, "G");
-        on_disk.cf_score = 10;
+        on_disk.cf_score = Some(10);
         p.format_cutoff_score = 100;
         assert_eq!(
             judge_upgrade(&p, &on_disk, &better, false),
@@ -537,7 +562,7 @@ mod tests {
         p.format_increment = 20;
         let (e, c) = (web1080(), web1080());
         let mut on_disk = existing(&e, 1, "A");
-        on_disk.cf_score = 10;
+        on_disk.cf_score = Some(10);
         let mut cand = candidate(&c, 1, "B");
         // Equal score: not higher.
         cand.cf_score = 10;
@@ -557,7 +582,7 @@ mod tests {
             Ok(UpgradeKind::FormatScore)
         );
         // Existing at the format cutoff: no score upgrade at all.
-        on_disk.cf_score = 100;
+        on_disk.cf_score = Some(100);
         cand.cf_score = 500;
         assert_eq!(
             judge_upgrade(&p, &on_disk, &cand, false),
@@ -579,11 +604,40 @@ mod tests {
             judge_upgrade(&p, &on_disk, &cand, false),
             Err(UpgradeRejection::FormatCutoffMet)
         );
-        on_disk.cf_score = -50;
+        on_disk.cf_score = Some(-50);
         cand.cf_score = 0;
         assert_eq!(
             judge_upgrade(&p, &on_disk, &cand, false),
             Ok(UpgradeKind::FormatScore)
+        );
+    }
+
+    #[test]
+    fn a_file_with_no_release_record_takes_no_score_upgrade() {
+        let p = policy(web1080());
+        let (e, c) = (web1080(), web1080());
+        let mut on_disk = existing(&e, 1, "A");
+        on_disk.cf_score = None;
+        let mut cand = candidate(&c, 1, "B");
+        cand.cf_score = 500;
+        assert_eq!(
+            judge_upgrade(&p, &on_disk, &cand, false),
+            Err(UpgradeRejection::FormatScoreUnknown)
+        );
+        // Quality still replaces it.
+        let bd = bd1080();
+        assert_eq!(
+            judge_upgrade(&policy(bd1080()), &on_disk, &candidate(&bd, 1, "B"), false),
+            Ok(UpgradeKind::Quality)
+        );
+    }
+
+    #[test]
+    fn old_file_message_names_the_window() {
+        assert!(
+            UpgradeRejection::RevisionForOldFile
+                .message()
+                .contains(&PROPER_MAX_AGE_DAYS.to_string())
         );
     }
 

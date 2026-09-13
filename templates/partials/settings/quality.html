@@ -73,7 +73,7 @@
                 <div class="form-group">
                     <label for="custom_format_cutoff_score">Upgrade Until Custom Format Score</label>
                     <input type="number" name="custom_format_cutoff_score" id="custom_format_cutoff_score" value="{{ config.custom_format_cutoff_score }}" step="1">
-                    <span class="form-hint">A file at the quality cutoff is still replaced by a same-quality release with a higher Custom Format score until its score reaches this. 0 turns score upgrades off.</span>
+                    <span class="form-hint">A file at the quality cutoff is still replaced by a same-quality release with a higher Custom Format score until its score reaches this. The default of 0 means no score upgrades for a file scoring 0 or better.</span>
                 </div>
                 <div class="form-group">
                     <label for="custom_format_upgrade_increment">Minimum Custom Format Score Increment</label>

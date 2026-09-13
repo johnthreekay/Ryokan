@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::AppState;
 use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, metadata_cache, series};
-use crate::services::source::{self, ClassificationResult, Resolution, Source};
+use crate::services::source::{self, ClassificationResult, Resolution};
 use crate::services::{auto_search, logger, media};
 
 static UPGRADE_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
@@ -33,7 +33,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
     // score) for the per-candidate gate below; the quality cutoff
     // pieces above still drive the target selection.
     let policy = source::UpgradePolicy::from_config(&cfg);
-    if cutoff_source == Source::Unknown && cutoff_resolution == Resolution::Unknown {
+    if !policy.has_quality_cutoff() {
         return Ok(UpgradeSummary {
             series_checked: 0,
             episodes_checked: 0,
@@ -154,7 +154,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
         // disk presence directly rather than monitor state.
         let on_disk_eps: Vec<i32> = disk_files.iter().flat_map(|f| f.episodes()).collect();
 
-        let mut upgrade_targets = auto_search::build_upgrade_targets(
+        let upgrade_targets = auto_search::build_upgrade_targets(
             &disk_files,
             &on_disk_eps,
             cutoff_source,
@@ -163,18 +163,12 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             cutoff_is_bdmv,
             &quality_tags,
         );
-        // Files at the quality cutoff whose Custom Format total is
-        // still under the format cutoff ("upgrade until Custom Format
-        // score"). Sonarr only reaches these through RSS; the sweep
-        // covers them too so a raised format cutoff acts on the
-        // library the user already has.
-        upgrade_targets.extend(format_cutoff_targets(
-            &disk_files,
-            &quality_tags,
-            &policy,
-            &cfs,
-            &upgrade_targets,
-        ));
+        // Targets are quality-only, as in Sonarr: a file at the quality
+        // cutoff with a Custom Format total under the format cutoff is
+        // reached through RSS, not swept. `find_best_for_target` returns
+        // one candidate and a higher-quality one is "cutoff met" for
+        // such a file, so sweeping it would burn a search per day that
+        // can never succeed.
         if upgrade_targets.is_empty() {
             continue;
         }
@@ -325,28 +319,33 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             {
                 let tag = quality_tags.get(ep_num);
                 let disk_file = disk_files.iter().find(|f| f.holds(*ep_num));
-                let (existing_title, existing_group) = match tag {
+                // No tag row: no group (no revision) and no score; the
+                // renamed library file is not a release title.
+                let (existing_title, existing_group, scorable) = match tag {
                     Some(t) if !t.release_title.is_empty() => {
-                        (t.release_title.as_str(), t.release_group.as_str())
+                        (t.release_title.as_str(), t.release_group.as_str(), true)
                     }
                     _ => (
                         disk_file.map(|f| f.filename.as_str()).unwrap_or_default(),
                         "",
+                        false,
                     ),
                 };
                 let existing_file = source::ExistingFile {
                     classification: existing_classification,
                     revision: media::parse_release_revision(existing_title),
                     release_group: existing_group,
-                    cf_score: crate::services::custom_formats::total_cf_score_for_release(
-                        &cfs,
-                        existing_classification,
-                        existing_title,
-                        existing_group,
-                        disk_file.map(|f| f.size_bytes as i64).unwrap_or(0),
-                        "",
-                        &no_seadex_hashes,
-                    ),
+                    cf_score: scorable.then(|| {
+                        crate::services::custom_formats::total_cf_score_for_release(
+                            &cfs,
+                            existing_classification,
+                            existing_title,
+                            existing_group,
+                            disk_file.map(|f| f.size_bytes as i64).unwrap_or(0),
+                            "",
+                            &no_seadex_hashes,
+                        )
+                    }),
                     age_days: None,
                 };
                 let candidate = source::UpgradeCandidate {
@@ -557,182 +556,6 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
         upgrades_grabbed: total_upgrades_grabbed,
         detail,
     })
-}
-
-/// Files that already meet the quality cutoff but whose Custom Format
-/// total is under `policy.format_cutoff_score`, as extra upgrade
-/// targets. Same exclusions as `build_upgrade_targets` (multi-episode
-/// files, pinned rows, files the classifier could not place), plus
-/// anything already targeted for quality. The score is computed from
-/// the tag row's release title, or the file name when there is no
-/// row, with no SeaDex hash on either side.
-fn format_cutoff_targets(
-    disk_files: &[media::EpisodeFile],
-    quality_tags: &HashMap<i32, episode_tags::EpisodeQualityTag>,
-    policy: &source::UpgradePolicy,
-    cfs: &[crate::services::custom_formats::CompiledCustomFormat],
-    already: &[(auto_search::SearchTarget, ClassificationResult)],
-) -> Vec<(auto_search::SearchTarget, ClassificationResult)> {
-    if cfs.is_empty() {
-        return Vec::new();
-    }
-    let targeted: HashSet<i32> = already
-        .iter()
-        .filter_map(|(t, _)| match t {
-            auto_search::SearchTarget::Episode(n) => Some(*n),
-            auto_search::SearchTarget::Single => None,
-        })
-        .collect();
-    let no_seadex: HashSet<String> = HashSet::new();
-    let mut out = Vec::new();
-    for file in disk_files {
-        let ep = file.episode_number;
-        if file.is_multi_episode() || targeted.contains(&ep) {
-            continue;
-        }
-        let tag = quality_tags.get(&ep);
-        if tag.is_some_and(|t| t.manual_override) {
-            continue;
-        }
-        let existing = auto_search::resolve_existing_classification(file, tag);
-        if existing.source == Source::Unknown && existing.resolution == Resolution::Unknown {
-            continue;
-        }
-        let (title, group) = match tag {
-            Some(t) if !t.release_title.is_empty() => {
-                (t.release_title.as_str(), t.release_group.as_str())
-            }
-            _ => (file.filename.as_str(), ""),
-        };
-        let score = crate::services::custom_formats::total_cf_score_for_release(
-            cfs,
-            &existing,
-            title,
-            group,
-            file.size_bytes as i64,
-            "",
-            &no_seadex,
-        );
-        if score < policy.format_cutoff_score {
-            out.push((auto_search::SearchTarget::Episode(ep), existing));
-        }
-    }
-    out.sort_by_key(|(t, _)| match t {
-        auto_search::SearchTarget::Episode(n) => *n,
-        auto_search::SearchTarget::Single => 0,
-    });
-    out
-}
-
-#[cfg(test)]
-mod format_cutoff_target_tests {
-    use super::*;
-    use crate::models::episode_tags::EpisodeQualityTag;
-    use crate::services::custom_formats::compile_from_json;
-    use crate::services::source::{ProperPolicy, UpgradePolicy};
-
-    fn file(ep: i32, name: &str) -> media::EpisodeFile {
-        media::EpisodeFile {
-            filename: name.to_string(),
-            episode_number: ep,
-            episode_last: ep,
-            season_number: Some(1),
-            quality: "WEB-1080p".to_string(),
-            size_bytes: 1_000,
-            size_display: String::new(),
-            modified_secs: None,
-            is_special: false,
-        }
-    }
-
-    fn tag(ep: i32, release_title: &str, pinned: bool) -> (i32, EpisodeQualityTag) {
-        (
-            ep,
-            EpisodeQualityTag {
-                episode_number: ep,
-                quality_tag: "WEB-1080p".to_string(),
-                release_title: release_title.to_string(),
-                release_group: "G".to_string(),
-                state: "completed".to_string(),
-                source: "Web".to_string(),
-                resolution: "1080p".to_string(),
-                is_remux: false,
-                is_bdmv: false,
-                web_kind: String::new(),
-                classification_confidence: 1.0,
-                needs_review: false,
-                manual_override: pinned,
-                classification_evidence: String::new(),
-                classification_attempted_at: None,
-            },
-        )
-    }
-
-    fn policy(format_cutoff_score: i32) -> UpgradePolicy {
-        UpgradePolicy {
-            cutoff: source::cutoff_classification(Source::Web, Resolution::R1080p, false, false),
-            propers: ProperPolicy::PreferAndUpgrade,
-            format_cutoff_score,
-            format_increment: 1,
-        }
-    }
-
-    /// One CF: +100 when the title carries `Dual-Audio`.
-    fn dual_audio_cf() -> Vec<crate::services::custom_formats::CompiledCustomFormat> {
-        let json = r#"{
-            "name": "Dual Audio",
-            "specifications": [{
-                "name": "dual", "implementation": "ReleaseTitleSpecification",
-                "negate": false, "required": false,
-                "fields": [{"name": "value", "value": "Dual-Audio"}]
-            }]
-        }"#;
-        vec![compile_from_json(json, 100, 1).expect("cf compiles")]
-    }
-
-    #[test]
-    fn files_under_the_format_cutoff_become_targets() {
-        let files = vec![
-            file(1, "Show - S01E01.mkv"),
-            file(2, "Show - S01E02.mkv"),
-            file(3, "Show - S01E03.mkv"),
-            file(4, "Show - S01E04.mkv"),
-        ];
-        let tags: HashMap<i32, EpisodeQualityTag> = [
-            tag(1, "[G] Show - 01 (1080p)", false),
-            tag(2, "[G] Show - 02 (1080p) [Dual-Audio]", false),
-            tag(3, "[G] Show - 03 (1080p)", true),
-        ]
-        .into_iter()
-        .collect();
-        let already = vec![(
-            auto_search::SearchTarget::Episode(4),
-            source::classify_release_sync("Show - S01E04.mkv", None),
-        )];
-        let targets =
-            format_cutoff_targets(&files, &tags, &policy(100), &dual_audio_cf(), &already);
-        let eps: Vec<i32> = targets
-            .iter()
-            .map(|(t, _)| match t {
-                auto_search::SearchTarget::Episode(n) => *n,
-                auto_search::SearchTarget::Single => 0,
-            })
-            .collect();
-        // 1: score 0 < 100, targeted. 2: score 100, meets the cutoff.
-        // 3: pinned. 4: already a quality target.
-        assert_eq!(eps, vec![1]);
-    }
-
-    #[test]
-    fn no_custom_formats_or_a_zero_cutoff_yields_nothing() {
-        let files = vec![file(1, "Show - S01E01.mkv")];
-        let tags: HashMap<i32, EpisodeQualityTag> = [tag(1, "[G] Show - 01 (1080p)", false)]
-            .into_iter()
-            .collect();
-        assert!(format_cutoff_targets(&files, &tags, &policy(100), &[], &[]).is_empty());
-        // Default cutoff 0: a file scoring 0 meets it.
-        assert!(format_cutoff_targets(&files, &tags, &policy(0), &dual_audio_cf(), &[]).is_empty());
-    }
 }
 
 #[cfg(test)]

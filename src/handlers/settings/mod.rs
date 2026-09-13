@@ -868,10 +868,6 @@ fn validate_source(value: &str, default: &str) -> String {
     }
 }
 
-/// Validate a form-submitted cutoff-source string. Like `validate_source`
-/// but also passes through the BluRay sub-tier markers "bluray_remux" and
-/// "bluray_bdmv" so settings can store BD Remux / BD RAW as distinct
-/// cutoffs. Reads go through `source::parse_cutoff_source`.
 /// Blank keeps `current`; anything else has to parse as an integer.
 fn parse_optional_int(value: &str, current: i32) -> Result<i32, ()> {
     let trimmed = value.trim();
@@ -881,6 +877,10 @@ fn parse_optional_int(value: &str, current: i32) -> Result<i32, ()> {
     trimmed.parse::<i32>().map_err(|_| ())
 }
 
+/// Validate a form-submitted cutoff-source string. Like `validate_source`
+/// but also passes through the BluRay sub-tier markers "bluray_remux" and
+/// "bluray_bdmv" so settings can store BD Remux / BD RAW as distinct
+/// cutoffs. Reads go through `source::parse_cutoff_source`.
 fn validate_cutoff_source(value: &str, default: &str) -> String {
     if value == "bluray_remux" || value == "bluray_bdmv" {
         return value.to_string();
@@ -2137,9 +2137,13 @@ pub async fn settings_quality_submit(
         preferred_resolution: validate_resolution(&form.preferred_resolution, "1080"),
         cutoff_source: validate_cutoff_source(&form.cutoff_source, "bluray"),
         cutoff_resolution: validate_resolution(&form.cutoff_resolution, "1080"),
-        proper_policy: crate::services::source::ProperPolicy::from_str(&form.proper_policy)
-            .as_str()
-            .to_string(),
+        proper_policy: if form.proper_policy.trim().is_empty() {
+            existing_cfg.proper_policy.clone()
+        } else {
+            crate::services::source::ProperPolicy::from_str(&form.proper_policy)
+                .as_str()
+                .to_string()
+        },
         custom_format_cutoff_score,
         custom_format_upgrade_increment,
         finished_series_quality: match form.finished_series_quality.as_str() {
