@@ -116,10 +116,12 @@
 /* Issue #116 — Calendar nav entry shape. Two variants:
    - `.nav-calendar-desktop`: regular labeled link in the topbar
      between Library and bulk-select. Always rendered; hidden on
-     mobile via the `.nav-links > *:not(...)` filter below.
+     mobile via the `.nav-links > *:not(...)` filter below. The
+     Wanted link reuses it.
    - `.nav-calendar-mobile`: icon-only library-page-only entry,
      whitelisted through the mobile filter so it shows up next to
-     the bulk-select toggle on mobile. Hidden on desktop. */
+     the bulk-select toggle on mobile. Hidden on desktop. The Wanted
+     icon reuses it too. */
 .nav-calendar-mobile {
     display: none;
     align-items: center;

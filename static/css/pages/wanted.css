@@ -26,6 +26,10 @@
     border-bottom: 1px solid var(--border);
 }
 
+.wanted-select-all-row {
+    flex-shrink: 0;
+}
+
 .wanted-rows {
     list-style: none;
     margin: 0;

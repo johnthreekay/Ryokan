@@ -24,6 +24,7 @@
            hx-push-url="true"
            class="wanted-tab {% if tab == "missing" %}active{% endif %}"
            role="tab"
+           data-tab="missing"
            aria-selected="{% if tab == "missing" %}true{% else %}false{% endif %}">Missing</a>
         <a href="/wanted?tab=cutoff"
            hx-get="/wanted?tab=cutoff"
@@ -32,6 +33,7 @@
            hx-push-url="true"
            class="wanted-tab {% if tab == "cutoff" %}active{% endif %}"
            role="tab"
+           data-tab="cutoff"
            aria-selected="{% if tab == "cutoff" %}true{% else %}false{% endif %}">Cutoff unmet</a>
     </div>
     <label class="checkbox-row wanted-select-all-row">

@@ -159,6 +159,13 @@ pub async fn run_auto_search_targets(
 #[derive(Deserialize, Default)]
 pub struct AutoSearchQuery {
     pub progress_id: Option<String>,
+    /// Build the upgrade targets from every episode on disk rather
+    /// than the monitored ones. The Wanted page's cutoff tab lists
+    /// files the daily sweep would upgrade regardless of monitoring,
+    /// so its Search has to reach them under the default `future`
+    /// mode, where an on-disk episode is never monitored.
+    #[serde(default)]
+    pub include_disk_upgrades: bool,
 }
 
 /// Pick a user-facing title for progress toasts. Prefers the English
@@ -1008,9 +1015,14 @@ pub async fn auto_search_series(
     } else {
         std::collections::HashMap::new()
     };
+    let upgrade_candidates: &[i32] = if q.include_disk_upgrades {
+        &existing_eps
+    } else {
+        &monitored_eps
+    };
     let upgrade_targets = auto_search::build_upgrade_targets(
         &existing_files,
-        &monitored_eps,
+        upgrade_candidates,
         cutoff_source,
         cutoff_resolution,
         cutoff_is_remux,

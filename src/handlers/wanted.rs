@@ -33,7 +33,11 @@ use crate::AppState;
 use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, local_metadata, monitoring, series};
 use crate::services::source::{self, Resolution};
-use crate::services::{auto_search, logger, media, progress};
+use crate::services::{auto_search, logger, media, naming, progress};
+
+/// Most series ids one search request may carry; a library is the
+/// natural ceiling and the lookups run one per id.
+const MAX_SEARCH_IDS: usize = 5_000;
 
 /// One search at a time: a second "search all" while one runs is
 /// refused with 409 rather than queued behind it.
@@ -72,13 +76,19 @@ impl WantedRow {
 /// (`aired` count, else the series' episode total, none for a series
 /// not yet released), is not on disk (season 1 or unseasoned files
 /// only, the library card rule), is not a completed tag row, and is
-/// not a `grabbed` tag row (downloading).
+/// not a `grabbed` tag row (downloading). Titles follow
+/// `title_language` like every other page.
+///
+/// `aired` is a count of aired episode rows, read as the highest aired
+/// number: the two agree for the contiguous 1..N numbering AniList
+/// hands out, which is what the library cards assume too.
 pub fn build_missing_rows(
     library: &[series::Series],
     disk: &HashMap<i64, Vec<media::EpisodeFile>>,
     tag_rows: &[(i64, i32, String)],
     aired: &HashMap<i64, i64>,
     monitored: &HashMap<i64, HashSet<i32>>,
+    title_language: &str,
 ) -> Vec<WantedRow> {
     let mut completed: HashMap<i64, HashSet<i32>> = HashMap::new();
     let mut grabbed: HashMap<i64, HashSet<i32>> = HashMap::new();
@@ -94,6 +104,8 @@ pub fn build_missing_rows(
         if s.monitor_mode == "none" {
             continue;
         }
+        // No monitor rows at all means monitoring never computed for
+        // the series (no episode count yet); nothing to want.
         let Some(monitored_eps) = monitored.get(&s.id) else {
             continue;
         };
@@ -136,7 +148,7 @@ pub fn build_missing_rows(
         rows.push(WantedRow {
             series_id: s.id,
             anilist_id: s.anilist_id,
-            title: s.title.clone(),
+            title: naming::SeriesNames::from_series(s).preferred_title(title_language),
             cover_url: s.cover_url.clone(),
             slots: wanted
                 .into_iter()
@@ -201,7 +213,7 @@ async fn build_cutoff_rows(
         rows.push(WantedRow {
             series_id: s.id,
             anilist_id: s.anilist_id,
-            title: s.title.clone(),
+            title: naming::SeriesNames::from_series(s).preferred_title(&cfg.title_language),
             cover_url: s.cover_url.clone(),
             slots,
         });
@@ -272,6 +284,7 @@ pub async fn page(
             &tag_rows.unwrap_or_default(),
             &aired.unwrap_or_default(),
             &monitored.unwrap_or_default(),
+            &cfg.title_language,
         )
     };
     if is_htmx && !is_boosted {
@@ -296,6 +309,11 @@ pub async fn page(
 pub struct WantedSearchRequest {
     /// Library series ids (`series.id`), searched in the order given.
     pub series_ids: Vec<i64>,
+    /// `missing` (default) or `cutoff`. The cutoff tab's search builds
+    /// its upgrade targets from every file on disk, not only the
+    /// monitored episodes, so it can reach what the tab lists.
+    #[serde(default)]
+    pub tab: Option<String>,
 }
 
 /// `POST /api/wanted/search?progress_id=<id>`: run each series' own
@@ -319,23 +337,19 @@ pub async fn search(
     Query(q): Query<crate::handlers::library::search::AutoSearchQuery>,
     Json(req): Json<WantedSearchRequest>,
 ) -> Response {
-    let mut seen: HashSet<i64> = HashSet::new();
-    let mut targets: Vec<(i64, String)> = Vec::new();
-    for id in req.series_ids {
-        if !seen.insert(id) {
-            continue;
-        }
-        if let Ok(Some(row)) = series::get_by_id(&state.db, id).await {
-            targets.push((row.anilist_id, row.title));
-        }
-    }
-    if targets.is_empty() {
+    if req.series_ids.len() > MAX_SEARCH_IDS {
         return (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "message": "No series to search."})),
+            Json(serde_json::json!({
+                "ok": false,
+                "message": format!("At most {MAX_SEARCH_IDS} series per search.")
+            })),
         )
             .into_response();
     }
+    // The lock first, so a refused request registers no progress job;
+    // then the job, before any lookup, so the toast's stream finds it
+    // (the page opens the stream as it sends the request).
     let Ok(guard) = WANTED_SEARCH_LOCK.try_lock() else {
         return (
             StatusCode::CONFLICT,
@@ -350,64 +364,117 @@ pub async fn search(
         Some(id) => Some(state.progress.register(id).await),
         None => None,
     };
+    let include_disk_upgrades = req.tab.as_deref() == Some("cutoff");
+    let mut seen: HashSet<i64> = HashSet::new();
+    let mut targets: Vec<(i64, String)> = Vec::new();
+    for id in req.series_ids {
+        if !seen.insert(id) {
+            continue;
+        }
+        if let Ok(Some(row)) = series::get_by_id(&state.db, id).await {
+            targets.push((row.anilist_id, row.title));
+        }
+    }
+    if targets.is_empty() {
+        if let Some(h) = &handle {
+            h.emit("done", "error", "No series to search", None, true)
+                .await;
+        }
+        drop(guard);
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"ok": false, "message": "No series to search."})),
+        )
+            .into_response();
+    }
     let queued = targets.len();
     let state_for_task = state.clone();
     tokio::spawn(async move {
         let _guard = guard;
         let state = state_for_task;
         let total = targets.len();
-        let mut grabbed = 0usize;
-        let mut errors = 0usize;
-        for (i, (anilist_id, title)) in targets.into_iter().enumerate() {
-            if let Some(h) = &handle {
-                h.emit(
-                    "search",
-                    "info",
-                    format!("Searching {title}"),
-                    Some(format!("{} of {total}", i + 1)),
-                    false,
-                )
-                .await;
-            }
-            let result = crate::handlers::library::search::auto_search_series(
-                State(state.clone()),
-                Path(anilist_id),
-                Query(crate::handlers::library::search::AutoSearchQuery::default()),
-            )
-            .await;
-            match result {
-                Ok(report) => grabbed += report.0.grabbed.len(),
-                Err((_, e)) => {
-                    errors += 1;
-                    logger::warn(
-                        &state.db,
-                        LogCategory::AutoSearch,
-                        &format!("Wanted search: '{title}' failed"),
-                        &e,
+        let handle_for_loop = handle.clone();
+        let state_for_loop = state.clone();
+        // The loop runs in its own task so a panic inside one series'
+        // search still ends with a terminal event: a toast with no
+        // end would spin forever and its job would never be swept.
+        let loop_task = tokio::spawn(async move {
+            let state = state_for_loop;
+            let handle = handle_for_loop;
+            let mut grabbed = 0usize;
+            let mut errors = 0usize;
+            for (i, (anilist_id, title)) in targets.into_iter().enumerate() {
+                if let Some(h) = &handle {
+                    h.emit(
+                        "search",
+                        "info",
+                        format!("Searching {title}"),
+                        Some(format!("{} of {total}", i + 1)),
+                        false,
                     )
                     .await;
                 }
+                // Not wrapped in `progress::scope` on purpose: the
+                // series search's own `progress::emit` calls (its
+                // terminal "done" included) are no-ops here, so only
+                // this task writes to the toast.
+                let result = crate::handlers::library::search::auto_search_series(
+                    State(state.clone()),
+                    Path(anilist_id),
+                    Query(crate::handlers::library::search::AutoSearchQuery {
+                        progress_id: None,
+                        include_disk_upgrades,
+                    }),
+                )
+                .await;
+                match result {
+                    Ok(report) => grabbed += report.0.grabbed.len(),
+                    Err((_, e)) => {
+                        errors += 1;
+                        logger::warn(
+                            &state.db,
+                            LogCategory::AutoSearch,
+                            &format!("Wanted search: '{title}' failed"),
+                            &e,
+                        )
+                        .await;
+                    }
+                }
             }
+            (grabbed, errors)
+        });
+        let (summary, kind) = match loop_task.await {
+            Ok((grabbed, errors)) => {
+                let summary = format!(
+                    "Searched {total} series, grabbed {grabbed} release{}{}",
+                    if grabbed == 1 { "" } else { "s" },
+                    if errors > 0 {
+                        format!(", {errors} failed")
+                    } else {
+                        String::new()
+                    }
+                );
+                let kind = if errors == total {
+                    "error"
+                } else if errors == 0 {
+                    "success"
+                } else {
+                    "warn"
+                };
+                (summary, kind)
+            }
+            Err(join_error) => (
+                format!("Wanted search stopped early: {join_error}"),
+                "error",
+            ),
+        };
+        if kind == "error" {
+            logger::error(&state.db, LogCategory::AutoSearch, &summary, "").await;
+        } else {
+            logger::info(&state.db, LogCategory::AutoSearch, &summary, "").await;
         }
-        let summary = format!(
-            "Searched {total} series, grabbed {grabbed} release{}{}",
-            if grabbed == 1 { "" } else { "s" },
-            if errors > 0 {
-                format!(", {errors} failed")
-            } else {
-                String::new()
-            }
-        );
-        logger::info(&state.db, LogCategory::AutoSearch, &summary, "").await;
         if let Some(h) = &handle {
-            h.emit(
-                "done",
-                if grabbed > 0 { "success" } else { "warn" },
-                summary,
-                None,
-                true,
-            )
-            .await;
+            h.emit("done", kind, summary, None, true).await;
         }
     });
     (
@@ -491,7 +558,7 @@ mod tests {
         monitored.insert(2, (1..=12).collect::<HashSet<i32>>());
         monitored.insert(3, (1..=12).collect::<HashSet<i32>>());
         monitored.insert(4, [2, 3, 9].into_iter().collect::<HashSet<i32>>());
-        let rows = build_missing_rows(&library, &disk, &tag_rows, &aired, &monitored);
+        let rows = build_missing_rows(&library, &disk, &tag_rows, &aired, &monitored, "romaji");
         let by_id: HashMap<i64, Vec<i32>> = rows
             .iter()
             .map(|r| (r.series_id, r.slots.iter().map(|s| s.episode).collect()))
@@ -580,10 +647,31 @@ mod tests {
             Query(crate::handlers::library::search::AutoSearchQuery::default()),
             Json(WantedSearchRequest {
                 series_ids: vec![999],
+                tab: None,
             }),
         )
         .await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn search_is_refused_while_one_is_running() {
+        use crate::test_support::{build_test_app_state, in_memory_pool, seed_series};
+        let db = in_memory_pool().await;
+        let id = seed_series(&db, 1, "Show").await;
+        let state = build_test_app_state(db, None);
+        let held = WANTED_SEARCH_LOCK.lock().await;
+        let resp = search(
+            State(state),
+            Query(crate::handlers::library::search::AutoSearchQuery::default()),
+            Json(WantedSearchRequest {
+                series_ids: vec![id],
+                tab: Some("cutoff".to_string()),
+            }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+        drop(held);
     }
 
     #[test]
@@ -594,7 +682,14 @@ mod tests {
         a.title = "Alpha".to_string();
         let monitored: HashMap<i64, HashSet<i32>> =
             [(1, [1].into()), (2, [1].into())].into_iter().collect();
-        let rows = build_missing_rows(&[b, a], &HashMap::new(), &[], &HashMap::new(), &monitored);
+        let rows = build_missing_rows(
+            &[b, a],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &monitored,
+            "romaji",
+        );
         let titles: Vec<&str> = rows.iter().map(|r| r.title.as_str()).collect();
         assert_eq!(titles, vec!["Alpha", "beta"]);
     }
