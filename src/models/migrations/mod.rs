@@ -2894,6 +2894,14 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(db)
         .await
         .ok();
+        // Sonarr's "Redownload failed": search again when the download
+        // client reports a grab as failed. Default on, like Sonarr.
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN auto_redownload_failed INTEGER NOT NULL DEFAULT 1",
+        )
+        .execute(db)
+        .await
+        .ok();
     }
 
     {

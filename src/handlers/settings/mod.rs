@@ -398,6 +398,8 @@ pub struct SettingsForm {
     manual_search_auto_add: Option<String>,
     #[serde(default)]
     misgrab_auto_remove: Option<String>,
+    #[serde(default)]
+    auto_redownload_failed: Option<String>,
     /// Recycle bin (#123). Settings → General.
     #[serde(default)]
     recycle_bin_path: String,
@@ -613,6 +615,8 @@ pub struct GeneralForm {
     manual_search_auto_add: Option<String>,
     #[serde(default)]
     misgrab_auto_remove: Option<String>,
+    #[serde(default)]
+    auto_redownload_failed: Option<String>,
     /// Grabbing section: the interactive file picker (#83) and the two
     /// switches that used to live on System → Debug.
     #[serde(default)]
@@ -1083,6 +1087,14 @@ pub async fn settings_submit(
             existing_cfg
                 .as_ref()
                 .map(|c| c.misgrab_auto_remove)
+                .unwrap_or(true)
+        },
+        auto_redownload_failed: if form.tab.as_deref() == Some("general") {
+            form.auto_redownload_failed.is_some()
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.auto_redownload_failed)
                 .unwrap_or(true)
         },
         active_client: match form.active_client.trim() {
@@ -1763,6 +1775,7 @@ pub async fn settings_general_submit(
         search_on_monitoring_change: form.search_on_monitoring_change.is_some(),
         manual_search_auto_add: form.manual_search_auto_add.is_some(),
         misgrab_auto_remove: form.misgrab_auto_remove.is_some(),
+        auto_redownload_failed: form.auto_redownload_failed.is_some(),
         grab_preview_mode: resolve_grab_preview_mode(
             form.grab_preview_mode.as_deref(),
             Some("general"),

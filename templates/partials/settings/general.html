@@ -105,6 +105,13 @@
                     </span>
                     <input type="checkbox" name="misgrab_auto_remove" id="misgrab_auto_remove" {% if config.misgrab_auto_remove %}checked{% endif %}>
                 </label>
+                <label class="setting-row">
+                    <span class="setting-row-text">
+                        <span class="setting-row-title">Search again after a failed download</span>
+                        <span class="setting-row-desc">When the download client reports a grab as failed, the release is blocklisted and a replacement is searched for. Stops after three failed grabs of one series in a day. Imports that fail are left for you to look at.</span>
+                    </span>
+                    <input type="checkbox" name="auto_redownload_failed" id="auto_redownload_failed" {% if config.auto_redownload_failed %}checked{% endif %}>
+                </label>
             </div>
         </div>
 

@@ -2959,6 +2959,10 @@ pub async fn run_once(state: &AppState) {
         // which mis-labelled SAB/Deluge/Transmission/rtorrent
         // failures with a qBit prefix.
         if torrent.state_kind.is_errored() {
+            // The client's own failure report (Sonarr's `DownloadItemStatus.
+            // Failed`): the grab fails with a reason, its history rows
+            // fail, and, unlike an import failure, a replacement is
+            // searched for.
             logger::warn(
                 &state.db,
                 LogCategory::PostProcess,
@@ -2966,7 +2970,32 @@ pub async fn run_once(state: &AppState) {
                 &format!("state={} kind={:?}", torrent.state, torrent.state_kind),
             )
             .await;
-            let _ = grabbed_torrents::mark_failed(&state.db, grab.id).await;
+            let _ = grabbed_torrents::mark_failed_with_reason(
+                &state.db,
+                grab.id,
+                crate::services::redownload::CLIENT_ERROR_REASON,
+            )
+            .await;
+            let _ = episode_tags::mark_grab_failed_for_release(
+                &state.db,
+                grab.series_id,
+                &grab.torrent_name,
+            )
+            .await;
+            crate::services::notifications::emit_import_failed(
+                state,
+                grab.series_id,
+                grab.episode_numbers.first().copied(),
+                &grab.torrent_name,
+                &format!("the download client reported an error ({})", torrent.state),
+            )
+            .await;
+            crate::services::redownload::after_failed_download(
+                state,
+                grab,
+                "a download client error",
+            )
+            .await;
             continue;
         }
 

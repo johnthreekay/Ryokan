@@ -148,11 +148,12 @@ fn fake_torrent(hash: &str, state_kind: DownloadItemState) -> DownloadItem {
 /// guard for every match and never enters `import_torrent`.
 async fn seed_config(db: &sqlx::SqlitePool) {
     sqlx::query(
-        "INSERT INTO config (id, post_processing_enabled, media_root) \
-         VALUES (1, 1, '/tmp/test-media-root') \
+        "INSERT INTO config (id, post_processing_enabled, media_root, auto_redownload_failed) \
+         VALUES (1, 1, '/tmp/test-media-root', 0) \
          ON CONFLICT(id) DO UPDATE SET \
              post_processing_enabled = 1, \
-             media_root = '/tmp/test-media-root'",
+             media_root = '/tmp/test-media-root', \
+             auto_redownload_failed = 0",
     )
     .execute(db)
     .await
@@ -887,6 +888,23 @@ async fn run_once_marks_grab_failed_when_client_reports_torrent_in_error_state()
     assert_eq!(
         final_state, "failed",
         "errored torrent must transition to 'failed', not stay 'pending' or get marked 'removed'"
+    );
+    let reason: String = sqlx::query_scalar(
+        "SELECT COALESCE(failure_reason, '') FROM grabbed_torrents WHERE id = ?",
+    )
+    .bind(g)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        reason,
+        crate::services::redownload::CLIENT_ERROR_REASON,
+        "a client-reported failure carries its reason onto the blocklist row"
+    );
+    assert_eq!(
+        grabbed_torrents::count_recent_failed(&db, series_id, 24).await,
+        1,
+        "the failed grab counts toward the re-search loop breaker"
     );
 }
 

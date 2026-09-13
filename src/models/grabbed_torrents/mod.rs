@@ -1412,6 +1412,7 @@ impl GrabbedTorrentWithSeries {
         match self.failure_reason.as_str() {
             "misgrab" => "Misgrab",
             "import_stalled" => "Import stalled",
+            "client_error" => "Download failed",
             other => other,
         }
     }
@@ -1725,6 +1726,21 @@ pub async fn blocklist_snapshot(db: &SqlitePool, anilist_id: i64) -> BlocklistSn
 
 /// Misgrabs detected for the series within the window; the re-search
 /// loop breaker.
+/// Failed grabs of a series grabbed within the last `hours`: the
+/// loop breaker for the automatic re-search after a failed download.
+pub async fn count_recent_failed(db: &SqlitePool, series_id: i64, hours: i64) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM grabbed_torrents \
+         WHERE series_id = ? AND state = 'failed' \
+           AND grabbed_at >= datetime('now', ? || ' hours')",
+    )
+    .bind(series_id)
+    .bind(format!("-{hours}"))
+    .fetch_one(db)
+    .await
+    .unwrap_or(0)
+}
+
 pub async fn count_recent_misgrabs(db: &SqlitePool, series_id: i64, hours: i64) -> i64 {
     sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM grabbed_torrents \

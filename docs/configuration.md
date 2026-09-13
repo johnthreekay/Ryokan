@@ -109,6 +109,7 @@ Day-to-day knobs.
 - **Interactive file picker**: whether the file picker opens for multi-file releases. **Batches only** (default) opens it for batches and one-clicks single-file releases; **Never** is one-click everywhere.
 - **Search for monitored episodes when a series is added**: on by default. Off adds the series without starting a download.
 - **Remove and blocklist detected misgrabs**: when the files inside a download clearly name a different series, Ryokan removes the download from the client, blocklists the release, notifies you, and searches again. On by default. Off keeps the download in the client, never imports it, and lists it under System, Misgrabs for you to restore or dismiss.
+- **Search again after a failed download**: when the download client reports a grab as failed (an error state, missing files), Ryokan blocklists the release, notifies you, and searches for a replacement right away, the way Sonarr's failed download handling does. On by default. It stops after three failed grabs of one series within a day so a broken indexer cannot loop. An import that fails is different: the download is fine, something on your side is not, so Ryokan leaves it for you to look at rather than downloading the same thing again.
 
 ## On the System page (not Settings)
 
