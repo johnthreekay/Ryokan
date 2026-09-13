@@ -696,14 +696,11 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
     > = HashMap::new();
 
-    let (cutoff_src, cutoff_is_remux, cutoff_is_bdmv) =
-        source::parse_cutoff_source(&cfg.cutoff_source);
-    let cutoff = source::cutoff_classification(
-        cutoff_src,
-        Resolution::from_str(&cfg.cutoff_resolution),
-        cutoff_is_remux,
-        cutoff_is_bdmv,
-    );
+    // Upgrade policy for the on-disk gate: quality cutoff, proper
+    // policy, and the Custom Format cutoff / increment, read once per
+    // sync. `now_secs` anchors the RSS revision window.
+    let policy = source::UpgradePolicy::from_config(&cfg);
+    let now_secs = chrono::Utc::now().timestamp();
 
     let mut items_seen = 0;
     let mut matched = 0;
@@ -945,13 +942,35 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             }),
         )
         .await;
+        // The release's own Custom Format total, compared against the
+        // on-disk file's inside the upgrade gate. Same evaluator call
+        // `score_candidate` makes; RssItem carries no size, so Size
+        // specs stay unmatched on this side too.
+        let incoming_cf_score = crate::services::custom_formats::total_cf_score_for_release(
+            &cfs,
+            &incoming_classification,
+            &item.title,
+            &item.group,
+            0,
+            &item.info_hash,
+            &empty_seadex_hashes,
+        );
+        let gate = UpgradeGate {
+            policy: &policy,
+            cfs: &cfs,
+            seadex_hashes: &empty_seadex_hashes,
+            now_secs,
+            incoming_revision: media::parse_release_revision(&item.title),
+            incoming_group: &item.group,
+            incoming_cf_score,
+        };
         let decision = evaluate_candidate(
             &found.series,
             &item,
             &incoming_classification,
             disk_files,
             &actionable_eps,
-            &cutoff,
+            &gate,
             qtags,
         );
         if let Some(reason) = decision.reject_reason {
@@ -1634,6 +1653,14 @@ async fn score_candidate(
         "range" => score += 10,
         _ => score -= 10,
     }
+    // Release revision: same bonus the Nyaa scorer gives a `v2` /
+    // PROPER / REPACK, off under the `do_not_prefer` proper policy.
+    if source::ProperPolicy::from_str(&cfg.proper_policy).prefers_revisions()
+        && let Some((delta, _)) =
+            crate::services::scoring::revision_bonus(media::parse_release_revision(&item.title))
+    {
+        score += delta;
+    }
 
     // CF overlay — the auto-search and upgrade paths fold the user's
     // compiled Custom Formats into scoring at the equivalent layer; RSS
@@ -1676,13 +1703,28 @@ fn resolution_rank(value: &str) -> i32 {
 /// Synchronous: no DB or HTTP inside this function. All the live
 /// lookups happen in the caller before calling this. That also makes
 /// the function unit-testable without a pool or mock client.
+/// Everything the on-disk upgrade gate needs beyond the item's
+/// classification: the user's policy, the compiled Custom Formats
+/// (to score the file on disk), and the release's own revision, group
+/// and CF total.
+pub(crate) struct UpgradeGate<'a> {
+    pub policy: &'a source::UpgradePolicy,
+    pub cfs: &'a [crate::services::custom_formats::CompiledCustomFormat],
+    pub seadex_hashes: &'a HashSet<String>,
+    /// Unix seconds "now", for the file-age window.
+    pub now_secs: i64,
+    pub incoming_revision: media::ReleaseRevision,
+    pub incoming_group: &'a str,
+    pub incoming_cf_score: i32,
+}
+
 fn evaluate_candidate(
     found: &series::Series,
     item: &RssItem,
     incoming: &ClassificationResult,
     disk_files: &[media::EpisodeFile],
     parsed_eps: &HashSet<i32>,
-    cutoff: &ClassificationResult,
+    gate: &UpgradeGate<'_>,
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
 ) -> CandidateDecision {
     let existing_ep_numbers: HashSet<i32> = disk_files.iter().flat_map(|f| f.episodes()).collect();
@@ -1716,9 +1758,10 @@ fn evaluate_candidate(
                             parsed_eps,
                             disk_files,
                             incoming,
-                            cutoff,
+                            gate,
                             quality_tags,
                         )
+                        .is_ok()
                 })
                 .count() as i32;
             let actionable = new_count + upgrade_count;
@@ -1797,25 +1840,29 @@ fn evaluate_candidate(
         .iter()
         .filter(|ep| !existing_ep_numbers.contains(ep))
         .count() as i32;
-    let upgrade_count = parsed_eps
+    let mut upgrade_count: i32 = 0;
+    let mut last_rejection: Option<source::UpgradeRejection> = None;
+    for ep in parsed_eps
         .iter()
-        .filter(|ep| {
-            existing_ep_numbers.contains(ep)
-                && episode_is_upgradeable(
-                    ep,
-                    parsed_eps,
-                    disk_files,
-                    incoming,
-                    cutoff,
-                    quality_tags,
-                )
-        })
-        .count() as i32;
+        .filter(|ep| existing_ep_numbers.contains(ep))
+    {
+        match episode_is_upgradeable(ep, parsed_eps, disk_files, incoming, gate, quality_tags) {
+            Ok(_) => upgrade_count += 1,
+            Err(rejection) => last_rejection = Some(rejection),
+        }
+    }
     let actionable = new_count + upgrade_count;
 
     if actionable == 0 {
+        // The gate's own words when it had a verdict (a `v2` from
+        // another group, a file at the cutoff); the multi-episode
+        // span rule and an unplaceable file keep the generic line.
+        let reason = match last_rejection {
+            Some(rejection) => format!("Episode is already on disk: {rejection}"),
+            None => "Episode is already on disk at or above cutoff".to_string(),
+        };
         return CandidateDecision {
-            reject_reason: Some("Episode is already on disk at or above cutoff".to_string()),
+            reject_reason: Some(reason),
             new_episode_count: 0,
             is_upgrade: false,
         };
@@ -1828,47 +1875,78 @@ fn evaluate_candidate(
     }
 }
 
-/// Check if an episode on disk is below the quality cutoff and the
-/// already-classified incoming release would be an upgrade.
+/// Decide whether the release would upgrade the file on disk for
+/// `ep`. `Err` carries the gate's reason (`source::judge_upgrade`),
+/// `Ok` the kind of upgrade.
+///
+/// The multi-episode span rule (issue #246) runs first: a file holding
+/// several episodes is only replaced by a release that covers every
+/// one of them. The existing side is rehydrated from the tag row
+/// (structured columns, else its release title), its revision and
+/// group from the same row's release title and group, its Custom
+/// Format total from the compiled set against that release title,
+/// and its age from the file's mtime. A file with no tag row has no
+/// known group, so a revision can never replace it (Sonarr's
+/// "existing release group is unknown"), while quality and score
+/// upgrades still can.
 ///
 /// Caller is responsible for running the incoming classification once
 /// per item (it's expensive enough — group-map DB lookup + potentially
 /// a description fetch — that re-doing it per covered episode in a
-/// batch would be wasteful). Existing side still classifies
-/// per-episode because each row on disk can have its own
-/// `episode_quality_tags` verdict.
+/// batch would be wasteful).
 fn episode_is_upgradeable(
     ep: &i32,
     parsed_eps: &HashSet<i32>,
     disk_files: &[media::EpisodeFile],
     incoming: &ClassificationResult,
-    cutoff: &ClassificationResult,
+    gate: &UpgradeGate<'_>,
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
-) -> bool {
+) -> Result<source::UpgradeKind, source::UpgradeRejection> {
     let Some(existing) = disk_files.iter().find(|f| f.holds(*ep)) else {
-        return false; // not on disk — not an "upgrade", it's a new episode
+        // Not on disk: a new episode, not an upgrade. Callers never
+        // ask about one, so any verdict here is unreachable in
+        // practice; "unclassified" is the conservative one.
+        return Err(source::UpgradeRejection::ExistingUnclassified);
     };
     // A multi-episode file (issue #246) is only replaced by a release
     // that covers every episode it holds; the import would otherwise
     // retire the file and lose the rest (Sonarr's "same episodes" rule).
     if existing.is_multi_episode() && !existing.episodes().all(|e| parsed_eps.contains(&e)) {
-        return false;
+        return Err(source::UpgradeRejection::ExistingUnclassified);
     }
-    let existing_classification =
-        auto_search::resolve_existing_classification(existing, quality_tags.get(ep));
-    // If we can't place existing anywhere, be conservative and don't upgrade.
-    if existing_classification.source == Source::Unknown
-        && existing_classification.resolution == Resolution::Unknown
-    {
-        return false;
-    }
-    // Only upgrade if existing is below cutoff.
-    if existing_classification.rank() >= cutoff.rank() {
-        return false;
-    }
-    // Shared upgrade policy: strictly better on the rank tuple AND
-    // not a non-BDMV → BDMV crossing. See `source::is_valid_upgrade`.
-    source::is_valid_upgrade(&existing_classification, incoming)
+    let tag = quality_tags.get(ep);
+    let existing_classification = auto_search::resolve_existing_classification(existing, tag);
+    let (release_title, release_group) = match tag {
+        Some(t) if !t.release_title.is_empty() => {
+            (t.release_title.as_str(), t.release_group.as_str())
+        }
+        _ => (existing.filename.as_str(), ""),
+    };
+    let existing_cf_score = crate::services::custom_formats::total_cf_score_for_release(
+        gate.cfs,
+        &existing_classification,
+        release_title,
+        release_group,
+        existing.size_bytes as i64,
+        "",
+        gate.seadex_hashes,
+    );
+    let existing_file = source::ExistingFile {
+        classification: &existing_classification,
+        revision: media::parse_release_revision(release_title),
+        release_group,
+        cf_score: existing_cf_score,
+        age_days: existing
+            .modified_secs
+            .map(|m| (gate.now_secs - m).max(0) / 86_400),
+    };
+    let candidate = source::UpgradeCandidate {
+        classification: incoming,
+        revision: gate.incoming_revision,
+        release_group: gate.incoming_group,
+        cf_score: gate.incoming_cf_score,
+    };
+    source::judge_upgrade(gate.policy, &existing_file, &candidate, true)
 }
 
 fn is_finished_status(status: &str) -> bool {

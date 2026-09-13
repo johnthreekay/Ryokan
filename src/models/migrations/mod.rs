@@ -2870,6 +2870,32 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
             .ok();
     }
 
+    {
+        // Sonarr-style upgrade policy: propers / repacks / fansub `v2`
+        // as upgrades, and "upgrade until Custom Format score". The
+        // defaults reproduce Sonarr's (prefer and upgrade revisions,
+        // format cutoff 0, increment 1), so an upgrade changes nothing
+        // for a library that has no revisions in flight.
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN proper_policy TEXT NOT NULL DEFAULT 'prefer_and_upgrade'",
+        )
+        .execute(db)
+        .await
+        .ok();
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN custom_format_cutoff_score INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(db)
+        .await
+        .ok();
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN custom_format_upgrade_increment INTEGER NOT NULL DEFAULT 1",
+        )
+        .execute(db)
+        .await
+        .ok();
+    }
+
     // Issue #228 — remove finished downloads from the client. The
     // switch is per client (Sonarr's "Remove Completed"), default on.
     // `client_removed_at` is stamped when post-processing removed an

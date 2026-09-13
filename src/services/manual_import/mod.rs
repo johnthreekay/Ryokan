@@ -149,6 +149,9 @@ pub struct CandidateFile {
 #[derive(Clone, Debug)]
 pub struct ExistingTag {
     pub quality_label: String,
+    /// The grab's release title; the revision (`v2`) of what is on
+    /// disk is read from it for the would-replace preview.
+    pub release_title: String,
     /// `grabbed` (download in flight) / `completed` / `failed`.
     pub state: String,
     pub manual_override: bool,
@@ -680,6 +683,7 @@ async fn existing_from_row(db: &SqlitePool, row: series::Series) -> ExistingSeri
                 ep,
                 ExistingTag {
                     quality_label: t.quality_tag,
+                    release_title: t.release_title,
                     state: t.state,
                     manual_override: t.manual_override,
                     classification,

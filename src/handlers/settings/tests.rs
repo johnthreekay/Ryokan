@@ -787,10 +787,13 @@ mod non_htmx_path {
                 preferred_resolution: "2160".to_string(),        // seed=720
                 cutoff_source: "bluray".to_string(),             // seed=dvd
                 cutoff_resolution: "1080".to_string(),           // seed=480
-                finished_series_quality: "bd_only".to_string(),  // seed=same
-                prefer_subs: "1".to_string(),                    // seed=false → submit→true
-                upgrade_search_enabled: Some(String::new()),     // seed=false → submit→true
-                seadex_enabled: None,                            // seed=true → submit→false
+                proper_policy: "prefer_and_upgrade".to_string(),
+                custom_format_cutoff_score: String::new(),
+                custom_format_upgrade_increment: String::new(),
+                finished_series_quality: "bd_only".to_string(), // seed=same
+                prefer_subs: "1".to_string(),                   // seed=false → submit→true
+                upgrade_search_enabled: Some(String::new()),    // seed=false → submit→true
+                seadex_enabled: None,                           // seed=true → submit→false
                 default_custom_query_tokens: Some("submit-tokens".to_string()), // seed=seed-tokens
             }),
         )
@@ -1271,6 +1274,9 @@ mod non_htmx_path {
                 preferred_resolution: "1080".to_string(),
                 cutoff_source: "bluray".to_string(),
                 cutoff_resolution: "1080".to_string(),
+                proper_policy: "prefer_and_upgrade".to_string(),
+                custom_format_cutoff_score: String::new(),
+                custom_format_upgrade_increment: String::new(),
                 finished_series_quality: "garbage".to_string(),
                 prefer_subs: "1".to_string(),
                 upgrade_search_enabled: None,
@@ -1682,6 +1688,9 @@ mod non_htmx_path {
                 preferred_resolution: "2160".to_string(),
                 cutoff_source: "bluray".to_string(),
                 cutoff_resolution: "1080".to_string(),
+                proper_policy: "prefer_and_upgrade".to_string(),
+                custom_format_cutoff_score: String::new(),
+                custom_format_upgrade_increment: String::new(),
                 finished_series_quality: "prefer_bd".to_string(),
                 prefer_subs: "1".to_string(),
                 upgrade_search_enabled: None,

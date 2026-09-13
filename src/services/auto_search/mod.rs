@@ -181,6 +181,7 @@ pub async fn find_all_for_target(
         expected_season,
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
+        prefer_revisions: series_ctx.prefer_revisions,
         absolute_offset: series_ctx.absolute_offset,
         categories: &categories,
         indexers: indexer_slice,
@@ -572,6 +573,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
         batch_episode_match: false,
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
+        prefer_revisions: series_ctx.prefer_revisions,
         absolute_offset: series_ctx.absolute_offset,
         indexers,
     };
@@ -851,6 +853,7 @@ async fn collect_scored_for_target(
         batch_episode_match,
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
+        prefer_revisions: series_ctx.prefer_revisions,
         absolute_offset: series_ctx.absolute_offset,
         indexers,
     };
@@ -1126,6 +1129,10 @@ struct AutoQueryCtx<'a> {
     /// means no restriction. Resolved from the per-series override or
     /// the global default at the entry point.
     restrict_user: &'a str,
+    /// Score a `v2` / PROPER / REPACK above the plain release; off
+    /// under the `do_not_prefer` proper policy. Goes straight into
+    /// `SearchOptions.prefer_revisions`.
+    prefer_revisions: bool,
     /// #30 — Cumulative episode count across the shortest TV-format
     /// PREQUEL chain up to this target. Allows an episode-filter match
     /// on either the relative number (target_ep, AL's own numbering)
@@ -1186,6 +1193,8 @@ struct InteractiveQueryCtx<'a> {
     seadex_hashes: &'a HashSet<String>,
     /// #23 — see `AutoQueryCtx::restrict_user`.
     restrict_user: &'a str,
+    /// See `AutoQueryCtx::prefer_revisions`.
+    prefer_revisions: bool,
     /// #30 — see `AutoQueryCtx::absolute_offset`.
     absolute_offset: i32,
 }
@@ -1225,6 +1234,7 @@ async fn run_queries(
                 preferred_groups: ctx.preferred_groups.to_vec(),
                 preferred_resolution: ctx.preferred_resolution.to_string(),
                 prefer_subs: true,
+                prefer_revisions: ctx.prefer_revisions,
             })
         })
         .collect();
@@ -1458,6 +1468,7 @@ async fn run_queries_interactive(
                 preferred_groups: ctx.preferred_groups.to_vec(),
                 preferred_resolution: ctx.preferred_resolution.to_string(),
                 prefer_subs: true,
+                prefer_revisions: ctx.prefer_revisions,
             })
         })
         .collect();
@@ -1772,6 +1783,8 @@ struct SeriesSearchCtx {
     /// #23 — Nyaa uploader name (`?u=<name>`) server-side filter.
     /// Empty means no restriction.
     restrict_user: String,
+    /// From `config.proper_policy`; see `AutoQueryCtx::prefer_revisions`.
+    prefer_revisions: bool,
     /// #30 — Cumulative TV-cour episode count for the entry's PREQUEL
     /// chain. Zero for first-season entries and for series whose
     /// relation cache hasn't populated yet. Used by the episode filter
@@ -1816,6 +1829,10 @@ async fn resolve_search_overrides(
         None => SeriesSearchCtx {
             custom_tokens: config.default_custom_query_tokens.clone(),
             restrict_user: config.default_restrict_to_uploader.clone(),
+            prefer_revisions: crate::services::source::ProperPolicy::from_str(
+                &config.proper_policy,
+            )
+            .prefers_revisions(),
             // No series row means the entry isn't in the library yet;
             // no relation cache to pull an offset from, so the filter
             // stays strict-relative. This only affects provisional
@@ -1888,6 +1905,8 @@ fn resolve_search_overrides_from_row(
     SeriesSearchCtx {
         custom_tokens,
         restrict_user,
+        prefer_revisions: crate::services::source::ProperPolicy::from_str(&config.proper_policy)
+            .prefers_revisions(),
         absolute_offset: series.cumulative_prior_episodes.max(0),
         // Left empty in the sync variant — callers that need them use
         // the async variant. Tests pin the sync variant's behavior on
@@ -2292,6 +2311,7 @@ mod tests {
             expected_season: 0,
             seadex_hashes: &seadex_hashes,
             restrict_user: "",
+            prefer_revisions: true,
             absolute_offset: 0,
             categories: &categories,
             indexers: &[],
@@ -2374,6 +2394,7 @@ mod tests {
             expected_season: 0,
             seadex_hashes: &seadex_hashes,
             restrict_user: "",
+            prefer_revisions: true,
             absolute_offset: 0,
             categories: &categories,
             indexers: &[],
@@ -2499,6 +2520,7 @@ mod tests {
             quality: "720p".to_string(),
             size_bytes: 0,
             size_display: String::new(),
+            modified_secs: None,
         }
     }
 
@@ -2968,6 +2990,7 @@ mod tests {
             expected_season: 0,
             seadex_hashes: &seadex_hashes,
             restrict_user: "",
+            prefer_revisions: true,
             absolute_offset: 0,
             categories: &categories,
             indexers: &[],

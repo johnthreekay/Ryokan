@@ -73,6 +73,23 @@ pub fn score_result_with_sub_pref(
 /// non-event doesn't add noise to the UI. The invariant holds
 /// because we only push when we actually mutate `score`.
 #[allow(clippy::cognitive_complexity)]
+/// Score bonus for a release revision above the plain release: +10 for
+/// a v2 (or PROPER / REPACK), +5 more per further version, capped at
+/// +20. `None` for a plain release. Shared by the Nyaa scorer and the
+/// RSS scorer so both rank a `v2` the same way.
+pub fn revision_bonus(revision: crate::services::media::ReleaseRevision) -> Option<(i32, String)> {
+    if revision.version < 2 {
+        return None;
+    }
+    let delta = (10 + 5 * (revision.version as i32 - 2)).min(20);
+    let detail = if revision.repack {
+        format!("REPACK (v{})", revision.version)
+    } else {
+        format!("v{}", revision.version)
+    };
+    Some((delta, detail))
+}
+
 pub fn score_result_with_breakdown(
     r: &SearchResult,
     opts: &SearchOptions,
@@ -131,6 +148,17 @@ pub fn score_result_with_breakdown(
         }
     }
 
+    // Release revision: a fansub `v2` or a scene PROPER / REPACK edges
+    // out the plain release it fixes when both are on offer. Sized to
+    // beat the seeder tiers and lose to every quality and group
+    // signal, the way Sonarr's comparer only reads the revision after
+    // the quality. Off under the `do_not_prefer` proper policy.
+    if opts.prefer_revisions
+        && let Some((delta, detail)) =
+            revision_bonus(crate::services::media::parse_release_revision(&r.title))
+    {
+        add("Release Revision", delta, Some(detail));
+    }
     // Preferred resolution.
     if !opts.preferred_resolution.is_empty() && r.resolution == opts.preferred_resolution {
         add(
@@ -311,6 +339,43 @@ mod tests {
     use super::*;
     use crate::services::nyaa::{SearchOptions, SearchResult};
     use rstest::rstest;
+
+    #[test]
+    fn revision_bonus_scales_and_caps() {
+        use crate::services::media::ReleaseRevision;
+        let r = |version, repack| ReleaseRevision { version, repack };
+        assert_eq!(revision_bonus(r(1, false)), None);
+        assert_eq!(revision_bonus(r(2, false)), Some((10, "v2".to_string())));
+        assert_eq!(
+            revision_bonus(r(2, true)),
+            Some((10, "REPACK (v2)".to_string()))
+        );
+        assert_eq!(revision_bonus(r(3, false)).map(|b| b.0), Some(15));
+        assert_eq!(revision_bonus(r(9, false)).map(|b| b.0), Some(20));
+    }
+
+    #[test]
+    fn v2_release_outscores_the_plain_one_unless_revisions_are_not_preferred() {
+        let plain = result(20, "[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv");
+        let v2 = result(20, "[SubsPlease] Show - 05v2 (1080p) [ABCD1234].mkv");
+        let opts = SearchOptions::default();
+        let (plain_score, _) = score_result_with_breakdown(&plain, &opts, true);
+        let (v2_score, parts) = score_result_with_breakdown(&v2, &opts, true);
+        assert_eq!(v2_score - plain_score, 10);
+        assert!(
+            parts
+                .iter()
+                .any(|p| p.label == "Release Revision" && p.delta == 10)
+        );
+        let opts = SearchOptions {
+            prefer_revisions: false,
+            ..SearchOptions::default()
+        };
+        let (plain_score, _) = score_result_with_breakdown(&plain, &opts, true);
+        let (v2_score, parts) = score_result_with_breakdown(&v2, &opts, true);
+        assert_eq!(v2_score, plain_score);
+        assert!(parts.iter().all(|p| p.label != "Release Revision"));
+    }
 
     fn result(seeders: i32, title: &str) -> SearchResult {
         SearchResult {

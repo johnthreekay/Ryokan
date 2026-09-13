@@ -49,6 +49,16 @@ A release that [SeaDex](https://releases.moe) lists as best gets +10,000, throug
 
 Releases on the blocklist (Downloads → Blocklist) are skipped before any of this runs.
 
+## Replacing a file you already have
+
+An episode on disk is replaced when a release is better in one of three ways, checked in this order:
+
+- **Quality**: a higher source or resolution, as long as the file is still below your cutoff. Once a file meets the cutoff, quality alone no longer replaces it.
+- **Revision**: a v2, PROPER or REPACK of the same release, from the same group that made the file. Groups put out a v2 to fix a mistake, so it replaces the file even when the cutoff is already met. Through RSS this only happens while the file is under a week old; the daily upgrade search has no such limit. A v2 from a different group is not a fix of your file and is left alone.
+- **Custom Format score**: a same-quality release whose Custom Formats score higher, until the file's score reaches **Upgrade Until Custom Format Score**. The gain has to be at least the **Minimum Custom Format Score Increment**. The default cutoff of 0 turns this off for any file scoring 0 or better.
+
+A v2 also scores a little higher than the plain release when both are on offer, so the fixed one wins the tie. All of this follows **Propers and Repacks** on Quality & Releases: prefer and upgrade (the default), prefer but never replace, or ignore revisions altogether. The reason a release was not taken is written to the RSS decision log and the auto-search log.
+
 ## What automatic search will and will not grab
 
 Automatic search and RSS only take a release whose name contains one of the series' titles as written, or an alternate title you added, and names nothing beyond it. The other names AniList lists for a show are tried only when the titles themselves find nothing. A release that merely looks similar is left alone, and so is one that names more, such as "Dr. Stone New World" for Dr. STONE, and the search says so: the toast and the log list the releases it saw and skipped. When one of them is right, open the series page, expand **Advanced search overrides**, and add the name that group uses under **Alternate titles**, one per line. From then on that name is searched for and counts as an exact match, the same as the series' own titles, for automatic search, RSS, the upgrade search, and the misgrab check. Interactive search keeps showing near matches, since you are the one choosing there.

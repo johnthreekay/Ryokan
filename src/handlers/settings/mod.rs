@@ -551,6 +551,16 @@ pub struct QualityForm {
     cutoff_resolution: String,
     finished_series_quality: String,
     prefer_subs: String,
+    /// Sonarr's "Propers and Repacks" select; see
+    /// `source::ProperPolicy`.
+    #[serde(default)]
+    proper_policy: String,
+    /// "Upgrade until Custom Format score" and its minimum increment.
+    /// Blank keeps the stored value; a non-integer is a form error.
+    #[serde(default)]
+    custom_format_cutoff_score: String,
+    #[serde(default)]
+    custom_format_upgrade_increment: String,
     /// Checkboxes — unchecked omits the field; `#[serde(default)]`
     /// makes serde_urlencoded map the absence to `None`.
     #[serde(default)]
@@ -862,6 +872,15 @@ fn validate_source(value: &str, default: &str) -> String {
 /// but also passes through the BluRay sub-tier markers "bluray_remux" and
 /// "bluray_bdmv" so settings can store BD Remux / BD RAW as distinct
 /// cutoffs. Reads go through `source::parse_cutoff_source`.
+/// Blank keeps `current`; anything else has to parse as an integer.
+fn parse_optional_int(value: &str, current: i32) -> Result<i32, ()> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(current);
+    }
+    trimmed.parse::<i32>().map_err(|_| ())
+}
+
 fn validate_cutoff_source(value: &str, default: &str) -> String {
     if value == "bluray_remux" || value == "bluray_bdmv" {
         return value.to_string();
@@ -1351,6 +1370,20 @@ pub async fn settings_submit(
                 .map(|c| c.upgrade_search_enabled)
                 .unwrap_or(false)
         },
+        // Owned by the dedicated Quality subform handler; carried
+        // forward here like the other Quality knobs.
+        proper_policy: existing_cfg
+            .as_ref()
+            .map(|c| c.proper_policy.clone())
+            .unwrap_or_else(|| "prefer_and_upgrade".to_string()),
+        custom_format_cutoff_score: existing_cfg
+            .as_ref()
+            .map(|c| c.custom_format_cutoff_score)
+            .unwrap_or(0),
+        custom_format_upgrade_increment: existing_cfg
+            .as_ref()
+            .map(|c| c.custom_format_upgrade_increment)
+            .unwrap_or(1),
         // Carried forward from the existing row — edited via the
         // dedicated Custom Formats tab's minimum-score form, not here.
         custom_format_minimum_score: existing_cfg
@@ -2076,6 +2109,27 @@ pub async fn settings_quality_submit(
         }
     };
 
+    let custom_format_cutoff_score = match parse_optional_int(
+        &form.custom_format_cutoff_score,
+        existing_cfg.custom_format_cutoff_score,
+    ) {
+        Ok(v) => v,
+        Err(_) => {
+            let err = "Upgrade Until Custom Format Score must be a whole number.".to_string();
+            return quality_response(&state, None, None, Some(err), is_htmx).await;
+        }
+    };
+    let custom_format_upgrade_increment = match parse_optional_int(
+        &form.custom_format_upgrade_increment,
+        existing_cfg.custom_format_upgrade_increment,
+    ) {
+        Ok(v) if v >= 1 => v,
+        _ => {
+            let err = "Minimum Custom Format Score Increment must be a whole number of 1 or more."
+                .to_string();
+            return quality_response(&state, None, None, Some(err), is_htmx).await;
+        }
+    };
     let cfg = config::Config {
         preferred_groups: form.preferred_groups.trim().to_string(),
         blocked_groups: form.blocked_groups.trim().to_string(),
@@ -2083,6 +2137,11 @@ pub async fn settings_quality_submit(
         preferred_resolution: validate_resolution(&form.preferred_resolution, "1080"),
         cutoff_source: validate_cutoff_source(&form.cutoff_source, "bluray"),
         cutoff_resolution: validate_resolution(&form.cutoff_resolution, "1080"),
+        proper_policy: crate::services::source::ProperPolicy::from_str(&form.proper_policy)
+            .as_str()
+            .to_string(),
+        custom_format_cutoff_score,
+        custom_format_upgrade_increment,
         finished_series_quality: match form.finished_series_quality.as_str() {
             "same" | "prefer_bd" | "bd_only" => form.finished_series_quality,
             _ => "prefer_bd".to_string(),

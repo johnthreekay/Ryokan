@@ -564,6 +564,7 @@ mod router_tests {
             1,
             manual_import::ExistingTag {
                 quality_label: "BD-1080p".into(),
+                release_title: String::new(),
                 state: "completed".into(),
                 manual_override: false,
                 classification: crate::services::source::classify_release_sync(

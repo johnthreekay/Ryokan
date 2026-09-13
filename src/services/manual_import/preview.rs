@@ -323,7 +323,18 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                                 } else {
                                     let incoming =
                                         source::classify_release_sync(&f.file_name, None);
-                                    if source::is_valid_upgrade(&t.classification, &incoming) {
+                                    // Quality, or the same quality as a
+                                    // newer revision (`05v2` beside an
+                                    // imported `05`). No group rule here:
+                                    // the user reviews the preview.
+                                    if source::is_valid_upgrade(&t.classification, &incoming)
+                                        || source::upgrade_policy::is_revision_upgrade(
+                                            &t.classification,
+                                            &t.release_title,
+                                            &incoming,
+                                            &f.file_name,
+                                        )
+                                    {
                                         FileStatus::WouldReplace
                                     } else {
                                         FileStatus::AlreadyPresent
@@ -535,6 +546,7 @@ mod tests {
         };
         ExistingTag {
             quality_label: classification.label(),
+            release_title: String::new(),
             state: state.into(),
             manual_override: pinned,
             classification,

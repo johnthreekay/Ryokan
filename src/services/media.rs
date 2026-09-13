@@ -108,6 +108,20 @@ static RE_VERSION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:\d|^|[\s._\-\(\[])v(\d{1,2})(?:[\s._\-\)\]]|$)").expect("RE_VERSION compiles")
 });
 
+/// Scene-style revision words. Matched against the **original-case**
+/// name, never the lowercased one: release titles carry `PROPER` /
+/// `REPACK` / `RERIP` in capitals by convention, while a Title Case
+/// `Proper` is an episode title word (`A Proper Goodbye`), which
+/// Ryokan's own renamed library files contain. Sonarr matches these
+/// case-insensitively and lives with the false positive; Ryokan's
+/// tag rows keep the release title, so the library file name is never
+/// what gets parsed, but the interactive picker and the disk fallback
+/// still see file names.
+static RE_PROPER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\bPROPER\b").expect("RE_PROPER compiles"));
+static RE_REPACK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b(?:REPACK|RERIP)\b").expect("RE_REPACK compiles"));
+
 /// anitomy `AnimeType` values that mark a file as a non-episodic extra
 /// (issue #203): promotional videos, creditless openings / endings,
 /// previews. Deliberately NOT `OAD` / `OVA` / `Special` / `SP` /
@@ -215,6 +229,11 @@ pub struct EpisodeFile {
     pub quality: String,
     pub size_bytes: u64,
     pub size_display: String,
+    /// File modification time as Unix seconds, when the scan could
+    /// stat it. The upgrade policy's RSS revision window reads it as
+    /// the file's age (a hardlinked import keeps the download's
+    /// mtime, a copy gets the import's; both are "when it arrived").
+    pub modified_secs: Option<i64>,
 }
 
 impl EpisodeFile {
@@ -366,8 +385,13 @@ fn parse_episode_file(path: &Path, series_root: &Path) -> Option<EpisodeFile> {
 
     let quality = parse_quality(&lower);
 
-    let size_bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    let metadata = std::fs::metadata(path).ok();
+    let size_bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
     let size_display = format_size(size_bytes);
+    let modified_secs = metadata
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64);
 
     // Store relative path from series root so delete handler can reconstruct full path.
     let filename = path
@@ -385,6 +409,7 @@ fn parse_episode_file(path: &Path, series_root: &Path) -> Option<EpisodeFile> {
         quality,
         size_bytes,
         size_display,
+        modified_secs,
     })
 }
 
@@ -749,6 +774,52 @@ pub fn parse_release_version(lower: &str) -> Option<u32> {
         .captures(lower)
         .and_then(|c| c.get(1))
         .and_then(|m| m.as_str().parse().ok())
+}
+
+/// A release's revision, Sonarr's `Revision` without the `REAL`
+/// counter (a scene TV convention anime never uses). `version` is 1
+/// for a plain release, the `vN` number when the name carries one,
+/// and 2 for a `PROPER` / `REPACK` / `RERIP` with no explicit number.
+/// `repack` records the REPACK / RERIP word on its own so a caller can
+/// tell a fixed re-release from a fansub `v2`; both rank the same.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReleaseRevision {
+    pub version: u32,
+    pub repack: bool,
+}
+
+impl Default for ReleaseRevision {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            repack: false,
+        }
+    }
+}
+
+impl ReleaseRevision {
+    /// True when `self` is a later revision of the same release than
+    /// `other`. Only the version number orders revisions; a REPACK is
+    /// a v2 and a `v3` beats it.
+    pub fn is_newer_than(self, other: ReleaseRevision) -> bool {
+        self.version > other.version
+    }
+}
+
+/// Parse the revision off a release title or file name. Takes the
+/// original-case name: the `vN` token is read case-insensitively
+/// through [`parse_release_version`], the scene words only in
+/// capitals (see `RE_PROPER`).
+pub fn parse_release_revision(name: &str) -> ReleaseRevision {
+    let repack = RE_REPACK.is_match(name);
+    let proper = repack || RE_PROPER.is_match(name);
+    let explicit = parse_release_version(&name.to_lowercase());
+    let version = match explicit {
+        Some(v) => v.max(1),
+        None if proper => 2,
+        None => 1,
+    };
+    ReleaseRevision { version, repack }
 }
 
 /// Extract quality/resolution from filename.
@@ -1487,6 +1558,44 @@ mod tests {
         );
         assert_eq!(v("show - 05 [1080p][hevc].mkv"), None);
         assert_eq!(v("show - 05 [1080p][ddp5.1].mkv"), None);
+    }
+
+    #[test]
+    fn release_revision_reads_versions_and_scene_words() {
+        use super::{ReleaseRevision, parse_release_revision as r};
+        let plain = ReleaseRevision {
+            version: 1,
+            repack: false,
+        };
+        assert_eq!(r("[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv"), plain);
+        assert_eq!(
+            r("[SubsPlease] Show - 05v2 (1080p) [ABCD1234].mkv"),
+            ReleaseRevision {
+                version: 2,
+                repack: false
+            }
+        );
+        assert_eq!(r("Show.S01E05.PROPER.1080p.WEB.H264-GRP").version, 2);
+        assert_eq!(
+            r("Show.S01E05.REPACK.1080p.WEB.H264-GRP"),
+            ReleaseRevision {
+                version: 2,
+                repack: true
+            }
+        );
+        assert!(r("Show.S01E05.RERIP.1080p.WEB.H264-GRP").repack);
+        // An explicit number wins over the scene word.
+        assert_eq!(r("Show.S01E05.REPACK.v3.1080p.WEB-GRP").version, 3);
+        // Title Case words are episode titles, not revisions: the
+        // library file `Show - S01E05 - A Proper Goodbye.mkv` is v1.
+        assert_eq!(r("Show - S01E05 - A Proper Goodbye [WEB 1080p].mkv"), plain);
+        assert_eq!(r("Show - S01E05 - The Repack Job.mkv"), plain);
+        // Ordering is by version only.
+        assert!(
+            r("Show - 05v3.mkv").is_newer_than(r("Show.S01E05.REPACK.mkv")),
+            "v3 beats a REPACK (v2)"
+        );
+        assert!(!r("Show - 05.mkv").is_newer_than(plain));
     }
 
     // ── Multi-episode spans (issue #246) ─────────────────────────────

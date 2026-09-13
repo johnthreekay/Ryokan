@@ -29,6 +29,10 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
     let (cutoff_source, cutoff_is_remux, cutoff_is_bdmv) =
         source::parse_cutoff_source(&cfg.cutoff_source);
     let cutoff_resolution = Resolution::from_str(&cfg.cutoff_resolution);
+    // The full upgrade decision (cutoff, revisions, Custom Format
+    // score) for the per-candidate gate below; the quality cutoff
+    // pieces above still drive the target selection.
+    let policy = source::UpgradePolicy::from_config(&cfg);
     if cutoff_source == Source::Unknown && cutoff_resolution == Resolution::Unknown {
         return Ok(UpgradeSummary {
             series_checked: 0,
@@ -66,6 +70,12 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
     // scheduler can't race a CF edit during this run — if the user edits
     // a CF mid-sweep, the next scheduled run picks it up.
     let cfs = state.custom_formats.read().await.clone();
+    // The upgrade gate scores both sides of the comparison without
+    // SeaDex: the file on disk has no hash to look up, and giving the
+    // candidate the SeaDex Custom Format alone would let a curated
+    // pick replace an identical file for score. The seed and the
+    // scoring of the search itself still consult SeaDex.
+    let no_seadex_hashes: HashSet<String> = HashSet::new();
 
     // Issue #28 — snapshot the set of PT indexer IDs once per
     // sweep so the per-series PT-upgrade gate doesn't re-read the
@@ -144,7 +154,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
         // disk presence directly rather than monitor state.
         let on_disk_eps: Vec<i32> = disk_files.iter().flat_map(|f| f.episodes()).collect();
 
-        let upgrade_targets = auto_search::build_upgrade_targets(
+        let mut upgrade_targets = auto_search::build_upgrade_targets(
             &disk_files,
             &on_disk_eps,
             cutoff_source,
@@ -153,6 +163,18 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             cutoff_is_bdmv,
             &quality_tags,
         );
+        // Files at the quality cutoff whose Custom Format total is
+        // still under the format cutoff ("upgrade until Custom Format
+        // score"). Sonarr only reaches these through RSS; the sweep
+        // covers them too so a raised format cutoff acts on the
+        // library the user already has.
+        upgrade_targets.extend(format_cutoff_targets(
+            &disk_files,
+            &quality_tags,
+            &policy,
+            &cfs,
+            &upgrade_targets,
+        ));
         if upgrade_targets.is_empty() {
             continue;
         }
@@ -295,28 +317,80 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             .await;
 
             // Verify this is actually an upgrade via the shared policy
-            // gate (strict rank improvement AND not a non-BDMV → BDMV
-            // crossing — see source::is_valid_upgrade for the BDMV
-            // rationale). Keeps RSS and upgrade_search consistent.
+            // gate (`source::judge_upgrade`: quality against the
+            // cutoff, a `v2` from the same group, or a better Custom
+            // Format score). Keeps RSS and upgrade_search consistent.
             if let auto_search::SearchTarget::Episode(ep_num) = &target
                 && let Some(existing_classification) = upgrade_classifications.get(ep_num)
             {
-                if !source::is_valid_upgrade(existing_classification, &incoming_classification) {
-                    continue;
-                }
-                logger::info(
-                    &state.db,
-                    LogCategory::AutoSearch,
-                    &format!(
-                        "Upgrade: {} {} — {} -> {}",
-                        title,
-                        label,
-                        existing_classification.label(),
-                        incoming_classification.label()
+                let tag = quality_tags.get(ep_num);
+                let disk_file = disk_files.iter().find(|f| f.holds(*ep_num));
+                let (existing_title, existing_group) = match tag {
+                    Some(t) if !t.release_title.is_empty() => {
+                        (t.release_title.as_str(), t.release_group.as_str())
+                    }
+                    _ => (
+                        disk_file.map(|f| f.filename.as_str()).unwrap_or_default(),
+                        "",
                     ),
-                    &result.title,
-                )
-                .await;
+                };
+                let existing_file = source::ExistingFile {
+                    classification: existing_classification,
+                    revision: media::parse_release_revision(existing_title),
+                    release_group: existing_group,
+                    cf_score: crate::services::custom_formats::total_cf_score_for_release(
+                        &cfs,
+                        existing_classification,
+                        existing_title,
+                        existing_group,
+                        disk_file.map(|f| f.size_bytes as i64).unwrap_or(0),
+                        "",
+                        &no_seadex_hashes,
+                    ),
+                    age_days: None,
+                };
+                let candidate = source::UpgradeCandidate {
+                    classification: &incoming_classification,
+                    revision: media::parse_release_revision(&result.title),
+                    release_group: &result.group,
+                    cf_score: crate::services::custom_formats::total_cf_score_for_release(
+                        &cfs,
+                        &incoming_classification,
+                        &result.title,
+                        &result.group,
+                        result.size_bytes,
+                        &result.info_hash,
+                        &no_seadex_hashes,
+                    ),
+                };
+                match source::judge_upgrade(&policy, &existing_file, &candidate, false) {
+                    Ok(kind) => {
+                        logger::info(
+                            &state.db,
+                            LogCategory::AutoSearch,
+                            &format!(
+                                "Upgrade ({}): {} {} — {} -> {}",
+                                kind.as_str(),
+                                title,
+                                label,
+                                existing_classification.label(),
+                                incoming_classification.label()
+                            ),
+                            &result.title,
+                        )
+                        .await;
+                    }
+                    Err(rejection) => {
+                        logger::debug(
+                            &state.db,
+                            LogCategory::AutoSearch,
+                            &format!("Upgrade: {} {} skipped — {}", title, label, rejection),
+                            &result.title,
+                        )
+                        .await;
+                        continue;
+                    }
+                }
             }
 
             let url = if !result.magnet.is_empty() {
@@ -483,6 +557,181 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
         upgrades_grabbed: total_upgrades_grabbed,
         detail,
     })
+}
+
+/// Files that already meet the quality cutoff but whose Custom Format
+/// total is under `policy.format_cutoff_score`, as extra upgrade
+/// targets. Same exclusions as `build_upgrade_targets` (multi-episode
+/// files, pinned rows, files the classifier could not place), plus
+/// anything already targeted for quality. The score is computed from
+/// the tag row's release title, or the file name when there is no
+/// row, with no SeaDex hash on either side.
+fn format_cutoff_targets(
+    disk_files: &[media::EpisodeFile],
+    quality_tags: &HashMap<i32, episode_tags::EpisodeQualityTag>,
+    policy: &source::UpgradePolicy,
+    cfs: &[crate::services::custom_formats::CompiledCustomFormat],
+    already: &[(auto_search::SearchTarget, ClassificationResult)],
+) -> Vec<(auto_search::SearchTarget, ClassificationResult)> {
+    if cfs.is_empty() {
+        return Vec::new();
+    }
+    let targeted: HashSet<i32> = already
+        .iter()
+        .filter_map(|(t, _)| match t {
+            auto_search::SearchTarget::Episode(n) => Some(*n),
+            auto_search::SearchTarget::Single => None,
+        })
+        .collect();
+    let no_seadex: HashSet<String> = HashSet::new();
+    let mut out = Vec::new();
+    for file in disk_files {
+        let ep = file.episode_number;
+        if file.is_multi_episode() || targeted.contains(&ep) {
+            continue;
+        }
+        let tag = quality_tags.get(&ep);
+        if tag.is_some_and(|t| t.manual_override) {
+            continue;
+        }
+        let existing = auto_search::resolve_existing_classification(file, tag);
+        if existing.source == Source::Unknown && existing.resolution == Resolution::Unknown {
+            continue;
+        }
+        let (title, group) = match tag {
+            Some(t) if !t.release_title.is_empty() => {
+                (t.release_title.as_str(), t.release_group.as_str())
+            }
+            _ => (file.filename.as_str(), ""),
+        };
+        let score = crate::services::custom_formats::total_cf_score_for_release(
+            cfs,
+            &existing,
+            title,
+            group,
+            file.size_bytes as i64,
+            "",
+            &no_seadex,
+        );
+        if score < policy.format_cutoff_score {
+            out.push((auto_search::SearchTarget::Episode(ep), existing));
+        }
+    }
+    out.sort_by_key(|(t, _)| match t {
+        auto_search::SearchTarget::Episode(n) => *n,
+        auto_search::SearchTarget::Single => 0,
+    });
+    out
+}
+
+#[cfg(test)]
+mod format_cutoff_target_tests {
+    use super::*;
+    use crate::models::episode_tags::EpisodeQualityTag;
+    use crate::services::custom_formats::compile_from_json;
+    use crate::services::source::{ProperPolicy, UpgradePolicy};
+
+    fn file(ep: i32, name: &str) -> media::EpisodeFile {
+        media::EpisodeFile {
+            filename: name.to_string(),
+            episode_number: ep,
+            episode_last: ep,
+            season_number: Some(1),
+            quality: "WEB-1080p".to_string(),
+            size_bytes: 1_000,
+            size_display: String::new(),
+            modified_secs: None,
+        }
+    }
+
+    fn tag(ep: i32, release_title: &str, pinned: bool) -> (i32, EpisodeQualityTag) {
+        (
+            ep,
+            EpisodeQualityTag {
+                episode_number: ep,
+                quality_tag: "WEB-1080p".to_string(),
+                release_title: release_title.to_string(),
+                release_group: "G".to_string(),
+                state: "completed".to_string(),
+                source: "Web".to_string(),
+                resolution: "1080p".to_string(),
+                is_remux: false,
+                is_bdmv: false,
+                web_kind: String::new(),
+                classification_confidence: 1.0,
+                needs_review: false,
+                manual_override: pinned,
+                classification_evidence: String::new(),
+                classification_attempted_at: None,
+            },
+        )
+    }
+
+    fn policy(format_cutoff_score: i32) -> UpgradePolicy {
+        UpgradePolicy {
+            cutoff: source::cutoff_classification(Source::Web, Resolution::R1080p, false, false),
+            propers: ProperPolicy::PreferAndUpgrade,
+            format_cutoff_score,
+            format_increment: 1,
+        }
+    }
+
+    /// One CF: +100 when the title carries `Dual-Audio`.
+    fn dual_audio_cf() -> Vec<crate::services::custom_formats::CompiledCustomFormat> {
+        let json = r#"{
+            "name": "Dual Audio",
+            "specifications": [{
+                "name": "dual", "implementation": "ReleaseTitleSpecification",
+                "negate": false, "required": false,
+                "fields": [{"name": "value", "value": "Dual-Audio"}]
+            }]
+        }"#;
+        vec![compile_from_json(json, 100, 1).expect("cf compiles")]
+    }
+
+    #[test]
+    fn files_under_the_format_cutoff_become_targets() {
+        let files = vec![
+            file(1, "Show - S01E01.mkv"),
+            file(2, "Show - S01E02.mkv"),
+            file(3, "Show - S01E03.mkv"),
+            file(4, "Show - S01E04.mkv"),
+        ];
+        let tags: HashMap<i32, EpisodeQualityTag> = [
+            tag(1, "[G] Show - 01 (1080p)", false),
+            tag(2, "[G] Show - 02 (1080p) [Dual-Audio]", false),
+            tag(3, "[G] Show - 03 (1080p)", true),
+        ]
+        .into_iter()
+        .collect();
+        let already = vec![(
+            auto_search::SearchTarget::Episode(4),
+            source::classify_release_sync("Show - S01E04.mkv", None),
+        )];
+        let targets =
+            format_cutoff_targets(&files, &tags, &policy(100), &dual_audio_cf(), &already);
+        let eps: Vec<i32> = targets
+            .iter()
+            .map(|(t, _)| match t {
+                auto_search::SearchTarget::Episode(n) => *n,
+                auto_search::SearchTarget::Single => 0,
+            })
+            .collect();
+        // 1: score 0 < 100, targeted. 2: score 100, meets the cutoff.
+        // 3: pinned. 4: already a quality target.
+        assert_eq!(eps, vec![1]);
+    }
+
+    #[test]
+    fn no_custom_formats_or_a_zero_cutoff_yields_nothing() {
+        let files = vec![file(1, "Show - S01E01.mkv")];
+        let tags: HashMap<i32, EpisodeQualityTag> = [tag(1, "[G] Show - 01 (1080p)", false)]
+            .into_iter()
+            .collect();
+        assert!(format_cutoff_targets(&files, &tags, &policy(100), &[], &[]).is_empty());
+        // Default cutoff 0: a file scoring 0 meets it.
+        assert!(format_cutoff_targets(&files, &tags, &policy(0), &dual_audio_cf(), &[]).is_empty());
+    }
 }
 
 #[cfg(test)]
