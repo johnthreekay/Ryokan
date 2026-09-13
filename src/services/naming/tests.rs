@@ -484,3 +484,72 @@ async fn series_upsert_without_a_config_row_uses_the_default_layout() {
     let row = series::get_by_id(&db, id).await.unwrap().unwrap();
     assert_eq!(row.folder_name, "Cowboy Bebop");
 }
+
+// ── Multi-episode files (issue #246) ────────────────────────────────
+
+#[test]
+fn multi_episode_context_renders_a_range_that_parses_back() {
+    let multi = multi_episode_sample_context();
+    // The default template: Sonarr's prefixed range after the `E`.
+    let name = ep(DEFAULT_EPISODE_FILE_FORMAT, &multi);
+    assert_eq!(
+        name,
+        "Sousou no Frieren - S01E07-E08 - Like a Fairy Tale + The Land Where the Soul Rests.mkv"
+    );
+    let span = parse_episode_span(&name.to_lowercase()).expect("parses");
+    assert_eq!((span.season, span.first, span.last), (Some(1), 7, 8));
+
+    // The dash slot: a bare range.
+    let name = ep(
+        "{series.title} - {episode.number:00} [{group}]{ext}",
+        &multi,
+    );
+    assert_eq!(name, "Sousou no Frieren - 07-08 [SubsPlease].mkv");
+    let span = parse_episode_span(&name.to_lowercase()).expect("parses");
+    assert_eq!((span.season, span.first, span.last), (None, 7, 8));
+
+    // The letter copies the literal's case; padding applies to both.
+    assert_eq!(
+        ep("s{season.number:00}e{episode.number:000}{ext}", &multi),
+        "s01e007-e008.mkv"
+    );
+    assert_eq!(ep("{episode.number}{ext}", &multi), "7-8.mkv");
+}
+
+#[test]
+fn single_episode_context_is_unchanged_by_episode_last() {
+    let mut s = sample_context();
+    assert!(!s.is_multi_episode());
+    assert_eq!(s.slot_label(), "S01E07");
+    // `episode_last` equal to the first episode is still a single.
+    s.episode_last = 7;
+    assert!(!s.is_multi_episode());
+    assert_eq!(
+        ep(DEFAULT_EPISODE_FILE_FORMAT, &s),
+        "Sousou no Frieren - S01E07 - Like a Fairy Tale.mkv"
+    );
+    assert_eq!(multi_episode_sample_context().slot_label(), "S01E07-E08");
+}
+
+#[test]
+fn every_default_validates_for_a_multi_episode_file() {
+    // `validate` renders the two-episode sample and parses it back; the
+    // defaults and the common alternatives all survive.
+    for template in [
+        DEFAULT_EPISODE_FILE_FORMAT,
+        "{series.title} - {episode.number:00}{ext}",
+        "{series.title} - E{episode.number:00} - {episode.title}{ext}",
+        "[{group}] {series.title} - {episode.number:00} [{quality.full}]{ext}",
+    ] {
+        validate(TemplateKind::EpisodeFile, template).unwrap_or_else(|e| panic!("{template}: {e}"));
+    }
+}
+
+#[test]
+fn fallback_name_carries_the_range() {
+    let multi = multi_episode_sample_context();
+    let r = render_or_default(TemplateKind::EpisodeFile, "{{broken", &multi);
+    // The default template still renders, so the fallback is the
+    // default's shape, not the bare stem.
+    assert!(r.name.contains("S01E07-E08"), "{}", r.name);
+}

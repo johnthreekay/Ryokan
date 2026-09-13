@@ -981,7 +981,7 @@ pub async fn auto_search_series(
         .map(|s| s.folder_name.clone())
         .unwrap_or_default();
     let existing_files = media::scan_series_folder(&cfg.media_root, &folder_name).await;
-    let existing_eps: Vec<i32> = existing_files.iter().map(|f| f.episode_number).collect();
+    let existing_eps: Vec<i32> = existing_files.iter().flat_map(|f| f.episodes()).collect();
 
     let monitored_eps = if let Some(ref tracked_series) = tracked {
         monitoring::get_monitored_episode_numbers(&state.db, tracked_series.id)

@@ -1685,7 +1685,7 @@ fn evaluate_candidate(
     cutoff: &ClassificationResult,
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
 ) -> CandidateDecision {
-    let existing_ep_numbers: HashSet<i32> = disk_files.iter().map(|f| f.episode_number).collect();
+    let existing_ep_numbers: HashSet<i32> = disk_files.iter().flat_map(|f| f.episodes()).collect();
 
     if item.is_batch {
         if !parsed_eps.is_empty() {
@@ -1711,7 +1711,14 @@ fn evaluate_candidate(
                 .iter()
                 .filter(|ep| {
                     existing_ep_numbers.contains(ep)
-                        && episode_is_upgradeable(ep, disk_files, incoming, cutoff, quality_tags)
+                        && episode_is_upgradeable(
+                            ep,
+                            parsed_eps,
+                            disk_files,
+                            incoming,
+                            cutoff,
+                            quality_tags,
+                        )
                 })
                 .count() as i32;
             let actionable = new_count + upgrade_count;
@@ -1794,7 +1801,14 @@ fn evaluate_candidate(
         .iter()
         .filter(|ep| {
             existing_ep_numbers.contains(ep)
-                && episode_is_upgradeable(ep, disk_files, incoming, cutoff, quality_tags)
+                && episode_is_upgradeable(
+                    ep,
+                    parsed_eps,
+                    disk_files,
+                    incoming,
+                    cutoff,
+                    quality_tags,
+                )
         })
         .count() as i32;
     let actionable = new_count + upgrade_count;
@@ -1825,14 +1839,21 @@ fn evaluate_candidate(
 /// `episode_quality_tags` verdict.
 fn episode_is_upgradeable(
     ep: &i32,
+    parsed_eps: &HashSet<i32>,
     disk_files: &[media::EpisodeFile],
     incoming: &ClassificationResult,
     cutoff: &ClassificationResult,
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
 ) -> bool {
-    let Some(existing) = disk_files.iter().find(|f| f.episode_number == *ep) else {
+    let Some(existing) = disk_files.iter().find(|f| f.holds(*ep)) else {
         return false; // not on disk — not an "upgrade", it's a new episode
     };
+    // A multi-episode file (issue #246) is only replaced by a release
+    // that covers every episode it holds; the import would otherwise
+    // retire the file and lose the rest (Sonarr's "same episodes" rule).
+    if existing.is_multi_episode() && !existing.episodes().all(|e| parsed_eps.contains(&e)) {
+        return false;
+    }
     let existing_classification =
         auto_search::resolve_existing_classification(existing, quality_tags.get(ep));
     // If we can't place existing anywhere, be conservative and don't upgrade.

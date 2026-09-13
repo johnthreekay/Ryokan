@@ -2494,6 +2494,7 @@ mod tests {
         media::EpisodeFile {
             filename: "[Group] Show - 01 [WEB-DL 720p].mkv".to_string(),
             episode_number,
+            episode_last: episode_number,
             season_number: None,
             quality: "720p".to_string(),
             size_bytes: 0,

@@ -137,6 +137,16 @@ pub fn build_upgrade_targets(
         if !candidates.contains(&file.episode_number) {
             continue;
         }
+        // A multi-episode file (issue #246) is never an upgrade target:
+        // a single-episode release replacing `S01E05-E06` would take
+        // the other episode with it (the import retires every file
+        // whose span overlaps), and the search targets are single
+        // episodes. Sonarr's "same episodes" rule; a release covering
+        // the exact span would be the way in, and nothing searches for
+        // one yet.
+        if file.is_multi_episode() {
+            continue;
+        }
         // manual_override pins must short-circuit before find_best_for_target
         // runs. The downstream SQL guards on record_grab /
         // update_classification drop the tag write, but post-processing has

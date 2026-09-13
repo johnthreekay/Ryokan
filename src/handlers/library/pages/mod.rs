@@ -274,7 +274,8 @@ pub async fn index(
                     if total > 0 && matches!(f.season_number, Some(n) if n != 1) {
                         continue;
                     }
-                    have.insert(f.episode_number);
+                    // Every episode the file holds (issue #246).
+                    have.extend(f.episodes());
                 }
             }
             if let Some(eps) = completed_by_series.get(&s.id) {
@@ -936,6 +937,9 @@ pub(super) async fn build_episodes(
     let mut on_disk_count = 0i32;
     let mut downloaded_count = 0i32;
     let mut total_size: u64 = 0;
+    // A multi-episode file (issue #246) is one file on disk: its size
+    // counts once however many rows it fills.
+    let mut sized_files: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut monitored_count = 0i32;
 
     // For the unaired-vs-missing split below. Date-only, UTC: provider
@@ -943,11 +947,13 @@ pub(super) async fn build_episodes(
     let today = chrono::Utc::now().date_naive();
 
     for ep_num in 1..=ep_count.max(0) {
+        // `holds`: a multi-episode file (issue #246) answers for every
+        // episode in its span, so `S01E05-E06` fills both rows.
         let disk_match = disk_files.iter().find(|f| {
             if let Some(s) = f.season_number {
-                s == 1 && f.episode_number == ep_num
+                s == 1 && f.holds(ep_num)
             } else {
-                f.episode_number == ep_num
+                f.holds(ep_num)
             }
         });
 
@@ -964,7 +970,9 @@ pub(super) async fn build_episodes(
 
         if on_disk {
             on_disk_count += 1;
-            if let Some(f) = disk_match {
+            if let Some(f) = disk_match
+                && sized_files.insert(f.filename.clone())
+            {
                 total_size += f.size_bytes;
             }
         }
@@ -1193,62 +1201,67 @@ pub(super) async fn build_episodes(
         if f.episode_number <= 0 {
             continue;
         }
-        if rendered_eps.contains(&f.episode_number) {
-            continue;
-        }
+        // One row per episode the file holds (issue #246).
+        for ep in f.episodes() {
+            if rendered_eps.contains(&ep) {
+                continue;
+            }
 
-        on_disk_count += 1;
-        downloaded_count += 1;
-        total_size += f.size_bytes;
-        let monitored = monitored_lookup.contains(&f.episode_number);
-        if monitored {
-            monitored_count += 1;
+            on_disk_count += 1;
+            downloaded_count += 1;
+            if sized_files.insert(f.filename.clone()) {
+                total_size += f.size_bytes;
+            }
+            let monitored = monitored_lookup.contains(&ep);
+            if monitored {
+                monitored_count += 1;
+            }
+            let (display_quality, quality_state) = if !f.quality.is_empty() {
+                (f.quality.clone(), "disk".to_string())
+            } else if let Some(tag) = quality_tags.get(&ep) {
+                (tag.quality_tag.clone(), tag.state.clone())
+            } else {
+                (String::new(), String::new())
+            };
+            let tag = quality_tags.get(&ep);
+            let class_source = tag.map(|t| t.source.clone()).unwrap_or_default();
+            let class_resolution = tag.map(|t| t.resolution.clone()).unwrap_or_default();
+            let class_is_remux = tag.map(|t| t.is_remux).unwrap_or(false);
+            let class_is_bdmv = tag.map(|t| t.is_bdmv).unwrap_or(false);
+            let class_web_kind = tag.map(|t| t.web_kind.clone()).unwrap_or_default();
+            let needs_review = tag.map(|t| t.needs_review).unwrap_or(false);
+            let manual_override = tag.map(|t| t.manual_override).unwrap_or(false);
+            rendered_eps.insert(ep);
+            episodes.push(Episode {
+                number: ep,
+                title: String::new(),
+                title_romaji: String::new(),
+                title_english: String::new(),
+                title_native: String::new(),
+                aired: String::new(),
+                on_disk: true,
+                // This branch only runs when the file already exists under
+                // media_root (on_disk=true), so `downloaded` is
+                // unconditionally true regardless of tag state.
+                downloaded: true,
+                quality: display_quality,
+                quality_state,
+                size_display: f.size_display.clone(),
+                size_bytes: f.size_bytes as i64,
+                filename: f.filename.clone(),
+                can_auto_search: is_tracked,
+                monitored,
+                // On disk by definition in this pass, so never unaired.
+                unaired: false,
+                class_source,
+                class_resolution,
+                class_is_remux,
+                class_is_bdmv,
+                class_web_kind,
+                manual_override,
+                needs_review,
+            });
         }
-        let (display_quality, quality_state) = if !f.quality.is_empty() {
-            (f.quality.clone(), "disk".to_string())
-        } else if let Some(tag) = quality_tags.get(&f.episode_number) {
-            (tag.quality_tag.clone(), tag.state.clone())
-        } else {
-            (String::new(), String::new())
-        };
-        let tag = quality_tags.get(&f.episode_number);
-        let class_source = tag.map(|t| t.source.clone()).unwrap_or_default();
-        let class_resolution = tag.map(|t| t.resolution.clone()).unwrap_or_default();
-        let class_is_remux = tag.map(|t| t.is_remux).unwrap_or(false);
-        let class_is_bdmv = tag.map(|t| t.is_bdmv).unwrap_or(false);
-        let class_web_kind = tag.map(|t| t.web_kind.clone()).unwrap_or_default();
-        let needs_review = tag.map(|t| t.needs_review).unwrap_or(false);
-        let manual_override = tag.map(|t| t.manual_override).unwrap_or(false);
-        rendered_eps.insert(f.episode_number);
-        episodes.push(Episode {
-            number: f.episode_number,
-            title: String::new(),
-            title_romaji: String::new(),
-            title_english: String::new(),
-            title_native: String::new(),
-            aired: String::new(),
-            on_disk: true,
-            // This branch only runs when the file already exists under
-            // media_root (on_disk=true), so `downloaded` is
-            // unconditionally true regardless of tag state.
-            downloaded: true,
-            quality: display_quality,
-            quality_state,
-            size_display: f.size_display.clone(),
-            size_bytes: f.size_bytes as i64,
-            filename: f.filename.clone(),
-            can_auto_search: is_tracked,
-            monitored,
-            // On disk by definition in this pass, so never unaired.
-            unaired: false,
-            class_source,
-            class_resolution,
-            class_is_remux,
-            class_is_bdmv,
-            class_web_kind,
-            manual_override,
-            needs_review,
-        });
     }
 
     // Pass 2: grab-tag rows past ep_count with no matching disk file
