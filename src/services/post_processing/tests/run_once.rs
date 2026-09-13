@@ -1631,3 +1631,193 @@ async fn run_once_refuses_a_release_covering_fewer_episodes_than_the_file_on_dis
     .unwrap();
     assert_eq!(ep1_state, "completed");
 }
+
+/// A range file replacing two singles lands the same way in every
+/// import mode: the singles are retired, the file is named with the
+/// range, both episodes get rows, and the mode's own contract holds
+/// (hardlink shares the source's inode, copy leaves the source in
+/// place, move takes it and drops the torrent from the client).
+#[tokio::test]
+async fn run_once_imports_a_multi_episode_file_over_two_singles_in_every_mode() {
+    use std::os::unix::fs::MetadataExt;
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+
+    for mode in ["hardlink", "copy", "move"] {
+        let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+        let source_dir = tempfile::TempDir::new().expect("source tempdir");
+        let media_root_path = media_root.path().to_string_lossy().to_string();
+        let source_path = source_dir.path().to_string_lossy().to_string();
+
+        let db = in_memory_pool().await;
+        sqlx::query(
+            "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode) \
+             VALUES (1, 1, ?, ?)",
+        )
+        .bind(&media_root_path)
+        .bind(mode)
+        .execute(&db)
+        .await
+        .expect("seed config row");
+        let series_id = seed_series(&db, 1, "Show Title").await;
+
+        // Two singles already in the library.
+        let season_dir = media_root.path().join("Show Title").join("Season 01");
+        std::fs::create_dir_all(&season_dir).expect("season dir");
+        for name in [
+            "Show Title - S01E01 - One.mkv",
+            "Show Title - S01E02 - Two.mkv",
+        ] {
+            std::fs::write(season_dir.join(name), b"single").expect("write single");
+        }
+
+        // The incoming range file, complete in the client.
+        let title = "[Group] Show Title - 01-02 (1080p)";
+        let incoming = "[Group] Show Title - 01-02 (1080p).mkv";
+        let src = source_dir.path().join(incoming);
+        std::fs::write(&src, b"both episodes").expect("write incoming");
+        let g = grabbed_torrents::record_grab(&db, "deadbeef", title, series_id, &[1, 2], false)
+            .await
+            .unwrap()
+            .unwrap();
+        grabbed_torrents::set_download_client(&db, g, Some(1))
+            .await
+            .unwrap();
+        insert_dc(
+            &db,
+            DownloadClientForm {
+                name: "default",
+                kind: "qbittorrent",
+                url: "http://q",
+                username: "",
+                password: "",
+                label: "",
+                download_path: "",
+                enabled: true,
+                is_default: true,
+            },
+        )
+        .await
+        .unwrap();
+        let torrent = DownloadItem {
+            hash: "deadbeef".into(),
+            name: title.into(),
+            size: 13,
+            progress: 1.0,
+            dlspeed: 0,
+            state: "seeding".into(),
+            category: "anime".into(),
+            eta: 0,
+            save_path: source_path.clone(),
+            content_path: source_path.clone(),
+            state_kind: DownloadItemState::Seeding,
+            seeding_done: false,
+        };
+        let files = vec![DownloadFile {
+            name: incoming.to_string(),
+            size: 13,
+            progress: 1.0,
+            wanted: true,
+        }];
+        let state = build_test_app_state(db.clone(), None);
+        let client = Arc::new(ImportingClient { torrent, files });
+        install_pool(
+            &state,
+            vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+        )
+        .await;
+
+        post_processing::run_once(&state).await;
+
+        let final_state: String =
+            sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+                .bind(g)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(final_state, "imported", "mode {mode}");
+
+        // Only the range file is left, named with the range.
+        let mut mkvs: Vec<String> = std::fs::read_dir(&season_dir)
+            .expect("read season dir")
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.ends_with(".mkv"))
+            .collect();
+        mkvs.sort();
+        assert_eq!(
+            mkvs,
+            vec!["Show Title - S01E01-E02.mkv".to_string()],
+            "mode {mode}: {mkvs:?}"
+        );
+        let dest = season_dir.join("Show Title - S01E01-E02.mkv");
+        assert_eq!(
+            std::fs::read(&dest).unwrap(),
+            b"both episodes",
+            "mode {mode}: wrong bytes at the destination"
+        );
+
+        // The mode's own contract.
+        let links = std::fs::metadata(&dest).unwrap().nlink();
+        match mode {
+            "hardlink" => {
+                assert_eq!(links, 2, "hardlink mode shares the inode");
+                assert!(src.exists());
+            }
+            "copy" => {
+                assert_eq!(links, 1, "copy mode makes a new inode");
+                assert!(src.exists(), "copy mode leaves the source");
+            }
+            _ => {
+                assert_eq!(links, 1);
+                assert!(!src.exists(), "move mode takes the source");
+            }
+        }
+        let import_mode: Option<String> =
+            sqlx::query_scalar("SELECT import_mode FROM grabbed_torrents WHERE id = ?")
+                .bind(g)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(import_mode.as_deref(), Some(mode));
+        let removed: Option<String> =
+            sqlx::query_scalar("SELECT client_removed_at FROM grabbed_torrents WHERE id = ?")
+                .bind(g)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(
+            removed.is_some(),
+            mode == "move",
+            "mode {mode}: only a move-mode import leaves the client at once"
+        );
+
+        // Both episodes have completed rows naming the new file.
+        let rows: Vec<(i32, String)> = sqlx::query_as(
+            "SELECT episode_number, state FROM episode_quality_tags WHERE series_id = ? ORDER BY episode_number",
+        )
+        .bind(series_id)
+        .fetch_all(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            rows,
+            vec![(1, "completed".to_string()), (2, "completed".to_string())],
+            "mode {mode}"
+        );
+        let names: Vec<String> = sqlx::query_scalar(
+            "SELECT file_name FROM episode_grab_history WHERE series_id = ? AND state = 'completed' ORDER BY episode_number",
+        )
+        .bind(series_id)
+        .fetch_all(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            names,
+            vec![
+                "Show Title - S01E01-E02.mkv".to_string(),
+                "Show Title - S01E01-E02.mkv".to_string()
+            ],
+            "mode {mode}"
+        );
+    }
+}
