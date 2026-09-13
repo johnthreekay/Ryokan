@@ -482,7 +482,8 @@ a.btn-ghost:hover { color: var(--text); }
 .setting-row input[type="checkbox"],
 .calendar-toggle-filter input[type="checkbox"],
 .cf-export-check input[type="checkbox"],
-.import-files input[type="checkbox"] {
+.import-files input[type="checkbox"],
+.wanted-row-select input[type="checkbox"] {
     width: 16px;
     height: 16px;
     accent-color: var(--accent);
@@ -507,7 +508,8 @@ a.btn-ghost:hover { color: var(--text); }
 .setting-row input[type="checkbox"]:checked,
 .calendar-toggle-filter input[type="checkbox"]:checked,
 .cf-export-check input[type="checkbox"]:checked,
-.import-files input[type="checkbox"]:checked {
+.import-files input[type="checkbox"]:checked,
+.wanted-row-select input[type="checkbox"]:checked {
     background: var(--accent);
     border-color: var(--accent);
 }
@@ -516,7 +518,8 @@ a.btn-ghost:hover { color: var(--text); }
 .setting-row input[type="checkbox"]:checked::after,
 .calendar-toggle-filter input[type="checkbox"]:checked::after,
 .cf-export-check input[type="checkbox"]:checked::after,
-.import-files input[type="checkbox"]:checked::after {
+.import-files input[type="checkbox"]:checked::after,
+.wanted-row-select input[type="checkbox"]:checked::after {
     content: '';
     position: absolute;
     left: 50%;
