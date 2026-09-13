@@ -2006,3 +2006,73 @@ mod naming_templates {
         );
     }
 }
+
+/// The "Kept off the sync" list under External Accounts renders only
+/// when it has a use: an account is linked (empty state included), or
+/// a series is on it (an exclusion recorded before the account was
+/// unlinked still needs its "Allow again").
+mod sync_exclusions_list {
+    use super::super::*;
+    use crate::models::external_accounts::{LinkRequest, PROVIDER_ANILIST, link};
+    use crate::models::sync_exclusions;
+    use crate::test_support::{build_test_app_state, in_memory_pool};
+
+    async fn render_integrations(db: &sqlx::SqlitePool) -> String {
+        let state = build_test_app_state(db.clone(), None);
+        build_settings_template(
+            &state,
+            Some("integrations".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .render()
+        .expect("settings page renders")
+    }
+
+    #[tokio::test]
+    async fn hidden_with_no_account_and_no_entries() {
+        let db = in_memory_pool().await;
+        let html = render_integrations(&db).await;
+        assert!(!html.contains("Kept off the sync"));
+    }
+
+    #[tokio::test]
+    async fn entries_show_without_an_account() {
+        let db = in_memory_pool().await;
+        sync_exclusions::add(&db, 1535, None, "Death Note")
+            .await
+            .expect("add exclusion");
+        let html = render_integrations(&db).await;
+        assert!(html.contains("Kept off the sync"));
+        assert!(html.contains("Death Note"));
+        assert!(html.contains("Allow again"));
+        assert!(!html.contains("Nothing yet"));
+    }
+
+    #[tokio::test]
+    async fn linked_account_shows_the_empty_state() {
+        let db = in_memory_pool().await;
+        link(
+            &db,
+            LinkRequest {
+                provider: PROVIDER_ANILIST.to_string(),
+                provider_user_id: "42".to_string(),
+                username: "tester".to_string(),
+                access_token: "token".to_string(),
+                refresh_token: String::new(),
+                access_token_expires_at: None,
+                score_format: "POINT_10".to_string(),
+            },
+        )
+        .await
+        .expect("link account");
+        let html = render_integrations(&db).await;
+        assert!(html.contains("Kept off the sync"));
+        assert!(html.contains("Nothing yet"));
+        assert!(!html.contains("Allow again"));
+    }
+}

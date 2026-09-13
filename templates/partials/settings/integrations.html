@@ -250,9 +250,15 @@
                         </div>
                     </div>
             {% endmatch %}
-            {% if !sync_exclusions.is_empty() %}
+            {# Shown once the list has a use: an account is linked, or a
+               series is already on it (an exclusion recorded before the
+               account was unlinked still needs its "Allow again"). #}
+            {% if external_account.is_some() || !sync_exclusions.is_empty() %}
             <div class="form-group">
                 <label>Kept off the sync</label>
+                {% if sync_exclusions.is_empty() %}
+                <span class="form-hint">Nothing yet. Tick "keep it off my sync" when removing a series and it is listed here.</span>
+                {% else %}
                 <span class="form-hint">Series removed with "keep it off my sync". A sync does not add them back until you allow them again.</span>
                 <ul class="sync-exclusions">
                     {% for x in sync_exclusions %}
@@ -270,6 +276,7 @@
                     </li>
                     {% endfor %}
                 </ul>
+                {% endif %}
             </div>
             {% endif %}
         </div>

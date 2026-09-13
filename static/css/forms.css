@@ -104,6 +104,11 @@
 }
 
 .settings-form .form-group { margin-bottom: 16px; }
+/* An inline action row (Sync now / Unlink, the Test buttons) has no
+   bottom margin because it used to end its card; a group placed
+   after one keeps the same 16px rhythm the groups have among
+   themselves. */
+.settings-form .settings-inline-actions + .form-group { margin-top: 16px; }
 
 /* The card's own padding already closes it; without this the last
    field adds its 16px on top and every card sits deeper at the
