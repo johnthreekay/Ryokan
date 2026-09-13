@@ -104,7 +104,11 @@ function performRemoveSeries(dbId) {
     fetch('/api/library/remove', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({id: dbId, delete_files: true})
+        body: JSON.stringify({
+            id: dbId,
+            delete_files: true,
+            add_exclusion: !!(document.getElementById('remove-series-exclude') || {}).checked,
+        })
     })
     .then(async r => {
         // Backend always replies with JSON now — success body is the

@@ -152,6 +152,8 @@ use services::{
         handlers::settings::direct_rss_feeds::settings_direct_rss_feeds_test,
         // Settings: naming preview (#124)
         handlers::settings::naming::naming_preview,
+        // Settings: watch-list sync exclusions
+        handlers::settings::sync_exclusion_delete,
         // Scoped API keys (#114)
         handlers::api_keys::list,
         handlers::api_keys::create,
@@ -1022,6 +1024,10 @@ async fn main() {
             post(handlers::oauth::update_preferences),
         )
         .route("/settings/oauth/unlink", post(handlers::oauth::unlink))
+        .route(
+            "/settings/sync-exclusions/{id}/delete",
+            post(handlers::settings::sync_exclusion_delete),
+        )
         .route("/settings/oauth/sync-now", post(handlers::oauth::sync_now))
         .route(
             "/settings/groups",

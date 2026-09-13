@@ -301,6 +301,10 @@
             {% else %}
             <p class="remove-series-final-warning">This cannot be undone.</p>
             {% endif %}
+            <label class="checkbox-row remove-series-exclude">
+                <input type="checkbox" id="bulk-delete-exclude">
+                <span>Keep them off my watch-list sync. Only matters with a linked AniList or MyAnimeList account; undo on Settings → Integrations.</span>
+            </label>
         </div>
         <div class="modal-footer remove-series-footer">
             <button type="button" class="btn btn-secondary" onclick="closeBulkDeleteModal(event)">Cancel</button>

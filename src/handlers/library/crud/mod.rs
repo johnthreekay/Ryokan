@@ -296,6 +296,7 @@ pub async fn remove_series(
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
     let series_id = form.id;
     let delete_files = form.delete_files.unwrap_or(true);
+    let add_exclusion = form.add_exclusion.unwrap_or(false);
 
     // Centralised error exit for this handler. Before the rss_seen fix,
     // any failure here (FK violations, stale grabbed_torrents, qBit
@@ -397,6 +398,9 @@ pub async fn remove_series(
     // Remove the DB tracking rows. This is the irreversible step, so
     // do it last — if filesystem cleanup blew up the operator can
     // still inspect the half-cleaned state via the Library page.
+    if add_exclusion {
+        record_sync_exclusion(&state.db, series_id).await;
+    }
     if let Err(e) = series::remove(&state.db, series_id).await {
         return Err(fail_with(&state.db, series_id, "delete_series", e.to_string()).await);
     }
@@ -1535,3 +1539,33 @@ pub async fn list_folders(
 
 #[cfg(test)]
 mod tests;
+
+/// Write the sync exclusion for a series about to be removed (the row
+/// must still exist to read its ids and title). Best-effort: a failure
+/// here never blocks the removal.
+pub(crate) async fn record_sync_exclusion(db: &sqlx::SqlitePool, series_id: i64) {
+    let Ok(Some(row)) = series::get_by_id(db, series_id).await else {
+        return;
+    };
+    match crate::models::sync_exclusions::add(db, row.anilist_id, row.mal_id, &row.title).await {
+        Ok(true) => {
+            logger::info(
+                db,
+                LogCategory::ExternalSync,
+                &format!("Sync exclusion added for '{}'", row.title),
+                &format!("anilist_id={} mal_id={:?}", row.anilist_id, row.mal_id),
+            )
+            .await;
+        }
+        Ok(false) => {}
+        Err(e) => {
+            logger::warn(
+                db,
+                LogCategory::ExternalSync,
+                &format!("Could not add a sync exclusion for '{}'", row.title),
+                &e.to_string(),
+            )
+            .await;
+        }
+    }
+}

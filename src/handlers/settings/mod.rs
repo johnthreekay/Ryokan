@@ -162,6 +162,9 @@ struct SettingsTemplate {
     /// plaintext tokens exist only in memory during outbound API
     /// calls, never in a rendered page.
     external_account: Option<ExternalAccountView>,
+    /// Series kept off the watch-list sync (Settings → Integrations
+    /// lists them with an "Allow again" button).
+    sync_exclusions: Vec<crate::models::sync_exclusions::SyncExclusion>,
     /// Mirrors `config.title_language` so `base.html`'s pre-paint FOUC
     /// guard can bake the user's preference into the rendered page.
     /// Without this, opening Settings (or any other page) from a fresh
@@ -543,6 +546,7 @@ pub(crate) struct IntegrationsFormPartial {
     pub message: Option<String>,
     pub error: Option<String>,
     pub external_account: Option<ExternalAccountView>,
+    pub sync_exclusions: Vec<crate::models::sync_exclusions::SyncExclusion>,
 }
 
 /// Issue #129 completion — Quality tab subform. Companion to
@@ -1038,6 +1042,9 @@ async fn build_settings_template(
         error: err,
         version: env!("CARGO_PKG_VERSION"),
         external_account,
+        sync_exclusions: crate::models::sync_exclusions::list(&state.db)
+            .await
+            .unwrap_or_default(),
         title_language,
         indexers: indexers_res.unwrap_or_default(),
         indexer_catalog: crate::services::indexer_catalog::SEEDED,
@@ -1618,6 +1625,9 @@ pub async fn settings_submit(
             error: Some(format!("Failed to save: {}", e)),
             version: env!("CARGO_PKG_VERSION"),
             external_account,
+            sync_exclusions: crate::models::sync_exclusions::list(&state.db)
+                .await
+                .unwrap_or_default(),
             title_language,
             indexers,
             indexer_catalog: crate::services::indexer_catalog::SEEDED,
@@ -1748,6 +1758,9 @@ pub async fn settings_submit(
         error: None,
         version: env!("CARGO_PKG_VERSION"),
         external_account,
+        sync_exclusions: crate::models::sync_exclusions::list(&state.db)
+            .await
+            .unwrap_or_default(),
         title_language,
         indexers,
         indexer_catalog: crate::services::indexer_catalog::SEEDED,
@@ -2498,6 +2511,9 @@ async fn integrations_response(
                 message,
                 error,
                 external_account,
+                sync_exclusions: crate::models::sync_exclusions::list(&state.db)
+                    .await
+                    .unwrap_or_default(),
             }
             .render()
             .unwrap_or_default(),
@@ -2771,3 +2787,30 @@ pub async fn jellyfin_refresh(State(state): State<AppState>) -> Response {
 
 #[cfg(test)]
 mod tests;
+
+/// `POST /settings/sync-exclusions/{id}/delete`: let the watch-list
+/// sync add a removed series again.
+#[utoipa::path(
+    post,
+    path = "/settings/sync-exclusions/{id}/delete",
+    tag = "Settings",
+    summary = "Delete a watch-list sync exclusion",
+    description = "Removes the exclusion so the next AniList / MyAnimeList sync may add the series again. Redirects back to the Integrations tab.",
+    params(("id" = i64, Path, description = "Exclusion id")),
+    responses((status = 303, description = "Redirect back to the Integrations tab")),
+)]
+pub async fn sync_exclusion_delete(
+    State(state): State<AppState>,
+    HxRequest(is_htmx): HxRequest,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Response {
+    let (message, error) = match crate::models::sync_exclusions::delete(&state.db, id).await {
+        Ok(true) => (
+            Some("Exclusion removed. The next sync may add the series again.".to_string()),
+            None,
+        ),
+        Ok(false) => (None, Some("That exclusion no longer exists.".to_string())),
+        Err(e) => (None, Some(format!("Could not remove the exclusion: {e}"))),
+    };
+    integrations_response(&state, None, message, error, is_htmx).await
+}

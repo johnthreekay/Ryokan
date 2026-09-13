@@ -607,6 +607,7 @@ fn merge_pass_combines_outcomes_and_drains_deferred_counter() {
         failed: Vec::new(),
         skipped_by_preference: 1,
         pinned_manually: 0,
+        excluded: 0,
         new_artwork: vec![NewArtworkSpec {
             series_id: 1,
             cover_url: "c1".into(),
@@ -621,6 +622,7 @@ fn merge_pass_combines_outcomes_and_drains_deferred_counter() {
         failed: vec![(-9999, "Jikan rate-limited".into())],
         skipped_by_preference: 0,
         pinned_manually: 0,
+        excluded: 0,
         new_artwork: vec![
             NewArtworkSpec {
                 series_id: 2,
@@ -656,6 +658,7 @@ fn merge_pass_keeps_remaining_deferred_when_jikan_partial() {
         failed: Vec::new(),
         skipped_by_preference: 0,
         pinned_manually: 0,
+        excluded: 0,
         new_artwork: Vec::new(),
     };
     let jikan = MergeOutcome {
@@ -666,6 +669,7 @@ fn merge_pass_keeps_remaining_deferred_when_jikan_partial() {
         failed: Vec::new(),
         skipped_by_preference: 0,
         pinned_manually: 0,
+        excluded: 0,
         new_artwork: Vec::new(),
     };
     let combined = al.merge_pass(jikan);
@@ -1373,4 +1377,42 @@ async fn merge_skips_new_entry_when_import_pref_off() {
             .is_none(),
         "import_dropped=false must keep new Dropped entries out of the library"
     );
+}
+
+#[tokio::test]
+async fn merge_skips_an_excluded_entry_and_counts_it() {
+    let db = crate::test_support::in_memory_pool().await;
+    crate::models::sync_exclusions::add(&db, 12345, None, "Example")
+        .await
+        .unwrap();
+    let entries = vec![entry(
+        external_accounts::PROVIDER_ANILIST,
+        12345,
+        NormalizedStatus::Watching,
+    )];
+    let mut detail_map = HashMap::new();
+    detail_map.insert(12345, make_detail(12345, "Example", "TV", "RELEASING"));
+    let outcome = merge_into_library(&db, &entries, &detail_map, &prefs_default(), None).await;
+    assert_eq!(outcome.excluded, 1);
+    assert_eq!(outcome.created, 0);
+    assert!(outcome.failed.is_empty());
+    assert!(
+        series::get_by_anilist_id(&db, 12345)
+            .await
+            .unwrap()
+            .is_none(),
+        "an excluded entry is never added"
+    );
+    // A MAL-only entry keys by its MAL id.
+    crate::models::sync_exclusions::add(&db, -777, Some(777), "MAL only")
+        .await
+        .unwrap();
+    let mal_entries = vec![entry(
+        external_accounts::PROVIDER_MAL,
+        -777,
+        NormalizedStatus::Watching,
+    )];
+    let outcome = merge_jikan_fallback_entries(&db, &mal_entries, &prefs_default(), None).await;
+    assert_eq!(outcome.excluded, 1);
+    assert_eq!(outcome.created, 0);
 }

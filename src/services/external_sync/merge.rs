@@ -55,10 +55,18 @@ pub async fn merge_into_library(
     account_id: Option<i64>,
 ) -> MergeOutcome {
     let mut outcome = MergeOutcome::default();
+    // Loaded once per sync: a removed series the user wants kept off
+    // the list is skipped before any lookup or add (Sonarr's
+    // "Rejected due to list exclusion").
+    let exclusions = crate::models::sync_exclusions::load_set(db).await;
 
     for entry in entries {
         if entry.anilist_id <= 0 {
             outcome.deferred_jikan += 1;
+            continue;
+        }
+        if exclusions.contains(entry.anilist_id, None) {
+            outcome.excluded += 1;
             continue;
         }
         let target_mode = monitor_mode_for(entry.status, prefs.skip_already_watched);
@@ -182,12 +190,20 @@ pub async fn merge_jikan_fallback_entries(
     account_id: Option<i64>,
 ) -> MergeOutcome {
     let mut outcome = MergeOutcome::default();
+    // Loaded once per sync: a removed series the user wants kept off
+    // the list is skipped before any lookup or add (Sonarr's
+    // "Rejected due to list exclusion").
+    let exclusions = crate::models::sync_exclusions::load_set(db).await;
     for entry in entries.iter().filter(|e| e.anilist_id < 0) {
         // Recover the original MAL id by negating the sentinel back.
         // `provider_media_id` carries the same value but going through
         // the sentinel keeps the AL-merge path and Jikan-merge path
         // consistent: each derives the upstream id from `anilist_id`.
         let mal_id = -entry.anilist_id;
+        if exclusions.contains(entry.anilist_id, Some(mal_id)) {
+            outcome.excluded += 1;
+            continue;
+        }
         let target_mode = monitor_mode_for(entry.status, prefs.skip_already_watched);
         match merge_one_jikan_entry(db, entry, mal_id, target_mode, prefs, account_id).await {
             Ok(MergeAction::Created(spec)) => {

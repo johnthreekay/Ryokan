@@ -375,6 +375,10 @@ pub struct RemoveSeriesForm {
     /// that want to delete *only* the database tracking row.
     #[serde(default)]
     delete_files: Option<bool>,
+    /// Keep the series off the AniList / MAL watch-list sync after the
+    /// removal (Sonarr's "add list exclusion"). Default false.
+    #[serde(default)]
+    add_exclusion: Option<bool>,
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]

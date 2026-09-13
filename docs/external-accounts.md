@@ -30,6 +30,10 @@ Once an account is linked, Ryokan checks it every 30 minutes. **Sync interval (m
 
 **Sync now** next to the linked account runs a check right away.
 
+## Keeping a removed series off the sync
+
+Removing a series from the library does not remove it from your AniList or MyAnimeList list, so the next sync would add it back. To stop that, tick **Keep it off my sync** in the remove dialog (the series page, or the bulk remove on the Library page). The series goes on a list under Settings → Integrations, and a sync skips it until you press **Allow again** there. This is the same idea as Sonarr's import-list exclusions.
+
 ## One account at a time
 
 Only one account can be linked. **Unlink** removes the link along with the scores and list memberships that came from it, but the series it added stay in your library with their monitoring and grab history. While an account is linked, your score for each series shows on its library card in the format your account uses.

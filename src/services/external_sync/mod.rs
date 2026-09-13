@@ -385,11 +385,12 @@ async fn sync_anilist(
         &state.db,
         LogCategory::ExternalSync,
         &format!(
-            "AniList watch-list synced: {kept} kept ({stale_dropped} pre-cursor), {} created, {} monitor-mode updated, {} unchanged, {} skipped (import prefs off), {} pinned-manually, {} removed-from-list, {} failed",
+            "AniList watch-list synced: {kept} kept ({stale_dropped} pre-cursor), {} created, {} monitor-mode updated, {} unchanged, {} skipped (import prefs off), {} excluded, {} pinned-manually, {} removed-from-list, {} failed",
             outcome.created,
             outcome.monitor_mode_updated,
             outcome.unchanged,
             outcome.skipped_by_preference,
+            outcome.excluded,
             outcome.pinned_manually,
             removed_count,
             outcome.failed.len(),
@@ -413,11 +414,12 @@ async fn sync_anilist(
     spawn_post_merge_bulk_pass(state, outcome.new_artwork.clone()).await;
 
     Ok(format!(
-        "AniList: fetched {raw_total}, kept {kept}, created {}, updated {}, unchanged {}, skipped {}, pinned-manually {}, removed-from-list {}, failed {}",
+        "AniList: fetched {raw_total}, kept {kept}, created {}, updated {}, unchanged {}, skipped {}, excluded {}, pinned-manually {}, removed-from-list {}, failed {}",
         outcome.created,
         outcome.monitor_mode_updated,
         outcome.unchanged,
         outcome.skipped_by_preference,
+        outcome.excluded,
         outcome.pinned_manually,
         removed_count,
         outcome.failed.len(),
@@ -608,11 +610,12 @@ async fn sync_mal(
         &state.db,
         LogCategory::ExternalSync,
         &format!(
-            "MyAnimeList watch-list synced: {kept} kept ({stale_dropped} pre-cursor), {} created, {} monitor-mode updated, {} unchanged, {} skipped (import prefs off), {} pinned-manually, {} deferred, {} removed-from-list, {} failed",
+            "MyAnimeList watch-list synced: {kept} kept ({stale_dropped} pre-cursor), {} created, {} monitor-mode updated, {} unchanged, {} skipped (import prefs off), {} excluded, {} pinned-manually, {} deferred, {} removed-from-list, {} failed",
             outcome.created,
             outcome.monitor_mode_updated,
             outcome.unchanged,
             outcome.skipped_by_preference,
+            outcome.excluded,
             outcome.pinned_manually,
             outcome.deferred_jikan,
             removed_count,
@@ -640,11 +643,12 @@ async fn sync_mal(
     spawn_post_merge_bulk_pass(state, outcome.new_artwork.clone()).await;
 
     Ok(format!(
-        "MyAnimeList: fetched {raw_total}, kept {kept}, created {}, updated {}, unchanged {}, skipped {}, pinned-manually {}, deferred {}, removed-from-list {}, failed {}",
+        "MyAnimeList: fetched {raw_total}, kept {kept}, created {}, updated {}, unchanged {}, skipped {}, excluded {}, pinned-manually {}, deferred {}, removed-from-list {}, failed {}",
         outcome.created,
         outcome.monitor_mode_updated,
         outcome.unchanged,
         outcome.skipped_by_preference,
+        outcome.excluded,
         outcome.pinned_manually,
         outcome.deferred_jikan,
         removed_count,

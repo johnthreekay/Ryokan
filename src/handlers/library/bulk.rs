@@ -154,6 +154,10 @@ pub struct BulkDeleteRequest {
     /// NULL-out via [`series::remove`]); files stay on disk and
     /// active torrents stay in their download clients.
     pub delete_files: bool,
+    /// Keep each series off the AniList / MAL watch-list sync after
+    /// the removal (Sonarr's "add list exclusion"). Default false.
+    #[serde(default)]
+    pub add_exclusion: bool,
 }
 
 /// `POST /api/library/bulk/delete` — remove a list of series from the
@@ -201,6 +205,9 @@ pub async fn bulk_delete(
     let mut succeeded = Vec::with_capacity(req.series_ids.len());
     let mut failed = Vec::new();
     for series_id in &req.series_ids {
+        if req.add_exclusion {
+            super::crud::record_sync_exclusion(&state.db, *series_id).await;
+        }
         match delete_one_series(
             &state,
             *series_id,
@@ -455,6 +462,7 @@ mod tests {
         let req = BulkDeleteRequest {
             series_ids: vec![a, b],
             delete_files: false,
+            add_exclusion: false,
         };
         let state = crate::test_support::build_test_app_state(pool.clone(), None);
         let Json(outcome) = bulk_delete(axum::extract::State(state), Json(req)).await;
@@ -477,6 +485,7 @@ mod tests {
         let req = BulkDeleteRequest {
             series_ids: vec![],
             delete_files: false,
+            add_exclusion: false,
         };
         let state = crate::test_support::build_test_app_state(pool, None);
         let Json(outcome) = bulk_delete(axum::extract::State(state), Json(req)).await;
@@ -534,6 +543,7 @@ mod tests {
         let req = BulkDeleteRequest {
             series_ids: vec![series_id],
             delete_files: true,
+            add_exclusion: false,
         };
         let Json(outcome) = bulk_delete(axum::extract::State(state), Json(req)).await;
 
@@ -671,6 +681,7 @@ mod tests {
         let req = BulkDeleteRequest {
             series_ids: vec![series_id],
             delete_files: true,
+            add_exclusion: false,
         };
         let Json(_outcome) = bulk_delete(axum::extract::State(state), Json(req)).await;
 

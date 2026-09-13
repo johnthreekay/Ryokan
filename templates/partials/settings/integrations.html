@@ -250,5 +250,21 @@
                         </div>
                     </div>
             {% endmatch %}
+            {% if !sync_exclusions.is_empty() %}
+            <div class="form-group">
+                <label>Kept off the sync</label>
+                <span class="form-hint">Series removed with "keep it off my sync". A sync does not add them back until you allow them again.</span>
+                <ul class="sync-exclusions">
+                    {% for x in sync_exclusions %}
+                    <li class="sync-exclusion-row">
+                        <span>{{ x.title }}</span>
+                        <form method="post" action="/settings/sync-exclusions/{{ x.id }}/delete" hx-post="/settings/sync-exclusions/{{ x.id }}/delete" hx-target="#settings-content" hx-swap="innerHTML" style="display:inline">
+                            <button type="submit" class="btn btn-ghost btn-sm">Allow again</button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
         </div>
 

@@ -816,6 +816,7 @@ mod crud_ci {
         let form = super::super::RemoveSeriesForm {
             id: series_id,
             delete_files: Some(false),
+            add_exclusion: None,
         };
         let result = remove_series(State(state), AxumJson(form)).await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
@@ -837,6 +838,7 @@ mod crud_ci {
         let form = super::super::RemoveSeriesForm {
             id: 99_999,
             delete_files: Some(false),
+            add_exclusion: None,
         };
         let result = remove_series(State(state), AxumJson(form)).await;
         assert!(result.is_ok(), "missing id must still return Ok");
@@ -927,6 +929,7 @@ mod remove_series_safety {
         let form = super::super::RemoveSeriesForm {
             id: series_id,
             delete_files: Some(true),
+            add_exclusion: None,
         };
         let resp = remove_series(State(state), AxumJson(form))
             .await
@@ -959,6 +962,7 @@ mod remove_series_safety {
         let form = super::super::RemoveSeriesForm {
             id: series_id,
             delete_files: Some(true),
+            add_exclusion: None,
         };
         let resp = remove_series(State(state), AxumJson(form))
             .await
@@ -986,6 +990,7 @@ mod remove_series_safety {
         let form = super::super::RemoveSeriesForm {
             id: series_id,
             delete_files: Some(true),
+            add_exclusion: None,
         };
         let resp = remove_series(State(state), AxumJson(form))
             .await
@@ -1014,6 +1019,7 @@ mod remove_series_safety {
         let form = super::super::RemoveSeriesForm {
             id: series_id,
             delete_files: Some(true),
+            add_exclusion: None,
         };
         let resp = remove_series(State(state), AxumJson(form))
             .await
@@ -1043,6 +1049,7 @@ mod remove_series_safety {
         let form = super::super::RemoveSeriesForm {
             id: series_id,
             delete_files: Some(true),
+            add_exclusion: None,
         };
         let resp = remove_series(State(state), AxumJson(form))
             .await
@@ -1142,6 +1149,7 @@ mod remove_series_safety {
         let form = super::super::RemoveSeriesForm {
             id: series_id,
             delete_files: Some(true),
+            add_exclusion: None,
         };
         let resp = remove_series(State(state), AxumJson(form))
             .await
@@ -1182,6 +1190,7 @@ mod remove_series_safety {
         let form = super::super::RemoveSeriesForm {
             id: series_id,
             delete_files: Some(true),
+            add_exclusion: None,
         };
         let resp = remove_series(State(state), AxumJson(form))
             .await

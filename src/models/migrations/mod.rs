@@ -2931,6 +2931,33 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .ok();
     }
 
+    // Watch-list sync exclusions (Sonarr's import-list exclusions): a
+    // series removed with "keep it off my watch-list sync" is not added
+    // again by the AniList / MAL sync until the row is deleted.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS external_sync_exclusions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            anilist_id INTEGER,
+            mal_id INTEGER,
+            title TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(db)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sync_exclusions_anilist ON external_sync_exclusions(anilist_id)",
+    )
+    .execute(db)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sync_exclusions_mal ON external_sync_exclusions(mal_id)",
+    )
+    .execute(db)
+    .await?;
+
     // Issue #228 — remove finished downloads from the client. The
     // switch is per client (Sonarr's "Remove Completed"), default on.
     // `client_removed_at` is stamped when post-processing removed an

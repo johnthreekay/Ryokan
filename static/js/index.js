@@ -695,7 +695,11 @@ function confirmBulkDelete() {
     fetch('/api/library/bulk/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ series_ids: ids, delete_files: deleteFiles })
+        body: JSON.stringify({
+            series_ids: ids,
+            delete_files: deleteFiles,
+            add_exclusion: !!(document.getElementById('bulk-delete-exclude') || {}).checked
+        })
     })
     .then(function (r) { return r.json(); })
     .then(function (outcome) {
