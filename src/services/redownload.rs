@@ -52,14 +52,17 @@ pub fn decide(enabled: bool, recent_failures: i64) -> Result<(), Skip> {
 /// breaker; the caller has already failed the grab, so the blocklist
 /// holds the release.
 pub async fn after_failed_download(state: &AppState, grab: &GrabbedTorrent, why: &str) {
+    // Both reads fail closed: a database hiccup must not turn into an
+    // unbounded run of searches.
     let enabled = config::get_config(&state.db)
         .await
         .ok()
         .flatten()
         .map(|c| c.auto_redownload_failed)
-        .unwrap_or(true);
-    let recent =
-        grabbed_torrents::count_recent_failed(&state.db, grab.series_id, WINDOW_HOURS).await;
+        .unwrap_or(false);
+    let recent = grabbed_torrents::count_recent_failed(&state.db, grab.series_id, WINDOW_HOURS)
+        .await
+        .unwrap_or(LOOP_BREAKER);
     match decide(enabled, recent) {
         Ok(()) => search_replacement(state, grab, why).await,
         Err(Skip::Disabled) => {
@@ -86,6 +89,47 @@ pub async fn after_failed_download(state: &AppState, grab: &GrabbedTorrent, why:
             )
             .await;
         }
+    }
+}
+
+/// Take a failed download out of the client, the way Sonarr's
+/// "Remove Failed" does: the grab is blocklisted and a replacement is
+/// coming, so the broken item only wastes space. Torrents under seed
+/// rules stay (`respects_seed_rules`); usenet jobs go too. Failures
+/// are logged and never block the re-search.
+pub async fn remove_failed_from_client(state: &AppState, grab: &GrabbedTorrent) {
+    let Some(client) = state
+        .resolve_grab_client(grab.download_client_id, &grab.hash)
+        .await
+    else {
+        return;
+    };
+    if client.protocol() != "usenet"
+        && grabbed_torrents::respects_seed_rules(&state.db, &grab.hash).await
+    {
+        logger::info(
+            &state.db,
+            LogCategory::DownloadClient,
+            &format!(
+                "Keeping failed download '{}' in the client (respect_seed_rules)",
+                grab.torrent_name
+            ),
+            &grab.hash,
+        )
+        .await;
+        return;
+    }
+    if let Err(e) = client.delete(&grab.hash, true).await {
+        logger::warn(
+            &state.db,
+            LogCategory::DownloadClient,
+            &format!(
+                "Failed to remove failed download '{}' from the client",
+                grab.torrent_name
+            ),
+            &e,
+        )
+        .await;
     }
 }
 
@@ -139,7 +183,7 @@ pub async fn search_replacement(state: &AppState, grab: &GrabbedTorrent, why: &s
                     &state.db,
                     LogCategory::AutoSearch,
                     &format!(
-                        "Re-search after {} '{}' grabbed {} release(s)",
+                        "Re-search after {} for '{}' grabbed {} release(s)",
                         why, title, n
                     ),
                     &format!("series_id={series_id}"),
@@ -150,7 +194,7 @@ pub async fn search_replacement(state: &AppState, grab: &GrabbedTorrent, why: &s
                 logger::warn(
                     &state.db,
                     LogCategory::AutoSearch,
-                    &format!("Re-search after {} '{}' failed", why, title),
+                    &format!("Re-search after {} for '{}' failed", why, title),
                     &e,
                 )
                 .await

@@ -902,7 +902,9 @@ async fn run_once_marks_grab_failed_when_client_reports_torrent_in_error_state()
         "a client-reported failure carries its reason onto the blocklist row"
     );
     assert_eq!(
-        grabbed_torrents::count_recent_failed(&db, series_id, 24).await,
+        grabbed_torrents::count_recent_failed(&db, series_id, 24)
+            .await
+            .unwrap(),
         1,
         "the failed grab counts toward the re-search loop breaker"
     );

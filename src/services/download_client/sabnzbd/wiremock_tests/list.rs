@@ -133,7 +133,7 @@ async fn list_scoped_returns_empty_when_no_matching_category() {
 }
 
 #[tokio::test]
-async fn list_scoped_unknown_history_status_surfaces_as_errored() {
+async fn list_scoped_unknown_history_status_waits_as_checking() {
     // History rows in unknown post-proc states ("Repair Failed",
     // "Move Failed") would import broken data if treated as
     // complete. Errored makes post-processing skip them.
@@ -172,7 +172,10 @@ async fn list_scoped_unknown_history_status_surfaces_as_errored() {
         .iter()
         .find(|i| i.hash == "SABnzbd_nzo_broken")
         .unwrap();
-    assert_eq!(broken.state_kind, DownloadItemState::Errored);
+    // An unknown history state waits rather than failing the grab:
+    // Errored now blocklists the release and grabs a replacement, so
+    // only SAB's own "Failed" earns it.
+    assert_eq!(broken.state_kind, DownloadItemState::CheckingDownload);
 }
 
 #[tokio::test]

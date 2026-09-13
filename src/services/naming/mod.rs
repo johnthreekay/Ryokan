@@ -141,7 +141,7 @@ pub const TOKEN_REFERENCE: &[(&str, &str)] = &[
     ),
     (
         "{episode.absolute}",
-        "absolute episode number counted across the show's seasons, like 019 for episode 7 of a second season that follows 12 episodes. {episode.absolute:000} pads. Empty until Ryokan knows the season chain, and always for a special; keep it after the episode number so scans read the right one",
+        "absolute episode number counted across the show's seasons, like 019 for episode 7 of a second season that follows 12 episodes. {episode.absolute:000} pads. Empty until Ryokan knows the season chain, and always for a special. Keep it after the episode number so scans read the right one",
     ),
     (
         "{episode.title}",
@@ -521,7 +521,11 @@ fn token_value(token: Token, pad: usize, ctx: &NameContext) -> String {
         Token::SeriesYear => ctx.series_year.map(number).unwrap_or_default(),
         Token::SeasonNumber => number(ctx.season_number),
         Token::EpisodeNumber => number(ctx.episode_number),
-        Token::EpisodeAbsolute => ctx.episode_absolute.map(number).unwrap_or_default(),
+        Token::EpisodeAbsolute => ctx
+            .episode_absolute
+            .filter(|n| *n > 0)
+            .map(number)
+            .unwrap_or_default(),
         Token::EpisodeTitle => ctx.episode_title.clone(),
         Token::QualityFull => quality_full(&ctx.quality_resolution, &ctx.quality_source),
         Token::QualityResolution => ctx.quality_resolution.clone(),
@@ -556,7 +560,7 @@ fn render_stem(pieces: &[Piece<'_>], ctx: &NameContext) -> String {
             Piece::Token {
                 token: Token::EpisodeAbsolute,
                 pad,
-            } if ctx.is_multi_episode() && ctx.episode_absolute.is_some() => {
+            } if ctx.is_multi_episode() && ctx.episode_absolute.is_some_and(|n| n > 0) => {
                 let first = ctx.episode_absolute.unwrap_or_default();
                 Segment::Value(sanitize_folder_name(&absolute_range_value(
                     *pad, ctx, first,

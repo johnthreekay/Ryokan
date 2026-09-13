@@ -95,7 +95,7 @@ pub(super) async fn maybe_hydrate_cumulative_offset(
     // prequel (that gap is what the rules are for). The rule's source
     // entry is cached so the search can read franchise aliases.
     if let Some(rule) = anime_relations::offset_for(t.anilist_id, t.mal_id) {
-        return match series::update_cumulative_prior_episodes(db, t.id, rule.episodes).await {
+        return match series::update_cumulative_prior_episodes(db, t.id, rule.episodes, true).await {
             Ok(()) => {
                 metadata_sync::log_rule_offset(db, &t, &rule).await;
                 let force_kitsu = force_kitsu_fallback_enabled(db).await;

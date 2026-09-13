@@ -91,7 +91,7 @@ Day-to-day knobs.
     | `{series.year}` | Premiere year, empty when unknown |
     | `{season.number}` | Season number (always 1 today). `{season.number:00}` pads to `01` |
     | `{episode.number}` | Episode number. `{episode.number:00}` pads to `01`, `{episode.number:000}` to `001`. A file holding several episodes renders the range, `S01E05-E06` or `05-06` |
-    | `{episode.absolute}` | Absolute episode number counted across the show's seasons, the way fansub groups number a sequel: `019` for episode 7 of a second season that follows 12 episodes. `{episode.absolute:000}` pads. Empty until Ryokan knows the season chain (after the first metadata refresh or grab), and always empty for a special. Keep it after the episode number, as in `S01E07 - 019`, so scans read the episode number and not the absolute one; the sample check refuses a template where the absolute number would win |
+    | `{episode.absolute}` | Absolute episode number counted across the show's seasons, the way fansub groups number a sequel: `019` for episode 7 of a second season that follows 12 episodes. `{episode.absolute:000}` pads. Empty until Ryokan knows the season chain (after the first metadata refresh or grab), and always empty for a special. Keep it after the episode number, as in `S01E07 - 019`, so scans read the episode number and not the absolute one. The sample check refuses a template where the absolute number would win |
     | `{episode.title}` | Episode title from metadata, empty when unknown |
     | `{quality.full}` | Resolution and source together, like `1080p WEB-DL` or `1080p BluRay Remux` |
     | `{quality.resolution}` | `1080p`, `720p`, ... |

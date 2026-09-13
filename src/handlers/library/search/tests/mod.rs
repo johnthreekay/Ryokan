@@ -506,7 +506,7 @@ async fn cumulative_hydration_skips_already_populated_series() {
     )
     .await
     .expect("upsert");
-    series::update_cumulative_prior_episodes(&db, series_id, 24)
+    series::update_cumulative_prior_episodes(&db, series_id, 24, true)
         .await
         .expect("set cumulative");
 

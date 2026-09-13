@@ -247,12 +247,16 @@ impl SabClient {
             "Failed" => DownloadItemState::Errored,
             _ => {
                 // History rows in unknown post-proc states usually
-                // mean "completed-with-some-issue" — surface as
-                // Errored so post-processing skips the import. Queue
-                // rows in unknown states default to Downloading
-                // (best-effort assumption that motion is happening).
+                // mean "completed-with-some-issue". Surface them as
+                // still checking so post-processing waits (the #205
+                // stall timer gives up on them eventually) rather than
+                // as Errored, which now blocklists the release and
+                // grabs a replacement; only SAB's own "Failed" earns
+                // that. Queue rows in unknown states default to
+                // Downloading (best-effort assumption that motion is
+                // happening).
                 if is_history {
-                    DownloadItemState::Errored
+                    DownloadItemState::CheckingDownload
                 } else {
                     DownloadItemState::Downloading
                 }
@@ -1647,12 +1651,18 @@ mod tests {
     }
 
     #[test]
-    fn map_state_unknown_history_status_surfaces_as_errored() {
-        // History rows in odd post-proc states ("Repair Failed",
-        // "Move Failed") would import broken data if treated as
-        // complete. Errored makes post-processing skip them.
+    fn map_state_unknown_history_status_waits_instead_of_failing() {
+        // History rows in odd post-proc states would import broken
+        // data if treated as complete. They used to read as Errored;
+        // now that Errored blocklists the release and grabs a
+        // replacement, only SAB's own "Failed" earns it, and an unknown
+        // state waits (the stall timer gives up on it eventually).
         assert_eq!(
-            SabClient::map_state("Repair Failed", true),
+            SabClient::map_state("Something New", true),
+            DownloadItemState::CheckingDownload
+        );
+        assert_eq!(
+            SabClient::map_state("Failed", true),
             DownloadItemState::Errored
         );
     }

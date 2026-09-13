@@ -685,15 +685,24 @@ pub async fn update_allow_pt_upgrades(
 /// after relations are cached, and by `handlers/library::add_series` so
 /// the first interactive search works without waiting on the next
 /// refresh sweep.
+///
+/// `known` says the value came from a curated rule or an authoritative
+/// AniList detail (not a MAL / Kitsu fallback whose relations the walk
+/// never saw); it flips `cumulative_offset_known` on and never off, so
+/// `{episode.absolute}` renders only once the season chain is real.
 pub async fn update_cumulative_prior_episodes(
     db: &SqlitePool,
     id: i64,
     offset: i32,
+    known: bool,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "UPDATE series SET cumulative_prior_episodes = ?, cumulative_offset_known = 1 WHERE id = ?",
+        "UPDATE series SET cumulative_prior_episodes = ?, \
+         cumulative_offset_known = CASE WHEN ? THEN 1 ELSE cumulative_offset_known END \
+         WHERE id = ?",
     )
     .bind(offset)
+    .bind(known)
     .bind(id)
     .execute(db)
     .await?;
@@ -914,9 +923,24 @@ mod absolute_offset_tests {
         let db = in_memory_pool().await;
         let id = seed_series(&db, 1, "Show").await;
         assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), None);
-        update_cumulative_prior_episodes(&db, id, 0).await.unwrap();
+        // A degraded write (MAL fallback, no relations seen) stores the
+        // number but does not make it known.
+        update_cumulative_prior_episodes(&db, id, 0, false)
+            .await
+            .unwrap();
+        assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), None);
+        update_cumulative_prior_episodes(&db, id, 0, true)
+            .await
+            .unwrap();
         assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), Some(0));
-        update_cumulative_prior_episodes(&db, id, 12).await.unwrap();
+        update_cumulative_prior_episodes(&db, id, 12, true)
+            .await
+            .unwrap();
+        assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), Some(12));
+        // Known never flips back off.
+        update_cumulative_prior_episodes(&db, id, 12, false)
+            .await
+            .unwrap();
         assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), Some(12));
         assert_eq!(absolute_offset_if_known(&db, id + 1).await.unwrap(), None);
     }

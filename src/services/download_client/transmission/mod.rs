@@ -109,6 +109,13 @@ struct TxRawTorrent {
     is_stalled: bool,
     #[serde(default, rename = "errorString")]
     error_string: String,
+    /// Transmission's error class: 0 none, 1 tracker warning, 2
+    /// tracker error, 3 local error. Only a local error (a missing
+    /// file, a full disk) fails the grab; tracker trouble on a torrent
+    /// that keeps downloading is not a failed download, and reading it
+    /// as one would blocklist the release and grab a replacement.
+    #[serde(default)]
+    error: i32,
     /// Transmission's own "seed limit reached, stopped" flag (issue
     /// #228); the stop condition, not download completion. 4.x sets it
     /// for an idle stop or a ratio reached; 3.x only for an idle stop,
@@ -500,6 +507,7 @@ impl DownloadClient for TransmissionClient {
             "labels",
             "isStalled",
             "errorString",
+            "error",
             "isFinished",
             "uploadRatio",
             "seedRatioMode",
@@ -741,7 +749,10 @@ fn to_download_files(raw: &TxRawTorrent) -> Vec<DownloadFile> {
 /// "complete-means-downloaded-not-seed-goal-hit" semantics.
 fn map_tx_state(raw: &TxRawTorrent) -> DownloadItemState {
     use DownloadItemState::*;
-    if !raw.error_string.is_empty() {
+    // Only a local error (class 3) is a failed download. Tracker
+    // warnings and errors (1, 2) also fill `errorString` while the
+    // torrent keeps moving; prefer the false negative.
+    if raw.error == 3 {
         return Errored;
     }
     let is_complete = raw.percent_done >= 1.0;
@@ -896,6 +907,7 @@ mod tests {
         };
         assert!(!tx_seeding_done(&seeding, None));
         let errored = TxRawTorrent {
+            error: 3,
             error_string: "disk".into(),
             ..stopped(1, 1.0, 3.0)
         };
@@ -938,14 +950,26 @@ mod tests {
         };
         assert!(!map_tx_state(&downloading).is_complete());
 
-        // Error string populated → Errored regardless of status.
+        // A local error (class 3) → Errored regardless of status.
         let errored = TxRawTorrent {
             status: 6,
             percent_done: 1.0,
-            error_string: "tracker gone".into(),
+            error: 3,
+            error_string: "No data found! Ensure your drives are connected".into(),
             ..Default::default()
         };
         assert!(map_tx_state(&errored).is_errored());
+        // A tracker warning (class 1) fills errorString on a torrent
+        // that is still seeding; it is not a failed download.
+        let tracker_warning = TxRawTorrent {
+            status: 6,
+            percent_done: 1.0,
+            error: 1,
+            error_string: "Tracker gave HTTP response code 404".into(),
+            ..Default::default()
+        };
+        assert!(!map_tx_state(&tracker_warning).is_errored());
+        assert!(map_tx_state(&tracker_warning).is_complete());
 
         // Seeding + stalled → SeedingStalled, still complete.
         let seeding_stalled = TxRawTorrent {

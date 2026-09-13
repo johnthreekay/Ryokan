@@ -2907,6 +2907,10 @@ pub async fn run_once(state: &AppState) {
 
     let mut any_imported = false;
 
+    // Series already sent to the re-search in this sweep: several
+    // grabs of one series failing in the same tick (a dropped mount)
+    // get one search, not one per grab.
+    let mut researched: HashSet<i64> = HashSet::new();
     for grab in &pending {
         // Resolve which client this grab landed on. Stamped grabs
         // land on exactly one id; un-stamped grabs (older history,
@@ -3036,12 +3040,18 @@ pub async fn run_once(state: &AppState) {
                 &format!("the download client reported an error ({})", torrent.state),
             )
             .await;
-            crate::services::redownload::after_failed_download(
-                state,
-                grab,
-                "a download client error",
-            )
-            .await;
+            crate::services::redownload::remove_failed_from_client(state, grab).await;
+            // Only the parent series' rows are failed; an auto-expanded
+            // batch's sibling routes keep theirs (the stall path has the
+            // same limit).
+            if researched.insert(grab.series_id) {
+                crate::services::redownload::after_failed_download(
+                    state,
+                    grab,
+                    "a failed download",
+                )
+                .await;
+            }
             continue;
         }
 

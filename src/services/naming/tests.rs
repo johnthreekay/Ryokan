@@ -620,4 +620,26 @@ fn validate_accepts_absolute_after_the_episode_number_and_rejects_it_in_front() 
     assert!(err.contains("{episode.absolute}"), "{err}");
     // Not a folder token.
     assert!(validate(TemplateKind::SeasonFolder, "Season {episode.absolute}").is_err());
+    // Glued to the episode number with a dash it reads as a range
+    // (`S01E07-019`), which the multi-episode check catches. Pinned so
+    // a change to the span rules does not open it.
+    assert!(
+        validate(
+            TemplateKind::EpisodeFile,
+            "{series.title} - S{season.number:00}E{episode.number:00}-{episode.absolute:000}{ext}",
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn absolute_token_ignores_a_non_positive_number() {
+    let ctx = NameContext {
+        episode_absolute: Some(0),
+        ..sample_context()
+    };
+    assert_eq!(
+        ep(ABSOLUTE_TEMPLATE, &ctx),
+        "Sousou no Frieren - S01E07 - Like a Fairy Tale.mkv"
+    );
 }
