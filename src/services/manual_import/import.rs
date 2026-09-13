@@ -166,21 +166,24 @@ pub async fn start_import(
 
 /// Files already under the series folder whose episodes overlap
 /// `episode..episode + count` (a multi-episode file, issue #246, is
-/// found by any of its episodes). Uses the library scanner rather than
-/// a `SxxExx` stem match so an externally named file (`Show - 07.mkv`)
-/// is found too.
+/// found by any of its episodes), each with the span it holds. Uses the
+/// library scanner rather than a `SxxExx` stem match so an externally
+/// named file (`Show - 07.mkv`) is found too.
 async fn existing_files_for_episode(
     media_root: &str,
     folder: &str,
     episode: i32,
     count: i32,
-) -> Vec<PathBuf> {
+) -> Vec<(PathBuf, media::EpisodeSpan)> {
     let last = episode + count.max(1) - 1;
     media::scan_series_folder(media_root, folder)
         .await
         .into_iter()
         .filter(|f| f.episode_number <= last && f.episode_last >= episode)
-        .map(|f| Path::new(media_root).join(folder).join(f.filename))
+        .map(|f| {
+            let span = f.span();
+            (Path::new(media_root).join(folder).join(f.filename), span)
+        })
         .collect()
 }
 
@@ -465,8 +468,23 @@ pub async fn run_import(
                     file.episode_count,
                 )
                 .await;
+                // The same rule post-processing applies (issue #246): a
+                // file that covers fewer episodes than one it would
+                // replace is left alone, or the other episodes would go
+                // with the old file.
+                let last = ep + file.episode_count.max(1) - 1;
+                if let Some((_, wider)) = old.iter().find(|(_, s)| s.first < ep || s.last > last) {
+                    gr.errors.push(format!(
+                        "{}: the file on disk holds {}, more than this file; left alone",
+                        file.rel_path,
+                        wider.label()
+                    ));
+                    report.files_failed += 1;
+                    done_files += 1;
+                    continue;
+                }
                 let mut retire_failed = None;
-                for old_path in &old {
+                for (old_path, _) in &old {
                     if let Err(e) = recycle::recycle(
                         &state.db,
                         &cfg.recycle_bin_path,
@@ -490,7 +508,17 @@ pub async fn run_import(
                 }
                 for held in ep..ep + file.episode_count.max(1) {
                     let _ = episode_tags::mark_grab_history_replaced(&state.db, row.id, held).await;
-                    let _ = episode_tags::clear_episode_tag(&state.db, row.id, held).await;
+                    // A pinned episode keeps its override (`clear_episode_tag`
+                    // blanks a pinned row's state, which the preview never
+                    // offered to do for a second episode).
+                    let pinned = group
+                        .existing
+                        .as_ref()
+                        .and_then(|e| e.tags.get(&held))
+                        .is_some_and(|t| t.manual_override);
+                    if !pinned {
+                        let _ = episode_tags::clear_episode_tag(&state.db, row.id, held).await;
+                    }
                 }
             }
 

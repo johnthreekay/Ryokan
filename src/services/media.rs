@@ -11,30 +11,34 @@ use std::sync::LazyLock;
 // RSS loop was paying four Regex::new compiles per call and blowing
 // through the CPU budget of the hot path for no reason.
 
-// Multi-episode tails (issue #246). Each anchored branch below carries an
-// optional second number glued to the first with `-` or `~` and no
+// Multi-episode tails (issue #246). Each anchored branch below carries
+// optional further numbers glued to the first with `-` or `~` and no
 // whitespace: `S01E05-E06` / `S01E05E06` / `S01E05-06`, ` - 05-06 `,
-// `E05-E06`, `Episode 5-6`, `OVA 01-02`. The tail lives inside the branch
-// regex so it can only ever match in the slot that branch already trusts
-// for a single episode; there is no free-floating range regex here (the
-// release-side `auto_search::release_parse::RE_RANGE` is that, and it
-// only feeds candidate matching, never attribution). `accept_span_tail`
-// applies the shape rules. A rejected tail leaves the branch exactly
-// where it was before tails existed: the follow-set branches skip the
-// position, the two without a follow-set fall back to the first number.
+// `E05-E06`, `Episode 5-6`, `OVA 01-02`. The SxxExx, dash, and E-prefix
+// branches take a run of tails (Sonarr's "extend" and "duplicate"
+// styles, `S01E01-02-03` / `S01E01E02E03`) and the last number is the
+// end of the span. The tail lives inside the branch regex so it can only
+// ever match in the slot that branch already trusts for a single
+// episode; there is no free-floating range regex here (the release-side
+// `auto_search::release_parse::RE_RANGE` is that, and it only feeds
+// candidate matching, never attribution). `accept_span_tail` applies the
+// shape rules. A rejected tail leaves the branch where it was before
+// tails existed: the follow-set branches rescan from inside the rejected
+// number (`scan_tails`), the two without a follow-set fall back to the
+// first number.
 static RE_SXEX: LazyLock<Regex> = LazyLock::new(|| {
     // The tail must be followed by a non-alphanumeric or the end so
     // `S01E05-1080p` stays a single episode.
-    Regex::new(r"s(\d{1,2})e(\d{1,4})(?:(?:-e|-|e)(\d{1,4})(?:v\d)?(?:[^a-z0-9]|$))?")
+    Regex::new(r"s(\d{1,2})e(\d{1,4})(?:(?:(?:-e|-|e)(\d{1,4})(?:v\d)?)+(?:[^a-z0-9]|$))?")
         .expect("RE_SXEX compiles")
 });
 static RE_DASH_EP: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r" - (\d{1,4})(?:v\d)?(?:[-~](\d{1,4})(?:v\d)?)?(?:\s|\.|\[|\(|$)")
+    Regex::new(r" - (\d{1,4})(?:v\d)?(?:[-~](\d{1,4})(?:v\d)?)*(?:\s|\.|\[|\(|$)")
         .expect("RE_DASH_EP compiles")
 });
 static RE_E_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?:^|[\s._\-])e(?:p\.?)?(\d{1,4})(?:v\d)?(?:[-~]e?(?:p\.?)?(\d{1,4})(?:v\d)?)?(?:\s|\.|\[|\(|$)",
+        r"(?:^|[\s._\-])e(?:p\.?)?(\d{1,4})(?:v\d)?(?:[-~]e?(?:p\.?)?(\d{1,4})(?:v\d)?)*(?:\s|\.|\[|\(|$)",
     )
     .expect("RE_E_PREFIX compiles")
 });
@@ -453,14 +457,16 @@ impl EpisodeSpan {
     }
 }
 
-/// Longest span a single file name may claim. One cour bounds what a
-/// mis-read range can silently mark as present; a longer tail is not a
-/// range (the name parses as its first episode, as before #246).
-pub const MAX_FILE_SPAN: i32 = 12;
+/// Longest span a single file name may claim. Real multi-episode files
+/// hold two or three episodes, a few OVA collections four; six bounds
+/// what a mis-read range can silently mark as present. A longer tail is
+/// not a range (the name parses as its first episode, as before #246).
+pub const MAX_FILE_SPAN: i32 = 6;
 
 /// Shape rules for a multi-episode tail: the second number is larger,
-/// the pair is zero-padded to the same width or both are at least two
-/// digits (`05-06`, `10-12`, `99-100`; not `5-10`), and the span fits
+/// both numbers have at least two digits (`05-06`, `10-12`, `99-100`;
+/// never `1-2`, which is how a subtitle like "1-2 Punch" reads, nor
+/// `5-10`), a four-digit first number is not a year, and the span fits
 /// [`MAX_FILE_SPAN`]. Anything else is not a range.
 fn accept_span_tail(first: &str, last: &str) -> Option<(i32, i32)> {
     let a: i32 = first.parse().ok()?;
@@ -468,9 +474,10 @@ fn accept_span_tail(first: &str, last: &str) -> Option<(i32, i32)> {
     if b <= a {
         return None;
     }
-    let same_width = first.len() == last.len();
-    let both_padded = first.len() >= 2 && last.len() >= 2;
-    if !(same_width || both_padded) {
+    if first.len() < 2 || last.len() < 2 {
+        return None;
+    }
+    if first.len() == 4 && (1900..=2100).contains(&a) {
         return None;
     }
     if b - a + 1 > MAX_FILE_SPAN {
@@ -499,6 +506,35 @@ fn read_tail(caps: &regex_lite::Captures<'_>, first_idx: usize, last_idx: usize)
         Some((a, b)) => Tail::Range(a, b),
         None => Tail::Rejected,
     })
+}
+
+/// Run a follow-set branch over `lower`. A match whose tail fails the
+/// shape rules is not the episode, but the match may have swallowed the
+/// separator of a later marker (` - 2019-2020 - 05`), so the scan
+/// restarts one byte into the rejected number instead of after the
+/// match; `captures_iter` would resume past the space the next ` - 05`
+/// needs. The single form never matched at a rejected position either
+/// (its follow-set refused the `-`), so the branch ends up exactly where
+/// it was before tails existed.
+fn scan_tails(re: &Regex, lower: &str, first_idx: usize, last_idx: usize) -> Option<EpisodeSpan> {
+    let mut from = 0;
+    while from < lower.len() {
+        let caps = re.captures(&lower[from..])?;
+        match read_tail(&caps, first_idx, last_idx)? {
+            Tail::Single(e) => return Some(EpisodeSpan::single(None, e)),
+            Tail::Range(a, b) => {
+                return Some(EpisodeSpan {
+                    season: None,
+                    first: a,
+                    last: b,
+                });
+            }
+            // The first number is ASCII digits, so one byte in is a
+            // char boundary.
+            Tail::Rejected => from += caps.get(first_idx)?.start() + 1,
+        }
+    }
+    None
 }
 
 /// [`parse_episode_number`] with the multi-episode tail kept. The
@@ -562,35 +598,13 @@ fn parse_episode_span_inner(lower: &str) -> Option<EpisodeSpan> {
     }
 
     // " - 05" pattern (common in anime releases from SubsPlease, Erai, etc).
-    // A rejected tail skips the position: the follow-set never let the
-    // single form match there.
-    for caps in RE_DASH_EP.captures_iter(lower) {
-        match read_tail(&caps, 1, 2)? {
-            Tail::Single(e) => return Some(EpisodeSpan::single(None, e)),
-            Tail::Range(a, b) => {
-                return Some(EpisodeSpan {
-                    season: None,
-                    first: a,
-                    last: b,
-                });
-            }
-            Tail::Rejected => continue,
-        }
+    if let Some(span) = scan_tails(&RE_DASH_EP, lower, 1, 2) {
+        return Some(span);
     }
 
     // "E05" or "EP05" or "Ep.05" pattern.
-    for caps in RE_E_PREFIX.captures_iter(lower) {
-        match read_tail(&caps, 1, 2)? {
-            Tail::Single(e) => return Some(EpisodeSpan::single(None, e)),
-            Tail::Range(a, b) => {
-                return Some(EpisodeSpan {
-                    season: None,
-                    first: a,
-                    last: b,
-                });
-            }
-            Tail::Rejected => continue,
-        }
+    if let Some(span) = scan_tails(&RE_E_PREFIX, lower, 1, 2) {
+        return Some(span);
     }
 
     // "Episode 05" pattern. No follow-set; a rejected tail keeps the
@@ -614,18 +628,8 @@ fn parse_episode_span_inner(lower: &str) -> Option<EpisodeSpan> {
     // would otherwise shadow it. Bare `- OVA.` with no trailing
     // digit correctly falls through here because RE_OVA_EP requires
     // a captured 1-3 digit group.
-    for caps in RE_OVA_EP.captures_iter(lower) {
-        match read_tail(&caps, 1, 2)? {
-            Tail::Single(e) => return Some(EpisodeSpan::single(None, e)),
-            Tail::Range(a, b) => {
-                return Some(EpisodeSpan {
-                    season: None,
-                    first: a,
-                    last: b,
-                });
-            }
-            Tail::Rejected => continue,
-        }
+    if let Some(span) = scan_tails(&RE_OVA_EP, lower, 1, 2) {
+        return Some(span);
     }
 
     // Dot-tokenized bare episode number. This covers older complete-series
@@ -1504,6 +1508,21 @@ mod tests {
             span("Title - S01E05-E06v2 [1080p].mkv"),
             Some((Some(1), 5, 6))
         );
+        // Sonarr's extend / duplicate styles: the last number ends the span.
+        assert_eq!(span("Title - S01E01-02-03.mkv"), Some((Some(1), 1, 3)));
+        assert_eq!(span("Title - S01E01E02E03.mkv"), Some((Some(1), 1, 3)));
+        assert_eq!(
+            span("Title - S01E01-E02-E03 - Title.mkv"),
+            Some((Some(1), 1, 3))
+        );
+        assert_eq!(
+            span("[Group] Title - 01-02-03 [1080p].mkv"),
+            Some((None, 1, 3))
+        );
+        assert_eq!(span("Title E01-E02-E03.mkv"), Some((None, 1, 3)));
+        // A run that breaks the shape rules is still no range.
+        assert_eq!(span("Title - S01E01-02-1080.mkv"), Some((Some(1), 1, 1)));
+        assert_eq!(span("[Group] Title - 01-02-2019 [1080p].mkv"), None);
     }
 
     #[test]
@@ -1544,7 +1563,10 @@ mod tests {
     fn span_e_prefix_episode_word_and_ova_tails() {
         assert_eq!(span("Title E05-E06 [1080p].mkv"), Some((None, 5, 6)));
         assert_eq!(span("Title Ep05-06 [1080p].mkv"), Some((None, 5, 6)));
-        assert_eq!(span("Title Episode 5-6.mkv"), Some((None, 5, 6)));
+        assert_eq!(span("Title Episode 05-06.mkv"), Some((None, 5, 6)));
+        // Unpadded single digits are not a range; the Episode branch has
+        // no follow-set, so the first number stands.
+        assert_eq!(span("Title Episode 5-6.mkv"), Some((None, 5, 5)));
         assert_eq!(span("Title - OVA 01-02.mkv"), Some((None, 1, 2)));
     }
 
@@ -1569,9 +1591,10 @@ mod tests {
             span("[Group] Title - 05 - 06 [1080p].mkv"),
             Some((None, 5, 5))
         );
-        // Unequal width without padding narrows to the first number
-        // (SxxExx has no follow-set, so the branch still fires).
+        // A single-digit number on either side is not a range; SxxExx
+        // has no follow-set, so the branch still fires with the first.
         assert_eq!(span("Title - S01E5-10.mkv"), Some((Some(1), 5, 5)));
+        assert_eq!(span("Title - S01E5-6.mkv"), Some((Some(1), 5, 5)));
         // In the dash slot the same pair leaves the branch as it was:
         // nothing else in the name parses.
         assert_eq!(span("[Group] Title - 5-10 [1080p].mkv"), None);
@@ -1594,15 +1617,48 @@ mod tests {
             span("[Group] Title - 03 - 1-2 Punch [1080p].mkv"),
             Some((None, 3, 3))
         );
-        // Longer than one cour is not a file span.
+        // Longer than `MAX_FILE_SPAN` is not a file span.
         assert_eq!(span("[Group] Title - 01-24 [BD 1080p].mkv"), None);
+        assert_eq!(span("[Group] Title - 01-12 [BD 1080p].mkv"), None);
+        assert_eq!(
+            span("[Group] Title - 01-06 [BD 1080p].mkv"),
+            Some((None, 1, 6))
+        );
         assert_eq!(span("Title - S01E01-E24.mkv"), Some((Some(1), 1, 1)));
+        assert_eq!(span("Title - S01E01-E12.mkv"), Some((Some(1), 1, 1)));
         // The half-episode guard still wins.
         assert_eq!(span("Title - 07.5 [1080p].mkv"), None);
         // Years beside the episode.
         assert_eq!(
             span("Title - 05 (2019-2020) [1080p].mkv"),
             Some((None, 5, 5))
+        );
+    }
+
+    #[test]
+    fn span_rescans_after_a_rejected_tail() {
+        // A digit pair in the first dash slot that fails the shape rules
+        // must not hide the real episode marker after it: the scan
+        // restarts inside the rejected number, not after the match.
+        assert_eq!(
+            span("[Group] Show - 1-2 Punch - 05 [1080p].mkv"),
+            Some((None, 5, 5))
+        );
+        assert_eq!(
+            span("Show - 2019-2020 - 05 [1080p].mkv"),
+            Some((None, 5, 5))
+        );
+        assert_eq!(
+            span("[Group] Show - 1-5 - 07 [1080p].mkv"),
+            Some((None, 7, 7))
+        );
+        assert_eq!(span("Show - 2024-01-15 - 05.mkv"), Some((None, 5, 5)));
+        assert_eq!(span("Show - 5-10 - 07 - Title.mkv"), Some((None, 7, 7)));
+        assert_eq!(span("Show E1-2 - 07.mkv"), Some((None, 7, 7)));
+        // A year pair beside a real range leaves the range alone.
+        assert_eq!(
+            span("Title - 05-06 (2019-2020) [1080p].mkv"),
+            Some((None, 5, 6))
         );
     }
 

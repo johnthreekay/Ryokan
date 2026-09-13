@@ -59,10 +59,6 @@ struct PendingClassification {
     series_end_year: Option<i32>,
     series_root: std::path::PathBuf,
     file_path: std::path::PathBuf,
-    /// First and last episode the file holds (issue #246); equal for
-    /// the ordinary one-episode file.
-    episode_number: i32,
-    episode_last: i32,
     /// Sanitized on-disk filename. Used as a fallback title for L1
     /// classification when `original_torrent_name` is empty (externally
     /// imported files that Ryokan never grabbed).
@@ -76,14 +72,13 @@ struct PendingClassification {
     /// the episode shows as UNKNOWN forever. Looking up the original
     /// grab lets us classify against the unsanitized release name.
     original_torrent_name: String,
-    /// The episodes of the file's span that already have an
-    /// `episode_quality_tags` row. Determines whether the persist step
-    /// goes through `update_classification` (UPDATE) or `record_grab` +
-    /// `mark_completed` (INSERT upsert + state flip) for each one.
-    episodes_with_rows: Vec<i32>,
-    /// The episodes of the span whose row is pinned by a manual
-    /// override; the persist step leaves those alone.
-    pinned_episodes: Vec<i32>,
+    /// The episodes of the file's span that need a row written, each
+    /// with whether an `episode_quality_tags` row already exists (the
+    /// persist step goes through `update_classification` for those and
+    /// `record_grab` + `mark_completed` otherwise). Pinned episodes and
+    /// confidently classified ones are not in the list, so the issue
+    /// #53 skip holds per episode.
+    episodes_to_write: Vec<(i32, bool)>,
 }
 
 /// Walk every tracked series and (re-)classify on-disk video files that
@@ -306,17 +301,12 @@ async fn scan_for_unclassified(
                     series_end_year: row.end_year,
                     series_root: series_root.clone(),
                     file_path,
-                    episode_number: file.episode_number,
-                    episode_last: file.episode_last,
                     title,
                     original_torrent_name,
-                    episodes_with_rows: file
+                    episodes_to_write: file
                         .episodes()
-                        .filter(|ep| existing.contains_key(ep))
-                        .collect(),
-                    pinned_episodes: file
-                        .episodes()
-                        .filter(|ep| existing.get(ep).is_some_and(|t| t.manual_override))
+                        .filter(|ep| needs_row(*ep))
+                        .map(|ep| (ep, existing.contains_key(&ep)))
                         .collect(),
                 });
             }
@@ -369,24 +359,27 @@ async fn scan_for_unclassified(
         // 'completed' since the file is already on disk.
         //
         // One row per episode the file holds (issue #246): the file is
-        // classified once, every episode in its span gets the verdict,
-        // and a pinned episode keeps its override.
-        // Best-effort single stat — failure just leaves size at 0.
-        let file_size = tokio::fs::metadata(&item.file_path)
-            .await
-            .map(|m| m.len() as i64)
-            .unwrap_or(0);
+        // classified once and every episode that needs a row gets the
+        // verdict; pinned and already-confident episodes were left out
+        // of the list at enumeration time.
+        // Best-effort single stat, only when a row is inserted; failure
+        // just leaves size at 0.
+        let file_size = if item.episodes_to_write.iter().any(|(_, exists)| !exists) {
+            tokio::fs::metadata(&item.file_path)
+                .await
+                .map(|m| m.len() as i64)
+                .unwrap_or(0)
+        } else {
+            0
+        };
         let imported_basename = item
             .file_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(classify_title)
             .to_string();
-        for ep in item.episode_number..=item.episode_last {
-            if item.pinned_episodes.contains(&ep) {
-                continue;
-            }
-            if !item.episodes_with_rows.contains(&ep) {
+        for (ep, row_exists) in item.episodes_to_write.iter().copied() {
+            if !row_exists {
                 // Externally-imported file — we're creating both the quality
                 // tag and the grab history row from thin air. `is_batch` is
                 // looked up above from the optional matching grabbed_torrents
@@ -439,10 +432,7 @@ async fn scan_for_unclassified(
             // rows in one shot. Users opt in by enabling the event
             // for a provider.
             let verdict = result.label();
-            for ep in item.episode_number..=item.episode_last {
-                if item.pinned_episodes.contains(&ep) {
-                    continue;
-                }
+            for (ep, _) in item.episodes_to_write.iter().copied() {
                 crate::services::notifications::emit_classifier_needs_review(
                     state,
                     item.series_id,

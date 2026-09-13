@@ -37,7 +37,7 @@ Yes. Ryokan exposes a Swagger UI at `/api-docs` and the OpenAPI JSON at `/api-do
 
 ## Does Ryokan handle a file that holds two episodes?
 
-Yes. A release like `Title - 05-06` or `S01E05-E06` imports as one file named with the range (`Title - S01E05-E06 - Title A + Title B.mkv` with the default template) and both episodes show as present, so neither is searched for again. Deleting the file clears both episodes. Ryokan reads the range from the file name: two numbers joined by a dash in the episode slot, both padded the same way, at most twelve episodes apart. A file that already holds two episodes is only replaced by a release that covers both; a single-episode release for one of them is not imported, since that would drop the other episode.
+Yes. A release like `Title - 05-06` or `S01E05-E06` imports as one file named with the range (`Title - S01E05-E06 - Title A + Title B.mkv` with the default template) and both episodes show as present, so neither is searched for again. Deleting the file clears both episodes. Ryokan reads the range from the file name: numbers joined by dashes in the episode slot (`05-06`, `S01E05-E06`, or a run like `S01E01-02-03`), each at least two digits, at most six episodes in one file. A file that already holds two episodes is only replaced by a release that covers both; a single-episode release for one of them is not imported, since that would drop the other episode.
 
 ## How do I back up?
 

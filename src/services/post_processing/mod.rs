@@ -117,6 +117,11 @@ impl ResolvedEpisode {
         self.raw_episode..=self.raw_episode + (self.episode_last - self.episode)
     }
 
+    /// True for a multi-episode file.
+    fn is_multi(&self) -> bool {
+        self.episode_last > self.episode
+    }
+
     /// `S01E05` / `S01E05-E06`, for log lines.
     fn slot_label(&self, season: i32) -> String {
         if self.episode_last > self.episode {
@@ -159,7 +164,9 @@ fn resolve_episode(
 /// The slot a lone video with an unparseable name takes from the grab
 /// row's own episode list (issue #246): a contiguous list of at most
 /// `MAX_FILE_SPAN` episodes is the file's span, anything else narrows
-/// to the first episode the way it did before spans existed.
+/// to the first episode the way it did before spans existed. Only the
+/// non-batch single-video path reaches this (the preflight owns every
+/// batch), so the list is a release title's `05-06`, never a pack's.
 pub(crate) fn span_from_grab_episodes(episode_numbers: &[i32]) -> Option<media::EpisodeSpan> {
     let first = *episode_numbers.first()?;
     let mut sorted: Vec<i32> = episode_numbers.to_vec();
@@ -207,23 +214,27 @@ pub(crate) struct BatchPlan {
 /// ambiguity has no safe per-file answer, and importing either file could
 /// destroy the other.
 ///
-/// A multi-episode file (issue #246) occupies every slot in its span, so
-/// `E05-E06` beside a lone `E06` is the same tie as two `E06` files, and a
-/// file that loses any one of its slots is superseded as a whole rather
-/// than imported for the slots it kept.
+/// A multi-episode file (issue #246) occupies every slot in its span and
+/// is superseded as a whole when it loses any one of them; the slots it
+/// held are then free for the files ranked below it, so `05-06v2` beside
+/// `05` and `06v3` still imports episode 5 from `05`. At equal version a
+/// single-episode file beats a multi-episode one: `OVA 01-02` beside `01`
+/// and `02` imports the singles and skips the range file, which is what
+/// happened before ranges parsed at all, instead of failing the pack.
+/// Only two files of the same version and the same shape on one slot
+/// fail closed.
 pub(crate) fn validate_batch_episode_map(
     files: &[(usize, i64, Option<i32>, i32, String)],
 ) -> Result<BatchPlan, String> {
-    // (series, episode) → candidates in file order. BTreeMap so the
-    // error names a deterministic slot when several collide.
-    struct Candidate<'a> {
+    struct Entry<'a> {
         file_idx: usize,
+        series_id: i64,
         version: u32,
+        single: bool,
+        resolved: ResolvedEpisode,
         name: &'a str,
     }
-    let mut by_slot: std::collections::BTreeMap<(i64, i32), Vec<Candidate<'_>>> =
-        std::collections::BTreeMap::new();
-    let mut resolved_by_idx: HashMap<usize, ResolvedEpisode> = HashMap::new();
+    let mut entries: Vec<Entry<'_>> = Vec::new();
 
     for (file_idx, series_id, route_offset, cumulative_prior_episodes, name) in files {
         let filename = Path::new(name)
@@ -239,46 +250,53 @@ pub(crate) fn validate_batch_episode_map(
         };
         // No version token reads as v1 so `E05` + `E05v2` compare 1 vs 2.
         let version = media::parse_release_version(&lower).unwrap_or(1);
-        for episode in resolved.episodes() {
-            by_slot
-                .entry((*series_id, episode))
-                .or_default()
-                .push(Candidate {
-                    file_idx: *file_idx,
-                    version,
-                    name: filename,
-                });
-        }
-        resolved_by_idx.insert(*file_idx, resolved);
+        entries.push(Entry {
+            file_idx: *file_idx,
+            series_id: *series_id,
+            version,
+            single: !resolved.is_multi(),
+            resolved,
+            name: filename,
+        });
     }
 
+    // Strongest claim first: highest version, then a single-episode file
+    // over a multi-episode one, then file order so the error below names
+    // the same pair on every run. Each file in turn takes every slot it
+    // covers, or is superseded by whichever earlier file already holds
+    // one of them; a superseded file holds nothing, so what it covered
+    // stays open for the files after it.
+    entries.sort_by(|a, b| {
+        b.version
+            .cmp(&a.version)
+            .then(b.single.cmp(&a.single))
+            .then(a.file_idx.cmp(&b.file_idx))
+    });
     let mut plan = BatchPlan::default();
-    let mut winners: Vec<usize> = Vec::new();
-    for ((series_id, episode), mut candidates) in by_slot {
-        if candidates.len() > 1 {
-            // Highest version first; file order breaks ties so the
-            // error below names the same pair on every run.
-            candidates.sort_by(|a, b| b.version.cmp(&a.version).then(a.file_idx.cmp(&b.file_idx)));
-            if candidates[0].version == candidates[1].version {
-                return Err(format!(
-                    "batch preflight mapped both '{}' and '{}' to series {} episode {}; no files were changed",
-                    candidates[0].name, candidates[1].name, series_id, episode
-                ));
+    let mut taken: HashMap<(i64, i32), usize> = HashMap::new();
+    for i in 0..entries.len() {
+        let e = &entries[i];
+        let clash = e
+            .resolved
+            .episodes()
+            .find_map(|ep| taken.get(&(e.series_id, ep)).map(|holder| (ep, *holder)));
+        match clash {
+            None => {
+                for ep in e.resolved.episodes() {
+                    taken.insert((e.series_id, ep), i);
+                }
+                plan.slots.insert(e.file_idx, e.resolved);
             }
-        }
-        let winner_idx = candidates[0].file_idx;
-        winners.push(winner_idx);
-        for loser in candidates.into_iter().skip(1) {
-            plan.superseded.entry(loser.file_idx).or_insert(winner_idx);
-        }
-    }
-    // A file is imported only when it won every slot it covers; one
-    // lost slot supersedes the whole file (a multi-episode file that
-    // lost one of its episodes to a v2 single has no safe partial
-    // import).
-    for winner_idx in winners {
-        if !plan.superseded.contains_key(&winner_idx) {
-            plan.slots.insert(winner_idx, resolved_by_idx[&winner_idx]);
+            Some((episode, holder)) => {
+                let h = &entries[holder];
+                if h.version == e.version && h.single == e.single {
+                    return Err(format!(
+                        "batch preflight mapped both '{}' and '{}' to series {} episode {}; no files were changed",
+                        h.name, e.name, e.series_id, episode
+                    ));
+                }
+                plan.superseded.insert(e.file_idx, h.file_idx);
+            }
         }
     }
 
@@ -2018,37 +2036,28 @@ async fn import_torrent(
                         }
                     }
 
-                    // Issue #118 — fire `Imported` per episode. Deliberately
-                    // sequenced AFTER `update_classification` / `record_grab`
-                    // so the DB lookup inside `emit_imported` reads the
-                    // post-download `quality_tag`. Pre-classify the row
-                    // either had the grab-time tag (often UNKNOWN) or no
-                    // row at all, which surfaced as an empty Quality field
-                    // in the Discord embed and a missing `quality_tag`
-                    // string in the webhook JSON.
-                    //
-                    // Quality tag is best-effort: if `update_classification`
-                    // / `record_grab` errored above, the helper's lookup
-                    // falls back to `COALESCE(quality_tag, '') = ""` and
-                    // the event ships with an empty tag rather than
-                    // skipping the dispatch. The file did land — users
-                    // legitimately want the import notification even when
-                    // the persist sidecar errored, and the empty-tag UX is
-                    // the same as a true UNKNOWN classification.
-                    crate::services::notifications::emit_imported(
-                        state,
-                        target_series_id,
-                        ep,
-                        &src.display().to_string(),
-                        &dest_video.display().to_string(),
-                    )
-                    .await;
-
                     imported_eps_by_series
                         .entry(target_series_id)
                         .or_default()
                         .push((ep, file.size, dest_basename.clone()));
                 }
+
+                // Issue #118 — fire `Imported` once per file, like Sonarr,
+                // keyed on the first episode; a two-episode file is one
+                // import, not two. Sequenced AFTER the tag writes above so
+                // the DB lookup inside `emit_imported` reads the
+                // post-download `quality_tag`. Quality tag is best-effort:
+                // if the persist errored, the helper falls back to an
+                // empty tag rather than skipping the dispatch, since the
+                // file did land.
+                crate::services::notifications::emit_imported(
+                    state,
+                    target_series_id,
+                    ep_num,
+                    &src.display().to_string(),
+                    &dest_video.display().to_string(),
+                )
+                .await;
             }
             Err(e) => {
                 logger::error(

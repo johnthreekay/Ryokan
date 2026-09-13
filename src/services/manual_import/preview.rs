@@ -298,15 +298,21 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                     } else if f.episode.is_none() {
                         FileStatus::NoEpisodeNumber
                     } else {
-                        let tag = group
-                            .existing
-                            .as_ref()
-                            .and_then(|e| e.tags.get(&f.episode.unwrap_or_default()));
+                        let first = f.episode.unwrap_or_default();
+                        let tags = group.existing.as_ref().map(|e| &e.tags);
+                        // A pin on any episode the file holds (issue #246)
+                        // pins the file.
+                        let pinned = tags.is_some_and(|tags| {
+                            (first..first + f.episode_count.max(1))
+                                .any(|n| tags.get(&n).is_some_and(|t| t.manual_override))
+                        });
+                        let tag = tags.and_then(|tags| tags.get(&first));
                         match tag {
+                            None if pinned => FileStatus::Pinned,
                             None => FileStatus::Import,
                             Some(t) => {
                                 existing_quality = t.quality_label.clone();
-                                if t.manual_override {
+                                if pinned {
                                     FileStatus::Pinned
                                 } else if t.state == "grabbed" {
                                     FileStatus::Downloading

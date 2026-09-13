@@ -605,7 +605,7 @@ pub async fn delete_episode_file(
                     "Restorable from the Recycle Bin until it is purged.".to_string()
                 } else if held.len() > 1 {
                     format!(
-                        "Episodes {} to {} file removed.",
+                        "Episodes {}-{} removed from disk.",
                         file.episode_number, file.episode_last
                     )
                 } else {

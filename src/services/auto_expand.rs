@@ -331,11 +331,14 @@ pub async fn expand_from_files(
         let mut ep_nums: Vec<i32> = Vec::new();
         for &file_idx in &sibling.file_indices {
             if let Some(name) = filenames.get(file_idx)
-                && let Some((_, raw)) = media::parse_episode_number(&name.to_lowercase())
+                && let Some(span) = media::parse_episode_span(&name.to_lowercase())
             {
-                let effective = raw - sibling.episode_offset;
-                if effective > 0 {
-                    ep_nums.push(effective);
+                // Every episode a multi-episode file holds (issue #246).
+                for raw in span.episodes() {
+                    let effective = raw - sibling.episode_offset;
+                    if effective > 0 {
+                        ep_nums.push(effective);
+                    }
                 }
             }
         }
@@ -427,38 +430,41 @@ pub async fn expand_from_files(
         let Some(name) = filenames.get(file_idx) else {
             continue;
         };
-        let Some((_, raw_ep)) = media::parse_episode_number(&name.to_ascii_lowercase()) else {
+        let Some(span) = media::parse_episode_span(&name.to_ascii_lowercase()) else {
             continue;
         };
-        if raw_ep <= 0 {
-            continue;
-        }
-        all_parent_eps.insert(raw_ep);
-        if parent_eps_covered.contains(&raw_ep) {
-            continue;
-        }
-        if let Err(e) = episode_tags::record_grab(
-            db,
-            parent_series_id,
-            raw_ep,
-            &grab_ctx.classification,
-            torrent_title,
-            &grab_ctx.release_group,
-            grab_ctx.size_bytes,
-            true,
-        )
-        .await
-        {
-            logger::warn(
+        // Every episode a multi-episode file holds (issue #246).
+        for raw_ep in span.episodes() {
+            if raw_ep <= 0 {
+                continue;
+            }
+            all_parent_eps.insert(raw_ep);
+            if parent_eps_covered.contains(&raw_ep) {
+                continue;
+            }
+            if let Err(e) = episode_tags::record_grab(
                 db,
-                LogCategory::Library,
-                &format!(
-                    "Auto-expand: failed to backfill grab history for parent {} ep {} (AL-overflow)",
-                    parent_series_id, raw_ep,
-                ),
-                &format!("{}: {}", torrent_title, e),
+                parent_series_id,
+                raw_ep,
+                &grab_ctx.classification,
+                torrent_title,
+                &grab_ctx.release_group,
+                grab_ctx.size_bytes,
+                true,
             )
-            .await;
+            .await
+            {
+                logger::warn(
+                    db,
+                    LogCategory::Library,
+                    &format!(
+                        "Auto-expand: failed to backfill grab history for parent {} ep {} (AL-overflow)",
+                        parent_series_id, raw_ep,
+                    ),
+                    &format!("{}: {}", torrent_title, e),
+                )
+                .await;
+            }
         }
     }
 

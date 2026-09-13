@@ -321,15 +321,84 @@ fn multi_episode_file_takes_every_slot_in_its_span() {
 }
 
 #[test]
-fn multi_episode_file_ties_with_a_single_on_a_shared_slot() {
+fn single_beats_multi_on_a_shared_slot_at_equal_version() {
     // `02-03` and a lone `03` both claim episode 3 at the same version:
-    // the same ambiguity as two `03` files, so the batch fails closed.
+    // the single wins and the range file is skipped, which is what
+    // happened before ranges parsed at all (the range name parsed to
+    // nothing). The pack does not fail.
     let files = vec![
         (0, 42, None, 0, "Show - 02-03 (1080p).mkv".to_string()),
         (1, 42, None, 0, "Show - 03 (1080p).mkv".to_string()),
     ];
+    let plan = validate_batch_episode_map(&files).unwrap();
+    assert!(plan.slots.contains_key(&1));
+    assert!(!plan.slots.contains_key(&0));
+    assert_eq!(plan.superseded.get(&0), Some(&1));
+}
+
+#[test]
+fn range_named_extra_beside_singles_does_not_fail_the_pack() {
+    // A BD pack with `01`, `02` and an `OVA 01-02` file used to import the
+    // singles and skip the OVA (its name parsed to nothing). It still
+    // does.
+    let files = vec![
+        (
+            0,
+            42,
+            None,
+            0,
+            "[Group] Show - 01 (BD 1080p).mkv".to_string(),
+        ),
+        (
+            1,
+            42,
+            None,
+            0,
+            "[Group] Show - 02 (BD 1080p).mkv".to_string(),
+        ),
+        (
+            2,
+            42,
+            None,
+            0,
+            "[Group] Show - OVA 01-02 (BD 1080p).mkv".to_string(),
+        ),
+    ];
+    let plan = validate_batch_episode_map(&files).unwrap();
+    let mut kept: Vec<usize> = plan.slots.keys().copied().collect();
+    kept.sort_unstable();
+    assert_eq!(kept, vec![0, 1]);
+    assert_eq!(plan.superseded.get(&2), Some(&0));
+}
+
+#[test]
+fn two_ranges_on_one_slot_at_equal_version_fail_closed() {
+    let files = vec![
+        (0, 42, None, 0, "Show - 01-02 (1080p).mkv".to_string()),
+        (1, 42, None, 0, "Show - 02-03 (1080p).mkv".to_string()),
+    ];
     let err = validate_batch_episode_map(&files).unwrap_err();
-    assert!(err.contains("episode 3"), "{err}");
+    assert!(err.contains("episode 2"), "{err}");
+}
+
+#[test]
+fn a_superseded_range_frees_its_other_slots() {
+    // `05-06v2` beats `05` on slot 5 but loses slot 6 to `06v3`, so it is
+    // out as a whole; episode 5 must then come from `05`, not be lost.
+    let files = vec![
+        (0, 42, None, 0, "Show - 05-06v2 (1080p).mkv".to_string()),
+        (1, 42, None, 0, "Show - 05 (1080p).mkv".to_string()),
+        (2, 42, None, 0, "Show - 06v3 (1080p).mkv".to_string()),
+    ];
+    let plan = validate_batch_episode_map(&files).unwrap();
+    assert!(
+        plan.slots.contains_key(&1),
+        "episode 5 comes from the v1 single"
+    );
+    assert!(plan.slots.contains_key(&2));
+    assert!(!plan.slots.contains_key(&0));
+    assert_eq!(plan.superseded.get(&0), Some(&2));
+    assert_eq!(plan.superseded.len(), 1);
 }
 
 #[test]
