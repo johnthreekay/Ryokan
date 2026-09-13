@@ -1572,21 +1572,33 @@ async fn import_torrent(
                 &reason,
             )
             .await;
-            // The grab-time rows this release wrote describe a file that
-            // never lands: fail them the way the stall and misgrab paths
-            // do, then rebuild the refused episodes' rows from the file
+            // The grab-time rows this release wrote for these episodes
+            // describe a file that never lands: fail them the way the
+            // stall and misgrab paths do, but only for the refused
+            // episodes, since a batch's other files land in this same
+            // pass and `mark_completed` below promotes `grabbed` rows
+            // only. Then rebuild the refused episodes' rows from the file
             // that is on disk (the reclassify core finds it by any held
-            // episode; one ffprobe), so the series page and the upgrade
-            // checks see the real file's quality again instead of the
-            // refused release's.
-            let _ = episode_tags::mark_grab_failed_for_release(
+            // episode), so the series page and the upgrade checks see the
+            // real file's quality again instead of the refused release's.
+            // A pinned row was never touched by the grab-time upsert and
+            // stays as it is (`clear_episode_tag` would blank its state).
+            // Cost: one ffprobe per refused file, under the import lock;
+            // a pack with several singles refused against one range file
+            // probes that file once per single.
+            let refused: Vec<i32> = resolved.episodes().collect();
+            let _ = episode_tags::mark_grab_failed_for_episodes(
                 &state.db,
                 target_series_id,
                 &grab.torrent_name,
+                &refused,
             )
             .await;
-            for ep in resolved.episodes() {
-                let _ = episode_tags::clear_episode_tag(&state.db, target_series_id, ep).await;
+            for ep in &refused {
+                let pinned = ctx.existing_tags.get(ep).is_some_and(|t| t.manual_override);
+                if !pinned {
+                    let _ = episode_tags::clear_episode_tag(&state.db, target_series_id, *ep).await;
+                }
             }
             let _ = crate::handlers::library::crud::reclassify_on_disk_episode(
                 state,

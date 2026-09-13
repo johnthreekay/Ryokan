@@ -1012,6 +1012,51 @@ pub async fn mark_grab_failed(
     Ok((series_id, episode_number, release_title))
 }
 
+/// The per-episode form of [`mark_grab_failed_for_release`] (issue
+/// #246): fail only the `grabbed` history and tag rows this release
+/// wrote for `episodes`. The import's same-episodes refusal uses it,
+/// because a batch can refuse one file while its other files land in
+/// the same pass, and the release-wide form would fail rows that
+/// `mark_completed` (which only promotes `grabbed`) is about to need.
+pub async fn mark_grab_failed_for_episodes(
+    db: &SqlitePool,
+    series_id: i64,
+    release_title: &str,
+    episodes: &[i32],
+) -> Result<u64, sqlx::Error> {
+    if episodes.is_empty() {
+        return Ok(0);
+    }
+    let placeholders = std::iter::repeat_n("?", episodes.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let history_sql = format!(
+        "UPDATE episode_grab_history SET state = 'failed' \
+         WHERE series_id = ? AND release_title = ? AND state = 'grabbed' \
+           AND episode_number IN ({placeholders})"
+    );
+    let mut q = sqlx::query(sqlx::AssertSqlSafe(history_sql))
+        .bind(series_id)
+        .bind(release_title);
+    for ep in episodes {
+        q = q.bind(ep);
+    }
+    let result = q.execute(db).await?;
+    let tags_sql = format!(
+        "UPDATE episode_quality_tags SET state = 'failed', updated_at = CURRENT_TIMESTAMP \
+         WHERE series_id = ? AND release_title = ? AND state = 'grabbed' \
+           AND episode_number IN ({placeholders})"
+    );
+    let mut q = sqlx::query(sqlx::AssertSqlSafe(tags_sql))
+        .bind(series_id)
+        .bind(release_title);
+    for ep in episodes {
+        q = q.bind(ep);
+    }
+    q.execute(db).await?;
+    Ok(result.rows_affected())
+}
+
 /// Misgrab guardrails: fail every `grabbed` history row this release
 /// wrote for the series (the grab's own episodes plus any auto-expand
 /// backfill) and the matching quality tags, keyed by release title

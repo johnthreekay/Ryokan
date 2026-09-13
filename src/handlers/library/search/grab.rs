@@ -534,26 +534,22 @@ pub async fn grab_interactive_result(
     })))
 }
 
-/// The episodes an interactive grab records (issue #246): the release
-/// title's episode numbers when they form a contiguous run of at most
-/// `MAX_FILE_SPAN` episodes that includes the requested one (a `- 05-06`
-/// two-episode file), else the requested episode alone. A batch title
-/// keeps its range inside brackets, which the parser strips, so a pack
-/// never widens a single-episode grab here.
+/// The episodes an interactive grab records (issue #246): the run the
+/// release title names when it reads as a multi-episode file by the
+/// same strict rule the import applies to the file name
+/// (`media::parse_episode_span`: no whitespace around the dash, two
+/// digits on both sides, ascending, at most `MAX_FILE_SPAN`) and that
+/// run includes the requested episode; else the requested episode
+/// alone. The release-side `parse_release_numbers` is not used here on
+/// purpose: its range regex tolerates whitespace, so `Show Season 2 -
+/// 03` would read as episodes 2-3 and leave a stale grabbed tag on an
+/// episode the file never delivers.
 pub(crate) fn held_episodes(title: &str, episode_number: i32) -> Vec<i32> {
-    let mut nums: Vec<i32> = auto_search::parse_release_numbers(title)
-        .into_iter()
-        .collect();
-    nums.sort_unstable();
-    let contiguous = nums.windows(2).all(|w| w[1] == w[0] + 1);
-    if nums.len() > 1
-        && nums.len() as i32 <= crate::services::media::MAX_FILE_SPAN
-        && contiguous
-        && nums.contains(&episode_number)
-    {
-        nums
-    } else {
-        vec![episode_number]
+    match crate::services::media::parse_episode_span(&title.to_lowercase()) {
+        Some(span) if span.is_multi() && span.episodes().contains(&episode_number) => {
+            span.episodes().collect()
+        }
+        _ => vec![episode_number],
     }
 }
 
@@ -597,5 +593,9 @@ mod held_episodes_tests {
         );
         assert_eq!(held_episodes("Show - 01-12 [BD]", 4), vec![4]);
         assert_eq!(held_episodes("Show - 05-06 [1080p]", 9), vec![9]);
+        // Season and part markers before the dash are not a run.
+        assert_eq!(held_episodes("[Group] Show Season 2 - 03", 3), vec![3]);
+        assert_eq!(held_episodes("[Group] Show Part 2 - 05", 5), vec![5]);
+        assert_eq!(held_episodes("[Group] Show 3 - 05", 5), vec![5]);
     }
 }

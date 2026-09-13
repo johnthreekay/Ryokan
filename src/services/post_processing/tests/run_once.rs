@@ -1821,3 +1821,214 @@ async fn run_once_imports_a_multi_episode_file_over_two_singles_in_every_mode() 
         );
     }
 }
+
+/// A batch that refuses one file must not fail the rows of the files
+/// that land in the same pass, and a pinned episode inside the wider
+/// file keeps its row: `01`, `02`, `03` singles arrive beside an
+/// `S01E02-E03` file whose episode 2 is pinned. Episode 1 imports, 2
+/// and 3 are refused, episode 1 ends completed, 2 keeps its pin, 3 is
+/// rebuilt from the file on disk.
+#[tokio::test]
+async fn run_once_batch_refusal_fails_only_the_refused_episodes_and_keeps_pins() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let source_dir = tempfile::TempDir::new().expect("source tempdir");
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let source_path = source_dir.path().to_string_lossy().to_string();
+
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode) \
+         VALUES (1, 1, ?, 'hardlink')",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+
+    // The library holds episodes 2 and 3 in one file; episode 2 is pinned.
+    let season_dir = media_root.path().join("Show Title").join("Season 01");
+    std::fs::create_dir_all(&season_dir).expect("season dir");
+    let existing_name = "Show Title - S01E02-E03 - Two Titles.mkv";
+    std::fs::write(season_dir.join(existing_name), b"two episodes").expect("write existing");
+    let earlier = crate::services::source::classify_release_sync(
+        "[Group] Show Title - 02-03 (720p WEB-DL)",
+        Some("720p"),
+    );
+    for ep in [2, 3] {
+        crate::models::episode_tags::record_grab(
+            &db,
+            series_id,
+            ep,
+            &earlier,
+            "[Group] Show Title - 02-03 (720p WEB-DL)",
+            "Group",
+            12,
+            false,
+        )
+        .await
+        .unwrap();
+    }
+    crate::models::episode_tags::mark_completed(&db, series_id, &[2, 3])
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE episode_quality_tags SET manual_override = 1 WHERE series_id = ? AND episode_number = 2",
+    )
+    .bind(series_id)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    // A three-file batch, complete in the client. Its grab-time tags
+    // cover the unpinned episodes, as a batch grab that knows its
+    // episode list writes them.
+    let title = "[Other] Show Title (01-03) (1080p WEB-DL) [Batch]";
+    let names = [
+        "[Other] Show Title - 01 (1080p WEB-DL).mkv",
+        "[Other] Show Title - 02 (1080p WEB-DL).mkv",
+        "[Other] Show Title - 03 (1080p WEB-DL).mkv",
+    ];
+    for name in names {
+        std::fs::write(source_dir.path().join(name), name.as_bytes()).expect("write incoming");
+    }
+    let g = grabbed_torrents::record_grab(&db, "deadbeef", title, series_id, &[1, 2, 3], true)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(1))
+        .await
+        .unwrap();
+    let incoming = crate::services::source::classify_release_sync(title, Some("1080p"));
+    for ep in [1, 3] {
+        crate::models::episode_tags::record_grab(
+            &db, series_id, ep, &incoming, title, "Other", 6, true,
+        )
+        .await
+        .unwrap();
+    }
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let torrent = DownloadItem {
+        hash: "deadbeef".into(),
+        name: title.into(),
+        size: 100,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: source_path.clone(),
+        content_path: source_path.clone(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let files: Vec<DownloadFile> = names
+        .iter()
+        .map(|n| DownloadFile {
+            name: (*n).to_string(),
+            size: n.len() as i64,
+            progress: 1.0,
+            wanted: true,
+        })
+        .collect();
+    let state = build_test_app_state(db.clone(), None);
+    let client = Arc::new(ImportingClient { torrent, files });
+    install_pool(
+        &state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+
+    post_processing::run_once(&state).await;
+
+    // Episode 1 landed; the range file is untouched.
+    let mut mkvs: Vec<String> = std::fs::read_dir(&season_dir)
+        .expect("read season dir")
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.ends_with(".mkv"))
+        .collect();
+    mkvs.sort();
+    assert_eq!(
+        mkvs,
+        vec![
+            "Show Title - S01E01.mkv".to_string(),
+            existing_name.to_string()
+        ],
+        "{mkvs:?}"
+    );
+    let (grab_state, import_mode): (String, Option<String>) =
+        sqlx::query_as("SELECT state, import_mode FROM grabbed_torrents WHERE id = ?")
+            .bind(g)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        (grab_state.as_str(), import_mode.as_deref()),
+        ("imported", Some("partial"))
+    );
+
+    // Tags: 1 completed (the batch's own file), 2 still pinned and
+    // completed, 3 completed again from the file on disk.
+    let tags: Vec<(i32, String, bool, String)> = sqlx::query_as(
+        "SELECT episode_number, state, manual_override, release_title FROM episode_quality_tags \
+         WHERE series_id = ? ORDER BY episode_number",
+    )
+    .bind(series_id)
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert_eq!(tags.len(), 3, "{tags:?}");
+    assert_eq!(
+        (tags[0].0, tags[0].1.as_str()),
+        (1, "completed"),
+        "{tags:?}"
+    );
+    assert_eq!(
+        (tags[1].0, tags[1].1.as_str(), tags[1].2),
+        (2, "completed", true),
+        "{tags:?}"
+    );
+    assert_eq!(
+        (tags[2].0, tags[2].1.as_str()),
+        (3, "completed"),
+        "{tags:?}"
+    );
+    assert_ne!(
+        tags[2].3, title,
+        "episode 3 tag still names the refused batch"
+    );
+
+    // History for the batch: episode 1 completed, 3 failed (the batch
+    // never wrote a row for the pinned episode 2).
+    let history: Vec<(i32, String)> = sqlx::query_as(
+        "SELECT episode_number, state FROM episode_grab_history \
+         WHERE series_id = ? AND release_title = ? ORDER BY episode_number",
+    )
+    .bind(series_id)
+    .bind(title)
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        history,
+        vec![(1, "completed".to_string()), (3, "failed".to_string())]
+    );
+}
