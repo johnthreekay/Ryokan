@@ -2178,3 +2178,100 @@ async fn run_once_files_a_tv_series_special_under_specials_instead_of_failing_th
             .unwrap();
     assert_eq!(rows, vec![1], "the special gets no episode row");
 }
+
+#[tokio::test]
+async fn run_once_imports_the_subtitle_next_to_the_video_when_enabled() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let source_dir = tempfile::TempDir::new().expect("source tempdir");
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let source_path = source_dir.path().to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode, \
+         import_extra_files, extra_file_extensions, auto_redownload_failed) \
+         VALUES (1, 1, ?, 'copy', 1, 'srt,ass', 0)",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    let title = "[Group] Show Title - 01 (1080p)";
+    let video = "[Group] Show Title - 01 (1080p).mkv";
+    std::fs::write(source_dir.path().join(video), b"video").unwrap();
+    std::fs::write(
+        source_dir
+            .path()
+            .join("[Group] Show Title - 01 (1080p).eng.ass"),
+        b"subs",
+    )
+    .unwrap();
+    std::fs::write(source_dir.path().join("readme.txt"), b"x").unwrap();
+    let g = grabbed_torrents::record_grab(&db, "subhash", title, series_id, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(1))
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let torrent = DownloadItem {
+        hash: "subhash".into(),
+        name: title.into(),
+        size: 5,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: source_path.clone(),
+        content_path: source_path.clone(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let files = vec![DownloadFile {
+        name: video.to_string(),
+        size: 5,
+        progress: 1.0,
+        wanted: true,
+    }];
+    let state = build_test_app_state(db.clone(), None);
+    let client = Arc::new(ImportingClient { torrent, files });
+    install_pool(
+        &state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+    let season_dir = media_root.path().join("Show Title").join("Season 01");
+    let mut names: Vec<String> = std::fs::read_dir(&season_dir)
+        .expect("season dir")
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| !n.ends_with(".nfo"))
+        .collect();
+    names.sort();
+    assert_eq!(names.len(), 2, "{names:?}");
+    let video_name = names.iter().find(|n| n.ends_with(".mkv")).expect("video");
+    let stem = video_name.trim_end_matches(".mkv");
+    assert!(
+        names.contains(&format!("{stem}.en.ass")),
+        "subtitle named after the episode file: {names:?}"
+    );
+}

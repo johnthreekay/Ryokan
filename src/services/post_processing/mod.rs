@@ -14,6 +14,7 @@ use crate::services::{logger, media, naming, nfo};
 
 mod artwork_copy;
 pub mod client_cleanup;
+pub mod extras;
 mod state;
 pub mod temp_sweep;
 
@@ -2127,6 +2128,51 @@ async fn import_torrent(
                 )
                 .await;
                 imported_count += 1;
+                // Subtitles that travel with the video (Sonarr's "Import
+                // Extra Files"): named after the episode file so the
+                // recycle bin retires them with it.
+                if cfg.import_extra_files {
+                    let extensions = extras::parse_extensions(&cfg.extra_file_extensions);
+                    let report = extras::import_subtitles(
+                        &cfg.post_processing_mode,
+                        &extensions,
+                        &src,
+                        &dest_video,
+                        name_span,
+                    )
+                    .await;
+                    if !report.imported.is_empty() {
+                        logger::info(
+                            &state.db,
+                            LogCategory::PostProcess,
+                            &format!(
+                                "Imported {} subtitle file(s) for {} of '{}'",
+                                report.imported.len(),
+                                slot,
+                                ctx.series.title
+                            ),
+                            &report
+                                .imported
+                                .iter()
+                                .map(|p| p.display().to_string())
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        )
+                        .await;
+                    }
+                    for error in &report.errors {
+                        logger::warn(
+                            &state.db,
+                            LogCategory::PostProcess,
+                            &format!(
+                                "Could not import a subtitle for {} of '{}'",
+                                slot, ctx.series.title
+                            ),
+                            error,
+                        )
+                        .await;
+                    }
+                }
                 // The early `claims_this_episode` guard above already
                 // filtered out stranger files for this grab — so any
                 // file reaching this point is a legitimate import,

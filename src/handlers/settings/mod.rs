@@ -400,6 +400,10 @@ pub struct SettingsForm {
     misgrab_auto_remove: Option<String>,
     #[serde(default)]
     auto_redownload_failed: Option<String>,
+    #[serde(default)]
+    import_extra_files: Option<String>,
+    #[serde(default)]
+    extra_file_extensions: String,
     /// Recycle bin (#123). Settings → General.
     #[serde(default)]
     recycle_bin_path: String,
@@ -617,6 +621,10 @@ pub struct GeneralForm {
     misgrab_auto_remove: Option<String>,
     #[serde(default)]
     auto_redownload_failed: Option<String>,
+    #[serde(default)]
+    import_extra_files: Option<String>,
+    #[serde(default)]
+    extra_file_extensions: String,
     /// Grabbing section: the interactive file picker (#83) and the two
     /// switches that used to live on System → Debug.
     #[serde(default)]
@@ -872,6 +880,17 @@ fn validate_source(value: &str, default: &str) -> String {
     }
 }
 
+/// The stored form of the subtitle extension list: lowercase, no
+/// dots, deduplicated; blank falls back to the default list.
+fn normalize_extra_file_extensions(value: &str) -> String {
+    let list = crate::services::post_processing::extras::parse_extensions(value);
+    if list.is_empty() {
+        crate::services::post_processing::extras::DEFAULT_EXTRA_FILE_EXTENSIONS.to_string()
+    } else {
+        list.join(",")
+    }
+}
+
 /// Blank keeps `current`; anything else has to parse as an integer.
 fn parse_optional_int(value: &str, current: i32) -> Result<i32, ()> {
     let trimmed = value.trim();
@@ -1096,6 +1115,22 @@ pub async fn settings_submit(
                 .as_ref()
                 .map(|c| c.auto_redownload_failed)
                 .unwrap_or(true)
+        },
+        import_extra_files: if form.tab.as_deref() == Some("general") {
+            form.import_extra_files.is_some()
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.import_extra_files)
+                .unwrap_or(false)
+        },
+        extra_file_extensions: if form.tab.as_deref() == Some("general") {
+            normalize_extra_file_extensions(&form.extra_file_extensions)
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.extra_file_extensions.clone())
+                .unwrap_or_else(|| config::Config::default().extra_file_extensions)
         },
         active_client: match form.active_client.trim() {
             "deluge" => "deluge".to_string(),
@@ -1776,6 +1811,8 @@ pub async fn settings_general_submit(
         manual_search_auto_add: form.manual_search_auto_add.is_some(),
         misgrab_auto_remove: form.misgrab_auto_remove.is_some(),
         auto_redownload_failed: form.auto_redownload_failed.is_some(),
+        import_extra_files: form.import_extra_files.is_some(),
+        extra_file_extensions: normalize_extra_file_extensions(&form.extra_file_extensions),
         grab_preview_mode: resolve_grab_preview_mode(
             form.grab_preview_mode.as_deref(),
             Some("general"),

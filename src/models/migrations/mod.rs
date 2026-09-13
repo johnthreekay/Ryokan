@@ -2902,6 +2902,18 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(db)
         .await
         .ok();
+        // Sonarr's "Import Extra Files": subtitles next to the video.
+        // Off by default, like Sonarr.
+        sqlx::query("ALTER TABLE config ADD COLUMN import_extra_files INTEGER NOT NULL DEFAULT 0")
+            .execute(db)
+            .await
+            .ok();
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN extra_file_extensions TEXT NOT NULL DEFAULT 'srt,ass'",
+        )
+        .execute(db)
+        .await
+        .ok();
     }
 
     {
