@@ -112,6 +112,24 @@ pub async fn set_episode_monitored(
     Ok(())
 }
 
+/// Every series' monitored episode numbers in one query, for the
+/// Wanted page's library-wide missing list.
+pub async fn get_monitored_all_series(
+    db: &SqlitePool,
+) -> Result<std::collections::HashMap<i64, std::collections::HashSet<i32>>, sqlx::Error> {
+    let rows: Vec<(i64, i32)> = sqlx::query_as(
+        "SELECT series_id, episode_number FROM episode_monitor_state WHERE monitored = 1",
+    )
+    .fetch_all(db)
+    .await?;
+    let mut out: std::collections::HashMap<i64, std::collections::HashSet<i32>> =
+        std::collections::HashMap::new();
+    for (sid, ep) in rows {
+        out.entry(sid).or_default().insert(ep);
+    }
+    Ok(out)
+}
+
 pub async fn get_monitored_episode_numbers(
     db: &SqlitePool,
     series_id: i64,

@@ -10,6 +10,7 @@ pub mod responses;
 pub mod search;
 pub mod settings;
 pub mod system;
+pub mod wanted;
 
 pub mod api_keys;
 pub mod arr_auth;

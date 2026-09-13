@@ -162,6 +162,8 @@ use services::{
         handlers::api_keys::reveal,
         // Calendar feed (#116)
         handlers::calendar::ical_feed,
+        // Wanted page search
+        handlers::wanted::search,
         // Notifications (#118)
         handlers::notifications::test_provider,
         // Backup / restore (#126)
@@ -1264,6 +1266,8 @@ async fn main() {
         // swaps (it branches on HxRequest), so there's no
         // separate JSON route.
         .route("/calendar", get(handlers::calendar::page))
+        .route("/wanted", get(handlers::wanted::page))
+        .route("/api/wanted/search", post(handlers::wanted::search))
         .route("/api/logs/poll", get(handlers::system::api_logs_poll))
         .route("/api/logs/clear", post(handlers::system::api_logs_clear))
         .route("/api/logs/export", get(handlers::system::api_logs_export))

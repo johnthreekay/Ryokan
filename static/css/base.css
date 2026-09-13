@@ -789,7 +789,8 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
    the many-tab pages keep the sidebar. 32px items, same size as a
    toolbar field or a small button. */
 .system-tabs,
-.calendar-range-tabs {
+.calendar-range-tabs,
+.wanted-tabs {
     display: inline-flex;
     gap: 2px;
     padding: 3px;
@@ -803,7 +804,8 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
 }
 
 .system-tab,
-.calendar-range-tab {
+.calendar-range-tab,
+.wanted-tab {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -819,12 +821,14 @@ html:not([data-title-language]) .title-switcher .title-option[data-title-lang="e
 }
 
 .system-tab:hover,
-.calendar-range-tab:hover {
+.calendar-range-tab:hover,
+.wanted-tab:hover {
     color: var(--text);
 }
 
 .system-tab.active,
-.calendar-range-tab.active {
+.calendar-range-tab.active,
+.wanted-tab.active {
     color: var(--accent);
     background: var(--bg-card);
 }

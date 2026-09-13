@@ -72,6 +72,7 @@
        collision is not a concern. #}
     <link rel="stylesheet" href="/static/css/pages/auth.css?v={{ crate::asset_version() }}">
     <link rel="stylesheet" href="/static/css/pages/calendar.css?v={{ crate::asset_version() }}">
+    <link rel="stylesheet" href="/static/css/pages/wanted.css?v={{ crate::asset_version() }}">
     <link rel="stylesheet" href="/static/css/pages/downloads.css?v={{ crate::asset_version() }}">
     <link rel="stylesheet" href="/static/css/pages/grab_picker.css?v={{ crate::asset_version() }}">
     <link rel="stylesheet" href="/static/css/pages/import.css?v={{ crate::asset_version() }}">
@@ -154,6 +155,7 @@
                mobile users still reach /calendar from the library
                page without burning a mobile-tabbar slot. #}
             <a href="/calendar" class="nav-calendar-desktop {% if page == "calendar" %}active{% endif %}">Calendar</a>
+            <a href="/wanted" class="nav-calendar-desktop {% if page == "wanted" %}active{% endif %}">Wanted</a>
             {% if page == "library" %}
             {# Mobile-only icon Calendar — same library-page-only
                whitelist pattern as bulk-select. Desktop hides this
@@ -166,6 +168,14 @@
                     <path d="M16 2v4"/>
                     <path d="M8 2v4"/>
                     <path d="M3 10h18"/>
+                </svg>
+            </a>
+            {# Wanted: same mobile-only icon treatment as the calendar. #}
+            <a href="/wanted" class="nav-action nav-calendar-mobile" aria-label="Wanted" title="Wanted">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
             </a>
             {% endif %}

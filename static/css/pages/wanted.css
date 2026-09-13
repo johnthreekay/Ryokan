@@ -1,0 +1,135 @@
+/* /wanted page: Sonarr's Wanted → Missing / Cutoff Unmet. Rows
+   share the calendar's list recipe (card fill, --radius-lg, cover
+   thumbnail); the tabs are the segmented control from base.css. */
+.wanted-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.wanted-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.wanted-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.wanted-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.wanted-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    transition: border-color 0.15s;
+}
+
+.wanted-row:hover {
+    border-color: var(--accent);
+}
+
+.wanted-row-select {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.wanted-row-link {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 1;
+    min-width: 0;
+    color: var(--text);
+    text-decoration: none;
+}
+
+.wanted-row-cover {
+    flex-shrink: 0;
+    width: 48px;
+    height: 68px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    background: var(--bg-elevated);
+}
+
+.wanted-row-cover-placeholder {
+    background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
+    border: 1px solid var(--border);
+}
+
+.wanted-row-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+}
+
+.wanted-row-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-bright);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wanted-row-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.wanted-slot {
+    font-family: var(--font-mono);
+}
+
+.wanted-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.wanted-empty {
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--text-dim);
+}
+
+.wanted-empty p {
+    margin: 0 0 8px;
+}
+
+@media (max-width: 640px) {
+    .wanted-row {
+        flex-wrap: wrap;
+    }
+    .wanted-row-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
