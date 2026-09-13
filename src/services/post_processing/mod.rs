@@ -674,6 +674,7 @@ async fn import_special_file(
     let mut name_ctx =
         episode_name_context_with_tag(ctx, None, span.first, span.last, "", filename_only, ext);
     name_ctx.season_number = 0;
+    name_ctx.episode_absolute = None;
     let name = naming::episode_file(&cfg.episode_file_format, &name_ctx);
     let dest = specials_dir.join(&name.file_name);
     if dest.exists() && !files_share_inode(src, &dest) {
@@ -780,6 +781,7 @@ fn episode_name_context_with_tag(
         season_number: 1,
         episode_number: ep_num,
         episode_last: ep_last,
+        episode_absolute: ctx.absolute_offset.map(|offset| offset + ep_num),
         episode_title: ep_title.to_string(),
         quality_resolution: resolution,
         quality_source: source_label,
@@ -793,6 +795,11 @@ struct SeriesImportCtx {
     folder_name: String,
     series_title: String,
     season_dir: PathBuf,
+    /// `series.cumulative_prior_episodes` once a refresh or first grab
+    /// has written it (`series::absolute_offset_if_known`): the input
+    /// of the `{episode.absolute}` naming token. `None` renders no
+    /// absolute number.
+    absolute_offset: Option<i32>,
     ep_meta: HashMap<i32, local_metadata::CachedEpisodeMetadata>,
     /// Cached AniList detail used to enrich episode + series NFOs with
     /// plot, genres, runtime, etc. `None` when the per-series metadata
@@ -891,12 +898,16 @@ async fn load_series_import_ctx(
     let existing_tags = episode_tags::get_for_series(&state.db, series.id)
         .await
         .unwrap_or_default();
+    let absolute_offset = series::absolute_offset_if_known(&state.db, series.id)
+        .await
+        .unwrap_or(None);
 
     Ok(SeriesImportCtx {
         series,
         folder_name,
         series_title,
         season_dir,
+        absolute_offset,
         ep_meta,
         cached_detail,
         runtime_minutes,

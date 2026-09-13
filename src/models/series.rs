@@ -690,12 +690,33 @@ pub async fn update_cumulative_prior_episodes(
     id: i64,
     offset: i32,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE series SET cumulative_prior_episodes = ? WHERE id = ?")
-        .bind(offset)
-        .bind(id)
-        .execute(db)
-        .await?;
+    sqlx::query(
+        "UPDATE series SET cumulative_prior_episodes = ?, cumulative_offset_known = 1 WHERE id = ?",
+    )
+    .bind(offset)
+    .bind(id)
+    .execute(db)
+    .await?;
     Ok(())
+}
+
+/// The series' absolute-numbering offset (`cumulative_prior_episodes`)
+/// once a refresh or first grab has written it, else `None`. The
+/// `{episode.absolute}` naming token renders nothing for `None`: the
+/// column defaults to 0 for a sequel whose PREQUEL chain is not
+/// hydrated yet, and a wrong absolute number in a file name is worse
+/// than no number.
+pub async fn absolute_offset_if_known(
+    db: &SqlitePool,
+    id: i64,
+) -> Result<Option<i32>, sqlx::Error> {
+    let row: Option<(i32, i64)> = sqlx::query_as(
+        "SELECT cumulative_prior_episodes, COALESCE(cumulative_offset_known, 0) FROM series WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
+    Ok(row.and_then(|(offset, known)| (known != 0).then_some(offset)))
 }
 
 /// #23 — Update the per-series search overrides. Empty strings clear
@@ -880,5 +901,23 @@ mod tests {
         );
         assert_eq!(normalize_alternate_titles(raw), "Deluxe Show\nOther Name");
         assert!(parse_alternate_titles("   \n").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod absolute_offset_tests {
+    use super::*;
+    use crate::test_support::{in_memory_pool, seed_series};
+
+    #[tokio::test]
+    async fn offset_is_unknown_until_written_then_known() {
+        let db = in_memory_pool().await;
+        let id = seed_series(&db, 1, "Show").await;
+        assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), None);
+        update_cumulative_prior_episodes(&db, id, 0).await.unwrap();
+        assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), Some(0));
+        update_cumulative_prior_episodes(&db, id, 12).await.unwrap();
+        assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), Some(12));
+        assert_eq!(absolute_offset_if_known(&db, id + 1).await.unwrap(), None);
     }
 }

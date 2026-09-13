@@ -553,3 +553,71 @@ fn fallback_name_carries_the_range() {
     // default's shape, not the bare stem.
     assert!(r.name.contains("S01E07-E08"), "{}", r.name);
 }
+
+// ── {episode.absolute} ─────────────────────────────────────────────
+
+const ABSOLUTE_TEMPLATE: &str = "{series.title} - S{season.number:00}E{episode.number:00} - {episode.absolute:000} - {episode.title}{ext}";
+
+#[test]
+fn absolute_token_renders_the_offset_number() {
+    let ctx = sample_context();
+    assert_eq!(
+        ep(ABSOLUTE_TEMPLATE, &ctx),
+        "Sousou no Frieren - S01E07 - 019 - Like a Fairy Tale.mkv"
+    );
+    // Unpadded.
+    assert_eq!(
+        ep(
+            "{series.title} - {episode.number:00} [{episode.absolute}]{ext}",
+            &ctx
+        ),
+        "Sousou no Frieren - 07 [19].mkv"
+    );
+}
+
+#[test]
+fn absolute_token_drops_out_with_its_separator_when_unknown() {
+    let ctx = NameContext {
+        episode_absolute: None,
+        ..sample_context()
+    };
+    assert_eq!(
+        ep(ABSOLUTE_TEMPLATE, &ctx),
+        "Sousou no Frieren - S01E07 - Like a Fairy Tale.mkv"
+    );
+    assert_eq!(
+        ep(
+            "{series.title} - {episode.number:00} [{episode.absolute}]{ext}",
+            &ctx
+        ),
+        "Sousou no Frieren - 07.mkv"
+    );
+}
+
+#[test]
+fn absolute_token_renders_a_range_for_a_multi_episode_file() {
+    let ctx = multi_episode_sample_context();
+    let name = ep(ABSOLUTE_TEMPLATE, &ctx);
+    assert_eq!(
+        name,
+        "Sousou no Frieren - S01E07-E08 - 019-020 - Like a Fairy Tale + The Land Where the Soul Rests.mkv"
+    );
+    // The span still reads back as 7-8, not 19-20.
+    let span = parse_episode_span(&name.to_lowercase()).expect("parses");
+    assert_eq!((span.first, span.last), (7, 8));
+}
+
+#[test]
+fn validate_accepts_absolute_after_the_episode_number_and_rejects_it_in_front() {
+    assert!(validate(TemplateKind::EpisodeFile, ABSOLUTE_TEMPLATE).is_ok());
+    // The absolute number in the ` - NN` slot would be read as the
+    // episode (19, not 7) by every scan.
+    let err = validate(
+        TemplateKind::EpisodeFile,
+        "{series.title} - {episode.absolute:000} - E{episode.number:00}{ext}",
+    )
+    .unwrap_err();
+    assert!(err.contains("{episode.absolute}"), "{err}");
+    // Not a folder token.
+    assert!(validate(TemplateKind::SeasonFolder, "Season {episode.absolute}").is_err());
+}

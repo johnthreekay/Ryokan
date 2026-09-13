@@ -2896,6 +2896,21 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .ok();
     }
 
+    {
+        // `{episode.absolute}` naming token: set once
+        // `series::update_cumulative_prior_episodes` has written the
+        // offset, so a sequel whose PREQUEL chain is not hydrated yet
+        // renders no absolute number rather than a wrong one. The
+        // default 0 makes existing rows "unknown" until the next
+        // metadata refresh (12h) or first grab writes them.
+        sqlx::query(
+            "ALTER TABLE series ADD COLUMN cumulative_offset_known INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(db)
+        .await
+        .ok();
+    }
+
     // Issue #228 — remove finished downloads from the client. The
     // switch is per client (Sonarr's "Remove Completed"), default on.
     // `client_removed_at` is stamped when post-processing removed an
