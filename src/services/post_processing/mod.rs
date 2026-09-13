@@ -1572,6 +1572,28 @@ async fn import_torrent(
                 &reason,
             )
             .await;
+            // The grab-time rows this release wrote describe a file that
+            // never lands: fail them the way the stall and misgrab paths
+            // do, then rebuild the refused episodes' rows from the file
+            // that is on disk (the reclassify core finds it by any held
+            // episode; one ffprobe), so the series page and the upgrade
+            // checks see the real file's quality again instead of the
+            // refused release's.
+            let _ = episode_tags::mark_grab_failed_for_release(
+                &state.db,
+                target_series_id,
+                &grab.torrent_name,
+            )
+            .await;
+            for ep in resolved.episodes() {
+                let _ = episode_tags::clear_episode_tag(&state.db, target_series_id, ep).await;
+            }
+            let _ = crate::handlers::library::crud::reclassify_on_disk_episode(
+                state,
+                target_series_id,
+                ep_num,
+            )
+            .await;
             failed_episodes.extend(resolved.episodes());
             continue;
         }
@@ -1959,13 +1981,17 @@ async fn import_torrent(
                         episode_tags::update_classification(&state.db, target_series_id, ep, &post)
                             .await
                     } else {
+                        // The group the name context resolved: the
+                        // grab-time tag row when there is one, else the
+                        // filename classification, so the second episode
+                        // of a multi-episode file is tagged like the first.
                         let inserted = episode_tags::record_grab(
                             &state.db,
                             target_series_id,
                             ep,
                             &post,
                             &grab.torrent_name,
-                            "",
+                            &name_ctx.release_group,
                             file.size,
                             grab.is_batch,
                         )
@@ -2730,12 +2756,16 @@ pub async fn run_once(state: &AppState) {
                 // itself and maybe the Jellyfin refresh at the end.
                 // Operators who went looking for "did this episode
                 // land?" had to check the library row or disk.
+                // The list is what the grab row claimed at grab time; the
+                // per-file "Imported S01E05-E06" lines above name what
+                // actually landed (a multi-episode file covers more than
+                // a single-episode grab row lists, issue #246).
                 logger::info(
                     &state.db,
                     LogCategory::PostProcess,
                     &format!("Imported '{}'", grab.torrent_name),
                     &format!(
-                        "series_id={} episodes={:?}",
+                        "series_id={} grab_episodes={:?}",
                         grab.series_id, grab.episode_numbers
                     ),
                 )

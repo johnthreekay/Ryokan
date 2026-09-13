@@ -464,13 +464,19 @@ pub async fn grab_interactive_result(
     .await;
 
     if let Some(sid) = series_id {
-        // Interactive single-episode grab — not a batch by definition.
+        // Interactive grab: not a batch by definition, but a release whose
+        // title names a short run of episodes around the one the user
+        // clicked (`- 05-06`, issue #246) is one file holding all of them,
+        // so the grab row and the grabbed tags cover the run and every
+        // episode shows as downloading. The import writes the final rows
+        // from the file name either way.
+        let held = held_episodes(&title, episode_number);
         let grab_id = crate::models::grabbed_torrents::record_grab(
             &state.db,
             &effective_hash,
             &title,
             sid,
-            &[episode_number],
+            &held,
             false,
         )
         .await
@@ -506,22 +512,90 @@ pub async fn grab_interactive_result(
             )
             .await;
         }
-        let _ = episode_tags::record_grab_with_match(
-            &state.db,
-            sid,
-            episode_number,
-            &classification,
-            &title,
-            &group,
-            size_bytes,
-            false,
-            match_provenance.as_ref(),
-        )
-        .await;
+        for ep in &held {
+            let _ = episode_tags::record_grab_with_match(
+                &state.db,
+                sid,
+                *ep,
+                &classification,
+                &title,
+                &group,
+                size_bytes,
+                false,
+                match_provenance.as_ref(),
+            )
+            .await;
+        }
     }
 
     Ok(Json(serde_json::json!({
         "ok": true,
         "selective_files": selective_outcome,
     })))
+}
+
+/// The episodes an interactive grab records (issue #246): the release
+/// title's episode numbers when they form a contiguous run of at most
+/// `MAX_FILE_SPAN` episodes that includes the requested one (a `- 05-06`
+/// two-episode file), else the requested episode alone. A batch title
+/// keeps its range inside brackets, which the parser strips, so a pack
+/// never widens a single-episode grab here.
+pub(crate) fn held_episodes(title: &str, episode_number: i32) -> Vec<i32> {
+    let mut nums: Vec<i32> = auto_search::parse_release_numbers(title)
+        .into_iter()
+        .collect();
+    nums.sort_unstable();
+    let contiguous = nums.windows(2).all(|w| w[1] == w[0] + 1);
+    if nums.len() > 1
+        && nums.len() as i32 <= crate::services::media::MAX_FILE_SPAN
+        && contiguous
+        && nums.contains(&episode_number)
+    {
+        nums
+    } else {
+        vec![episode_number]
+    }
+}
+
+#[cfg(test)]
+mod held_episodes_tests {
+    use super::held_episodes;
+
+    #[test]
+    fn a_range_title_holds_the_run_around_the_requested_episode() {
+        assert_eq!(
+            held_episodes("[SakuraCircle] Saimin Seishidou - 05-06 (DVD 720x480)", 5),
+            vec![5, 6]
+        );
+        assert_eq!(
+            held_episodes(
+                "[SubsPlease] RWBY - Hyousetsu Teikoku - 01-03 (720p) [CCDDC9CB].mkv",
+                2
+            ),
+            vec![1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn a_single_or_pack_title_records_the_requested_episode_only() {
+        assert_eq!(
+            held_episodes(
+                "[SubsPlease] RWBY - Hyousetsu Teikoku - 02 (720p) [4A0FE134].mkv",
+                2
+            ),
+            vec![2]
+        );
+        // A pack keeps its range in parentheses; a run wider than one
+        // file is not a file; a run that does not include the requested
+        // episode is not this grab.
+        assert_eq!(
+            held_episodes(
+                "[SubsPlease] RWBY - Hyousetsu Teikoku (01-12) (720p) [Batch]",
+                4
+            ),
+            vec![4]
+        );
+        assert_eq!(held_episodes("Show - 01-12 [BD]", 4), vec![4]);
+        assert_eq!(held_episodes("Show - 05-06 [1080p]", 9), vec![9]);
+    }
 }
