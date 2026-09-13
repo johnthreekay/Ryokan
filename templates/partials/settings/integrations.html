@@ -256,11 +256,17 @@
                 <span class="form-hint">Series removed with "keep it off my sync". A sync does not add them back until you allow them again.</span>
                 <ul class="sync-exclusions">
                     {% for x in sync_exclusions %}
+                    {# A button, not a form: this partial sits inside the
+                       Integrations <form>, and a nested form would be
+                       dropped by the parser and its submit re-owned by
+                       the outer one (the autobrr regen button has the
+                       same story). Swaps the region like the outer form. #}
                     <li class="sync-exclusion-row">
-                        <span>{{ x.title }}</span>
-                        <form method="post" action="/settings/sync-exclusions/{{ x.id }}/delete" hx-post="/settings/sync-exclusions/{{ x.id }}/delete" hx-target="#settings-content" hx-swap="innerHTML" style="display:inline">
-                            <button type="submit" class="btn btn-ghost btn-sm">Allow again</button>
-                        </form>
+                        <span class="sync-exclusion-title">{{ x.title }}</span>
+                        <button type="button" class="btn btn-ghost btn-sm"
+                                hx-post="/settings/sync-exclusions/{{ x.id }}/delete"
+                                hx-target="#settings-integrations-region"
+                                hx-swap="outerHTML">Allow again</button>
                     </li>
                     {% endfor %}
                 </ul>

@@ -205,9 +205,12 @@ pub async fn bulk_delete(
     let mut succeeded = Vec::with_capacity(req.series_ids.len());
     let mut failed = Vec::new();
     for series_id in &req.series_ids {
-        if req.add_exclusion {
-            super::crud::record_sync_exclusion(&state.db, *series_id).await;
-        }
+        // Read before the row goes, written only after it is gone.
+        let exclusion = if req.add_exclusion {
+            super::crud::sync_exclusion_snapshot(&state.db, *series_id).await
+        } else {
+            None
+        };
         match delete_one_series(
             &state,
             *series_id,
@@ -217,7 +220,12 @@ pub async fn bulk_delete(
         )
         .await
         {
-            Ok(()) => succeeded.push(*series_id),
+            Ok(()) => {
+                if let Some(snapshot) = exclusion {
+                    super::crud::record_sync_exclusion(&state.db, snapshot).await;
+                }
+                succeeded.push(*series_id)
+            }
             Err(reason) => failed.push(BulkFailure {
                 series_id: *series_id,
                 reason,

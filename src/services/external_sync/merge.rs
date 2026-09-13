@@ -65,7 +65,14 @@ pub async fn merge_into_library(
             outcome.deferred_jikan += 1;
             continue;
         }
-        if exclusions.contains(entry.anilist_id, None) {
+        // An exclusion keeps a removed series out; one the user added
+        // back by hand keeps syncing (add_series clears the row too).
+        if exclusions.contains(entry.anilist_id, None)
+            && !matches!(
+                series::get_by_anilist_id(db, entry.anilist_id).await,
+                Ok(Some(_))
+            )
+        {
             outcome.excluded += 1;
             continue;
         }
@@ -200,7 +207,9 @@ pub async fn merge_jikan_fallback_entries(
         // the sentinel keeps the AL-merge path and Jikan-merge path
         // consistent: each derives the upstream id from `anilist_id`.
         let mal_id = -entry.anilist_id;
-        if exclusions.contains(entry.anilist_id, Some(mal_id)) {
+        if exclusions.contains(entry.anilist_id, Some(mal_id))
+            && !matches!(series::get_by_mal_id(db, mal_id).await, Ok(Some(_)))
+        {
             outcome.excluded += 1;
             continue;
         }

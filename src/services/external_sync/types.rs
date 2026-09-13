@@ -149,7 +149,7 @@ pub struct MergeOutcome {
     /// for the deferred bulk-mode pass that runs after merge. Carrying
     /// just the IDs + image URLs (not the full AnimeDetail) keeps
     /// memory bounded on a 500-series first sync.
-    /// Entries on the sync exclusion list.
+    /// Entries on the sync exclusion list, skipped whole.
     pub excluded: i32,
     pub new_artwork: Vec<NewArtworkSpec>,
 }

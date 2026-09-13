@@ -1173,6 +1173,10 @@ async fn import_torrent(
     // `progress: 1.0` (everything we see on disk has finished
     // downloading by definition) so the rest of the import loop
     // works unchanged.
+    // Whether the file list below came from the client (every file,
+    // subtitles included) or from Ryokan's own walk of the folder
+    // (videos only); the subtitle import needs to know which.
+    let files_from_walk = files.is_empty();
     if files.is_empty() {
         let walk_root = Path::new(&source_base).to_path_buf();
         if walk_root.is_dir() {
@@ -1751,11 +1755,15 @@ async fn import_torrent(
                     .filter_map(|e| e.ok())
                     .map(|e| e.path())
                     .filter_map(|p| {
-                        let is_nfo = p
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .is_some_and(|e| e.eq_ignore_ascii_case("nfo"));
-                        if is_nfo {
+                        // Videos only: the `.nfo` and the subtitles
+                        // named after a file go with it through the
+                        // recycle bin's companion sweep, never as
+                        // entries of their own.
+                        let is_video = p
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(is_video_file);
+                        if !is_video {
                             return None;
                         }
                         let span = p
@@ -2133,14 +2141,50 @@ async fn import_torrent(
                 // recycle bin retires them with it.
                 if cfg.import_extra_files {
                     let extensions = extras::parse_extensions(&cfg.extra_file_extensions);
+                    // The download's own files with a wanted extension:
+                    // from the client's list, or a walk of the video's
+                    // folder when Ryokan listed the videos itself.
+                    let candidates: Vec<PathBuf> = if files_from_walk {
+                        match src.parent() {
+                            Some(dir) => {
+                                let dir = dir.to_path_buf();
+                                let exts = extensions.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    extras::walk_extras(&dir, &exts)
+                                })
+                                .await
+                                .unwrap_or_default()
+                            }
+                            None => Vec::new(),
+                        }
+                    } else {
+                        files
+                            .iter()
+                            .filter(|f| {
+                                Path::new(&f.name)
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|e| e.to_ascii_lowercase())
+                                    .is_some_and(|e| extensions.contains(&e))
+                            })
+                            .map(|f| Path::new(&source_base).join(&f.name))
+                            .collect()
+                    };
                     let report = extras::import_subtitles(
                         &cfg.post_processing_mode,
-                        &extensions,
                         &src,
                         &dest_video,
                         name_span,
+                        &candidates,
+                        video_files.len(),
                     )
                     .await;
+                    if report.skipped > 0 {
+                        tracing::debug!(
+                            skipped = report.skipped,
+                            "subtitle import: destinations already present"
+                        );
+                    }
                     if !report.imported.is_empty() {
                         logger::info(
                             &state.db,

@@ -22,8 +22,10 @@ pub struct SyncExclusion {
 
 /// Record an exclusion. A positive AniList id or a MAL id is required
 /// (a MAL-only series carries the negative sentinel as its AniList id,
-/// which is dropped here). Idempotent: an existing row for either id
-/// is left alone.
+/// which is dropped here). Idempotent: a row with the AniList id is
+/// left alone; a row with only the MAL id gains the AniList id; the
+/// partial unique indexes make a concurrent double insert a no-op.
+/// `Ok(true)` when a row was written or completed.
 pub async fn add(
     db: &SqlitePool,
     anilist_id: i64,
@@ -35,29 +37,70 @@ pub async fn add(
     if anilist.is_none() && mal.is_none() {
         return Ok(false);
     }
-    let existing: Option<i64> = sqlx::query_scalar(
-        "SELECT id FROM external_sync_exclusions \
-         WHERE (? IS NOT NULL AND anilist_id = ?) OR (? IS NOT NULL AND mal_id = ?) \
-         LIMIT 1",
-    )
-    .bind(anilist)
-    .bind(anilist)
-    .bind(mal)
-    .bind(mal)
-    .fetch_optional(db)
-    .await?;
-    if existing.is_some() {
-        return Ok(false);
+    if let Some(a) = anilist {
+        let by_anilist: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM external_sync_exclusions WHERE anilist_id = ?")
+                .bind(a)
+                .fetch_optional(db)
+                .await?;
+        if by_anilist.is_some() {
+            return Ok(false);
+        }
     }
-    sqlx::query(
-        "INSERT INTO external_sync_exclusions (anilist_id, mal_id, title) VALUES (?, ?, ?)",
+    if let Some(m) = mal {
+        let by_mal: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM external_sync_exclusions WHERE mal_id = ?")
+                .bind(m)
+                .fetch_optional(db)
+                .await?;
+        if let Some(id) = by_mal {
+            if let Some(a) = anilist {
+                sqlx::query(
+                    "UPDATE external_sync_exclusions SET anilist_id = ? WHERE id = ? AND anilist_id IS NULL",
+                )
+                .bind(a)
+                .bind(id)
+                .execute(db)
+                .await?;
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+    }
+    let result = sqlx::query(
+        "INSERT OR IGNORE INTO external_sync_exclusions (anilist_id, mal_id, title) VALUES (?, ?, ?)",
     )
     .bind(anilist)
     .bind(mal)
     .bind(title)
     .execute(db)
     .await?;
-    Ok(true)
+    Ok(result.rows_affected() > 0)
+}
+
+/// Drop every exclusion that matches either id: a series added back
+/// by hand is wanted again.
+pub async fn delete_for_ids(
+    db: &SqlitePool,
+    anilist_id: i64,
+    mal_id: Option<i64>,
+) -> Result<u64, sqlx::Error> {
+    let anilist = (anilist_id > 0).then_some(anilist_id);
+    let mal = mal_id.filter(|m| *m > 0);
+    if anilist.is_none() && mal.is_none() {
+        return Ok(0);
+    }
+    let result = sqlx::query(
+        "DELETE FROM external_sync_exclusions \
+         WHERE (? IS NOT NULL AND anilist_id = ?) OR (? IS NOT NULL AND mal_id = ?)",
+    )
+    .bind(anilist)
+    .bind(anilist)
+    .bind(mal)
+    .bind(mal)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected())
 }
 
 pub async fn list(db: &SqlitePool) -> Result<Vec<SyncExclusion>, sqlx::Error> {
@@ -148,5 +191,14 @@ mod tests {
         assert!(delete(&db, show.id).await.unwrap());
         assert!(!delete(&db, show.id).await.unwrap());
         assert!(!load_set(&db).await.contains(100, Some(200)));
+        // A MAL-only row gains the AniList id when the series is
+        // removed again with both known, and delete_for_ids clears by
+        // either id.
+        assert!(add(&db, 500, Some(300), "Other").await.unwrap());
+        let set = load_set(&db).await;
+        assert!(set.contains(500, None));
+        assert!(set.contains(-300, Some(300)));
+        assert_eq!(delete_for_ids(&db, 500, None).await.unwrap(), 1);
+        assert!(!load_set(&db).await.contains(-300, Some(300)));
     }
 }

@@ -777,3 +777,32 @@ select::-ms-expand {
 .file-field-name.has-file {
     color: var(--text);
 }
+
+/* Settings → Integrations: series kept off the watch-list sync, one
+   row per exclusion with its "Allow again" button. */
+.sync-exclusions {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sync-exclusion-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.sync-exclusion-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

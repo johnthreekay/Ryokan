@@ -2948,12 +2948,14 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
     .execute(db)
     .await?;
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_sync_exclusions_anilist ON external_sync_exclusions(anilist_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_exclusions_anilist \
+         ON external_sync_exclusions(anilist_id) WHERE anilist_id IS NOT NULL",
     )
     .execute(db)
     .await?;
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_sync_exclusions_mal ON external_sync_exclusions(mal_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_exclusions_mal \
+         ON external_sync_exclusions(mal_id) WHERE mal_id IS NOT NULL",
     )
     .execute(db)
     .await?;

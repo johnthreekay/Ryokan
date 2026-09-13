@@ -2795,9 +2795,9 @@ mod tests;
     path = "/settings/sync-exclusions/{id}/delete",
     tag = "Settings",
     summary = "Delete a watch-list sync exclusion",
-    description = "Removes the exclusion so the next AniList / MyAnimeList sync may add the series again. Redirects back to the Integrations tab.",
+    description = "Removes the exclusion so the next AniList / MyAnimeList sync may add the series again. Renders the Integrations tab (the region partial for an HTMX request).",
     params(("id" = i64, Path, description = "Exclusion id")),
-    responses((status = 303, description = "Redirect back to the Integrations tab")),
+    responses((status = 200, description = "The Integrations tab, re-rendered")),
 )]
 pub async fn sync_exclusion_delete(
     State(state): State<AppState>,

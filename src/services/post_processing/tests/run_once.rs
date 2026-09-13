@@ -2247,12 +2247,22 @@ async fn run_once_imports_the_subtitle_next_to_the_video_when_enabled() {
         state_kind: DownloadItemState::Seeding,
         seeding_done: false,
     };
-    let files = vec![DownloadFile {
-        name: video.to_string(),
-        size: 5,
-        progress: 1.0,
-        wanted: true,
-    }];
+    // The client lists every file of the download, subtitles included;
+    // the import reads its subtitle candidates from that list.
+    let files = vec![
+        DownloadFile {
+            name: video.to_string(),
+            size: 5,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "[Group] Show Title - 01 (1080p).eng.ass".to_string(),
+            size: 4,
+            progress: 1.0,
+            wanted: true,
+        },
+    ];
     let state = build_test_app_state(db.clone(), None);
     let client = Arc::new(ImportingClient { torrent, files });
     install_pool(

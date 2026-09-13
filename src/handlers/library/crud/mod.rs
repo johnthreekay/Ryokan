@@ -99,6 +99,13 @@ pub async fn add_series(
     )
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // A series added back by hand is wanted again: drop any sync
+    // exclusion recorded when it was removed.
+    if let Ok(Some(row)) = series::get_by_id(&state.db, id).await {
+        let _ =
+            crate::models::sync_exclusions::delete_for_ids(&state.db, row.anilist_id, row.mal_id)
+                .await;
+    }
 
     logger::info(
         &state.db,
@@ -296,7 +303,13 @@ pub async fn remove_series(
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
     let series_id = form.id;
     let delete_files = form.delete_files.unwrap_or(true);
-    let add_exclusion = form.add_exclusion.unwrap_or(false);
+    // Captured now, written only after the row is gone: an exclusion
+    // for a series that stayed in the library would be wrong.
+    let exclusion = if form.add_exclusion.unwrap_or(false) {
+        sync_exclusion_snapshot(&state.db, series_id).await
+    } else {
+        None
+    };
 
     // Centralised error exit for this handler. Before the rss_seen fix,
     // any failure here (FK violations, stale grabbed_torrents, qBit
@@ -398,11 +411,11 @@ pub async fn remove_series(
     // Remove the DB tracking rows. This is the irreversible step, so
     // do it last — if filesystem cleanup blew up the operator can
     // still inspect the half-cleaned state via the Library page.
-    if add_exclusion {
-        record_sync_exclusion(&state.db, series_id).await;
-    }
     if let Err(e) = series::remove(&state.db, series_id).await {
         return Err(fail_with(&state.db, series_id, "delete_series", e.to_string()).await);
+    }
+    if let Some(snapshot) = exclusion {
+        record_sync_exclusion(&state.db, snapshot).await;
     }
 
     // Scrub user-controlled strings for the log line.
@@ -1540,12 +1553,29 @@ pub async fn list_folders(
 #[cfg(test)]
 mod tests;
 
-/// Write the sync exclusion for a series about to be removed (the row
-/// must still exist to read its ids and title). Best-effort: a failure
-/// here never blocks the removal.
-pub(crate) async fn record_sync_exclusion(db: &sqlx::SqlitePool, series_id: i64) {
-    let Ok(Some(row)) = series::get_by_id(db, series_id).await else {
-        return;
+/// The ids and title a sync exclusion needs, read while the series
+/// row still exists.
+pub(crate) type SyncExclusionSnapshot = (i64, Option<i64>, String);
+
+pub(crate) async fn sync_exclusion_snapshot(
+    db: &sqlx::SqlitePool,
+    series_id: i64,
+) -> Option<SyncExclusionSnapshot> {
+    series::get_by_id(db, series_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|row| (row.anilist_id, row.mal_id, row.title))
+}
+
+/// Write the sync exclusion for a series that has just been removed.
+/// Best-effort: a failure here is logged and nothing else.
+pub(crate) async fn record_sync_exclusion(db: &sqlx::SqlitePool, snapshot: SyncExclusionSnapshot) {
+    let (anilist_id, mal_id, title) = snapshot;
+    let row = SnapshotRow {
+        anilist_id,
+        mal_id,
+        title,
     };
     match crate::models::sync_exclusions::add(db, row.anilist_id, row.mal_id, &row.title).await {
         Ok(true) => {
@@ -1568,4 +1598,10 @@ pub(crate) async fn record_sync_exclusion(db: &sqlx::SqlitePool, series_id: i64)
             .await;
         }
     }
+}
+
+struct SnapshotRow {
+    anilist_id: i64,
+    mal_id: Option<i64>,
+    title: String,
 }
