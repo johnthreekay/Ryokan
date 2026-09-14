@@ -73,4 +73,4 @@ Fansub groups often number a sequel as if the show never ended, so "Jujutsu Kais
 
 ## Grabbing a release
 
-Click **Grab** next to a release to send it to your download client. A multi-file release opens the file picker first so you can leave out samples and extras; **Interactive file picker** under **Settings → General** turns that off. The release goes to the client Ryokan routes it to (see [Download clients](download-clients.md)) with your category or label, and post-processing takes it from there once the download finishes.
+Click **Grab** next to a release to send it to your download client. A multi-file release opens the file picker first so you can leave out samples and extras; **Interactive file picker** under **Settings → General** turns that off. If you close the picker, the tab, or the page without confirming, the release is grabbed a couple of minutes later with the files you had ticked. The release goes to the client Ryokan routes it to (see [Download clients](download-clients.md)) with your category or label, and post-processing takes it from there once the download finishes.

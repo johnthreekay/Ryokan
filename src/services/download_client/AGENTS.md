@@ -60,7 +60,7 @@ Distinct from `services::auto_expand` (sibling-series detection inside a batch p
 
 ## `Warning` vs `Errored` (the client's failure report)
 
-`DownloadItemState::Errored` is the client's own failed-download verdict, Sonarr's `DownloadItemStatus::Failed`, and post-processing acts on it (the grab fails with `failure_reason = 'client_error'`, the release is blocklisted, the item is removed **with its data**, a replacement is searched for; see the root AGENTS.md). Only two wire states earn it: SABnzbd `Failed` and qBittorrent `error`. Everything a client reports as a problem it may recover from is `DownloadItemState::Warning` (Sonarr's `Warning`): neither `is_complete` nor `is_errored`, so post-processing waits, the stall clock does not start, and the Downloads page shows the client's own state string. The mapping per client:
+`DownloadItemState::Errored` is the client's own failed-download verdict, Sonarr's `DownloadItemStatus::Failed`, and post-processing acts on it (the grab fails with `failure_reason = 'client_error'`, the release is blocklisted, the item is removed **with its data** when the client row's `remove_failed` switch is on (Sonarr's per-client Remove Failed Downloads, default on, `set_remove_failed`), a replacement is searched for; see the root AGENTS.md). Only two wire states earn it: SABnzbd `Failed` and qBittorrent `error`. Everything a client reports as a problem it may recover from is `DownloadItemState::Warning` (Sonarr's `Warning`): neither `is_complete` nor `is_errored`, so post-processing waits, the stall clock does not start, and the Downloads page shows the client's own state string. The mapping per client:
 
 | Client | `Errored` | `Warning` |
 |---|---|---|
