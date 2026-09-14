@@ -780,7 +780,11 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
             -- a pre-existing torrent doesn't nuke prior-grab data. The
             -- ALTER TABLE below is idempotency for upgraders; fresh
             -- installs pick up the column from this CREATE.
-            we_added_torrent INTEGER NOT NULL DEFAULT 1
+            we_added_torrent INTEGER NOT NULL DEFAULT 1,
+            -- The picker's last tick state as a JSON index list, posted
+            -- while the modal is open, so the walkaway auto-commit takes
+            -- the files the user had selected. Empty = every file.
+            wanted_indices_json TEXT NOT NULL DEFAULT ''
         )
         "#,
     )
@@ -820,6 +824,12 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(db)
         .await
         .ok();
+    sqlx::query(
+        "ALTER TABLE pending_grabs ADD COLUMN wanted_indices_json TEXT NOT NULL DEFAULT ''",
+    )
+    .execute(db)
+    .await
+    .ok();
 
     // Multi-client refactor follow-up — capture which `download_clients`
     // row the preview's `add_torrent_paused` call landed on so the
@@ -2967,6 +2977,10 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
     // so the finished-seed sweep stops looking at the row.
     for sql in [
         "ALTER TABLE download_clients ADD COLUMN remove_completed INTEGER NOT NULL DEFAULT 1",
+        // Sonarr's per-client "Remove Failed Downloads": whether a
+        // download the client itself reported as failed is deleted
+        // from it, files included, before the re-search. Default on.
+        "ALTER TABLE download_clients ADD COLUMN remove_failed INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE grabbed_torrents ADD COLUMN client_removed_at TEXT",
         // The file-operation mode a grab was imported under, so the
         // sweep's move-mode rule never applies to a row imported by

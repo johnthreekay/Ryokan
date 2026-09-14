@@ -98,6 +98,29 @@ pub async fn after_failed_download(state: &AppState, grab: &GrabbedTorrent, why:
 /// rules stay (`respects_seed_rules`); usenet jobs go too. Failures
 /// are logged and never block the re-search.
 pub async fn remove_failed_from_client(state: &AppState, grab: &GrabbedTorrent) {
+    // Sonarr's per-client "Remove Failed Downloads" (default on). A
+    // legacy grab with no stamped client follows the default.
+    let switch_on = match grab.download_client_id {
+        Some(id) => crate::models::download_clients::get_by_id(&state.db, id)
+            .await
+            .ok()
+            .flatten()
+            .is_none_or(|row| row.remove_failed),
+        None => true,
+    };
+    if !switch_on {
+        logger::info(
+            &state.db,
+            LogCategory::DownloadClient,
+            &format!(
+                "Keeping failed download '{}' in the client (remove failed downloads is off for it)",
+                grab.torrent_name
+            ),
+            &grab.hash,
+        )
+        .await;
+        return;
+    }
     let Some(client) = state
         .resolve_grab_client(grab.download_client_id, &grab.hash)
         .await

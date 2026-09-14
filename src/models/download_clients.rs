@@ -43,6 +43,12 @@ pub struct DownloadClientRow {
     /// the upsert form, so the many `DownloadClientForm` call sites
     /// stay as they are.
     pub remove_completed: bool,
+    /// Sonarr's per-client "Remove Failed Downloads": a download the
+    /// client itself reported as failed is deleted from it, files
+    /// included, before the replacement search. Off keeps the item in
+    /// the client for a look; the grab still fails and blocklists.
+    /// Default on; set through `set_remove_failed`.
+    pub remove_failed: bool,
 }
 
 /// Insert/update payload — `&str` rather than `String` so the
@@ -61,7 +67,8 @@ pub struct DownloadClientForm<'a> {
 }
 
 const SELECT_COLS: &str = "id, name, kind, url, username, password, label, \
-                           download_path, enabled, is_default, remove_completed";
+                           download_path, enabled, is_default, remove_completed, \
+                           remove_failed";
 
 /// Wire-protocol family for a download-client kind. Mirrors
 /// `services::download_client::protocol_for_client_kind` — duplicated
@@ -102,6 +109,10 @@ fn map_row(r: sqlx::sqlite::SqliteRow) -> DownloadClientRow {
             .unwrap_or(false),
         remove_completed: r
             .try_get::<i64, _>("remove_completed")
+            .map(|v| v != 0)
+            .unwrap_or(true),
+        remove_failed: r
+            .try_get::<i64, _>("remove_failed")
             .map(|v| v != 0)
             .unwrap_or(true),
     }
@@ -255,6 +266,20 @@ pub async fn update(
 pub async fn set_remove_completed(db: &SqlitePool, id: i64, on: bool) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE download_clients SET remove_completed = ?, updated_at = strftime('%s','now') \
+         WHERE id = ?",
+    )
+    .bind(if on { 1_i64 } else { 0_i64 })
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// The per-client "Remove failed downloads" switch (Sonarr's
+/// `RemoveFailedDownloads`).
+pub async fn set_remove_failed(db: &SqlitePool, id: i64, on: bool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE download_clients SET remove_failed = ?, updated_at = strftime('%s','now') \
          WHERE id = ?",
     )
     .bind(if on { 1_i64 } else { 0_i64 })

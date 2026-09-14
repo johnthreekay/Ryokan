@@ -46,6 +46,9 @@ use std::sync::Mutex;
 struct RecordingClient {
     list_calls: Mutex<u32>,
     list_fails: bool,
+    /// Every `delete(hash, _)` the sweep issued, for the failed-download
+    /// removal assertions.
+    delete_calls: Mutex<Vec<String>>,
     /// Canned response for `list_scoped`. Each entry maps to one
     /// `DownloadItem` returned with the given hash + state.
     canned: Vec<DownloadItem>,
@@ -56,6 +59,7 @@ impl RecordingClient {
         Self {
             list_calls: Mutex::new(0),
             list_fails: false,
+            delete_calls: Mutex::new(Vec::new()),
             canned,
         }
     }
@@ -64,8 +68,13 @@ impl RecordingClient {
         Self {
             list_calls: Mutex::new(0),
             list_fails: true,
+            delete_calls: Mutex::new(Vec::new()),
             canned: Vec::new(),
         }
+    }
+
+    fn deleted(&self) -> Vec<String> {
+        self.delete_calls.lock().unwrap().clone()
     }
 
     fn list_call_count(&self) -> u32 {
@@ -106,7 +115,8 @@ impl DownloadClient for RecordingClient {
     async fn resume(&self, _hash: &str) -> Result<(), String> {
         Ok(())
     }
-    async fn delete(&self, _hash: &str, _delete_files: bool) -> Result<(), String> {
+    async fn delete(&self, hash: &str, _delete_files: bool) -> Result<(), String> {
+        self.delete_calls.lock().unwrap().push(hash.to_string());
         Ok(())
     }
     async fn set_file_wanted(
@@ -907,6 +917,74 @@ async fn run_once_marks_grab_failed_when_client_reports_torrent_in_error_state()
             .unwrap(),
         1,
         "the failed grab counts toward the re-search loop breaker"
+    );
+    assert_eq!(
+        default_client.deleted(),
+        vec!["errhash".to_string()],
+        "with the client's remove-failed switch on (the default) the item is removed"
+    );
+}
+
+#[tokio::test]
+async fn run_once_keeps_a_failed_download_when_the_client_switch_is_off() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // Sonarr's per-client "Remove Failed Downloads" off: the grab still
+    // fails and blocklists, the item stays in the client for a look.
+    let db = in_memory_pool().await;
+    seed_config(&db).await;
+    let series_id = seed_series(&db, 1, "Show").await;
+    let g = grabbed_torrents::record_grab(&db, "keephash", "rel", series_id, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    let dc_id = insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    crate::models::download_clients::set_remove_failed(&db, dc_id, false)
+        .await
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(dc_id))
+        .await
+        .unwrap();
+    let state = build_test_app_state(db.clone(), None);
+    let default_client = Arc::new(RecordingClient::new(vec![fake_torrent(
+        "keephash",
+        DownloadItemState::Errored,
+    )]));
+    install_pool(
+        &state,
+        vec![(
+            dc_id,
+            default_client.clone() as Arc<dyn DownloadClient>,
+            true,
+        )],
+    )
+    .await;
+
+    post_processing::run_once(&state).await;
+
+    let final_state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(g)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(final_state, "failed");
+    assert!(
+        default_client.deleted().is_empty(),
+        "the item stays in the client when its remove-failed switch is off"
     );
 }
 

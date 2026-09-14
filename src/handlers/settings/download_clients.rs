@@ -394,6 +394,11 @@ pub struct DownloadClientUpsertForm {
     /// have finished seeding (usenet: right after import).
     #[serde(default)]
     pub remove_completed: Option<String>,
+    /// Remove a download the client reported as failed, files
+    /// included, before searching again (Sonarr's "Remove Failed
+    /// Downloads"). Default on.
+    #[serde(default)]
+    pub remove_failed: Option<String>,
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -486,6 +491,21 @@ pub async fn settings_download_clients_upsert(
                     &state.db,
                     LogCategory::System,
                     "Download client saved but its remove-completed switch was not",
+                    &format!("id={id}: {e}"),
+                )
+                .await;
+            }
+            if let Err(e) = crate::models::download_clients::set_remove_failed(
+                &state.db,
+                id,
+                form.remove_failed.is_some(),
+            )
+            .await
+            {
+                logger::error(
+                    &state.db,
+                    LogCategory::System,
+                    "Download client saved but its remove-failed switch was not",
                     &format!("id={id}: {e}"),
                 )
                 .await;
@@ -1027,6 +1047,7 @@ mod tests {
             enabled: Some("on".to_string()),
             is_default: None,
             remove_completed: Some("on".to_string()),
+            remove_failed: Some("on".to_string()),
         }
     }
 
