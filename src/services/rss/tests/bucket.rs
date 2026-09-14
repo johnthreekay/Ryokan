@@ -1,9 +1,10 @@
 //! The within-sweep bucket (`logical_bucket_key`) and its winner
 //! (`compare_candidates`): a `v1` and its `v2` deliver the same logical
 //! item, so they share a bucket and one feed window listing both grabs
-//! one, the later revision at equal score. The history key
-//! (`canonical_episode_key`) keeps the revision, so a `v2` that arrives
-//! after the `v1` was grabbed is not swallowed as already grabbed.
+//! one, the later revision at equal score. The history
+//! (`CanonicalHistory`) keeps the revision per release, so a `v2` that
+//! arrives after the `v1` was grabbed is not swallowed as already
+//! grabbed, and the `v1` is still there for the queue check.
 
 use super::super::*;
 use crate::services::source::{DecisionRule, Resolution, Source};
@@ -80,14 +81,6 @@ fn candidate(title: &str, score: i32) -> PendingCandidate {
     }
 }
 
-fn history_key(cand: &PendingCandidate) -> String {
-    canonical_episode_key(
-        &cand.found,
-        cand.item.is_batch,
-        media::parse_release_revision(&cand.item.title).version,
-    )
-}
-
 #[test]
 fn a_v1_and_its_v2_share_a_bucket_and_the_v2_wins_at_equal_score() {
     let v1 = candidate("[Group] Test Series - 05 (1080p)", 100);
@@ -104,11 +97,19 @@ fn a_v1_and_its_v2_share_a_bucket_and_the_v2_wins_at_equal_score() {
     // Score still comes first: a better-scored v1 beats the v2.
     let better_v1 = candidate("[Group] Test Series - 05 (1080p)", 200);
     assert_eq!(compare_candidates(&better_v1, &v2), Ordering::Greater);
-    // The history key keeps them apart, so a later v2 is not "already
-    // grabbed" once the v1 is in the history.
-    assert_ne!(history_key(&v1), history_key(&v2));
-    assert!(history_key(&v1).ends_with("|v1"));
-    assert!(history_key(&v2).ends_with("|v2"));
+    // The history keeps them apart, so a later v2 is not "already
+    // grabbed" once the v1 is in the history, and it still finds the
+    // v1 for the queue check.
+    let mut history = CanonicalHistory::default();
+    history.insert(&v1.found, v1.item.is_batch, &v1.item.title);
+    assert!(history.contains(&v1.found, false, 1));
+    assert!(!history.contains(&v2.found, false, 2));
+    assert_eq!(
+        history
+            .lower_revision(&v2.found, false, 2)
+            .map(|r| r.revision),
+        Some(1)
+    );
 }
 
 #[test]

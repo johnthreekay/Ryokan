@@ -1024,17 +1024,27 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             continue;
         }
 
-        let canonical_key = canonical_episode_key(
-            &found,
-            item.is_batch,
-            media::parse_release_revision(&item.title).version,
-        );
-        if !canonical_key.is_empty() && canonical_history.contains(&canonical_key) {
+        // The exact-revision history check, then Sonarr's queue check:
+        // the gate above judged disk files only, and a lower revision
+        // of the same item still in history while the episode is not
+        // on disk is the `v1` downloading when its `v2` posts. The
+        // release would replace it at import, so the rules for a file
+        // apply here too (`judge_queued_revision`).
+        let incoming_version = media::parse_release_revision(&item.title).version;
+        let history_reason = if canonical_history.contains(&found, item.is_batch, incoming_version)
+        {
+            Some("Logical episode is already queued or was grabbed earlier".to_string())
+        } else if !decision.is_upgrade
+            && let Some(queued) =
+                canonical_history.lower_revision(&found, item.is_batch, incoming_version)
+        {
+            judge_queued_revision(&policy, queued, &item.group).err()
+        } else {
+            None
+        };
+        if let Some(reason) = history_reason {
             skipped += 1;
-            let reason = format!(
-                "Logical episode is already queued or was grabbed earlier | {}",
-                build_match_diag(&item, Some(&found), 0)
-            );
+            let reason = format!("{} | {}", reason, build_match_diag(&item, Some(&found), 0));
             let _ = rss::record_decision(
                 &state.db,
                 rss::DecisionRecord {
@@ -1268,11 +1278,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                         build_match_diag(&cand.item, Some(&cand.found), cand.score)
                     )
                 };
-                canonical_history.insert(canonical_episode_key(
-                    &cand.found,
-                    cand.item.is_batch,
-                    media::parse_release_revision(&cand.item.title).version,
-                ));
+                canonical_history.insert(&cand.found, cand.item.is_batch, &cand.item.title);
                 let _ = rss::record_decision(
                     &state.db,
                     rss::DecisionRecord {
@@ -1497,14 +1503,12 @@ async fn load_canonical_history(
     db: &sqlx::SqlitePool,
     client: Option<&dyn crate::services::download_client::DownloadClient>,
     all_meta: &[SeriesMeta],
-) -> HashSet<String> {
-    let mut keys = HashSet::new();
+) -> CanonicalHistory {
+    let mut history = CanonicalHistory::default();
 
     if let Ok(titles) = rss::grabbed_titles(db, 5000).await {
         for title in titles {
-            if let Some(key) = canonical_key_for_title(&title, all_meta) {
-                keys.insert(key);
-            }
+            history.insert_title(&title, all_meta);
         }
     }
 
@@ -1512,13 +1516,11 @@ async fn load_canonical_history(
         && let Ok(torrents) = client.list_scoped().await
     {
         for torrent in torrents {
-            if let Some(key) = canonical_key_for_title(&torrent.name, all_meta) {
-                keys.insert(key);
-            }
+            history.insert_title(&torrent.name, all_meta);
         }
     }
 
-    keys
+    history
 }
 
 /// Match a release title against every tracked series in the library
@@ -1562,28 +1564,123 @@ pub async fn match_library_title(
     Some((found.series, eps))
 }
 
-fn canonical_key_for_title(title: &str, all_meta: &[SeriesMeta]) -> Option<String> {
-    // Same synthetic-item pattern as `find_series_for_title` —
-    // matcher inputs only, no real grab.
-    let pseudo = RssItem {
-        title: title.to_string(),
-        link: String::new(),
-        guid: String::new(),
-        torrent: String::new(),
-        magnet: String::new(),
-        info_hash: String::new(),
-        group: extract_group(title),
-        resolution: extract_resolution(title),
-        is_batch: detect_batch(title),
-        source: RssSource::Nyaa,
-    };
-    let found = best_series_match(&pseudo, all_meta)?;
-    let key = canonical_episode_key(
-        &found,
-        pseudo.is_batch,
-        media::parse_release_revision(title).version,
+/// A release the history holds for a logical item: its revision and
+/// group, so a later revision of the same item can be judged against
+/// the one already queued or grabbed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HistoryRelease {
+    pub revision: u32,
+    pub group: String,
+}
+
+/// What the sweep already has, keyed by `logical_episode_key`: the
+/// grabbed titles and the client's queue, one entry per release. The
+/// revision lives on the entry rather than in the key, so a `v2` is
+/// not swallowed as "already grabbed" by its `v1` (`contains`) while
+/// the `v1` is still there to judge the `v2` against
+/// (`lower_revision`, the queue check).
+#[derive(Debug, Default)]
+struct CanonicalHistory {
+    items: HashMap<String, Vec<HistoryRelease>>,
+}
+
+impl CanonicalHistory {
+    fn insert(&mut self, found: &MatchResult, is_batch: bool, title: &str) {
+        let key = logical_episode_key(found, is_batch);
+        if key.is_empty() {
+            return;
+        }
+        self.items.entry(key).or_default().push(HistoryRelease {
+            revision: media::parse_release_revision(title).version,
+            group: extract_group(title),
+        });
+    }
+
+    /// A title from the grab history or the client's queue, matched
+    /// against the library the way the sweep matches a feed item.
+    fn insert_title(&mut self, title: &str, all_meta: &[SeriesMeta]) {
+        // Same synthetic-item pattern as `find_series_for_title` —
+        // matcher inputs only, no real grab.
+        let pseudo = RssItem {
+            title: title.to_string(),
+            link: String::new(),
+            guid: String::new(),
+            torrent: String::new(),
+            magnet: String::new(),
+            info_hash: String::new(),
+            group: extract_group(title),
+            resolution: extract_resolution(title),
+            is_batch: detect_batch(title),
+            source: RssSource::Nyaa,
+        };
+        if let Some(found) = best_series_match(&pseudo, all_meta) {
+            self.insert(&found, pseudo.is_batch, title);
+        }
+    }
+
+    /// True when this revision of the item was queued or grabbed.
+    fn contains(&self, found: &MatchResult, is_batch: bool, revision: u32) -> bool {
+        let key = logical_episode_key(found, is_batch);
+        !key.is_empty()
+            && self
+                .items
+                .get(&key)
+                .is_some_and(|held| held.iter().any(|r| r.revision == revision))
+    }
+
+    /// The highest revision of the item below `revision` that was
+    /// queued or grabbed, if any: what a `v2` would replace before the
+    /// `v1` reaches the disk.
+    fn lower_revision(
+        &self,
+        found: &MatchResult,
+        is_batch: bool,
+        revision: u32,
+    ) -> Option<&HistoryRelease> {
+        let key = logical_episode_key(found, is_batch);
+        if key.is_empty() {
+            return None;
+        }
+        self.items
+            .get(&key)?
+            .iter()
+            .filter(|r| r.revision < revision)
+            .max_by_key(|r| r.revision)
+    }
+}
+
+/// Sonarr's queue check for a revision: what a release has to satisfy
+/// to be grabbed while a lower revision of the same item is still
+/// downloading, or grabbed and not yet on disk. The file gate
+/// (`episode_is_upgradeable`) never sees that release, so the same two
+/// rules it applies to a file apply here: the proper policy has to
+/// allow revision upgrades, and the release has to come from the
+/// queued one's group. `Err` carries the decision-log reason.
+fn judge_queued_revision(
+    policy: &source::UpgradePolicy,
+    queued: &HistoryRelease,
+    incoming_group: &str,
+) -> Result<(), String> {
+    let held = format!(
+        "A v{} of this episode is already queued or grabbed",
+        queued.revision
     );
-    if key.is_empty() { None } else { Some(key) }
+    if policy.propers != source::ProperPolicy::PreferAndUpgrade {
+        return Err(format!("{held}; revision upgrades are disabled"));
+    }
+    let queued_group = queued.group.trim();
+    let incoming_group = incoming_group.trim();
+    if queued_group.is_empty() || incoming_group.is_empty() {
+        return Err(format!(
+            "{held}; the release group is unknown, and a revision has to come from the group that made it"
+        ));
+    }
+    if !queued_group.eq_ignore_ascii_case(incoming_group) {
+        return Err(format!(
+            "{held} from {queued_group}; a revision has to come from the same group"
+        ));
+    }
+    Ok(())
 }
 
 fn compare_candidates(a: &PendingCandidate, b: &PendingCandidate) -> Ordering {
@@ -1603,8 +1700,8 @@ fn compare_candidates(a: &PendingCandidate, b: &PendingCandidate) -> Ordering {
 /// logical item competes for one grab, a `v1` and its `v2` included
 /// (`compare_candidates` prefers the higher revision at equal score).
 /// The revision is deliberately not part of this key; it belongs to
-/// `canonical_episode_key`, the history key, where it keeps a later
-/// `v2` from being swallowed as "already grabbed".
+/// the history (`CanonicalHistory`), where it keeps a later `v2` from
+/// being swallowed as "already grabbed".
 fn logical_bucket_key(cand: &PendingCandidate) -> String {
     logical_episode_key(&cand.found, cand.item.is_batch)
 }
@@ -1626,17 +1723,6 @@ fn logical_episode_key(found: &MatchResult, is_batch: bool) -> String {
         if is_batch { "batch" } else { "single" },
         episode_key,
     )
-}
-
-/// `revision` keeps a `v2` a distinct logical item from the `v1` it
-/// fixes, so the history check (grabbed titles, the client's queue)
-/// does not swallow it before the upgrade gate can take it.
-fn canonical_episode_key(found: &MatchResult, is_batch: bool, revision: u32) -> String {
-    let key = logical_episode_key(found, is_batch);
-    if key.is_empty() {
-        return key;
-    }
-    format!("{key}|v{revision}")
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -6,4 +6,5 @@ mod bucket;
 mod evaluate_candidate;
 mod exact_title;
 mod parse_release;
+mod queue;
 mod source;
