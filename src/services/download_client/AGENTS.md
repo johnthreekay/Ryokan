@@ -58,6 +58,20 @@ There are two ways to add a torrent and pick a subset of files. Don't conflate t
 
 Distinct from `services::auto_expand` (sibling-series detection inside a batch pack — different problem, different code path).
 
+## `Warning` vs `Errored` (the client's failure report)
+
+`DownloadItemState::Errored` is the client's own failed-download verdict, Sonarr's `DownloadItemStatus::Failed`, and post-processing acts on it (the grab fails with `failure_reason = 'client_error'`, the release is blocklisted, the item is removed **with its data**, a replacement is searched for; see the root AGENTS.md). Only two wire states earn it: SABnzbd `Failed` and qBittorrent `error`. Everything a client reports as a problem it may recover from is `DownloadItemState::Warning` (Sonarr's `Warning`): neither `is_complete` nor `is_errored`, so post-processing waits, the stall clock does not start, and the Downloads page shows the client's own state string. The mapping per client:
+
+| Client | `Errored` | `Warning` |
+|---|---|---|
+| qBittorrent | `error` | `missingFiles` (what every torrent flips to when the download path is unmounted) |
+| SABnzbd | history `Failed` | none; an unknown history status is `PausedComplete` so the import runs and the #205 stall timer is the backstop (it used to be `CheckingDownload`, which never completes and so never started that clock) |
+| Transmission | never | `error == 3`, a local error ("No data found! Ensure your drives are connected", disk full, permissions). Tracker warnings and errors (1, 2) map by status as usual, and `tx_seeding_done` uses the same split: class 3 holds the finished-seed sweep back, a tracker warning does not |
+| Deluge | never | `Error` |
+| rTorrent | never | stopped in every sense (`!is_active && !hashing && !is_open`) with a non-empty `d.message` |
+
+A new state that Sonarr does not fail belongs in `Warning`; the errored branch deletes data, and a false positive there costs the user a download that a remount would have brought back.
+
 ## Seed rules and `seeding_done` (#28, #228)
 
 `set_seed_rules(hash, SeedRules { ratio, time_minutes })` is called by `apply_indexer_seed_rules` right after an add from an indexer row that has a Seed Ratio / Seed Time; `grabbed_torrents.respect_seed_rules` is set whenever rules were *attempted*, wire success or not, and every Ryokan-initiated client delete (episode delete, series remove, upgrade replace) skips a torrent carrying it. The #228 removal paths are the deliberate exception: `seeding_done` means the client's own rule is satisfied, and a move-mode import has nothing left to seed. What each impl can honor:

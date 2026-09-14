@@ -16,7 +16,7 @@ Each row has the same pair of buttons the series page offers for an episode. **A
 
 The **Search for** menu at the top of that window decides what is listed:
 
-- **Batch releases** looks for season packs and complete releases. Grabbing one opens the file picker with only the files for the episodes you are missing ticked, so a twelve-episode pack for two missing episodes downloads two files. Tick more if you want the rest. Each file shows the episode its name parses to. The picker opens for a batch from this page even when the grab preview is turned off in Settings, because that is where the selection happens.
+- **Batch releases** looks for season packs and complete releases. Grabbing one opens the file picker with only the files for the episodes you are missing ticked, so a twelve-episode pack for two missing episodes downloads two files. Tick more if you want the rest. Each file shows the episode its name parses to. Picking a single episode from the menu and grabbing a batch from its results ticks that episode's file only. With the file picker turned off in Settings, a batch from this page is grabbed whole, as it is from the series page.
 - **Episodes 3-11** (the whole wanted range, the default when more than one episode is wanted) runs one search and lists every single-episode release for those episodes, with an Episode column and the list ordered by episode. Batches are left out of this list on purpose, so a season pack only shows up when you ask for one. The first twelve wanted episodes each get their own query; past that only the series-wide search runs, so a series missing hundreds of episodes is a batch case. The per-episode entries stay the thorough option for one gap.
 - **Episode N** searches that one episode, as on the series page.
 
