@@ -255,7 +255,7 @@
                account was unlinked still needs its "Allow again"). #}
             {% if external_account.is_some() || !sync_exclusions.is_empty() %}
             <div class="form-group">
-                <label>Kept off the sync</label>
+                <label>Sync exclusions</label>
                 {% if sync_exclusions.is_empty() %}
                 <span class="form-hint">Nothing yet. Tick "keep it off my sync" when removing a series and it is listed here.</span>
                 {% else %}

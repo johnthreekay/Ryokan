@@ -2007,7 +2007,7 @@ mod naming_templates {
     }
 }
 
-/// The "Kept off the sync" list under External Accounts renders only
+/// The "Sync exclusions" list under External Accounts renders only
 /// when it has a use: an account is linked (empty state included), or
 /// a series is on it (an exclusion recorded before the account was
 /// unlinked still needs its "Allow again").
@@ -2037,7 +2037,7 @@ mod sync_exclusions_list {
     async fn hidden_with_no_account_and_no_entries() {
         let db = in_memory_pool().await;
         let html = render_integrations(&db).await;
-        assert!(!html.contains("Kept off the sync"));
+        assert!(!html.contains("Sync exclusions"));
     }
 
     #[tokio::test]
@@ -2047,7 +2047,7 @@ mod sync_exclusions_list {
             .await
             .expect("add exclusion");
         let html = render_integrations(&db).await;
-        assert!(html.contains("Kept off the sync"));
+        assert!(html.contains("Sync exclusions"));
         assert!(html.contains("Death Note"));
         assert!(html.contains("Allow again"));
         assert!(!html.contains("Nothing yet"));
@@ -2071,7 +2071,7 @@ mod sync_exclusions_list {
         .await
         .expect("link account");
         let html = render_integrations(&db).await;
-        assert!(html.contains("Kept off the sync"));
+        assert!(html.contains("Sync exclusions"));
         assert!(html.contains("Nothing yet"));
         assert!(!html.contains("Allow again"));
     }
