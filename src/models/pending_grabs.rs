@@ -70,6 +70,12 @@ pub struct PendingGrab {
     /// `DEFAULT ''`, so rows written before the column existed
     /// load as "no error" without any Rust-side default needed.
     pub error_message: String,
+    /// The picker's last tick state as a JSON list of file indices,
+    /// posted while the modal is open (`POST /api/grab/selection`), so
+    /// the walkaway auto-commit takes the files the user had selected.
+    /// Empty when nothing was posted: every file, the pre-selection
+    /// behavior.
+    pub wanted_indices_json: String,
     /// `true` when `add_torrent_paused` returned `Added` for this
     /// preview, `false` when it returned `AlreadyPresent`. `grab_cancel`
     /// gates its destructive `delete(hash, with_files=true)` call on
@@ -115,8 +121,8 @@ pub async fn create(
         "INSERT INTO pending_grabs \
          (preview_id, info_hash, client_kind, indexer_id, series_id, \
           created_at, heartbeat_at, file_list_json, release_metadata_json, \
-          error_message, we_added_torrent, download_client_id) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, '', ?, ?)",
+          error_message, we_added_torrent, download_client_id, wanted_indices_json) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, '', ?, ?, '')",
     )
     .bind(preview_id)
     .bind(info_hash)
@@ -136,7 +142,7 @@ pub async fn create(
 
 const SELECT_COLUMNS: &str = "preview_id, info_hash, client_kind, indexer_id, series_id, \
      created_at, heartbeat_at, file_list_json, release_metadata_json, \
-     error_message, we_added_torrent, download_client_id";
+     error_message, we_added_torrent, download_client_id, wanted_indices_json";
 
 pub async fn get(db: &SqlitePool, preview_id: &str) -> Result<Option<PendingGrab>, String> {
     sqlx::query_as::<_, PendingGrab>(sqlx::AssertSqlSafe(format!(
@@ -213,6 +219,35 @@ pub async fn set_error(
         .await
         .map_err(|e| format!("failed to update error_message: {}", e))?;
     Ok(())
+}
+
+/// Store the picker's current selection (a JSON list of file indices)
+/// for the walkaway auto-commit. Returns `false` when no row matched.
+pub async fn set_wanted_indices(
+    db: &SqlitePool,
+    preview_id: &str,
+    wanted_indices_json: &str,
+) -> Result<bool, String> {
+    let result =
+        sqlx::query("UPDATE pending_grabs SET wanted_indices_json = ? WHERE preview_id = ?")
+            .bind(wanted_indices_json)
+            .bind(preview_id)
+            .execute(db)
+            .await
+            .map_err(|e| format!("failed to store the selection: {}", e))?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// The stored selection as indices, `None` when nothing was posted or
+/// the text does not parse. An empty list counts as nothing posted:
+/// committing no file at all is never what a walkaway means.
+pub fn wanted_indices(row: &PendingGrab) -> Option<Vec<usize>> {
+    if row.wanted_indices_json.is_empty() {
+        return None;
+    }
+    serde_json::from_str::<Vec<usize>>(&row.wanted_indices_json)
+        .ok()
+        .filter(|v| !v.is_empty())
 }
 
 /// Update `heartbeat_at` to the current unix time. Returns `false`
@@ -473,6 +508,18 @@ mod tests {
         assert_eq!(row.release_metadata_json, "{\"title\":\"t\"}");
         assert_eq!(row.info_hash, "abc");
         assert_eq!(row.series_id, Some(7));
+        // The picker's selection rides on the row for the walkaway
+        // auto-commit; nothing posted, or an empty list, is "every
+        // file".
+        assert_eq!(row.wanted_indices_json, "");
+        assert!(wanted_indices(&row).is_none());
+        assert!(set_wanted_indices(&db, "pid-1", "[0,2]").await.unwrap());
+        let row = get(&db, "pid-1").await.unwrap().unwrap();
+        assert_eq!(wanted_indices(&row), Some(vec![0, 2]));
+        assert!(set_wanted_indices(&db, "pid-1", "[]").await.unwrap());
+        let row = get(&db, "pid-1").await.unwrap().unwrap();
+        assert!(wanted_indices(&row).is_none());
+        assert!(!set_wanted_indices(&db, "missing", "[0]").await.unwrap());
     }
 
     #[tokio::test]

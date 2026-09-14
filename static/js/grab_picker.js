@@ -18,9 +18,12 @@
 //     commit-with-empty-file-list path). Error state surfaces the
 //     message and a Close button; the TTL sweep handles cleanup if
 //     metadata never arrives.
-//   * No Cancel button, no beforeunload/sendBeacon (plan decision #4).
-//     X-in-corner stops the heartbeat; the sweep auto-commits with
-//     all files wanted within ~2 minutes of walkaway.
+//   * No Cancel button (plan decision #4). X-in-corner, a tab close,
+//     or a boosted navigation stops the heartbeat; the sweep
+//     auto-commits within ~2 minutes of walkaway with the last
+//     selection the modal posted (POST /api/grab/selection/{id}:
+//     when the list arrives, after every change, on close, from
+//     pagehide, and on unmount), or every file when none was posted.
 //   * Same-hash dedup's "show current priorities" path (decision #6)
 //     is deferred — the dedup only covers the Tab 1 / Tab 2
 //     concurrency case via the server-side pre-flight check.
@@ -131,12 +134,26 @@
         if (!session) return;
         if (session.pollTimer) clearTimeout(session.pollTimer);
         if (session.heartbeatTimer) clearInterval(session.heartbeatTimer);
+        if (session.selectionTimer) clearTimeout(session.selectionTimer);
         session = null;
+    }
+
+    // A boosted navigation away from a page that holds the picker: the
+    // modal's markup is gone, so the session ends the way a close does
+    // (selection posted, heartbeat stopped) and the sweep commits it.
+    // Left running, the heartbeat kept the row alive for as long as
+    // the tab lived and the torrent sat paused with nothing wanted.
+    function unmountGrabPicker() {
+        flushSelectionSync(false);
+        resetSession();
     }
 
     function closeModal() {
         const modal = $('grab-picker-modal');
         if (modal) modal.style.display = 'none';
+        // The last tick state goes out before the session is dropped:
+        // the sweep commits it once the heartbeat lapses.
+        flushSelectionSync(false);
         // Heartbeat-loop teardown is what makes walkaway equivalent to
         // "abandoned"; the TTL sweep then auto-commits per decision #3.
         resetSession();
@@ -345,6 +362,7 @@
                 const row = cb.closest('tr, .grab-picker-tree-file');
                 if (row) row.classList.toggle('grab-picker-row-unwanted', !cb.checked);
                 updateSelectionTotal();
+                queueSelectionSync();
             });
         });
     }
@@ -414,6 +432,7 @@
             }
         }
         renderFileList();
+        queueSelectionSync();
     }
 
     // ─── Server communication ──────────────────────────────────────
@@ -458,6 +477,9 @@
                     unwanted.forEach(i => session.wanted.delete(i));
                     applyWantedEpisodes();
                     renderFileList();
+                    // The walkaway sweep must know the pre-selection
+                    // from the first moment the list is on screen.
+                    flushSelectionSync();
                     return;
                 }
                 // Still fetching_metadata — keep polling.
@@ -485,6 +507,75 @@
                 }
             })
             .catch(() => {/* transient network errors; next tick retries */});
+    }
+
+    // ─── Selection sync (the walkaway auto-commit's input) ─────────
+    //
+    // The sweep that commits an abandoned picker used to mark every
+    // file wanted; from the Wanted page that meant a whole season pack
+    // for one ticked episode. The modal now posts its tick state so
+    // the sweep commits that instead: debounced after a change, at
+    // once when the list arrives, on close, and from pagehide through
+    // sendBeacon (a fetch would be cancelled with the page).
+    const SELECTION_DEBOUNCE_MS = 400;
+
+    function selectionPayload() {
+        return JSON.stringify({ wanted_indices: Array.from(session.wanted).sort((a, b) => a - b) });
+    }
+
+    function sendSelection(useBeacon) {
+        if (!session || !session.previewId || !session.files.length) return;
+        const url = `/api/grab/selection/${encodeURIComponent(session.previewId)}`;
+        const body = selectionPayload();
+        if (useBeacon && navigator.sendBeacon) {
+            try {
+                navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+                return;
+            } catch (_) { /* fall through to fetch */ }
+        }
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+            keepalive: true,
+        }).catch(() => {/* transient; the next change resends */});
+    }
+
+    function queueSelectionSync() {
+        if (!session) return;
+        if (session.selectionTimer) clearTimeout(session.selectionTimer);
+        session.selectionTimer = setTimeout(() => {
+            if (session) session.selectionTimer = null;
+            sendSelection(false);
+        }, SELECTION_DEBOUNCE_MS);
+    }
+
+    function flushSelectionSync(useBeacon) {
+        if (!session) return;
+        if (session.selectionTimer) {
+            clearTimeout(session.selectionTimer);
+            session.selectionTimer = null;
+        }
+        sendSelection(!!useBeacon);
+    }
+
+    // The window hooks below are reassigned on every execution of this
+    // script (each boosted visit), so the once-bound document and
+    // window listeners always reach the instance that owns `session`
+    // (`window.openGrabPicker` is reassigned the same way) rather
+    // than the first visit's stale closure.
+    window.__ryokanGrabPickerFlush = function () { flushSelectionSync(true); };
+    window.__ryokanGrabPickerEscape = function () {
+        if (!session) return false;
+        closeModal();
+        return true;
+    };
+    if (!window.__ryokanGrabPickerPageHideBound) {
+        window.__ryokanGrabPickerPageHideBound = true;
+        window.addEventListener('pagehide', () => {
+            const flush = window.__ryokanGrabPickerFlush;
+            if (typeof flush === 'function') flush();
+        });
     }
 
     function confirmGrab() {
@@ -608,6 +699,7 @@
                 view: 'flat',
                 pollTimer: null,
                 heartbeatTimer: null,
+                selectionTimer: null,
                 onConfirm: typeof ctx.onConfirm === 'function' ? ctx.onConfirm : null,
                 // Episodes the caller is after (the Wanted page's batch
                 // grab): once the file list arrives, only their files
@@ -671,11 +763,17 @@
             if (session) { session.view = 'tree'; renderFileList(); }
         });
 
+        // Escape goes through the window hook (see the selection-sync
+        // block) so the once-bound listener never reads a stale
+        // `session`; claiming the event keeps a page's own Escape
+        // handler (the Wanted page's search modal) from closing its
+        // modal in the same keypress.
         if (!window.__ryokanGrabPickerKeyHandlerBound) {
             window.__ryokanGrabPickerKeyHandlerBound = true;
             document.addEventListener('keydown', ev => {
-                if (!session) return;
-                if (ev.key === 'Escape') closeModal();
+                if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+                const close = window.__ryokanGrabPickerEscape;
+                if (typeof close === 'function' && close()) ev.preventDefault();
             });
         }
 
@@ -707,6 +805,7 @@
         window.ryokanRegisterPageInit('grab-picker', {
             check: function () { return !!document.getElementById('grab-picker-modal'); },
             mount: bindGrabPickerHandlers,
+            unmount: unmountGrabPicker,
         });
     } else if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', bindGrabPickerHandlers);

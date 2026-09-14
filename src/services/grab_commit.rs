@@ -439,6 +439,7 @@ mod tests {
     fn pending_grab_for(series_id: Option<i64>, info_hash: &str) -> PendingGrab {
         PendingGrab {
             preview_id: "pv-1".to_string(),
+            wanted_indices_json: String::new(),
             info_hash: info_hash.to_string(),
             client_kind: "qbittorrent".to_string(),
             indexer_id: None,

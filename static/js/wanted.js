@@ -440,15 +440,23 @@
     });
 
     // Escape closes the interactive search modal, unless the file
-    // picker is open on top of it (grab_picker.js closes that one).
+    // picker is open on top of it: grab_picker.js closes that one and
+    // marks the event handled (`defaultPrevented`), which covers
+    // either listener order; the display check covers a picker whose
+    // listener runs after this one.
     document.addEventListener('keydown', function (ev) {
-        if (ev.key !== 'Escape') return;
-        if (document.querySelector('.dropdown-menu:not([hidden])')) { closeDropdowns(); return; }
+        if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+        if (document.querySelector('.dropdown-menu:not([hidden])')) {
+            closeDropdowns();
+            ev.preventDefault();
+            return;
+        }
         var modal = isearchModal();
         if (!modal || modal.style.display === 'none') return;
         var picker = document.getElementById('grab-picker-modal');
         if (picker && picker.style.display !== 'none') return;
         closeWantedInteractive();
+        ev.preventDefault();
     });
 
     // A tab click swaps #wanted-list only; htmx does not move

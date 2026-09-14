@@ -130,6 +130,7 @@ use services::{
         handlers::grab::grab_preview,
         handlers::grab::grab_preview_status,
         handlers::grab::grab_heartbeat,
+        handlers::grab::grab_selection,
         handlers::grab::grab_confirm,
         handlers::grab::grab_cancel,
         // Library bulk actions + recycle bin (#123)
@@ -914,6 +915,10 @@ async fn main() {
         .route(
             "/api/grab/heartbeat/{preview_id}",
             post(handlers::grab::grab_heartbeat),
+        )
+        .route(
+            "/api/grab/selection/{preview_id}",
+            post(handlers::grab::grab_selection),
         )
         .route("/api/grab/confirm", post(handlers::grab::grab_confirm))
         .route("/api/grab/cancel", post(handlers::grab::grab_cancel))

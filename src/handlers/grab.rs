@@ -544,9 +544,21 @@ pub async fn grab_preview_status(
             .unwrap_or(0),
         None => 0,
     };
-    for f in &mut file_list {
-        f.episodes = file_episodes(&f.name, cumulative_prior_episodes);
-    }
+    // One regex pass plus an anitomy parse per file; a BD pack has
+    // hundreds, so keep it off the async worker.
+    let file_list = tokio::task::spawn_blocking(move || {
+        for f in &mut file_list {
+            f.episodes = file_episodes(&f.name, cumulative_prior_episodes);
+        }
+        file_list
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("file parse task failed: {e}"),
+        )
+    })?;
     Ok(Json(GrabPreviewStatus {
         preview_id,
         status: "ready".to_string(),
@@ -582,6 +594,52 @@ pub async fn grab_heartbeat(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     if !bumped {
+        return Err((StatusCode::NOT_FOUND, "preview not found".to_string()));
+    }
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+/// POST body for `/api/grab/selection/{preview_id}`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct GrabSelectionForm {
+    /// Indices into the preview's `file_list` currently ticked.
+    pub wanted_indices: Vec<usize>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/grab/selection/{preview_id}",
+    tag = "Grab",
+    summary = "Record the file picker's current selection",
+    description = "Stores the ticked file indices on the pending grab so \
+        the walkaway auto-commit (the sweep that commits an abandoned \
+        picker after its heartbeat lapses) takes that selection rather \
+        than every file. The modal posts it when the file list arrives, \
+        after every change, and from pagehide. Returns 404 once the \
+        preview has been committed or swept.",
+    params(
+        ("preview_id" = String, Path, description = "Opaque id from POST /api/grab/preview"),
+    ),
+    request_body = GrabSelectionForm,
+    responses(
+        (status = 200, description = "Selection recorded", body = serde_json::Value),
+        (status = 404, description = "Preview not found"),
+    ),
+)]
+pub async fn grab_selection(
+    State(state): State<AppState>,
+    Path(preview_id): Path<String>,
+    Json(form): Json<GrabSelectionForm>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let mut indices = form.wanted_indices;
+    indices.sort_unstable();
+    indices.dedup();
+    let json = serde_json::to_string(&indices)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let stored = pending_grabs::set_wanted_indices(&state.db, &preview_id, &json)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    if !stored {
         return Err((StatusCode::NOT_FOUND, "preview not found".to_string()));
     }
     Ok(Json(serde_json::json!({"ok": true})))
