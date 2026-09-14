@@ -68,6 +68,10 @@ function removeSeries(dbId) {
     const cancelBtn = document.getElementById('remove-series-cancel');
     const closeBtn = document.getElementById('remove-series-close');
     const confirmBtn = document.getElementById('remove-series-confirm');
+    // A fresh open starts with the sync-exclusion box unticked; a tick
+    // from a dialog that was cancelled must not carry over.
+    const excludeBox = document.getElementById('remove-series-exclude');
+    if (excludeBox) excludeBox.checked = false;
 
     function close() {
         modal.style.display = 'none';

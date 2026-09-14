@@ -668,6 +668,11 @@ function openBulkDeleteModal() {
         confirmBtn.disabled = false;
         confirmBtn.textContent = 'Remove from library';
     }
+    // The page never reloads between bulk removals, so a tick from the
+    // last one would otherwise ride along and exclude the next set
+    // from the watch-list sync without a word.
+    var exclude = document.getElementById('bulk-delete-exclude');
+    if (exclude) exclude.checked = false;
     if (modal) modal.style.display = 'flex';
 }
 

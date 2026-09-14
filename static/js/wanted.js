@@ -83,7 +83,11 @@
     // What the open modal is about: the series, and every episode the
     // row wants (read off the menu once it arrives), which the batch
     // grab hands to the file picker.
-    var isearch = { anilistId: 0, seriesId: null, title: '', episodes: [] };
+    // `episodes` is every wanted episode the menu lists; `pickEpisodes`
+    // is what the current menu pick is for (one episode, the whole
+    // set, or, for the batch search, every wanted episode), which is
+    // what a batch grab hands the file picker.
+    var isearch = { anilistId: 0, seriesId: null, title: '', episodes: [], pickEpisodes: [] };
 
     function isearchModal() { return document.getElementById('wanted-isearch-modal'); }
 
@@ -126,6 +130,7 @@
         isearch.seriesId = parseInt(btn.getAttribute('data-series-id'), 10) || null;
         isearch.title = btn.getAttribute('data-wanted-title') || '';
         isearch.episodes = [];
+        isearch.pickEpisodes = [];
         titleEl.textContent = 'Interactive search: ' + isearch.title;
         closeDropdowns();
         supersede(searchReq);
@@ -180,13 +185,18 @@
         var kind = item.getAttribute('data-isearch-choice');
         var base = '/api/series/' + isearch.anilistId;
         if (kind === 'batch') {
+            isearch.pickEpisodes = isearch.episodes.slice();
             loadWantedSearch(base + '/interactive-search-batch?from=wanted', 'Searching indexers for batch releases');
         } else if (kind === 'episodes') {
             var eps = item.getAttribute('data-episodes') || '';
+            isearch.pickEpisodes = eps.split(',')
+                .map(function (s) { return parseInt(s, 10); })
+                .filter(function (n) { return n > 0; });
             loadWantedSearch(base + '/interactive-search-episodes?from=wanted&episodes=' + encodeURIComponent(eps),
                 'Searching indexers for ' + (item.getAttribute('data-label') || 'the wanted episodes').toLowerCase());
         } else {
             var ep = item.getAttribute('data-episode');
+            isearch.pickEpisodes = [parseInt(ep, 10)].filter(function (n) { return n > 0; });
             loadWantedSearch(base + '/interactive-search/' + ep + '?from=wanted', 'Searching indexers for episode ' + ep);
         }
     }
@@ -307,13 +317,13 @@
         var url = result.magnet || result.torrent || '';
         var isBatch = epNum === null || !!result.is_batch;
         var previewMode = window.GRAB_PREVIEW_MODE || 'batches_only';
-        // The picker is where "only the wanted episodes" happens, so a
-        // batch from this page opens it even when the grab preview is
-        // set to never; the wanted files start checked, so confirming
-        // is one click.
-        var smartBatch = isBatch && isearch.episodes.length > 0;
+        // The picker is where "only the wanted episodes" happens: the
+        // files for the current pick start checked, so confirming is
+        // one click. A user who set the grab preview to never has
+        // opted out of the picker, and gets the plain batch grab the
+        // series page gives them (Sonarr has no picker at all).
         if (isBatch
-            && (previewMode !== 'never' || smartBatch)
+            && previewMode !== 'never'
             && typeof window.openGrabPicker === 'function'
             && result.info_hash) {
             window.openGrabPicker(url, {
@@ -324,8 +334,9 @@
                 infoHash: result.info_hash || '',
                 seriesId: isearch.seriesId,
                 isBatch: true,
-                // Only the wanted episodes' files start checked.
-                wantedEpisodes: isearch.episodes,
+                // Only the files for the current pick start checked:
+                // one episode when one was picked, else the wanted set.
+                wantedEpisodes: isearch.pickEpisodes.length ? isearch.pickEpisodes : isearch.episodes,
                 onConfirm: function () {
                     closeWantedInteractive();
                     refreshWantedList();
