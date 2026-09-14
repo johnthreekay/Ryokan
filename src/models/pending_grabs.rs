@@ -238,16 +238,17 @@ pub async fn set_wanted_indices(
     Ok(result.rows_affected() > 0)
 }
 
-/// The stored selection as indices, `None` when nothing was posted or
-/// the text does not parse. An empty list counts as nothing posted:
-/// committing no file at all is never what a walkaway means.
+/// The stored selection as indices: `None` when nothing was posted or
+/// the text does not parse, `Some(empty)` when the modal posted an
+/// empty selection. The walkaway auto-commit tells the two apart: an
+/// unposted selection means every file (an older modal, metadata that
+/// arrived after the tab closed), a posted empty one is a cancel,
+/// since the user left with nothing ticked.
 pub fn wanted_indices(row: &PendingGrab) -> Option<Vec<usize>> {
     if row.wanted_indices_json.is_empty() {
         return None;
     }
-    serde_json::from_str::<Vec<usize>>(&row.wanted_indices_json)
-        .ok()
-        .filter(|v| !v.is_empty())
+    serde_json::from_str::<Vec<usize>>(&row.wanted_indices_json).ok()
 }
 
 /// Update `heartbeat_at` to the current unix time. Returns `false`
@@ -509,8 +510,8 @@ mod tests {
         assert_eq!(row.info_hash, "abc");
         assert_eq!(row.series_id, Some(7));
         // The picker's selection rides on the row for the walkaway
-        // auto-commit; nothing posted, or an empty list, is "every
-        // file".
+        // auto-commit; nothing posted is "every file", a posted empty
+        // list is a cancel, so the two stay apart.
         assert_eq!(row.wanted_indices_json, "");
         assert!(wanted_indices(&row).is_none());
         assert!(set_wanted_indices(&db, "pid-1", "[0,2]").await.unwrap());
@@ -518,7 +519,7 @@ mod tests {
         assert_eq!(wanted_indices(&row), Some(vec![0, 2]));
         assert!(set_wanted_indices(&db, "pid-1", "[]").await.unwrap());
         let row = get(&db, "pid-1").await.unwrap().unwrap();
-        assert!(wanted_indices(&row).is_none());
+        assert_eq!(wanted_indices(&row), Some(Vec::new()));
         assert!(!set_wanted_indices(&db, "missing", "[0]").await.unwrap());
     }
 

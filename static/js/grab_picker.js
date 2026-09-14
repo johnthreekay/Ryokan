@@ -124,6 +124,14 @@
             return;
         }
         session.wanted = new Set(matching.filter(i => !looksUnwanted(session.files[i].name)));
+        if (session.wanted.size === 0) {
+            // Every match looks like an extra (a sample, an NCOP).
+            // Nothing is ticked, Confirm is off, and a walkaway
+            // cancels; the user picks by hand.
+            session.preselectNote = 'The files for ' + label
+                + ' look like extras, so none is selected. Tick what you want.';
+            return;
+        }
         session.preselectNote = 'Selected ' + session.wanted.size + ' of ' + session.files.length
             + ' files for ' + label + '. Tick more to take the rest of the release.';
     }
@@ -361,6 +369,13 @@
                 // re-render so the user's scroll position stays put.
                 const row = cb.closest('tr, .grab-picker-tree-file');
                 if (row) row.classList.toggle('grab-picker-row-unwanted', !cb.checked);
+                // The preselect note describes a selection the user
+                // has now changed by hand; its count would be stale.
+                if (session.preselectNote) {
+                    session.preselectNote = '';
+                    const note = body.querySelector('.grab-picker-preselect');
+                    if (note) note.remove();
+                }
                 updateSelectionTotal();
                 queueSelectionSync();
             });
@@ -379,6 +394,15 @@
         totalEl.innerHTML = `Selected <strong>${escHtml(formatBytes(selected))}</strong>
             of ${escHtml(formatBytes(total))}
             (${session.wanted.size} of ${session.files.length} files)`;
+        // Nothing ticked is nothing to grab: Confirm would add a
+        // torrent with every file skipped, and the walkaway sweep
+        // reads a posted empty selection as a cancel.
+        const confirmBtn = $('grab-picker-confirm');
+        if (confirmBtn) {
+            const none = session.wanted.size === 0;
+            confirmBtn.disabled = none;
+            confirmBtn.title = none ? 'Tick at least one file' : '';
+        }
     }
 
     function updateViewToggle() {
