@@ -108,6 +108,7 @@
         isearch.title = btn.getAttribute('data-wanted-title') || '';
         isearch.episodes = [];
         titleEl.textContent = 'Interactive search: ' + isearch.title;
+        closeDropdowns();
         pick.innerHTML = '';
         body.innerHTML = loadingHtml('Loading');
         modal.style.display = 'flex';
@@ -136,12 +137,11 @@
     // A menu item was picked: mark it, show its label on the trigger,
     // and run the search it names.
     function pickWantedChoice(item) {
+        var menu = item.closest('.dropdown-menu');
+        if (menu) menu.querySelectorAll('.dropdown-item').forEach(function (b) { b.classList.toggle('active', b === item); });
         var pick = document.getElementById('wanted-isearch-pick');
-        if (pick) {
-            pick.querySelectorAll('.dropdown-item').forEach(function (b) { b.classList.toggle('active', b === item); });
-            var label = pick.querySelector('[data-dropdown-label]');
-            if (label) label.textContent = item.getAttribute('data-label') || item.textContent.trim();
-        }
+        var label = pick && pick.querySelector('[data-dropdown-label]');
+        if (label) label.textContent = item.getAttribute('data-label') || item.textContent.trim();
         closeDropdowns();
         var kind = item.getAttribute('data-isearch-choice');
         var base = '/api/series/' + isearch.anilistId;
@@ -170,30 +170,68 @@
     }
 
     // ── Dropdown (the server-rendered menu recipe) ────────────────
+    // The menu lives inside the modal, whose overflow is hidden, so an
+    // open menu is moved under <body> and placed with fixed
+    // coordinates below its trigger: nothing clips it, its height is
+    // what the viewport leaves, and it scrolls on its own. Closing
+    // puts the node back where the partial rendered it.
+    var MENU_GAP = 4;
+    var MENU_MARGIN = 8;
+
     function closeDropdowns() {
         document.querySelectorAll('.dropdown-menu:not([hidden])').forEach(function (menu) {
             menu.hidden = true;
-            var dd = menu.closest('[data-dropdown]');
-            var trigger = dd && dd.querySelector('[data-dropdown-trigger]');
+            ['position', 'top', 'left', 'maxHeight', 'minWidth', 'zIndex'].forEach(function (k) { menu.style[k] = ''; });
+            var home = menu.__dropdownHome;
+            if (home && menu.parentNode !== home) home.appendChild(menu);
+            var trigger = home && home.querySelector('[data-dropdown-trigger]');
             if (trigger) trigger.setAttribute('aria-expanded', 'false');
         });
     }
 
-    function toggleDropdown(dd) {
-        var menu = dd && dd.querySelector('.dropdown-menu');
-        var trigger = dd && dd.querySelector('[data-dropdown-trigger]');
-        if (!menu) return;
-        var wasOpen = !menu.hidden;
-        closeDropdowns();
-        if (!wasOpen) {
-            menu.hidden = false;
-            if (trigger) trigger.setAttribute('aria-expanded', 'true');
-            var active = menu.querySelector('.dropdown-item.active');
-            if (active && typeof active.scrollIntoView === 'function') active.scrollIntoView({ block: 'nearest' });
-        }
+    function openDropdown(dd) {
+        var menu = dd.querySelector('.dropdown-menu');
+        var trigger = dd.querySelector('[data-dropdown-trigger]');
+        if (!menu || !trigger) return;
+        var rect = trigger.getBoundingClientRect();
+        menu.__dropdownHome = dd;
+        document.body.appendChild(menu);
+        var top = rect.bottom + MENU_GAP;
+        menu.style.position = 'fixed';
+        menu.style.top = top + 'px';
+        menu.style.left = rect.left + 'px';
+        menu.style.minWidth = rect.width + 'px';
+        menu.style.maxHeight = Math.max(160, Math.min(420, window.innerHeight - top - MENU_MARGIN)) + 'px';
+        menu.style.zIndex = '1100';
+        menu.hidden = false;
+        // Keep the right edge on screen now that the width is known.
+        var width = menu.offsetWidth;
+        var left = rect.left;
+        if (left + width + MENU_MARGIN > window.innerWidth) left = Math.max(MENU_MARGIN, window.innerWidth - width - MENU_MARGIN);
+        menu.style.left = left + 'px';
+        trigger.setAttribute('aria-expanded', 'true');
+        var active = menu.querySelector('.dropdown-item.active');
+        if (active && typeof active.scrollIntoView === 'function') active.scrollIntoView({ block: 'nearest' });
     }
 
+    function toggleDropdown(dd) {
+        var menu = dd && dd.querySelector('.dropdown-menu');
+        var wasOpen = !!(menu && !menu.hidden);
+        closeDropdowns();
+        if (dd && !wasOpen) openDropdown(dd);
+    }
+
+    // A fixed menu does not follow its trigger: close it when the
+    // window changes or anything but the menu itself scrolls.
+    window.addEventListener('resize', closeDropdowns);
+    document.addEventListener('scroll', function (ev) {
+        var t = ev.target;
+        if (t && t.closest && t.closest('.dropdown-menu')) return;
+        closeDropdowns();
+    }, true);
+
     function closeWantedInteractive() {
+        closeDropdowns();
         var modal = isearchModal();
         if (modal) modal.style.display = 'none';
     }
@@ -301,9 +339,9 @@
         if (ev.target.closest('[data-wanted-isearch-close]')) { closeWantedInteractive(); return; }
         var trigger = ev.target.closest('[data-dropdown-trigger]');
         if (trigger) { toggleDropdown(trigger.closest('[data-dropdown]')); return; }
-        var item = ev.target.closest('#wanted-isearch-pick .dropdown-item');
+        var item = ev.target.closest('.dropdown-item[data-isearch-choice]');
         if (item) { pickWantedChoice(item); return; }
-        if (!ev.target.closest('[data-dropdown]')) closeDropdowns();
+        if (!ev.target.closest('[data-dropdown], .dropdown-menu')) closeDropdowns();
         var grab = ev.target.closest('[data-wanted-grab]');
         if (grab) { grabWantedResult(grab, parseInt(grab.getAttribute('data-wanted-grab'), 10)); return; }
         var grabBatch = ev.target.closest('[data-wanted-grab-batch]');
