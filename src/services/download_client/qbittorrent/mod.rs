@@ -833,7 +833,14 @@ fn map_qbit_state(state: &str) -> DownloadItemState {
         "checkingUP" => CheckingSeed,
         "pausedDL" | "stoppedDL" => Paused,
         "pausedUP" | "stoppedUP" => PausedComplete,
-        "error" | "missingFiles" => Errored,
+        // Only `error` is a failed download (Sonarr's `Failed`):
+        // post-processing blocklists it, deletes it with its data, and
+        // searches again. `missingFiles` is what every torrent flips
+        // to when the download path is unmounted; Sonarr shows it as
+        // a warning and so does Ryokan, so a NAS coming up late never
+        // costs the data once it is back.
+        "error" => Errored,
+        "missingFiles" => Warning,
         // `metaDL`, `allocating`, `moving`, `unknown`, and any
         // future state label all fall back to `Downloading` (generic
         // in-progress) rather than `Errored` so a new qBit version
@@ -970,7 +977,11 @@ mod tests {
     #[test]
     fn qbit_state_maps_error_states() {
         assert!(map_qbit_state("error").is_errored());
-        assert!(map_qbit_state("missingFiles").is_errored());
+        // An unmounted download path is a warning, never a failed
+        // download: failing it would blocklist and delete the data.
+        assert_eq!(map_qbit_state("missingFiles"), DownloadItemState::Warning);
+        assert!(!map_qbit_state("missingFiles").is_errored());
+        assert!(!map_qbit_state("missingFiles").is_complete());
     }
 
     #[test]

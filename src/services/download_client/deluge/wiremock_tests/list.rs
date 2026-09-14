@@ -149,10 +149,14 @@ async fn list_scoped_maps_deluge_states_to_normalized_enum() {
         by_hash[&"hash2".to_string()].is_complete(),
         "Seeding should be complete"
     );
-    assert!(
-        by_hash[&"hash3".to_string()].is_errored(),
-        "Error state should be errored"
+    // Deluge's Error is a warning (Sonarr never fails a Deluge item):
+    // post-processing waits rather than blocklisting and deleting.
+    assert_eq!(
+        by_hash[&"hash3".to_string()],
+        DownloadItemState::Warning,
+        "Error state should be a warning"
     );
+    assert!(!by_hash[&"hash3".to_string()].is_errored());
 }
 
 #[tokio::test]

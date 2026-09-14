@@ -133,10 +133,12 @@ async fn list_scoped_returns_empty_when_no_matching_category() {
 }
 
 #[tokio::test]
-async fn list_scoped_unknown_history_status_waits_as_checking() {
-    // History rows in unknown post-proc states ("Repair Failed",
-    // "Move Failed") would import broken data if treated as
-    // complete. Errored makes post-processing skip them.
+async fn list_scoped_unknown_history_status_counts_as_complete() {
+    // History rows in unknown post-proc states: SAB's own failures
+    // carry `status: "Failed"` (with a `fail_message`), so an unknown
+    // status is most likely a completion a newer SAB spells
+    // differently. Complete lets the import take what is there; when
+    // nothing importable is, the #205 stall timer fails the grab.
     let (server, client) = new_fixture().await;
     Mock::given(method("GET"))
         .and(path("/api"))
@@ -172,10 +174,12 @@ async fn list_scoped_unknown_history_status_waits_as_checking() {
         .iter()
         .find(|i| i.hash == "SABnzbd_nzo_broken")
         .unwrap();
-    // An unknown history state waits rather than failing the grab:
-    // Errored now blocklists the release and grabs a replacement, so
-    // only SAB's own "Failed" earns it.
-    assert_eq!(broken.state_kind, DownloadItemState::CheckingDownload);
+    // Never Errored (that blocklists the release, deletes the job, and
+    // grabs a replacement; only SAB's own "Failed" earns it), and not
+    // CheckingDownload either, which never completes and so never
+    // starts the stall clock: the grab sat pending forever.
+    assert_eq!(broken.state_kind, DownloadItemState::PausedComplete);
+    assert!(broken.state_kind.is_complete());
 }
 
 #[tokio::test]
@@ -261,9 +265,9 @@ async fn list_scoped_completed_history_maps_to_paused_complete() {
 
 #[tokio::test]
 async fn list_scoped_failed_history_maps_to_errored() {
-    // Mirrors the unknown-status-Errored test but covers the
-    // explicit `Failed` state (the one SAB itself uses for
-    // post-proc unrar/par2 failures the user can see in the UI).
+    // The explicit `Failed` state (the one SAB itself uses for
+    // post-proc unrar/par2 failures the user can see in the UI) is the
+    // only history status that is a failed download.
     let (server, client) = new_fixture().await;
     Mock::given(method("GET"))
         .and(path("/api"))

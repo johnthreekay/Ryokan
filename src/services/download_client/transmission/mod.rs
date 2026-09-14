@@ -686,6 +686,16 @@ fn to_download_item(raw: TxRawTorrent, global_ratio: Option<f64>) -> DownloadIte
         6 => "Seeding".to_string(),
         _ => format!("status {}", raw.status),
     };
+    // A local error is the item's headline on the Downloads page: the
+    // warning state waits on the user, and Transmission's own text
+    // ("No data found! Ensure your drives are connected") says what to
+    // do. Tracker warnings and errors ride along after the status.
+    let state_str = match raw.error {
+        0 => state_str,
+        3 => format!("Error: {}", raw.error_string),
+        _ if raw.error_string.is_empty() => state_str,
+        _ => format!("{} ({})", state_str, raw.error_string),
+    };
     DownloadItem {
         hash: raw.hash_string,
         name: raw.name,
@@ -712,7 +722,11 @@ fn tx_seeding_done(raw: &TxRawTorrent, global_ratio: Option<f64>) -> bool {
     if raw.is_finished {
         return true;
     }
-    if raw.status != 0 || raw.percent_done < 1.0 || !raw.error_string.is_empty() {
+    // The same error rule as `map_tx_state`: a local error (class 3)
+    // holds the item back from the finished-seed sweep, a tracker
+    // warning or error (1, 2) does not, since the torrent seeds on
+    // through those and the sweep would otherwise never fire for it.
+    if raw.status != 0 || raw.percent_done < 1.0 || raw.error == 3 {
         return false;
     }
     let limit = match raw.seed_ratio_mode {
@@ -749,11 +763,16 @@ fn to_download_files(raw: &TxRawTorrent) -> Vec<DownloadFile> {
 /// "complete-means-downloaded-not-seed-goal-hit" semantics.
 fn map_tx_state(raw: &TxRawTorrent) -> DownloadItemState {
     use DownloadItemState::*;
-    // Only a local error (class 3) is a failed download. Tracker
-    // warnings and errors (1, 2) also fill `errorString` while the
-    // torrent keeps moving; prefer the false negative.
+    // A local error (class 3: "No data found! Ensure your drives are
+    // connected", disk full, a permission problem) stops the torrent;
+    // tracker warnings and errors (1, 2) fill `errorString` while the
+    // torrent keeps moving. Sonarr reports every Transmission error as
+    // a warning and never fails the download, and so does Ryokan:
+    // `Warning` waits, where `Errored` would blocklist the release and
+    // delete its data, which for a missing-data error is the user's
+    // download mount coming back.
     if raw.error == 3 {
-        return Errored;
+        return Warning;
     }
     let is_complete = raw.percent_done >= 1.0;
     match raw.status {
@@ -912,6 +931,17 @@ mod tests {
             ..stopped(1, 1.0, 3.0)
         };
         assert!(!tx_seeding_done(&errored, None));
+        // A tracker warning (class 1) does not hold the sweep back: the
+        // same rule as `map_tx_state`, which keeps it off the error
+        // path. Any non-empty errorString used to, so a torrent past
+        // its ratio with a stale "Tracker gave HTTP response code 404"
+        // was never removed.
+        let tracker_warning = TxRawTorrent {
+            error: 1,
+            error_string: "Tracker gave HTTP response code 404".into(),
+            ..stopped(1, 1.0, 3.0)
+        };
+        assert!(tx_seeding_done(&tracker_warning, None));
     }
 
     #[test]
@@ -950,7 +980,10 @@ mod tests {
         };
         assert!(!map_tx_state(&downloading).is_complete());
 
-        // A local error (class 3) → Errored regardless of status.
+        // A local error (class 3) → Warning regardless of status: the
+        // item waits, it is neither complete nor a failed download
+        // (failing it would blocklist the release and delete the data
+        // the missing mount still holds).
         let errored = TxRawTorrent {
             status: 6,
             percent_done: 1.0,
@@ -958,7 +991,9 @@ mod tests {
             error_string: "No data found! Ensure your drives are connected".into(),
             ..Default::default()
         };
-        assert!(map_tx_state(&errored).is_errored());
+        assert_eq!(map_tx_state(&errored), DownloadItemState::Warning);
+        assert!(!map_tx_state(&errored).is_errored());
+        assert!(!map_tx_state(&errored).is_complete());
         // A tracker warning (class 1) fills errorString on a torrent
         // that is still seeding; it is not a failed download.
         let tracker_warning = TxRawTorrent {
