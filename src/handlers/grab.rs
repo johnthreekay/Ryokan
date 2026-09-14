@@ -122,14 +122,20 @@ pub struct PreviewFile {
     pub episodes: Vec<i32>,
 }
 
-/// The episodes a torrent file name parses to. See `PreviewFile::episodes`.
-pub(crate) fn file_episodes(name: &str) -> Vec<i32> {
+/// The episodes a torrent file name parses to, series-relative: an
+/// absolute-numbered file (`- 56` when `cumulative_prior_episodes` is
+/// 47) is episode 9, the number the Wanted page asks the picker for and
+/// the import files it under. See `PreviewFile::episodes`.
+pub(crate) fn file_episodes(name: &str, cumulative_prior_episodes: i32) -> Vec<i32> {
     if !crate::services::auto_search::is_media_filename(name) {
         return Vec::new();
     }
     let base = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
     match crate::services::media::parse_episode_span(&base) {
-        Some(span) if !span.special => span.episodes().filter(|e| *e > 0).collect(),
+        Some(span) if !span.special => {
+            crate::services::grab_commit::file_slot_episodes(span, cumulative_prior_episodes)
+                .collect()
+        }
         _ => Vec::new(),
     }
 }
@@ -529,8 +535,17 @@ pub async fn grab_preview_status(
 
     let mut file_list: Vec<PreviewFile> =
         serde_json::from_str(&row.file_list_json).unwrap_or_default();
+    let cumulative_prior_episodes = match row.series_id {
+        Some(id) => crate::models::series::get_by_id(&state.db, id)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| s.cumulative_prior_episodes)
+            .unwrap_or(0),
+        None => 0,
+    };
     for f in &mut file_list {
-        f.episodes = file_episodes(&f.name);
+        f.episodes = file_episodes(&f.name, cumulative_prior_episodes);
     }
     Ok(Json(GrabPreviewStatus {
         preview_id,
@@ -1501,17 +1516,37 @@ mod file_episode_tests {
 
     #[test]
     fn media_files_parse_extras_and_junk_do_not() {
-        assert_eq!(file_episodes("[Group] Show - 02 (1080p).mkv"), vec![2]);
-        assert_eq!(file_episodes("Show/Season 1/Show - S01E03.mkv"), vec![3]);
+        assert_eq!(file_episodes("[Group] Show - 02 (1080p).mkv", 0), vec![2]);
+        assert_eq!(file_episodes("Show/Season 1/Show - S01E03.mkv", 0), vec![3]);
         assert_eq!(
-            file_episodes("[Group] Show - 05-06 (1080p).mkv"),
+            file_episodes("[Group] Show - 05-06 (1080p).mkv", 0),
             vec![5, 6]
         );
-        assert!(file_episodes("[Group] Show - NCOP1.mkv").is_empty());
+        assert!(file_episodes("[Group] Show - NCOP1.mkv", 0).is_empty());
         assert!(
-            file_episodes("[Group] Show - OVA 01.mkv").is_empty(),
+            file_episodes("[Group] Show - OVA 01.mkv", 0).is_empty(),
             "a special is not an episode slot"
         );
-        assert!(file_episodes("readme - 01.txt").is_empty());
+        assert!(file_episodes("readme - 01.txt", 0).is_empty());
+    }
+
+    #[test]
+    fn absolute_numbered_files_map_to_the_series_relative_slot() {
+        // JJK S3 E9 ships as `- 56` with 47 prior episodes; the Wanted
+        // page asks the picker for episode 9 and must find this file.
+        assert_eq!(
+            file_episodes("[S] Jujutsu Kaisen - 56 (1080p).mkv", 47),
+            vec![9]
+        );
+        assert_eq!(
+            file_episodes("[S] Jujutsu Kaisen - 56-57 (1080p).mkv", 47),
+            vec![9, 10]
+        );
+        // Already relative: a first-season number, or a SxxExx name.
+        assert_eq!(
+            file_episodes("[S] Jujutsu Kaisen - 09 (1080p).mkv", 47),
+            vec![9]
+        );
+        assert_eq!(file_episodes("Jujutsu Kaisen - S03E09.mkv", 47), vec![9]);
     }
 }
