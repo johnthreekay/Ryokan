@@ -97,6 +97,25 @@
             + (hint ? '<p class="isearch-empty-hint">' + hint + '</p>' : '') + '</div>';
     }
 
+    // Only the latest request may touch the modal. Each menu load and
+    // each search takes a sequence number and an AbortController; a
+    // newer one aborts the older and a late answer for a superseded
+    // request is dropped, so switching picks mid-search never flashes
+    // the earlier pick's results, and closing the modal stops both.
+    var menuReq = { seq: 0, ctrl: null };
+    var searchReq = { seq: 0, ctrl: null };
+
+    function supersede(req) {
+        req.seq += 1;
+        if (req.ctrl) { try { req.ctrl.abort(); } catch (_) {} req.ctrl = null; }
+        req.ctrl = new AbortController();
+        return { seq: req.seq, signal: req.ctrl.signal };
+    }
+
+    function escapeText(text) {
+        return typeof window.ryokanEscapeHtml === 'function' ? window.ryokanEscapeHtml(text) : '';
+    }
+
     function openWantedInteractive(btn) {
         var modal = isearchModal();
         var pick = document.getElementById('wanted-isearch-pick');
@@ -109,6 +128,8 @@
         isearch.episodes = [];
         titleEl.textContent = 'Interactive search: ' + isearch.title;
         closeDropdowns();
+        supersede(searchReq);
+        var req = supersede(menuReq);
         pick.innerHTML = '';
         body.innerHTML = loadingHtml('Loading');
         modal.style.display = 'flex';
@@ -116,9 +137,22 @@
             + '&tab=' + encodeURIComponent(activeTab());
         // The menu is server-rendered; its default item names the first
         // search to run (the whole wanted set, or the one episode).
-        window.htmx.ajax('GET', url, { target: '#wanted-isearch-pick', swap: 'innerHTML' })
-            .then(function () { startFromMenu(pick, body); })
-            .catch(function () { startFromMenu(pick, body); });
+        fetch(url, { headers: { 'HX-Request': 'true' }, signal: req.signal })
+            .then(async function (resp) {
+                var html = await resp.text();
+                if (req.seq !== menuReq.seq) return;
+                if (!resp.ok) {
+                    var why = html && html.trim() ? escapeText(html.trim()) : 'Nothing is wanted for this series on this tab.';
+                    body.innerHTML = emptyHtml(why, 'Reload the page to refresh the list.');
+                    return;
+                }
+                pick.innerHTML = html;
+                startFromMenu(pick, body);
+            })
+            .catch(function (err) {
+                if (req.seq !== menuReq.seq || (err && err.name === 'AbortError')) return;
+                body.innerHTML = emptyHtml('Could not load the search menu.', 'Check System &rarr; Logs, then try again.');
+            });
     }
 
     function startFromMenu(pick, body) {
@@ -160,11 +194,25 @@
     function loadWantedSearch(url, message) {
         var body = document.getElementById('wanted-isearch-body');
         if (!body) return;
+        var req = supersede(searchReq);
         body.innerHTML = loadingHtml(message);
-        // htmx.ajax sends HX-Request, so the handler answers with the
-        // rendered table partial and htmx swaps it in.
-        window.htmx.ajax('GET', url, { target: '#wanted-isearch-body', swap: 'innerHTML' })
-            .catch(function () {
+        // A plain fetch with the HTMX header (the handler then answers
+        // with the rendered table partial) rather than htmx.ajax, so
+        // the request can be aborted and a stale answer dropped; see
+        // `supersede`.
+        fetch(url, { headers: { 'HX-Request': 'true' }, signal: req.signal })
+            .then(async function (resp) {
+                var html = await resp.text();
+                if (req.seq !== searchReq.seq) return;
+                if (!resp.ok) {
+                    body.innerHTML = emptyHtml('Search failed.', html && html.trim() ? escapeText(html.trim()) : 'Check System &rarr; Logs for the indexer error.');
+                    return;
+                }
+                body.innerHTML = html;
+                if (window.htmx && typeof window.htmx.process === 'function') window.htmx.process(body);
+            })
+            .catch(function (err) {
+                if (req.seq !== searchReq.seq || (err && err.name === 'AbortError')) return;
                 body.innerHTML = emptyHtml('Search failed.', 'Check System &rarr; Logs for the indexer error.');
             });
     }
@@ -232,6 +280,9 @@
 
     function closeWantedInteractive() {
         closeDropdowns();
+        // Stop whatever is in flight; nothing may land in a closed modal.
+        supersede(menuReq);
+        supersede(searchReq);
         var modal = isearchModal();
         if (modal) modal.style.display = 'none';
     }
