@@ -22,7 +22,7 @@ use artwork_copy::{copy_series_and_season_poster, copy_series_banner_and_backdro
 pub use client_cleanup::{
     remove_stamped_source_paths, sweep_finished_seeds, sweep_finished_seeds_now,
 };
-use state::fallback_ep_offset;
+pub(crate) use state::fallback_ep_offset;
 pub use state::{grab_is_stale, scan_library_for_unclassified, scan_series_for_unclassified};
 
 /// `grabbed_torrents.failure_reason` written by the #205 stall timer, so
@@ -1573,6 +1573,33 @@ async fn import_torrent(
                     || name_span.is_some_and(|s| s.special)
                     || (name_span.is_none() && media::has_special_marker(&lower_name))));
         if is_special {
+            // The ownership rule the episode path applies below
+            // (`grab_claims_episode`): a batch, a routed file, or a
+            // legacy grab with no episode list claims every file; a
+            // single-episode grab claims a special only when the
+            // release it grabbed is that special (`Show - OVA 01` from
+            // the interactive list). A `- 05` grab whose folder holds a
+            // pack's OVAs (SAB's parent complete dir, a torrent that is
+            // really the whole BD) is a stranger to them; before
+            // specials existed `OVA 01` parsed to episode 1 and the
+            // rule below rejected it.
+            let claimed = grab.is_batch
+                || routes_by_file.contains_key(file_idx)
+                || grab.episode_numbers.is_empty()
+                || media::is_special_release(&grab.torrent_name);
+            if !claimed {
+                logger::debug(
+                    &state.db,
+                    LogCategory::PostProcess,
+                    &format!(
+                        "Skipping stranger special '{}': grab #{} is for {:?}, not a special",
+                        filename_only, grab.id, grab.episode_numbers
+                    ),
+                    "",
+                )
+                .await;
+                continue;
+            }
             // A bare `- OVA` with no number is the show's one special.
             let span = name_span.unwrap_or(media::EpisodeSpan {
                 season: None,
@@ -1660,12 +1687,18 @@ async fn import_torrent(
         // full rationale and matrix of cases. A multi-episode file is
         // claimed when any episode it holds is (issue #246): a grab
         // recorded from a `- 05` title still owns the `05-06` file.
-        let claims_this_episode = resolved.raw_episodes().any(|raw| {
+        // The grab row's list is series-relative when it came from an
+        // episode endpoint, the Wanted page, or the picker (which
+        // applies the cumulative offset at commit) and in the file's
+        // own numbering when it was read off a title, so an
+        // absolute-numbered file (`- 56` for episode 9 after 47 prior
+        // episodes) matches by either.
+        let claims_this_episode = resolved.raw_episodes().chain(resolved.episodes()).any(|n| {
             grab_claims_episode(
                 grab.is_batch,
                 routes_by_file.contains_key(file_idx),
                 &grab.episode_numbers,
-                raw,
+                n,
             )
         });
         if !claims_this_episode {
@@ -2173,8 +2206,17 @@ async fn import_torrent(
                             None => Vec::new(),
                         }
                     } else {
+                        // Only files the client downloaded (`wanted`;
+                        // a narrowed batch leaves the rest at priority
+                        // 0, so they are not on disk), with the same
+                        // path-fragment check the video loop applies:
+                        // the name comes from the client, and a `../`
+                        // or absolute entry would otherwise be joined
+                        // onto the source base and land in the library
+                        // as a subtitle.
                         files
                             .iter()
+                            .filter(|f| f.wanted)
                             .filter(|f| {
                                 Path::new(&f.name)
                                     .extension()
@@ -2182,16 +2224,34 @@ async fn import_torrent(
                                     .map(|e| e.to_ascii_lowercase())
                                     .is_some_and(|e| extensions.contains(&e))
                             })
+                            .filter(|f| match validate_relative_path_fragment(&f.name) {
+                                Ok(()) => true,
+                                Err(reason) => {
+                                    tracing::warn!(
+                                        file = %f.name,
+                                        grab_id = grab.id,
+                                        reason,
+                                        "rejected suspicious subtitle entry in the client's file list"
+                                    );
+                                    false
+                                }
+                            })
                             .map(|f| Path::new(&source_base).join(&f.name))
                             .collect()
                     };
+                    // Every video the download holds, wanted or not:
+                    // the "one video, so every subtitle is its" rule in
+                    // `find_subtitles` must not fire for a pack the
+                    // user narrowed to one episode.
+                    let videos_in_download =
+                        files.iter().filter(|f| is_video_file(&f.name)).count();
                     let report = extras::import_subtitles(
                         &cfg.post_processing_mode,
                         &src,
                         &dest_video,
                         name_span,
                         &candidates,
-                        video_files.len(),
+                        videos_in_download,
                     )
                     .await;
                     if report.skipped > 0 {
@@ -3071,7 +3131,31 @@ pub async fn run_once(state: &AppState) {
             // The client's own failure report (Sonarr's `DownloadItemStatus.
             // Failed`): the grab fails with a reason, its history rows
             // fail, and, unlike an import failure, a replacement is
-            // searched for.
+            // searched for. What follows removes the item with its
+            // data, so the same boot grace as the stall timer applies:
+            // a client that came up alongside Ryokan with a stale error
+            // (a download disk mounting after the client) gets
+            // `IMPORT_STALL_BOOT_GRACE_SECS` to sort itself out before
+            // the first tick acts on what it reports.
+            let uptime_secs = chrono::Utc::now()
+                .signed_duration_since(state.start_time)
+                .num_seconds();
+            if uptime_secs < IMPORT_STALL_BOOT_GRACE_SECS {
+                logger::debug(
+                    &state.db,
+                    LogCategory::PostProcess,
+                    &format!(
+                        "Item in error state, waiting out the boot grace: '{}'",
+                        grab.torrent_name
+                    ),
+                    &format!(
+                        "state={} kind={:?} uptime_secs={}",
+                        torrent.state, torrent.state_kind, uptime_secs
+                    ),
+                )
+                .await;
+                continue;
+            }
             logger::warn(
                 &state.db,
                 LogCategory::PostProcess,
