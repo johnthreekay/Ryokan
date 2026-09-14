@@ -164,8 +164,11 @@ pub struct GroupCounts {
 }
 
 impl GroupCounts {
+    /// Files that will be written: imports, replacements, and specials
+    /// (which go to the Specials folder). Matches `FileStatus::writes`,
+    /// so the footer's file count and byte total agree.
     pub fn writes(&self) -> usize {
-        self.import + self.replace
+        self.import + self.replace + self.special
     }
 }
 

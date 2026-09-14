@@ -111,6 +111,10 @@
     font-family: var(--font-mono);
 }
 
+.wanted-slot-more {
+    color: var(--text-dim);
+}
+
 .wanted-row-actions {
     display: flex;
     align-items: center;

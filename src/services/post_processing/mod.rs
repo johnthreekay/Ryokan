@@ -1045,7 +1045,22 @@ async fn import_torrent(
     if routes.is_empty() && grab.is_batch && grab.series_id > 0 {
         match metadata_cache::get_by_series_id(&state.db, grab.series_id).await {
             Ok(Some(cached)) => {
-                let filenames: Vec<String> = files.iter().map(|f| f.name.clone()).collect();
+                // A file the client was told to skip (a partial pick
+                // from the file picker) never lands on disk, so it
+                // must not widen the grab's episode coverage, backfill
+                // a "downloading" tag, or add a sibling series. An
+                // empty name keeps the index aligned with the client's
+                // list; every parse-based pass ignores it.
+                let filenames: Vec<String> = files
+                    .iter()
+                    .map(|f| {
+                        if f.wanted {
+                            f.name.clone()
+                        } else {
+                            String::new()
+                        }
+                    })
+                    .collect();
                 let parent_eps: Vec<i32> = cached
                     .detail
                     .episodes

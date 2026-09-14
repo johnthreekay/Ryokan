@@ -39,6 +39,12 @@ use crate::services::{auto_search, logger, media, naming, progress};
 /// natural ceiling and the lookups run one per id.
 const MAX_SEARCH_IDS: usize = 5_000;
 
+/// Episode chips rendered per Wanted row before the rest collapses into
+/// a "+N more" chip. Two rows of chips at desktop width; a series that
+/// wants a hundred episodes is a batch case and the count beside the
+/// buttons already says how many.
+pub const SLOT_CHIPS_SHOWN: usize = 24;
+
 /// One search at a time: a second "search all" while one runs is
 /// refused with 409 rather than queued behind it.
 pub static WANTED_SEARCH_LOCK: LazyLock<tokio::sync::Mutex<()>> =
