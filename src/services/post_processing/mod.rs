@@ -658,10 +658,24 @@ pub const SPECIALS_FOLDER: &str = "Specials";
 /// What [`import_special_file`] did.
 enum SpecialOutcome {
     Imported,
-    /// The destination already held the file (or a different one; a
-    /// special is never replaced, since no quality row exists to
-    /// judge an upgrade by). Counts as done for the grab.
+    /// The destination already holds this file (the same inode, or a
+    /// copy of the same length from an earlier pass). Counts as done
+    /// for the grab.
     AlreadyThere,
+    /// The destination holds a different file. A special is never
+    /// replaced, since no quality row exists to judge an upgrade by,
+    /// and the grab is not done either: counting this as imported let
+    /// client cleanup delete a download that never landed.
+    Occupied,
+}
+
+/// True when both paths exist with the same length; the copy-mode
+/// twin of `files_share_inode` for "already placed".
+fn files_same_len(a: &Path, b: &Path) -> bool {
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(am), Ok(bm)) => am.len() == bm.len(),
+        _ => false,
+    }
 }
 
 /// True when the grab's own release wrote the `grabbed` tag row for
@@ -728,7 +742,11 @@ async fn import_special_file(
         ));
     }
     if dest.exists() {
-        if !files_share_inode(src, &dest) {
+        if files_share_inode(src, &dest) {
+            taken.insert(dest);
+            return Ok(SpecialOutcome::AlreadyThere);
+        }
+        if files_same_len(src, &dest) {
             logger::info(
                 &state.db,
                 LogCategory::PostProcess,
@@ -740,9 +758,21 @@ async fn import_special_file(
                 &dest.display().to_string(),
             )
             .await;
+            taken.insert(dest);
+            return Ok(SpecialOutcome::AlreadyThere);
         }
-        taken.insert(dest);
-        return Ok(SpecialOutcome::AlreadyThere);
+        logger::warn(
+            &state.db,
+            LogCategory::PostProcess,
+            &format!(
+                "Special {} of '{}' is already in the Specials folder as a different file; leaving both, the download stays in the client",
+                name_ctx.slot_label(),
+                ctx.series.title
+            ),
+            &format!("existing={} incoming={}", dest.display(), src.display()),
+        )
+        .await;
+        return Ok(SpecialOutcome::Occupied);
     }
     do_file_op(&cfg.post_processing_mode, src, &dest)
         .await
@@ -1353,6 +1383,10 @@ async fn import_torrent(
     // `special_claims` holds the grab's episode list per special so
     // the grab-time rows a special never fills are cleared below.
     let mut specials_imported = 0_usize;
+    // Specials the folder already holds under a different file. The
+    // grab is not done while one of these is pending (see
+    // `SpecialOutcome::Occupied`).
+    let mut specials_refused = 0_usize;
     let mut specials_written: HashSet<PathBuf> = HashSet::new();
     let mut special_claims: Vec<Vec<i32>> = Vec::new();
 
@@ -1626,6 +1660,9 @@ async fn import_torrent(
                 Ok(SpecialOutcome::AlreadyThere) => {
                     specials_imported += 1;
                     special_claims.push(grab.episode_numbers.clone());
+                }
+                Ok(SpecialOutcome::Occupied) => {
+                    specials_refused += 1;
                 }
                 Err(e) => {
                     logger::warn(
@@ -2569,14 +2606,30 @@ async fn import_torrent(
             // picker for a TV series) landed in full, or was already
             // there; nothing to mark per episode, but the grab is done.
             // Stamp what it took from the download folder first, so the
-            // client cleanup still sees it.
+            // client cleanup still sees it. One the folder refused
+            // keeps the grab partial, which keeps the download in the
+            // client.
             let _ = grabbed_torrents::stamp_imported_source_paths(
                 &state.db,
                 grab.id,
                 &imported_source_paths,
             )
             .await;
+            if specials_refused > 0 {
+                return Ok(ImportOutcome::PartiallyImported {
+                    failed_episodes: Vec::new(),
+                });
+            }
             return Ok(ImportOutcome::Imported);
+        }
+        if specials_refused > 0 {
+            // Nothing landed: the folder already holds a different
+            // file under every special's name. A failed grab keeps the
+            // download in the client, where an imported one would have
+            // it deleted with its data.
+            return Ok(ImportOutcome::AllFailed {
+                failed_episodes: Vec::new(),
+            });
         }
         return Ok(ImportOutcome::NotReady);
     }
@@ -2726,7 +2779,7 @@ async fn import_torrent(
         }
     }
 
-    if failed_episodes.is_empty() {
+    if failed_episodes.is_empty() && specials_refused == 0 {
         Ok(ImportOutcome::Imported)
     } else {
         Ok(ImportOutcome::PartiallyImported { failed_episodes })

@@ -2821,3 +2821,170 @@ async fn run_once_imports_the_special_a_grab_was_for() {
     assert_eq!(specials.len(), 1, "{specials:?}");
     assert!(specials[0].contains("S00E01"), "{specials:?}");
 }
+
+#[tokio::test]
+async fn run_once_fails_a_special_the_folder_already_holds_as_a_different_file() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // A special whose S00Exx name is taken by a different file never
+    // lands, and the grab used to count it as imported, which let the
+    // client cleanup delete a download that was still the only copy.
+    // Now the grab fails and the download stays in the client.
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let first_dir = tempfile::TempDir::new().expect("first source tempdir");
+    let second_dir = tempfile::TempDir::new().expect("second source tempdir");
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode) \
+         VALUES (1, 1, ?, 'hardlink')",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    sqlx::query("UPDATE series SET format = 'TV' WHERE id = ?")
+        .bind(series_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let state = build_test_app_state(db.clone(), None);
+    let item = |hash: &str, title: &str, dir: &std::path::Path| DownloadItem {
+        hash: hash.into(),
+        name: title.into(),
+        size: 3,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: dir.to_string_lossy().to_string(),
+        content_path: dir.to_string_lossy().to_string(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let specials_dir = media_root
+        .path()
+        .join("Show Title")
+        .join(post_processing::SPECIALS_FOLDER);
+    let list_specials = || -> Vec<String> {
+        std::fs::read_dir(&specials_dir)
+            .expect("specials dir")
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.ends_with(".mkv"))
+            .collect()
+    };
+
+    // First grab: the OVA lands as S00E01.
+    let first_title = "[Group] Show Title - OVA 01 (1080p)";
+    let first_video = "[Group] Show Title - OVA 01 (1080p).mkv";
+    std::fs::write(first_dir.path().join(first_video), b"ova").unwrap();
+    let g1 = grabbed_torrents::record_grab(&db, "firstova", first_title, series_id, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g1, Some(1))
+        .await
+        .unwrap();
+    let first_client = Arc::new(ImportingClient {
+        torrent: item("firstova", first_title, first_dir.path()),
+        files: vec![DownloadFile {
+            name: first_video.to_string(),
+            size: 3,
+            progress: 1.0,
+            wanted: true,
+        }],
+    });
+    install_pool(
+        &state,
+        vec![(1, first_client as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+    let state_of = |id: i64| {
+        let db = db.clone();
+        async move {
+            sqlx::query_scalar::<_, String>("SELECT state FROM grabbed_torrents WHERE id = ?")
+                .bind(id)
+                .fetch_one(&db)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(state_of(g1).await, "imported");
+    let placed = list_specials();
+    assert_eq!(placed.len(), 1, "{placed:?}");
+
+    // Second grab: another group's OVA renders the same S00E01 name
+    // and is a different file (another length, another inode).
+    let second_title = "[Other] Show Title - OVA 01 (1080p)";
+    let second_video = "[Other] Show Title - OVA 01 (1080p).mkv";
+    std::fs::write(second_dir.path().join(second_video), b"ova-two").unwrap();
+    let g2 = grabbed_torrents::record_grab(&db, "otherova", second_title, series_id, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g2, Some(1))
+        .await
+        .unwrap();
+    let second_client = Arc::new(ImportingClient {
+        torrent: item("otherova", second_title, second_dir.path()),
+        files: vec![DownloadFile {
+            name: second_video.to_string(),
+            size: 7,
+            progress: 1.0,
+            wanted: true,
+        }],
+    });
+    install_pool(
+        &state,
+        vec![(1, second_client as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+
+    assert_eq!(
+        state_of(g2).await,
+        "failed",
+        "nothing landed, so the grab fails"
+    );
+    assert_eq!(state_of(g1).await, "imported");
+    let after = list_specials();
+    assert_eq!(after, placed, "the folder keeps the first special only");
+    assert_eq!(
+        std::fs::read(specials_dir.join(&placed[0])).unwrap(),
+        b"ova",
+        "the first file is untouched"
+    );
+    assert!(
+        second_dir.path().join(second_video).exists(),
+        "the refused download is still where the client left it"
+    );
+    let removed: Option<i64> =
+        sqlx::query_scalar("SELECT client_removed_at FROM grabbed_torrents WHERE id = ?")
+            .bind(g2)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        removed, None,
+        "client cleanup never ran for the failed grab"
+    );
+}
