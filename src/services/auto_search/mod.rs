@@ -2756,6 +2756,33 @@ mod tests {
         assert_eq!(targets.len(), 1, "auto-classified row should be upgraded");
     }
 
+    // An upgrade already downloading is not searched for again. The
+    // Wanted cutoff tab hid such a slot while its "Search all" and the
+    // daily sweep still targeted it and grabbed a second release.
+    #[test]
+    fn build_upgrade_targets_skips_slots_whose_tag_row_is_grabbed() {
+        let file = dummy_720p_episode_file(1);
+        let mut tag = pinned_720p_web_tag(false);
+        tag.state = "grabbed".to_string();
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(1_i32, tag);
+
+        let targets = build_upgrade_targets(
+            &[file],
+            &[1],
+            Source::BluRay,
+            Resolution::R1080p,
+            false,
+            false,
+            &tags,
+        );
+        assert!(
+            targets.is_empty(),
+            "a grabbed slot is an upgrade in flight, got {} target(s)",
+            targets.len()
+        );
+    }
+
     // ── #23 — Search override resolver + token append ──────────────────────
 
     fn series_with_overrides(tokens: &str, user: &str) -> crate::models::series::Series {

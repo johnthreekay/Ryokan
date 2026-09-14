@@ -215,11 +215,6 @@ fn build_cutoff_rows(
                 }),
                 auto_search::SearchTarget::Single => None,
             })
-            .filter(|slot| {
-                !tags
-                    .get(&slot.episode)
-                    .is_some_and(|t| t.state == "grabbed")
-            })
             .collect();
         if slots.is_empty() {
             continue;
