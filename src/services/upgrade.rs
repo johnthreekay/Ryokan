@@ -16,6 +16,68 @@ pub struct UpgradeSummary {
     pub detail: String,
 }
 
+/// The upgrade decision for one on-disk episode against a found
+/// release: `source::judge_upgrade` over the tag row's release title,
+/// group, and Custom Format score, or the bare file when there is no
+/// row (no group, so no revision, and no score). Shared by the daily
+/// sweep and the Wanted page's cutoff search, so the two surfaces
+/// agree on the same file; RSS builds the same inputs from its item.
+pub fn judge_release_for_episode(
+    policy: &source::UpgradePolicy,
+    cfs: &[crate::services::custom_formats::CompiledCustomFormat],
+    existing_classification: &source::ClassificationResult,
+    tag: Option<&crate::models::episode_tags::EpisodeQualityTag>,
+    disk_file: Option<&media::EpisodeFile>,
+    incoming_classification: &source::ClassificationResult,
+    result: &crate::services::nyaa::SearchResult,
+) -> Result<source::UpgradeKind, source::UpgradeRejection> {
+    let no_seadex_hashes: HashSet<String> = HashSet::new();
+    // No tag row: no group (no revision) and no score; the renamed
+    // library file is not a release title.
+    let (existing_title, existing_group, scorable) = match tag {
+        Some(t) if !t.release_title.is_empty() => {
+            (t.release_title.as_str(), t.release_group.as_str(), true)
+        }
+        _ => (
+            disk_file.map(|f| f.filename.as_str()).unwrap_or_default(),
+            "",
+            false,
+        ),
+    };
+    let existing_file = source::ExistingFile {
+        classification: existing_classification,
+        revision: media::parse_release_revision(existing_title),
+        release_group: existing_group,
+        cf_score: scorable.then(|| {
+            crate::services::custom_formats::total_cf_score_for_release(
+                cfs,
+                existing_classification,
+                existing_title,
+                existing_group,
+                disk_file.map(|f| f.size_bytes as i64).unwrap_or(0),
+                "",
+                &no_seadex_hashes,
+            )
+        }),
+        age_days: None,
+    };
+    let candidate = source::UpgradeCandidate {
+        classification: incoming_classification,
+        revision: media::parse_release_revision(&result.title),
+        release_group: &result.group,
+        cf_score: crate::services::custom_formats::total_cf_score_for_release(
+            cfs,
+            incoming_classification,
+            &result.title,
+            &result.group,
+            result.size_bytes,
+            &result.info_hash,
+            &no_seadex_hashes,
+        ),
+    };
+    source::judge_upgrade(policy, &existing_file, &candidate, false)
+}
+
 pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
     let _guard = UPGRADE_LOCK
         .try_lock()
@@ -75,7 +137,6 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
     // candidate the SeaDex Custom Format alone would let a curated
     // pick replace an identical file for score. The seed and the
     // scoring of the search itself still consult SeaDex.
-    let no_seadex_hashes: HashSet<String> = HashSet::new();
 
     // Issue #28 — snapshot the set of PT indexer IDs once per
     // sweep so the per-series PT-upgrade gate doesn't re-read the
@@ -317,52 +378,15 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             if let auto_search::SearchTarget::Episode(ep_num) = &target
                 && let Some(existing_classification) = upgrade_classifications.get(ep_num)
             {
-                let tag = quality_tags.get(ep_num);
-                let disk_file = disk_files.iter().find(|f| f.holds(*ep_num));
-                // No tag row: no group (no revision) and no score; the
-                // renamed library file is not a release title.
-                let (existing_title, existing_group, scorable) = match tag {
-                    Some(t) if !t.release_title.is_empty() => {
-                        (t.release_title.as_str(), t.release_group.as_str(), true)
-                    }
-                    _ => (
-                        disk_file.map(|f| f.filename.as_str()).unwrap_or_default(),
-                        "",
-                        false,
-                    ),
-                };
-                let existing_file = source::ExistingFile {
-                    classification: existing_classification,
-                    revision: media::parse_release_revision(existing_title),
-                    release_group: existing_group,
-                    cf_score: scorable.then(|| {
-                        crate::services::custom_formats::total_cf_score_for_release(
-                            &cfs,
-                            existing_classification,
-                            existing_title,
-                            existing_group,
-                            disk_file.map(|f| f.size_bytes as i64).unwrap_or(0),
-                            "",
-                            &no_seadex_hashes,
-                        )
-                    }),
-                    age_days: None,
-                };
-                let candidate = source::UpgradeCandidate {
-                    classification: &incoming_classification,
-                    revision: media::parse_release_revision(&result.title),
-                    release_group: &result.group,
-                    cf_score: crate::services::custom_formats::total_cf_score_for_release(
-                        &cfs,
-                        &incoming_classification,
-                        &result.title,
-                        &result.group,
-                        result.size_bytes,
-                        &result.info_hash,
-                        &no_seadex_hashes,
-                    ),
-                };
-                match source::judge_upgrade(&policy, &existing_file, &candidate, false) {
+                match judge_release_for_episode(
+                    &policy,
+                    &cfs,
+                    existing_classification,
+                    quality_tags.get(ep_num),
+                    disk_files.iter().find(|f| f.holds(*ep_num)),
+                    &incoming_classification,
+                    &result,
+                ) {
                     Ok(kind) => {
                         logger::info(
                             &state.db,

@@ -147,9 +147,21 @@ pub async fn run_auto_search_targets(
         targets,
         allow_batch,
         series_id,
-        std::collections::HashMap::new(),
+        UpgradeContext::default(),
     )
     .await
+}
+
+/// What the upgrade half of a search needs to judge a found release
+/// against the file on disk, built by the handler that scanned the
+/// series folder; empty for a search with no upgrade targets.
+#[derive(Default)]
+pub(crate) struct UpgradeContext {
+    /// The existing classification per upgrade-target episode.
+    pub classifications:
+        std::collections::HashMap<i32, crate::services::source::ClassificationResult>,
+    pub quality_tags: std::collections::HashMap<i32, episode_tags::EpisodeQualityTag>,
+    pub disk_files: Vec<media::EpisodeFile>,
 }
 
 /// Optional `?progress_id=<opaque>` query string the frontend appends to
@@ -279,10 +291,7 @@ async fn run_auto_search_targets_with_upgrades(
     targets: Vec<auto_search::SearchTarget>,
     allow_batch: bool,
     series_id: Option<i64>,
-    upgrade_classifications: std::collections::HashMap<
-        i32,
-        crate::services::source::ClassificationResult,
-    >,
+    upgrades: UpgradeContext,
 ) -> Result<auto_search::AutoSearchReport, (axum::http::StatusCode, String)> {
     // Up-front configuration check — fail fast if NO client is
     // configured at all. The per-release dispatch below resolves the
@@ -305,6 +314,7 @@ async fn run_auto_search_targets_with_upgrades(
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .unwrap_or_default();
+    let upgrade_policy = crate::services::source::UpgradePolicy::from_config(&cfg);
 
     let (_, _, detail) = resolve_series_context(&state.db, request_id)
         .await
@@ -430,7 +440,7 @@ async fn run_auto_search_targets_with_upgrades(
             });
         }
         let label = auto_search::target_label(&target);
-        let is_upgrade = matches!(&target, auto_search::SearchTarget::Episode(n) if upgrade_classifications.contains_key(n));
+        let is_upgrade = matches!(&target, auto_search::SearchTarget::Episode(n) if upgrades.classifications.contains_key(n));
         progress::emit(
             "search",
             "info",
@@ -475,39 +485,54 @@ async fn run_auto_search_targets_with_upgrades(
                 )
                 .await;
 
-                // For upgrade targets, verify the found release is actually
-                // better quality than what's already on disk.
+                // For upgrade targets, verify the found release is
+                // actually an upgrade over what's on disk: the same
+                // decision as the daily sweep and RSS
+                // (`source::judge_upgrade` through
+                // `upgrade::judge_release_for_episode`: quality against
+                // the cutoff, a revision from the same group, a better
+                // Custom Format score). A bare rank comparison here let
+                // the Wanted page's cutoff search take a BDMV pack for
+                // a Remux file the sweep refuses.
                 if let auto_search::SearchTarget::Episode(ep_num) = &target
-                    && let Some(existing) = upgrade_classifications.get(ep_num)
+                    && let Some(existing) = upgrades.classifications.get(ep_num)
                 {
-                    if incoming_classification.rank() <= existing.rank() {
-                        logger::debug(
-                            &state.db,
-                            LogCategory::AutoSearch,
-                            &format!(
-                                "{}: skipped upgrade (incoming {} not better than existing {})",
-                                label,
-                                incoming_classification.label(),
-                                existing.label()
-                            ),
-                            &result.title,
-                        )
-                        .await;
-                        skipped.push(format!("{}: no quality upgrade available", label));
-                        continue;
+                    match crate::services::upgrade::judge_release_for_episode(
+                        &upgrade_policy,
+                        &cfs,
+                        existing,
+                        upgrades.quality_tags.get(ep_num),
+                        upgrades.disk_files.iter().find(|f| f.holds(*ep_num)),
+                        &incoming_classification,
+                        &result,
+                    ) {
+                        Ok(kind) => {
+                            logger::info(
+                                &state.db,
+                                LogCategory::AutoSearch,
+                                &format!(
+                                    "{}: upgrading ({}) from {} to {}",
+                                    label,
+                                    kind.as_str(),
+                                    existing.label(),
+                                    incoming_classification.label()
+                                ),
+                                &result.title,
+                            )
+                            .await;
+                        }
+                        Err(rejection) => {
+                            logger::debug(
+                                &state.db,
+                                LogCategory::AutoSearch,
+                                &format!("{}: skipped upgrade: {}", label, rejection),
+                                &result.title,
+                            )
+                            .await;
+                            skipped.push(format!("{}: {}", label, rejection));
+                            continue;
+                        }
                     }
-                    logger::info(
-                        &state.db,
-                        LogCategory::AutoSearch,
-                        &format!(
-                            "{}: upgrading from {} to {}",
-                            label,
-                            existing.label(),
-                            incoming_classification.label()
-                        ),
-                        &result.title,
-                    )
-                    .await;
                 }
                 // For selective downloads, prefer the `.torrent` URL
                 // over the magnet: qBit can parse metadata straight
@@ -1074,17 +1099,20 @@ pub async fn auto_search_series(
     )
     .await;
     let series_id_for_grab = tracked.as_ref().map(|s| s.id);
-    // Build a map of existing episode classifications for upgrade verification in the search task.
-    let upgrade_classifications: std::collections::HashMap<
-        i32,
-        crate::services::source::ClassificationResult,
-    > = upgrade_targets
-        .into_iter()
-        .filter_map(|(t, classification)| match t {
-            auto_search::SearchTarget::Episode(n) => Some((n, classification)),
-            _ => None,
-        })
-        .collect();
+    // What the search task needs to judge an upgrade: the existing
+    // classification per target, plus the tag rows and disk files the
+    // policy gate reads the revision, group, and score from.
+    let upgrades = UpgradeContext {
+        classifications: upgrade_targets
+            .into_iter()
+            .filter_map(|(t, classification)| match t {
+                auto_search::SearchTarget::Episode(n) => Some((n, classification)),
+                _ => None,
+            })
+            .collect(),
+        quality_tags,
+        disk_files: existing_files,
+    };
     // Spawn as an independent task so the grab completes even if the client
     // disconnects. The spawned future is wrapped in `progress::scope` when a
     // progress handle was registered, so deep callees inside the search
@@ -1099,7 +1127,7 @@ pub async fn auto_search_series(
             targets,
             true,
             series_id_for_grab,
-            upgrade_classifications,
+            upgrades,
         )
         .await;
         emit_auto_search_terminal(&result).await;

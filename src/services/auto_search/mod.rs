@@ -510,10 +510,17 @@ pub(crate) fn select_episode_set_hits(
         .into_iter()
         .filter(|r| !r.is_batch)
         .filter_map(|result| {
-            let parsed = parse_release_numbers(&result.title);
-            if parsed.is_empty() {
+            // The strict file-name parser, the one the interactive grab
+            // records with (`held_episodes`): `parse_release_numbers`'s
+            // range regex tolerates whitespace and a version tail, so
+            // `Chihayafuru 2 - 05v2` read as episodes 2-5 and the row's
+            // Grab posted for an episode the file does not hold. A
+            // special is no wanted episode.
+            let span = crate::services::media::parse_episode_span(&result.title.to_lowercase())?;
+            if span.special {
                 return None;
             }
+            let parsed: HashSet<i32> = span.episodes().collect();
             let mut episodes: Vec<i32> = wanted
                 .iter()
                 .copied()
@@ -3289,5 +3296,29 @@ mod episode_set_tests {
         );
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].episodes, vec![9]);
+    }
+
+    #[test]
+    fn a_title_ending_in_a_digit_with_a_revision_names_one_episode() {
+        // The loose release parser read `Chihayafuru 2 - 05v2` as the
+        // range 2-5 and offered episodes 2-4 a file that holds only 5.
+        let wanted: HashSet<i32> = [2, 3, 4, 5].into_iter().collect();
+        let hits = select_episode_set_hits(
+            vec![
+                hit("[HorribleSubs] Chihayafuru 2 - 05v2 [720p].mkv", 1, false),
+                hit("[HorribleSubs] Chihayafuru 2 - 5 [720p].mkv", 1, false),
+                hit("[Group] Show - OVA 02 (1080p).mkv", 1, false),
+            ],
+            &wanted,
+            0,
+        );
+        assert_eq!(
+            hits.len(),
+            2,
+            "{:?}",
+            hits.iter().map(|h| &h.result.title).collect::<Vec<_>>()
+        );
+        assert_eq!(hits[0].episodes, vec![5]);
+        assert_eq!(hits[1].episodes, vec![5]);
     }
 }
