@@ -257,9 +257,9 @@
             <div class="form-group">
                 <label>Sync exclusions</label>
                 {% if sync_exclusions.is_empty() %}
-                <span class="form-hint">Nothing yet. Tick "keep it off my sync" when removing a series and it is listed here.</span>
+                <span class="form-hint">Nothing yet. Tick the box that keeps a series off your sync when removing it, and it is listed here.</span>
                 {% else %}
-                <span class="form-hint">Series removed with "keep it off my sync". A sync does not add them back until you allow them again.</span>
+                <span class="form-hint">Series kept off the sync when they were removed. A sync does not add them back until you allow them again.</span>
                 <ul class="sync-exclusions">
                     {% for x in sync_exclusions %}
                     {# A button, not a form: this partial sits inside the
