@@ -1587,26 +1587,31 @@ fn canonical_key_for_title(title: &str, all_meta: &[SeriesMeta]) -> Option<Strin
 }
 
 fn compare_candidates(a: &PendingCandidate, b: &PendingCandidate) -> Ordering {
+    // A `v2` and its `v1` share a bucket; at equal score the later
+    // revision wins, so one feed window listing both grabs one.
+    let revision = |c: &PendingCandidate| media::parse_release_revision(&c.item.title).version;
     a.score
         .cmp(&b.score)
+        .then_with(|| revision(a).cmp(&revision(b)))
         .then_with(|| (!a.item.is_batch).cmp(&(!b.item.is_batch)))
         .then_with(|| resolution_rank(&a.item.resolution).cmp(&resolution_rank(&b.item.resolution)))
         .then_with(|| a.item.group.cmp(&b.item.group))
         .then_with(|| a.item.title.cmp(&b.item.title))
 }
 
+/// The within-sweep bucket: every release that delivers the same
+/// logical item competes for one grab, a `v1` and its `v2` included
+/// (`compare_candidates` prefers the higher revision at equal score).
+/// The revision is deliberately not part of this key; it belongs to
+/// `canonical_episode_key`, the history key, where it keeps a later
+/// `v2` from being swallowed as "already grabbed".
 fn logical_bucket_key(cand: &PendingCandidate) -> String {
-    canonical_episode_key(
-        &cand.found,
-        cand.item.is_batch,
-        media::parse_release_revision(&cand.item.title).version,
-    )
+    logical_episode_key(&cand.found, cand.item.is_batch)
 }
 
-/// `revision` keeps a `v2` a distinct logical item from the `v1` it
-/// fixes, so the history check (grabbed titles, the client's queue)
-/// does not swallow it before the upgrade gate can take it.
-fn canonical_episode_key(found: &MatchResult, is_batch: bool, revision: u32) -> String {
+/// The logical item a release delivers: series family, batch or
+/// single, and the episode set. Empty when no episode resolved.
+fn logical_episode_key(found: &MatchResult, is_batch: bool) -> String {
     let episode_key = if !found.canonical_abs_eps.is_empty() {
         format_episode_set(&found.canonical_abs_eps)
     } else {
@@ -1616,12 +1621,22 @@ fn canonical_episode_key(found: &MatchResult, is_batch: bool, revision: u32) -> 
         return String::new();
     }
     format!(
-        "{}|{}|{}|v{}",
+        "{}|{}|{}",
         found.family_key,
         if is_batch { "batch" } else { "single" },
         episode_key,
-        revision,
     )
+}
+
+/// `revision` keeps a `v2` a distinct logical item from the `v1` it
+/// fixes, so the history check (grabbed titles, the client's queue)
+/// does not swallow it before the upgrade gate can take it.
+fn canonical_episode_key(found: &MatchResult, is_batch: bool, revision: u32) -> String {
+    let key = logical_episode_key(found, is_batch);
+    if key.is_empty() {
+        return key;
+    }
+    format!("{key}|v{revision}")
 }
 
 #[allow(clippy::too_many_arguments)]
