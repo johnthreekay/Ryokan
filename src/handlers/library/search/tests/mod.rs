@@ -1487,7 +1487,7 @@ mod handler_endpoints {
 
         let request_id: i64 = 700;
         let episode: i32 = 5;
-        let cache_key = (request_id, Some(episode));
+        let cache_key = interactive_search_cache::Key::Episode(request_id, episode);
         let seeded = vec![empty_search_result(
             "[Group] Cached Show - 05.mkv",
             "0123456789abcdef0123456789abcdef01234567",
@@ -1853,7 +1853,7 @@ mod handler_endpoints {
         let state = build_test_app_state(db, None);
 
         let request_id: i64 = 701;
-        let cache_key = (request_id, None);
+        let cache_key = interactive_search_cache::Key::Batch(request_id);
         let seeded = vec![
             empty_search_result(
                 "[Group] Show - 01-12 Batch (1080p)",

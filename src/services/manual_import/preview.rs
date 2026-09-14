@@ -291,7 +291,9 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
     // Only a folder that exists can hold a stranger at a destination
     // path; a new series' folder doesn't, so no stat calls for those.
     let folder_on_disk = !folder_name.is_empty() && ctx.disk_folders.contains(&folder_name);
-    let mut names_taken: HashSet<&str> = HashSet::new();
+    // Destination-keyed: a special goes to the Specials folder and an
+    // episode to the season folder, and one name is free in each.
+    let mut names_taken: HashSet<(&str, &str)> = HashSet::new();
     let mut counts = GroupCounts::default();
     let files = group
         .files
@@ -360,21 +362,21 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                     }
                 }
             };
+            let dest_sub = if status == FileStatus::Special {
+                post_processing::SPECIALS_FOLDER
+            } else {
+                season_folder.as_str()
+            };
             if matches!(status, FileStatus::Import | FileStatus::Special) && folder_on_disk {
-                let sub = if status == FileStatus::Special {
-                    post_processing::SPECIALS_FOLDER
-                } else {
-                    season_folder.as_str()
-                };
                 let dest = std::path::Path::new(ctx.media_root)
                     .join(&folder_name)
-                    .join(sub)
+                    .join(dest_sub)
                     .join(&f.file_name);
                 if dest.exists() && !post_processing::files_share_inode(&f.path, &dest) {
                     status = FileStatus::AlreadyOnDisk;
                 }
             }
-            if status.writes() && !names_taken.insert(f.file_name.as_str()) {
+            if status.writes() && !names_taken.insert((dest_sub, f.file_name.as_str())) {
                 status = FileStatus::DuplicateName;
             }
             match status {
@@ -780,6 +782,47 @@ mod tests {
         assert_eq!(v.counts.duplicate, 1);
         assert_eq!(v.counts.writes(), 2);
         assert!(v.files[0].dest.is_empty(), "nothing written for a stranger");
+    }
+
+    #[test]
+    fn a_special_and_an_episode_may_share_a_file_name() {
+        // The taken-names set is keyed by destination folder: a
+        // `Specials/` file and a `Season 01/` file with the same name
+        // both write, and only a second file bound for the same
+        // folder is a duplicate.
+        let owned = HashSet::new();
+        let disk = HashSet::new();
+        let ctx = ProjectionContext {
+            media_root: "/media",
+            owned_folders: &owned,
+            disk_folders: &disk,
+            title_pref: "english",
+            series_folder_format: naming::DEFAULT_SERIES_FOLDER_FORMAT,
+            season_folder_format: naming::DEFAULT_SEASON_FOLDER_FORMAT,
+        };
+        let episode = file("[G] Show - 01 [BD 1080p].mkv", Some(1));
+        let mut special = file("[G] Show - 01 [BD 1080p].mkv", Some(1));
+        special.special = true;
+        special.rel_path = "Show/Specials/[G] Show - 01 [BD 1080p].mkv".into();
+        let mut second_special = special.clone();
+        second_special.rel_path = "Show/Extras/[G] Show - 01 [BD 1080p].mkv".into();
+        let g = group(
+            vec![episode, special, second_special],
+            vec![entry(1, "Show", "Show")],
+            Some(0),
+        );
+        let v = project_group(&g, &ctx);
+        let statuses: Vec<FileStatus> = v.files.iter().map(|f| f.status).collect();
+        assert_eq!(
+            statuses,
+            vec![
+                FileStatus::Import,
+                FileStatus::Special,
+                FileStatus::DuplicateName,
+            ]
+        );
+        assert_eq!(v.counts.duplicate, 1);
+        assert_eq!(v.counts.writes(), 2);
     }
 
     #[test]

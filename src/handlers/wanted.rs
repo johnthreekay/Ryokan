@@ -171,16 +171,21 @@ pub fn build_missing_rows(
 }
 
 /// Cutoff-unmet rows: the upgrade sweep's targets, per series that
-/// allows upgrades, with the file's current quality on each slot.
-async fn build_cutoff_rows(
-    state: &AppState,
+/// allows upgrades, with the file's current quality on each slot. An
+/// episode whose tag row is `grabbed` has an upgrade downloading and
+/// leaves the list, as a missing episode does. Pure: the tag rows
+/// come in (`tags_by_series`), so the page loads them once for the
+/// library and the search menu once for its series.
+fn build_cutoff_rows(
     cfg: &config::Config,
     library: &[series::Series],
     disk: &HashMap<i64, Vec<media::EpisodeFile>>,
+    tags_by_series: &HashMap<i64, HashMap<i32, episode_tags::EpisodeQualityTag>>,
 ) -> Vec<WantedRow> {
     let (cutoff_source, cutoff_is_remux, cutoff_is_bdmv) =
         source::parse_cutoff_source(&cfg.cutoff_source);
     let cutoff_resolution = Resolution::from_str(&cfg.cutoff_resolution);
+    let empty = HashMap::new();
     let mut rows = Vec::new();
     for s in library {
         if !s.allow_upgrades {
@@ -189,9 +194,7 @@ async fn build_cutoff_rows(
         let Some(files) = disk.get(&s.id).filter(|f| !f.is_empty()) else {
             continue;
         };
-        let tags = episode_tags::get_for_series(&state.db, s.id)
-            .await
-            .unwrap_or_default();
+        let tags = tags_by_series.get(&s.id).unwrap_or(&empty);
         let on_disk: Vec<i32> = files.iter().flat_map(|f| f.episodes()).collect();
         let targets = auto_search::build_upgrade_targets(
             files,
@@ -200,7 +203,7 @@ async fn build_cutoff_rows(
             cutoff_resolution,
             cutoff_is_remux,
             cutoff_is_bdmv,
-            &tags,
+            tags,
         );
         let slots: Vec<WantedSlot> = targets
             .into_iter()
@@ -211,6 +214,11 @@ async fn build_cutoff_rows(
                     quality: existing.label(),
                 }),
                 auto_search::SearchTarget::Single => None,
+            })
+            .filter(|slot| {
+                !tags
+                    .get(&slot.episode)
+                    .is_some_and(|t| t.state == "grabbed")
             })
             .collect();
         if slots.is_empty() {
@@ -257,7 +265,10 @@ async fn rows_for(
         .collect();
     let disk = media::scan_series_folders_batch(&cfg.media_root, folders).await;
     if tab == "cutoff" {
-        build_cutoff_rows(state, cfg, library, &disk).await
+        let tags = episode_tags::get_for_all_series(&state.db)
+            .await
+            .unwrap_or_default();
+        build_cutoff_rows(cfg, library, &disk, &tags)
     } else {
         let (aired, tag_rows, monitored) = tokio::join!(
             local_metadata::aired_episode_counts(&state.db),
@@ -270,6 +281,55 @@ async fn rows_for(
             &tag_rows.unwrap_or_default(),
             &aired.unwrap_or_default(),
             &monitored.unwrap_or_default(),
+            &cfg.title_language,
+        )
+    }
+}
+
+/// `rows_for` for one series, from per-series queries: the search menu
+/// opens per modal and must not scan the whole library each time.
+async fn rows_for_series(
+    state: &AppState,
+    cfg: &config::Config,
+    series: &series::Series,
+    tab: &str,
+) -> Vec<WantedRow> {
+    let library = std::slice::from_ref(series);
+    let folders: Vec<(i64, String)> = if series.folder_name.is_empty() {
+        Vec::new()
+    } else {
+        vec![(series.id, series.folder_name.clone())]
+    };
+    let disk = media::scan_series_folders_batch(&cfg.media_root, folders).await;
+    let tags = episode_tags::get_for_series(&state.db, series.id)
+        .await
+        .unwrap_or_default();
+    if tab == "cutoff" {
+        let tags_by_series = HashMap::from([(series.id, tags)]);
+        build_cutoff_rows(cfg, library, &disk, &tags_by_series)
+    } else {
+        let (aired, monitored_eps) = tokio::join!(
+            local_metadata::aired_episode_count(&state.db, series.id),
+            monitoring::get_monitored_episode_numbers(&state.db, series.id),
+        );
+        let aired = HashMap::from([(series.id, aired.unwrap_or(0))]);
+        let tag_rows: Vec<(i64, i32, String)> = tags
+            .values()
+            .filter(|t| t.state == "completed" || t.state == "grabbed")
+            .map(|t| (series.id, t.episode_number, t.state.clone()))
+            .collect();
+        let monitored_eps = monitored_eps.unwrap_or_default();
+        let monitored: HashMap<i64, HashSet<i32>> = if monitored_eps.is_empty() {
+            HashMap::new()
+        } else {
+            HashMap::from([(series.id, monitored_eps.into_iter().collect())])
+        };
+        build_missing_rows(
+            library,
+            &disk,
+            &tag_rows,
+            &aired,
+            &monitored,
             &cfg.title_language,
         )
     }
@@ -334,7 +394,7 @@ pub async fn search_menu(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Series not found".to_string()))?;
-    let rows = rows_for(&state, &cfg, std::slice::from_ref(&series), &tab).await;
+    let rows = rows_for_series(&state, &cfg, &series, &tab).await;
     let Some(row) = rows.into_iter().next() else {
         return Err((
             StatusCode::NOT_FOUND,

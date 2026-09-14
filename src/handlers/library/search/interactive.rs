@@ -301,15 +301,38 @@ pub async fn interactive_search_episodes(
 
     let cfs = state.custom_formats.read().await.clone();
 
-    let hits = auto_search::find_all_for_episodes(
-        &state.db,
-        &detail,
-        &cfg,
-        &episodes,
-        &cfs,
-        &state.indexers,
-    )
-    .await;
+    // The same 5-minute cache as the other two interactive searches,
+    // over the raw results (the sweep plus the per-episode probes);
+    // the episode-set selection is cheap and runs on every hit.
+    let mut key_episodes = episodes.clone();
+    key_episodes.sort_unstable();
+    key_episodes.dedup();
+    let cache_key =
+        crate::services::interactive_search_cache::Key::EpisodeSet(request_id, key_episodes);
+    let results = match crate::services::interactive_search_cache::get(
+        &state.interactive_search_cache,
+        cache_key.clone(),
+    ) {
+        Some(cached) => (*cached).clone(),
+        None => {
+            let results = auto_search::search_episode_set(
+                &state.db,
+                &detail,
+                &cfg,
+                &episodes,
+                &cfs,
+                &state.indexers,
+            )
+            .await;
+            crate::services::interactive_search_cache::insert(
+                &state.interactive_search_cache,
+                cache_key,
+                results.clone(),
+            );
+            results
+        }
+    };
+    let hits = auto_search::select_episode_set(&state.db, &detail, &cfg, results, &episodes).await;
 
     if is_htmx {
         let html = build_episode_set_partial(hits, wanted)
@@ -681,10 +704,12 @@ pub async fn interactive_search_episode(
     // 5-minute TTL cache so rapid reloads of the picker modal during
     // UI iteration don't hammer Nyaa. Scope-limited to interactive
     // search only; auto-search / RSS / manual grabs still go direct.
-    let cache_key = (request_id, Some(episode_number));
-    if let Some(cached) =
-        crate::services::interactive_search_cache::get(&state.interactive_search_cache, cache_key)
-    {
+    let cache_key =
+        crate::services::interactive_search_cache::Key::Episode(request_id, episode_number);
+    if let Some(cached) = crate::services::interactive_search_cache::get(
+        &state.interactive_search_cache,
+        cache_key.clone(),
+    ) {
         let cached_vec: Vec<_> = (*cached).clone();
         return if is_htmx {
             render_interactive_partial(cached_vec, Some(episode_number), origin.wanted())
@@ -765,11 +790,11 @@ pub async fn interactive_search_batches(
     Path(request_id): Path<i64>,
 ) -> Result<Response, (StatusCode, String)> {
     // 5-minute TTL cache — see interactive_search_episode for rationale.
-    // `None` episode slot distinguishes batch from per-episode.
-    let cache_key = (request_id, None);
-    if let Some(cached) =
-        crate::services::interactive_search_cache::get(&state.interactive_search_cache, cache_key)
-    {
+    let cache_key = crate::services::interactive_search_cache::Key::Batch(request_id);
+    if let Some(cached) = crate::services::interactive_search_cache::get(
+        &state.interactive_search_cache,
+        cache_key.clone(),
+    ) {
         let cached_vec: Vec<_> = (*cached).clone();
         return if is_htmx {
             render_interactive_partial(cached_vec, None, origin.wanted())

@@ -584,6 +584,21 @@ pub async fn aired_episode_counts(db: &SqlitePool) -> Result<HashMap<i64, i64>, 
     Ok(rows.into_iter().collect())
 }
 
+/// `aired_episode_counts` for one series, for the Wanted page's
+/// per-series search menu, which must not scan the library per open.
+pub async fn aired_episode_count(db: &SqlitePool, series_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM series_episode_metadata
+         WHERE series_id = ?
+           AND episode_number >= 1
+           AND length(aired) >= 10
+           AND substr(aired, 1, 10) <= date('now')",
+    )
+    .bind(series_id)
+    .fetch_one(db)
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

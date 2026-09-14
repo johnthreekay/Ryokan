@@ -474,6 +474,21 @@ pub async fn find_all_for_episodes(
     cfs: &[CompiledCustomFormat],
     indexers: &crate::IndexerCache,
 ) -> Vec<EpisodeSetHit> {
+    let results = search_episode_set(db, detail, config, episodes, cfs, indexers).await;
+    select_episode_set(db, detail, config, results, episodes).await
+}
+
+/// The search half of `find_all_for_episodes`: the `Single` sweep plus
+/// the per-episode probes, group-map enriched, before any selection.
+/// The interactive handler caches this part.
+pub async fn search_episode_set(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    episodes: &[i32],
+    cfs: &[CompiledCustomFormat],
+    indexers: &crate::IndexerCache,
+) -> Vec<SearchResult> {
     let wanted: HashSet<i32> = episodes.iter().copied().filter(|e| *e > 0).collect();
     if wanted.is_empty() {
         return Vec::new();
@@ -492,6 +507,23 @@ pub async fn find_all_for_episodes(
     )
     .await;
     nyaa::enrich_results_with_group_map(db, &mut results).await;
+    results
+}
+
+/// The selection half of `find_all_for_episodes` over already fetched
+/// results: the series' search overrides (for the absolute offset),
+/// then `select_episode_set_hits`.
+pub async fn select_episode_set(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    results: Vec<SearchResult>,
+    episodes: &[i32],
+) -> Vec<EpisodeSetHit> {
+    let wanted: HashSet<i32> = episodes.iter().copied().filter(|e| *e > 0).collect();
+    if wanted.is_empty() {
+        return Vec::new();
+    }
     let series_ctx = resolve_search_overrides(db, detail, config).await;
     select_episode_set_hits(results, &wanted, series_ctx.absolute_offset)
 }
