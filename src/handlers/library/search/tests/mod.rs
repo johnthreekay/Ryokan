@@ -1246,6 +1246,52 @@ mod handler_endpoints {
             );
         }
 
+        // The episode-set flow: an Episode column, and each row's Grab
+        // posts for the row's own first wanted episode.
+        {
+            use crate::services::auto_search::EpisodeSetHit;
+            let set = super::super::interactive::test_helpers::build_episode_set_partial_for_test(
+                vec![
+                    EpisodeSetHit {
+                        result: hit.clone(),
+                        episodes: vec![3],
+                    },
+                    EpisodeSetHit {
+                        result: low.clone(),
+                        episodes: vec![4, 5],
+                    },
+                ],
+                true,
+            )
+            .render()
+            .expect("episode-set partial renders");
+            assert!(
+                set.contains("<th class=\"col-episode\">Episode</th>"),
+                "{set}"
+            );
+            assert!(set.contains(">E03<") && set.contains(">E04-E05<"), "{set}");
+            assert!(
+                set.contains("data-wanted-grab=\"3\"") && set.contains("data-wanted-grab=\"4\""),
+                "{set}"
+            );
+            assert!(!set.contains("data-wanted-grab-batch"), "{set}");
+            let empty =
+                super::super::interactive::test_helpers::build_episode_set_partial_for_test(
+                    vec![],
+                    true,
+                )
+                .render()
+                .expect("empty renders");
+            assert!(
+                empty.contains("No single-episode releases found."),
+                "{empty}"
+            );
+            let labels = super::super::interactive::test_helpers::episode_range_label;
+            assert_eq!(labels(&[3]), "E03");
+            assert_eq!(labels(&[3, 4, 5]), "E03-E05");
+            assert_eq!(labels(&[3, 7]), "E03, E07");
+        }
+
         // High-score row class + the score badge value visible.
         assert!(
             html.contains("score-high"),

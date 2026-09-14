@@ -91,6 +91,40 @@
         return out;
     }
 
+    // `E02` / `E05-E06` for a file's parsed episodes.
+    function episodeLabel(eps) {
+        const pad = n => 'E' + String(n).padStart(2, '0');
+        if (!eps || !eps.length) return '';
+        if (eps.length === 1) return pad(eps[0]);
+        return pad(eps[0]) + '-' + pad(eps[eps.length - 1]);
+    }
+
+    // Wanted-page batch grabs: keep only the files whose parsed
+    // episodes (`PreviewFile.episodes`, parsed server-side) include one
+    // the caller wants, so a twelve-episode pack for two missing
+    // episodes downloads two files, and the commit records those two.
+    // When no file matches (a pack whose names carry no numbers), the
+    // default selection stands and the note says so; the user can still
+    // pick by hand.
+    function applyWantedEpisodes() {
+        if (!session || !session.wantedEpisodes.length) return;
+        const want = new Set(session.wantedEpisodes);
+        const matching = [];
+        session.files.forEach((f, idx) => {
+            const eps = Array.isArray(f.episodes) ? f.episodes : [];
+            if (eps.some(e => want.has(e))) matching.push(idx);
+        });
+        const label = session.wantedEpisodes.map(e => episodeLabel([e])).join(', ');
+        if (matching.length === 0) {
+            session.preselectNote = 'No file in this release matched ' + label
+                + '. Every file is selected; untick what you do not want.';
+            return;
+        }
+        session.wanted = new Set(matching.filter(i => !looksUnwanted(session.files[i].name)));
+        session.preselectNote = 'Selected ' + session.wanted.size + ' of ' + session.files.length
+            + ' files for ' + label + '. Tick more to take the rest of the release.';
+    }
+
     // ─── Session lifecycle ─────────────────────────────────────────
 
     function resetSession() {
@@ -173,8 +207,11 @@
         const banner = (session.blocklisted && !session.unblockAcked)
             ? renderBlocklistBanner()
             : '';
+        const note = session.preselectNote
+            ? `<div class="grab-picker-preselect form-hint">${escHtml(session.preselectNote)}</div>`
+            : '';
         const list = (session.view === 'tree') ? renderTreeView() : renderFlatView();
-        body.innerHTML = banner + list;
+        body.innerHTML = banner + note + list;
         attachRowHandlers();
         attachBlocklistHandlers();
         updateSelectionTotal();
@@ -216,11 +253,13 @@
             const base = f.name.split('/').pop() || f.name;
             const dir = f.name.substring(0, f.name.length - base.length).replace(/\/$/, '');
             const pathLine = dir ? `<div class="grab-picker-file-path">${escHtml(dir)}</div>` : '';
+            const ep = episodeLabel(f.episodes);
+            const epTag = ep ? `<span class="tag grab-picker-file-ep">${escHtml(ep)}</span>` : '';
             return `
                 <tr data-idx="${idx}" class="${rowCls}">
                     <td class="col-check"><input type="checkbox" data-role="file-check" data-idx="${idx}" ${checked}></td>
                     <td>
-                        <div class="grab-picker-file-name">${escHtml(base)}</div>
+                        <div class="grab-picker-file-name">${escHtml(base)}${epTag}</div>
                         ${pathLine}
                     </td>
                     <td class="col-size">${escHtml(formatBytes(f.size))}</td>
@@ -279,9 +318,11 @@
                 const checked = session.wanted.has(idx) ? 'checked' : '';
                 const rowCls = session.wanted.has(idx) ? '' : ' grab-picker-row-unwanted';
                 const size = session.files[idx].size;
+                const ep = episodeLabel(session.files[idx].episodes);
+                const epTag = ep ? `<span class="tag grab-picker-file-ep">${escHtml(ep)}</span>` : '';
                 html += `<div class="grab-picker-tree-file${rowCls}" data-idx="${idx}">
                     <input type="checkbox" data-role="file-check" data-idx="${idx}" ${checked}>
-                    <span class="grab-picker-file-name">${escHtml(f.name)}</span>
+                    <span class="grab-picker-file-name">${escHtml(f.name)}${epTag}</span>
                     <span class="col-size">${escHtml(formatBytes(size))}</span>
                 </div>`;
             }
@@ -336,6 +377,7 @@
     // ─── Toolbar actions (Level A convenience buttons, decision #11) ─
 
     function applyFilter(action) {
+        if (session) session.preselectNote = '';
         if (!session) return;
         switch (action) {
             case 'check-all':
@@ -414,6 +456,7 @@
                     for (let i = 0; i < session.files.length; i++) session.wanted.add(i);
                     const unwanted = computeDefaultUnwanted(session.files);
                     unwanted.forEach(i => session.wanted.delete(i));
+                    applyWantedEpisodes();
                     renderFileList();
                     return;
                 }
@@ -566,6 +609,13 @@
                 pollTimer: null,
                 heartbeatTimer: null,
                 onConfirm: typeof ctx.onConfirm === 'function' ? ctx.onConfirm : null,
+                // Episodes the caller is after (the Wanted page's batch
+                // grab): once the file list arrives, only their files
+                // start checked. See applyWantedEpisodes.
+                wantedEpisodes: Array.isArray(ctx.wantedEpisodes)
+                    ? ctx.wantedEpisodes.map(Number).filter(n => n > 0)
+                    : [],
+                preselectNote: '',
             };
             // Heartbeat immediately so a slow-metadata case doesn't
             // trip the TTL sweep before the first 30s interval fires.

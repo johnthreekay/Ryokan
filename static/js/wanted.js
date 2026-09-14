@@ -9,8 +9,12 @@
 // the table's Grab buttons come back carrying data-wanted-grab /
 // data-wanted-grab-batch for the delegated handlers here instead of
 // the series page's inline calls (those read series-page globals).
-// A grab posts to the series grab endpoints, a batch goes through the
-// file picker (grab_picker.js), and the list re-fetches afterwards.
+// The "Search for" dropdown is server-rendered (/wanted/search-menu):
+// batch releases, the whole wanted set in one search that leaves
+// batches out, or one episode. A grab posts to the series grab
+// endpoints; a batch goes through the file picker (grab_picker.js)
+// with the wanted episodes, so only their files start checked; the
+// list re-fetches afterwards.
 //
 // Document-scope delegated listeners, attached once per process
 // (window-flag guard): hx-boost re-executes this file on every visit
@@ -76,57 +80,117 @@
     // What the open modal is about. Re-set on every open; the modal
     // element itself is replaced by boosted navigation, so nothing is
     // cached on it.
-    var isearch = { anilistId: 0, seriesId: null, title: '' };
+    // What the open modal is about: the series, and every episode the
+    // row wants (read off the menu once it arrives), which the batch
+    // grab hands to the file picker.
+    var isearch = { anilistId: 0, seriesId: null, title: '', episodes: [] };
 
     function isearchModal() { return document.getElementById('wanted-isearch-modal'); }
 
+    function loadingHtml(message) {
+        return '<div class="isearch-loading"><span class="isearch-loading-spinner" aria-hidden="true"></span><span>'
+            + message + '</span></div>';
+    }
+
+    function emptyHtml(message, hint) {
+        return '<div class="isearch-empty"><p>' + message + '</p>'
+            + (hint ? '<p class="isearch-empty-hint">' + hint + '</p>' : '') + '</div>';
+    }
+
     function openWantedInteractive(btn) {
         var modal = isearchModal();
-        var select = document.getElementById('wanted-isearch-episode');
+        var pick = document.getElementById('wanted-isearch-pick');
         var titleEl = document.getElementById('wanted-isearch-title');
-        if (!modal || !select || !titleEl) return;
+        var body = document.getElementById('wanted-isearch-body');
+        if (!modal || !pick || !titleEl || !body) return;
         isearch.anilistId = parseInt(btn.getAttribute('data-wanted-isearch'), 10);
         isearch.seriesId = parseInt(btn.getAttribute('data-series-id'), 10) || null;
         isearch.title = btn.getAttribute('data-wanted-title') || '';
-        var eps = (btn.getAttribute('data-wanted-episodes') || '')
-            .split(',')
-            .map(function (v) { return parseInt(v, 10); })
-            .filter(function (n) { return n > 0; });
+        isearch.episodes = [];
         titleEl.textContent = 'Interactive search: ' + isearch.title;
-        select.innerHTML = '';
-        eps.forEach(function (n) {
-            var opt = document.createElement('option');
-            opt.value = String(n);
-            opt.textContent = 'Episode ' + n;
-            select.appendChild(opt);
-        });
-        var batch = document.createElement('option');
-        batch.value = 'batch';
-        batch.textContent = 'Batch releases';
-        select.appendChild(batch);
-        select.value = eps.length ? String(eps[0]) : 'batch';
+        pick.innerHTML = '';
+        body.innerHTML = loadingHtml('Loading');
         modal.style.display = 'flex';
-        loadWantedInteractive();
+        var url = '/wanted/search-menu?series_id=' + encodeURIComponent(isearch.seriesId || 0)
+            + '&tab=' + encodeURIComponent(activeTab());
+        // The menu is server-rendered; its default item names the first
+        // search to run (the whole wanted set, or the one episode).
+        window.htmx.ajax('GET', url, { target: '#wanted-isearch-pick', swap: 'innerHTML' })
+            .then(function () { startFromMenu(pick, body); })
+            .catch(function () { startFromMenu(pick, body); });
     }
 
-    function loadWantedInteractive() {
-        var select = document.getElementById('wanted-isearch-episode');
+    function startFromMenu(pick, body) {
+        var items = pick.querySelectorAll('[data-isearch-choice="episode"]');
+        isearch.episodes = Array.from(items)
+            .map(function (b) { return parseInt(b.getAttribute('data-episode'), 10); })
+            .filter(function (n) { return n > 0; });
+        var def = pick.querySelector('[data-default]') || pick.querySelector('.dropdown-item');
+        if (def) {
+            pickWantedChoice(def);
+        } else {
+            body.innerHTML = emptyHtml('Nothing is wanted for this series on this tab.', 'Reload the page to refresh the list.');
+        }
+    }
+
+    // A menu item was picked: mark it, show its label on the trigger,
+    // and run the search it names.
+    function pickWantedChoice(item) {
+        var pick = document.getElementById('wanted-isearch-pick');
+        if (pick) {
+            pick.querySelectorAll('.dropdown-item').forEach(function (b) { b.classList.toggle('active', b === item); });
+            var label = pick.querySelector('[data-dropdown-label]');
+            if (label) label.textContent = item.getAttribute('data-label') || item.textContent.trim();
+        }
+        closeDropdowns();
+        var kind = item.getAttribute('data-isearch-choice');
+        var base = '/api/series/' + isearch.anilistId;
+        if (kind === 'batch') {
+            loadWantedSearch(base + '/interactive-search-batch?from=wanted', 'Searching indexers for batch releases');
+        } else if (kind === 'episodes') {
+            var eps = item.getAttribute('data-episodes') || '';
+            loadWantedSearch(base + '/interactive-search-episodes?from=wanted&episodes=' + encodeURIComponent(eps),
+                'Searching indexers for ' + (item.getAttribute('data-label') || 'the wanted episodes').toLowerCase());
+        } else {
+            var ep = item.getAttribute('data-episode');
+            loadWantedSearch(base + '/interactive-search/' + ep + '?from=wanted', 'Searching indexers for episode ' + ep);
+        }
+    }
+
+    function loadWantedSearch(url, message) {
         var body = document.getElementById('wanted-isearch-body');
-        if (!select || !body) return;
-        var choice = select.value;
-        var isBatch = choice === 'batch';
-        body.innerHTML = '<div class="isearch-loading"><span class="isearch-loading-spinner" aria-hidden="true"></span><span>'
-            + (isBatch ? 'Searching indexers for batch releases' : 'Searching indexers for episode ' + choice)
-            + '</span></div>';
-        var url = isBatch
-            ? '/api/series/' + isearch.anilistId + '/interactive-search-batch?from=wanted'
-            : '/api/series/' + isearch.anilistId + '/interactive-search/' + choice + '?from=wanted';
+        if (!body) return;
+        body.innerHTML = loadingHtml(message);
         // htmx.ajax sends HX-Request, so the handler answers with the
         // rendered table partial and htmx swaps it in.
         window.htmx.ajax('GET', url, { target: '#wanted-isearch-body', swap: 'innerHTML' })
             .catch(function () {
-                body.innerHTML = '<div class="isearch-empty"><p>Search failed.</p><p class="isearch-empty-hint">Check System &rarr; Logs for the indexer error.</p></div>';
+                body.innerHTML = emptyHtml('Search failed.', 'Check System &rarr; Logs for the indexer error.');
             });
+    }
+
+    // ── Dropdown (the server-rendered menu recipe) ────────────────
+    function closeDropdowns() {
+        document.querySelectorAll('.dropdown-menu:not([hidden])').forEach(function (menu) {
+            menu.hidden = true;
+            var dd = menu.closest('[data-dropdown]');
+            var trigger = dd && dd.querySelector('[data-dropdown-trigger]');
+            if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    function toggleDropdown(dd) {
+        var menu = dd && dd.querySelector('.dropdown-menu');
+        var trigger = dd && dd.querySelector('[data-dropdown-trigger]');
+        if (!menu) return;
+        var wasOpen = !menu.hidden;
+        closeDropdowns();
+        if (!wasOpen) {
+            menu.hidden = false;
+            if (trigger) trigger.setAttribute('aria-expanded', 'true');
+            var active = menu.querySelector('.dropdown-item.active');
+            if (active && typeof active.scrollIntoView === 'function') active.scrollIntoView({ block: 'nearest' });
+        }
     }
 
     function closeWantedInteractive() {
@@ -154,8 +218,13 @@
         var url = result.magnet || result.torrent || '';
         var isBatch = epNum === null || !!result.is_batch;
         var previewMode = window.GRAB_PREVIEW_MODE || 'batches_only';
+        // The picker is where "only the wanted episodes" happens, so a
+        // batch from this page opens it even when the grab preview is
+        // set to never; the wanted files start checked, so confirming
+        // is one click.
+        var smartBatch = isBatch && isearch.episodes.length > 0;
         if (isBatch
-            && previewMode !== 'never'
+            && (previewMode !== 'never' || smartBatch)
             && typeof window.openGrabPicker === 'function'
             && result.info_hash) {
             window.openGrabPicker(url, {
@@ -166,6 +235,8 @@
                 infoHash: result.info_hash || '',
                 seriesId: isearch.seriesId,
                 isBatch: true,
+                // Only the wanted episodes' files start checked.
+                wantedEpisodes: isearch.episodes,
                 onConfirm: function () {
                     closeWantedInteractive();
                     refreshWantedList();
@@ -228,6 +299,11 @@
         var isearchBtn = ev.target.closest('[data-wanted-isearch]');
         if (isearchBtn) { openWantedInteractive(isearchBtn); return; }
         if (ev.target.closest('[data-wanted-isearch-close]')) { closeWantedInteractive(); return; }
+        var trigger = ev.target.closest('[data-dropdown-trigger]');
+        if (trigger) { toggleDropdown(trigger.closest('[data-dropdown]')); return; }
+        var item = ev.target.closest('#wanted-isearch-pick .dropdown-item');
+        if (item) { pickWantedChoice(item); return; }
+        if (!ev.target.closest('[data-dropdown]')) closeDropdowns();
         var grab = ev.target.closest('[data-wanted-grab]');
         if (grab) { grabWantedResult(grab, parseInt(grab.getAttribute('data-wanted-grab'), 10)); return; }
         var grabBatch = ev.target.closest('[data-wanted-grab-batch]');
@@ -260,8 +336,6 @@
         } else if (target && target.classList && target.classList.contains('wanted-select') && !target.checked) {
             var master = document.getElementById('wanted-select-all');
             if (master) master.checked = false;
-        } else if (target && target.id === 'wanted-isearch-episode') {
-            loadWantedInteractive();
         }
     });
 
@@ -269,6 +343,7 @@
     // picker is open on top of it (grab_picker.js closes that one).
     document.addEventListener('keydown', function (ev) {
         if (ev.key !== 'Escape') return;
+        if (document.querySelector('.dropdown-menu:not([hidden])')) { closeDropdowns(); return; }
         var modal = isearchModal();
         if (!modal || modal.style.display === 'none') return;
         var picker = document.getElementById('grab-picker-modal');

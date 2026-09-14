@@ -361,3 +361,16 @@
     flex-wrap: wrap;
     justify-content: center;
 }
+
+/* The Wanted page's batch grab pre-selects the wanted episodes' files
+   and says so above the list; every file row shows the episode its
+   name parses to, so the selection can be checked at a glance. */
+.grab-picker-preselect {
+    margin: 12px 16px 0;
+}
+
+.grab-picker-file-ep {
+    margin-left: 8px;
+    font-family: var(--font-mono);
+    vertical-align: middle;
+}

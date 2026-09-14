@@ -299,6 +299,9 @@
 
 .interactive-search-table .col-score { width: 55px; text-align: center; }
 
+/* Episode-set flow only: which wanted episode(s) the row holds. */
+.interactive-search-table .col-episode { width: 96px; white-space: nowrap; }
+
 .interactive-search-table .col-grab { width: 70px; text-align: right; }
 
 .interactive-search-table .col-size { width: 80px; white-space: nowrap; }

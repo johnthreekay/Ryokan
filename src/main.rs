@@ -56,6 +56,7 @@ use services::{
         handlers::library::search::auto_search_episode,
         handlers::library::search::search_batch_releases,
         handlers::library::search::interactive_search_episode,
+        handlers::library::search::interactive_search_episodes,
         handlers::library::search::interactive_search_batches,
         handlers::library::search::grab_interactive_result,
         handlers::library::search::grab_batch_result,
@@ -862,6 +863,10 @@ async fn main() {
             get(handlers::library::search::interactive_search_batches),
         )
         .route(
+            "/api/series/{anilist_id}/interactive-search-episodes",
+            get(handlers::library::search::interactive_search_episodes),
+        )
+        .route(
             "/api/series/{anilist_id}/grab/{episode_number}",
             post(handlers::library::search::grab_interactive_result),
         )
@@ -1267,6 +1272,7 @@ async fn main() {
         // separate JSON route.
         .route("/calendar", get(handlers::calendar::page))
         .route("/wanted", get(handlers::wanted::page))
+        .route("/wanted/search-menu", get(handlers::wanted::search_menu))
         .route("/api/wanted/search", post(handlers::wanted::search))
         .route("/api/logs/poll", get(handlers::system::api_logs_poll))
         .route("/api/logs/clear", post(handlers::system::api_logs_clear))

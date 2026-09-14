@@ -89,19 +89,7 @@ pub async fn commit_grab_and_expand(
         return None;
     }
 
-    // Derive episode numbers from the release title. `parse_release_numbers`
-    // handles single-episode (`... - 05 ...`), range (`01-12`), and
-    // absolute-numbered (`25-48` for JoJo P3 Egypt-hen) forms. If the
-    // title doesn't parse, fall back to an empty vec — post-processing
-    // still classifies imported files individually, and the series
-    // page's per-episode grab state backfills when `episode_tags` rows
-    // land via auto-expand / post-processing. Writing an empty slice
-    // matches the auto_search path's behavior for releases where the
-    // title parser returns nothing.
-    let mut ep_nums: Vec<i32> = auto_search::parse_release_numbers(release_title)
-        .into_iter()
-        .collect();
-    ep_nums.sort_unstable();
+    let ep_nums = episode_numbers_for_commit(release_title, &filenames);
 
     let grab_id = match grabbed_torrents::record_grab(
         &state.db,
@@ -162,6 +150,37 @@ pub async fn commit_grab_and_expand(
         }
     };
 
+    // The grab's own episodes read as downloading from here on. The
+    // direct grab endpoints write these rows themselves; this path
+    // (picker confirm, walkaway auto-commit) used to leave the parent
+    // untagged, so the Wanted page kept listing a picked episode as
+    // missing until the import landed. Auto-expand only backfills what
+    // the grab did not already claim, so nothing is written twice.
+    let classification = crate::services::source::classify_release_sync(release_title, None);
+    let release_group = release_group_from_metadata(&row.release_metadata_json);
+    for ep in &ep_nums {
+        if let Err(e) = crate::models::episode_tags::record_grab(
+            &state.db,
+            series_id,
+            *ep,
+            &classification,
+            release_title,
+            &release_group,
+            0,
+            is_batch,
+        )
+        .await
+        {
+            logger::warn(
+                &state.db,
+                LogCategory::Grab,
+                &format!("failed to record grabbed tag for episode {ep}"),
+                &format!("{} ({})", e, row.info_hash),
+            )
+            .await;
+        }
+    }
+
     // Issue #118 — fire `NotificationEvent::Grabbed` for this commit.
     // No-op early-return when no providers are configured (the
     // foundation PR ships an always-empty cache); subsequent provider
@@ -211,6 +230,46 @@ pub async fn commit_grab_and_expand(
     }
 
     Some(grab_id)
+}
+
+/// The episodes a confirmed grab is for: the selected files' own
+/// numbers when any of them parse (a picker grab that kept two files
+/// of a twelve-episode batch is a grab for those two, so the Wanted
+/// page and the series page show only those as downloading and the
+/// import claims only those), else the release title's numbers (a
+/// single-file release, or a pack whose files carry no numbers).
+/// `parse_release_numbers` handles single (`... - 05 ...`), range
+/// (`01-12`), and absolute-numbered (`25-48`) titles; an unparseable
+/// title yields an empty list, which post-processing tolerates.
+pub(crate) fn episode_numbers_for_commit(release_title: &str, filenames: &[String]) -> Vec<i32> {
+    let mut eps: Vec<i32> = filenames
+        .iter()
+        .filter(|n| auto_search::is_media_filename(n))
+        .filter_map(|n| {
+            let base = n.rsplit('/').next().unwrap_or(n).to_ascii_lowercase();
+            crate::services::media::parse_episode_span(&base)
+        })
+        .filter(|span| !span.special)
+        .flat_map(|span| span.episodes())
+        .filter(|e| *e > 0)
+        .collect();
+    if eps.is_empty() {
+        eps = auto_search::parse_release_numbers(release_title)
+            .into_iter()
+            .collect();
+    }
+    eps.sort_unstable();
+    eps.dedup();
+    eps
+}
+
+/// The `group` the picker stored in the pending row's release
+/// metadata, empty when absent.
+fn release_group_from_metadata(release_metadata_json: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(release_metadata_json)
+        .ok()
+        .and_then(|v| v.get("group").and_then(|g| g.as_str()).map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// Resolve the parent series's AL detail and invoke `expand_from_files`.
@@ -402,6 +461,42 @@ mod tests {
         assert_eq!(got_hash, "abcdef0001");
         assert_eq!(got_series, series_id);
         assert_eq!(got_eps, "[1]", "parsed episode numbers should round-trip");
+
+        // The grab's episode reads as downloading from now on.
+        let state_row: Option<String> = sqlx::query_scalar(
+            "SELECT state FROM episode_quality_tags WHERE series_id = ? AND episode_number = 1",
+        )
+        .bind(series_id)
+        .fetch_optional(&db)
+        .await
+        .unwrap();
+        assert_eq!(state_row.as_deref(), Some("grabbed"));
+    }
+
+    #[test]
+    fn commit_episodes_come_from_the_selected_files_when_they_parse() {
+        let title = "[Group] Show - 01-12 (BD 1080p) [Batch]";
+        let picked = vec![
+            "Show/[Group] Show - 02 (BD 1080p).mkv".to_string(),
+            "Show/[Group] Show - 03 (BD 1080p).mkv".to_string(),
+            "Show/Extras/[Group] Show - NCOP1.mkv".to_string(),
+            "Show/readme.txt".to_string(),
+        ];
+        assert_eq!(episode_numbers_for_commit(title, &picked), vec![2, 3]);
+        // No selected file parses: the title's range stands.
+        let unnumbered = vec!["Show/movie.mkv".to_string()];
+        assert_eq!(
+            episode_numbers_for_commit(title, &unnumbered),
+            (1..=12).collect::<Vec<i32>>()
+        );
+        // A single-file release: file and title agree.
+        assert_eq!(
+            episode_numbers_for_commit(
+                "[Group] Show - 05 (1080p).mkv",
+                &["[Group] Show - 05 (1080p).mkv".to_string()]
+            ),
+            vec![5]
+        );
     }
 
     #[tokio::test]

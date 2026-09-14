@@ -68,16 +68,6 @@ impl WantedRow {
     pub fn count(&self) -> usize {
         self.slots.len()
     }
-
-    /// `5,6,7`: the row's episode numbers for the Interactive button,
-    /// which wanted.js turns into the modal's episode select.
-    pub fn episode_csv(&self) -> String {
-        self.slots
-            .iter()
-            .map(|s| s.episode.to_string())
-            .collect::<Vec<_>>()
-            .join(",")
-    }
 }
 
 /// Missing rows from the library-wide inputs. Pure, so the rule is
@@ -237,6 +227,137 @@ pub struct WantedQuery {
     pub tab: Option<String>,
 }
 
+/// `missing` unless the query says `cutoff`.
+fn tab_name(tab: Option<&str>) -> String {
+    match tab {
+        Some("cutoff") => "cutoff".to_string(),
+        _ => "missing".to_string(),
+    }
+}
+
+/// The rows for one tab over the given series (the whole library for
+/// the page, one series for the search menu): scan their folders, then
+/// apply the tab's rule.
+async fn rows_for(
+    state: &AppState,
+    cfg: &config::Config,
+    library: &[series::Series],
+    tab: &str,
+) -> Vec<WantedRow> {
+    let folders: Vec<(i64, String)> = library
+        .iter()
+        .filter(|s| !s.folder_name.is_empty())
+        .map(|s| (s.id, s.folder_name.clone()))
+        .collect();
+    let disk = media::scan_series_folders_batch(&cfg.media_root, folders).await;
+    if tab == "cutoff" {
+        build_cutoff_rows(state, cfg, library, &disk).await
+    } else {
+        let (aired, tag_rows, monitored) = tokio::join!(
+            local_metadata::aired_episode_counts(&state.db),
+            episode_tags::active_states_all_series(&state.db),
+            monitoring::get_monitored_all_series(&state.db),
+        );
+        build_missing_rows(
+            library,
+            &disk,
+            &tag_rows.unwrap_or_default(),
+            &aired.unwrap_or_default(),
+            &monitored.unwrap_or_default(),
+            &cfg.title_language,
+        )
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SearchMenuQuery {
+    pub series_id: i64,
+    pub tab: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "partials/wanted/isearch_menu.html")]
+struct WantedSearchMenu {
+    episodes: Vec<i32>,
+    episodes_csv: String,
+    /// `Episodes 3-11` / `Episodes 3, 5, 7` / `All 9 wanted episodes`.
+    range_label: String,
+    /// `episodes` when more than one is wanted, else `episode`.
+    default_choice: &'static str,
+    default_label: String,
+}
+
+/// `Episode 5` for one, `Episodes 3-11` for a run, `Episodes 3, 5, 7`
+/// for a few, else `All 9 wanted episodes`.
+fn wanted_range_label(episodes: &[i32]) -> String {
+    match episodes {
+        [] => String::new(),
+        [one] => format!("Episode {one}"),
+        [first, .., last] if (last - first) as usize == episodes.len() - 1 => {
+            format!("Episodes {first}-{last}")
+        }
+        few if few.len() <= 4 => format!(
+            "Episodes {}",
+            few.iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        many => format!("All {} wanted episodes", many.len()),
+    }
+}
+
+/// `GET /wanted/search-menu?series_id=&tab=`: the interactive search
+/// modal's "Search for" dropdown for one series, rendered here rather
+/// than built from `<option>`s so it wears Ryokan's own control recipe
+/// and scrolls inside itself on a phone. Batch releases first, then the
+/// whole wanted set as one episode-set search, then each episode. The
+/// default pick is the set (the one episode when only one is wanted),
+/// so batches show up only when asked for.
+pub async fn search_menu(
+    State(state): State<AppState>,
+    Query(q): Query<SearchMenuQuery>,
+) -> Result<Html<String>, (StatusCode, String)> {
+    let tab = tab_name(q.tab.as_deref());
+    let cfg = config::get_config(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let series = series::get_by_id(&state.db, q.series_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Series not found".to_string()))?;
+    let rows = rows_for(&state, &cfg, std::slice::from_ref(&series), &tab).await;
+    let Some(row) = rows.into_iter().next() else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "Nothing is wanted for this series on this tab.".to_string(),
+        ));
+    };
+    let episodes: Vec<i32> = row.slots.iter().map(|s| s.episode).collect();
+    let range_label = wanted_range_label(&episodes);
+    let default_choice = if episodes.len() > 1 {
+        "episodes"
+    } else {
+        "episode"
+    };
+    let tmpl = WantedSearchMenu {
+        episodes_csv: episodes
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+        episodes,
+        default_label: range_label.clone(),
+        range_label,
+        default_choice,
+    };
+    tmpl.render()
+        .map(Html)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
 #[derive(Template)]
 #[template(path = "wanted.html")]
 struct WantedPageTemplate {
@@ -266,10 +387,7 @@ pub async fn page(
     HxBoosted(is_boosted): HxBoosted,
     Query(q): Query<WantedQuery>,
 ) -> Html<String> {
-    let tab = match q.tab.as_deref() {
-        Some("cutoff") => "cutoff".to_string(),
-        _ => "missing".to_string(),
-    };
+    let tab = tab_name(q.tab.as_deref());
     let cfg = config::get_config(&state.db)
         .await
         .ok()
@@ -277,29 +395,7 @@ pub async fn page(
         .unwrap_or_default();
     let library = series::get_all(&state.db).await.unwrap_or_default();
     let library_is_empty = library.is_empty();
-    let folders: Vec<(i64, String)> = library
-        .iter()
-        .filter(|s| !s.folder_name.is_empty())
-        .map(|s| (s.id, s.folder_name.clone()))
-        .collect();
-    let disk = media::scan_series_folders_batch(&cfg.media_root, folders).await;
-    let rows = if tab == "cutoff" {
-        build_cutoff_rows(&state, &cfg, &library, &disk).await
-    } else {
-        let (aired, tag_rows, monitored) = tokio::join!(
-            local_metadata::aired_episode_counts(&state.db),
-            episode_tags::active_states_all_series(&state.db),
-            monitoring::get_monitored_all_series(&state.db),
-        );
-        build_missing_rows(
-            &library,
-            &disk,
-            &tag_rows.unwrap_or_default(),
-            &aired.unwrap_or_default(),
-            &monitored.unwrap_or_default(),
-            &cfg.title_language,
-        )
-    };
+    let rows = rows_for(&state, &cfg, &library, &tab).await;
     if is_htmx && !is_boosted {
         let partial = WantedListPartial {
             tab,
@@ -655,10 +751,6 @@ mod tests {
         );
         assert!(partial.contains("data-wanted-isearch=\"1\""), "{partial}");
         assert!(
-            partial.contains("data-wanted-episodes=\"1,2,3\""),
-            "{partial}"
-        );
-        assert!(
             partial.contains(">Auto search<") && partial.contains(">Interactive<"),
             "{partial}"
         );
@@ -673,6 +765,91 @@ mod tests {
         .await
         .0;
         assert!(cutoff.contains("Nothing is below the cutoff"), "{cutoff}");
+    }
+
+    #[tokio::test]
+    async fn search_menu_lists_batch_first_then_the_set_then_each_episode() {
+        use crate::test_support::{build_test_app_state, in_memory_pool, seed_series};
+        let db = in_memory_pool().await;
+        let id = seed_series(&db, 1, "Show").await;
+        sqlx::query("UPDATE series SET monitor_mode = 'all', episodes = 3 WHERE id = ?")
+            .bind(id)
+            .execute(&db)
+            .await
+            .unwrap();
+        for ep in 1..=3 {
+            sqlx::query(
+                "INSERT INTO episode_monitor_state (series_id, episode_number, monitored) VALUES (?, ?, 1)",
+            )
+            .bind(id)
+            .bind(ep)
+            .execute(&db)
+            .await
+            .unwrap();
+        }
+        let state = build_test_app_state(db.clone(), None);
+        let html = search_menu(
+            State(state.clone()),
+            Query(SearchMenuQuery {
+                series_id: id,
+                tab: None,
+            }),
+        )
+        .await
+        .expect("menu renders")
+        .0;
+        // The trigger repeats the default label above the list, so
+        // order the items by their attributes rather than their text.
+        let batch = html
+            .find("data-isearch-choice=\"batch\"")
+            .expect("batch entry");
+        let set = html
+            .find("data-isearch-choice=\"episodes\"")
+            .expect("set entry");
+        let single = html.find("data-episode=\"3\"").expect("single entry");
+        assert!(html.contains("Episodes 1-3"), "{html}");
+        assert!(
+            batch < set && set < single,
+            "batch, then the set, then episodes\n{html}"
+        );
+        assert!(html.contains("data-episodes=\"1,2,3\""), "{html}");
+        assert!(
+            html.contains("data-isearch-choice=\"episodes\"") && html.contains("data-default"),
+            "the set is the default pick\n{html}"
+        );
+        for ep in 1..=3 {
+            assert!(html.contains(&format!("data-episode=\"{ep}\"")), "{html}");
+        }
+        // An unknown series is a 404, as is one with nothing wanted.
+        let missing = search_menu(
+            State(state.clone()),
+            Query(SearchMenuQuery {
+                series_id: 999,
+                tab: None,
+            }),
+        )
+        .await;
+        assert_eq!(missing.err().map(|e| e.0), Some(StatusCode::NOT_FOUND));
+        let nothing = search_menu(
+            State(state),
+            Query(SearchMenuQuery {
+                series_id: id,
+                tab: Some("cutoff".to_string()),
+            }),
+        )
+        .await;
+        assert_eq!(nothing.err().map(|e| e.0), Some(StatusCode::NOT_FOUND));
+    }
+
+    #[test]
+    fn wanted_range_label_shapes() {
+        assert_eq!(wanted_range_label(&[5]), "Episode 5");
+        assert_eq!(wanted_range_label(&[3, 4, 5]), "Episodes 3-5");
+        assert_eq!(wanted_range_label(&[3, 5, 7]), "Episodes 3, 5, 7");
+        assert_eq!(
+            wanted_range_label(&[1, 3, 5, 7, 9]),
+            "All 5 wanted episodes"
+        );
     }
 
     #[tokio::test]

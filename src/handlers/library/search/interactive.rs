@@ -49,6 +49,12 @@ struct InteractiveSearchRow {
     /// module-scope `_isearchResults[idx]` array, so the rendered DOM
     /// is the source of truth for grab metadata.
     data_result_json: String,
+    /// The episode this row's Grab posts for: the partial's episode in
+    /// the per-episode flow, the row's own first wanted episode in the
+    /// episode-set flow, `None` in the batch flow.
+    grab_episode: Option<i32>,
+    /// `E03` / `E05-E06` in the episode-set flow, empty elsewhere.
+    episode_label: String,
 }
 
 /// Which page asked for the partial. The Wanted page renders the same
@@ -74,12 +80,6 @@ impl InteractiveOrigin {
 #[template(path = "partials/series/interactive_search_table.html")]
 pub(super) struct InteractiveSearchTablePartial {
     rows: Vec<InteractiveSearchRow>,
-    /// `Some(N)` for per-episode flow → Grab button calls
-    /// `grabInteractiveResult(N, this)`. `None` for the batch flow →
-    /// `grabInteractiveBatchResult(this)`. The two flows share this
-    /// partial because the table itself is identical; only the click
-    /// target differs.
-    grab_episode_number: Option<i32>,
     /// Rendered when `rows.is_empty()`. Per-episode shows "No results
     /// found."; batch shows "No batch releases found." — matches the
     /// pre-migration JS copy verbatim.
@@ -91,6 +91,8 @@ pub(super) struct InteractiveSearchTablePartial {
     /// Wanted-page rendering: data attributes on the Grab buttons, no
     /// inline handlers. See `InteractiveOrigin`.
     wanted: bool,
+    /// Episode-set flow: render the Episode column.
+    show_episode: bool,
 }
 
 fn build_interactive_search_partial(
@@ -119,6 +121,8 @@ fn build_interactive_search_partial(
                 score_class,
                 indexer_display,
                 data_result_json,
+                grab_episode: grab_episode_number,
+                episode_label: String::new(),
             }
         })
         .collect();
@@ -135,10 +139,55 @@ fn build_interactive_search_partial(
     };
     InteractiveSearchTablePartial {
         rows,
-        grab_episode_number,
         empty_message,
         empty_hint,
         wanted,
+        show_episode: false,
+    }
+}
+
+/// The episode-set flow's table: one row per release, an Episode
+/// column naming the wanted episodes it holds, and a Grab that posts
+/// for the first of them (a multi-episode file records the run it
+/// names, as the per-episode grab does).
+fn build_episode_set_partial(
+    hits: Vec<auto_search::EpisodeSetHit>,
+    wanted: bool,
+) -> InteractiveSearchTablePartial {
+    let rows = hits
+        .into_iter()
+        .map(|hit| {
+            let mut row = build_interactive_search_partial(vec![hit.result], None, wanted)
+                .rows
+                .pop()
+                .expect("one result in, one row out");
+            row.episode_label = episode_range_label(&hit.episodes);
+            row.grab_episode = hit.episodes.first().copied();
+            row
+        })
+        .collect();
+    InteractiveSearchTablePartial {
+        rows,
+        empty_message: "No single-episode releases found.",
+        empty_hint: "Batch releases are left out of this list on purpose. Pick Batch releases at the top to look for a season pack, or search one episode at a time.",
+        wanted,
+        show_episode: true,
+    }
+}
+
+/// `E03` for one episode, `E03-E05` for a run, `E03, E07` otherwise.
+fn episode_range_label(episodes: &[i32]) -> String {
+    match episodes {
+        [] => String::new(),
+        [one] => format!("E{one:02}"),
+        [first, .., last] if (last - first) as usize == episodes.len() - 1 => {
+            format!("E{first:02}-E{last:02}")
+        }
+        many => many
+            .iter()
+            .map(|e| format!("E{e:02}"))
+            .collect::<Vec<_>>()
+            .join(", "),
     }
 }
 
@@ -166,6 +215,109 @@ pub(super) mod test_helpers {
         wanted: bool,
     ) -> super::InteractiveSearchTablePartial {
         super::build_interactive_search_partial(results, grab_episode_number, wanted)
+    }
+
+    pub fn build_episode_set_partial_for_test(
+        hits: Vec<crate::services::auto_search::EpisodeSetHit>,
+        wanted: bool,
+    ) -> super::InteractiveSearchTablePartial {
+        super::build_episode_set_partial(hits, wanted)
+    }
+
+    pub fn episode_range_label(episodes: &[i32]) -> String {
+        super::episode_range_label(episodes)
+    }
+}
+
+/// `?episodes=3,4,5` for the episode-set search.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct EpisodeSetQuery {
+    /// Comma-separated episode numbers; anything unparseable or not
+    /// positive is dropped.
+    #[serde(default)]
+    pub episodes: String,
+    /// See `InteractiveOrigin::from`.
+    #[serde(default)]
+    pub from: Option<String>,
+}
+
+impl EpisodeSetQuery {
+    fn episode_list(&self) -> Vec<i32> {
+        let mut eps: Vec<i32> = self
+            .episodes
+            .split(',')
+            .filter_map(|s| s.trim().parse::<i32>().ok())
+            .filter(|e| *e > 0)
+            .collect();
+        eps.sort_unstable();
+        eps.dedup();
+        eps
+    }
+}
+
+/// Interactive search for several episodes at once: every release that
+/// is not a batch and names one of the episodes, from one series-level
+/// sweep. The Wanted page's "Episodes 3-11" entry.
+#[utoipa::path(
+    get,
+    path = "/api/series/{anilist_id}/interactive-search-episodes",
+    tag = "Library",
+    summary = "Interactive search for a set of episodes",
+    description = "One series-level search, filtered to releases that are not batches and whose title names one of the given episodes. Ordered by episode, then score.",
+    params(
+        ("anilist_id" = i64, Path, description = "AniList ID or internal series ID"),
+        ("episodes" = String, Query, description = "Comma-separated episode numbers, e.g. `3,4,5`"),
+        ("from" = Option<String>, Query, description = "Set to `wanted` by the Wanted page; the HTMX partial then carries data attributes for its delegated Grab handlers"),
+    ),
+    responses(
+        (status = 200, description = "Search results", body = Vec<auto_search::EpisodeSetHit>),
+        (status = 400, description = "No usable episode numbers"),
+        (status = 502, description = "Metadata fetch failed"),
+    ),
+)]
+pub async fn interactive_search_episodes(
+    State(state): State<AppState>,
+    HxRequest(is_htmx): HxRequest,
+    Query(q): Query<EpisodeSetQuery>,
+    Path(request_id): Path<i64>,
+) -> Result<Response, (StatusCode, String)> {
+    let episodes = q.episode_list();
+    if episodes.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No episode numbers to search for".to_string(),
+        ));
+    }
+    let wanted = q.from.as_deref() == Some("wanted");
+
+    let (_, _, detail) = resolve_series_context(&state.db, request_id)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
+
+    let cfg = config::get_config(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .unwrap_or_default();
+
+    let cfs = state.custom_formats.read().await.clone();
+
+    let hits = auto_search::find_all_for_episodes(
+        &state.db,
+        &detail,
+        &cfg,
+        &episodes,
+        &cfs,
+        &state.indexers,
+    )
+    .await;
+
+    if is_htmx {
+        let html = build_episode_set_partial(hits, wanted)
+            .render()
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        Ok(Html(html).into_response())
+    } else {
+        Ok(Json(hits).into_response())
     }
 }
 

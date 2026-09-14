@@ -113,6 +113,25 @@ pub struct GrabPreviewStatus {
 pub struct PreviewFile {
     pub name: String,
     pub size: i64,
+    /// The episodes the file name parses to (`Show - 05.mkv` is `[5]`,
+    /// `05-06` is `[5, 6]`), empty for extras, specials, and non-media
+    /// files. Filled when the list is served, so the picker can
+    /// pre-select the files a caller wants: the Wanted page's batch
+    /// grab keeps only the missing episodes.
+    #[serde(default)]
+    pub episodes: Vec<i32>,
+}
+
+/// The episodes a torrent file name parses to. See `PreviewFile::episodes`.
+pub(crate) fn file_episodes(name: &str) -> Vec<i32> {
+    if !crate::services::auto_search::is_media_filename(name) {
+        return Vec::new();
+    }
+    let base = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
+    match crate::services::media::parse_episode_span(&base) {
+        Some(span) if !span.special => span.episodes().filter(|e| *e > 0).collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// POST body for `/api/grab/confirm`.
@@ -389,6 +408,7 @@ pub async fn grab_preview(
             .map(|f| PreviewFile {
                 name: f.name,
                 size: f.size,
+                episodes: Vec::new(),
             })
             .collect();
         let json = match serde_json::to_string(&preview_files) {
@@ -507,7 +527,11 @@ pub async fn grab_preview_status(
         }));
     }
 
-    let file_list: Vec<PreviewFile> = serde_json::from_str(&row.file_list_json).unwrap_or_default();
+    let mut file_list: Vec<PreviewFile> =
+        serde_json::from_str(&row.file_list_json).unwrap_or_default();
+    for f in &mut file_list {
+        f.episodes = file_episodes(&f.name);
+    }
     Ok(Json(GrabPreviewStatus {
         preview_id,
         status: "ready".to_string(),
@@ -897,6 +921,7 @@ mod tests {
         let files = vec![PreviewFile {
             name: "episode_1.mkv".into(),
             size: 8192,
+            episodes: Vec::new(),
         }];
         pending_grabs::set_file_list(&db, "pid-1", &serde_json::to_string(&files).unwrap())
             .await
@@ -1467,5 +1492,26 @@ mod tests {
                 .unwrap();
         assert_eq!(state, "replaced");
         assert_eq!(replaced_by, Some(99999));
+    }
+}
+
+#[cfg(test)]
+mod file_episode_tests {
+    use super::file_episodes;
+
+    #[test]
+    fn media_files_parse_extras_and_junk_do_not() {
+        assert_eq!(file_episodes("[Group] Show - 02 (1080p).mkv"), vec![2]);
+        assert_eq!(file_episodes("Show/Season 1/Show - S01E03.mkv"), vec![3]);
+        assert_eq!(
+            file_episodes("[Group] Show - 05-06 (1080p).mkv"),
+            vec![5, 6]
+        );
+        assert!(file_episodes("[Group] Show - NCOP1.mkv").is_empty());
+        assert!(
+            file_episodes("[Group] Show - OVA 01.mkv").is_empty(),
+            "a special is not an episode slot"
+        );
+        assert!(file_episodes("readme - 01.txt").is_empty());
     }
 }

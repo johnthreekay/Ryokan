@@ -18,6 +18,7 @@
     <thead>
         <tr>
             <th class="col-score">Score</th>
+            {% if show_episode %}<th class="col-episode">Episode</th>{% endif %}
             <th>Release</th>
             <th class="col-indexer">Indexer</th>
             <th>Group</th>
@@ -51,6 +52,7 @@
                     </div>
                 </details>
             </td>
+            {% if show_episode %}<td class="col-episode"><span class="tag">{{ r.episode_label }}</span></td>{% endif %}
             <td>
                 <a class="isearch-release-link" href="{{ r.result.link }}" target="_blank" rel="noopener">{{ r.result.title }}</a>
                 {% if r.result.is_batch %}<span class="tag tag-batch" style="margin-left:4px">batch</span>{% endif %}
@@ -64,17 +66,20 @@
                 <span class="seed-count">{{ r.result.seeders }}</span><span class="peer-sep">/</span><span class="leech-count">{{ r.result.leechers }}</span>
             </td>
             <td class="col-grab">
+                {# `r.grab_episode` is the partial's episode in the
+                   per-episode flow and the row's own first episode in
+                   the episode-set flow; None is the batch flow. #}
                 {% if wanted %}
                 {# The Wanted page (?from=wanted): no inline handler, its
                    wanted.js delegates on these attributes. The series
                    page's functions read series-page globals. #}
-                {% if let Some(ep) = grab_episode_number %}
+                {% if let Some(ep) = r.grab_episode %}
                 <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" data-wanted-grab="{{ ep }}">Grab</button>
                 {% else %}
                 <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" data-wanted-grab-batch="1">Grab</button>
                 {% endif %}
                 {% else %}
-                {% if let Some(ep) = grab_episode_number %}
+                {% if let Some(ep) = r.grab_episode %}
                 <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" onclick="grabInteractiveResult({{ ep }}, this)">Grab</button>
                 {% else %}
                 <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" onclick="grabInteractiveBatchResult(this)">Grab</button>

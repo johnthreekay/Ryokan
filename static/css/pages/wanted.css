@@ -118,8 +118,9 @@
     flex-shrink: 0;
 }
 
-/* Interactive search modal header: title plus the episode select
-   (the toolbar field recipe) on one line, wrapping on a phone. */
+/* Interactive search modal header: title plus the "Search for"
+   dropdown (the server-rendered menu) on one line, wrapping on a
+   phone. */
 .wanted-isearch-heading {
     display: flex;
     align-items: center;

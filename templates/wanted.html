@@ -50,17 +50,19 @@
 {# Interactive search modal: the series page's #isearch-modal shape,
    fed by the same endpoints with ?from=wanted so the Grab buttons
    come back carrying data attributes for wanted.js instead of the
-   series page's inline handlers. The select swaps the table between
-   the row's wanted episodes and the batch search. #}
+   series page's inline handlers. The "Search for" dropdown is the
+   server-rendered menu from /wanted/search-menu: batch releases, the
+   whole wanted set in one search (no batches), or one episode. #}
 <div class="modal-backdrop" id="wanted-isearch-modal" style="display:none">
     <div class="modal modal-ep" role="dialog" aria-modal="true" aria-labelledby="wanted-isearch-title">
         <div class="modal-header">
             <div class="wanted-isearch-heading">
                 <h3 id="wanted-isearch-title">Interactive search</h3>
-                <label class="wanted-isearch-pick">
+                <div class="wanted-isearch-pick">
                     <span>Search for</span>
-                    <select id="wanted-isearch-episode" class="folder-select"></select>
-                </label>
+                    {# GET /wanted/search-menu swaps the dropdown in here on open. #}
+                    <div id="wanted-isearch-pick"></div>
+                </div>
             </div>
             <button class="btn-icon" type="button" data-wanted-isearch-close aria-label="Close">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
