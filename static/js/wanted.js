@@ -280,9 +280,16 @@
     }
 
     // A fixed menu does not follow its trigger: close it when the
-    // window changes or anything but the menu itself scrolls.
-    window.addEventListener('resize', closeDropdowns);
+    // window changes or anything but the menu itself scrolls. Both
+    // listeners live for the whole tab session, so they check for the
+    // page first: every scroll on every other page used to run the
+    // menu query.
+    window.addEventListener('resize', function () {
+        if (!document.getElementById('wanted-page')) return;
+        closeDropdowns();
+    });
     document.addEventListener('scroll', function (ev) {
+        if (!document.getElementById('wanted-page')) return;
         var t = ev.target;
         if (t && t.closest && t.closest('.dropdown-menu')) return;
         closeDropdowns();

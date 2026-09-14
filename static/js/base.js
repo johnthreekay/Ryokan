@@ -1242,10 +1242,14 @@ window.ryokanCopyInput = function (inputId, btn) {
         const inside = evt.target.closest('details.score-details');
         closeAllOpenBreakdowns(inside);
     });
+    // Escape closes an open breakdown and claims the key, so a page's
+    // own Escape handler (the Wanted page's search modal) does not
+    // close its modal in the same keypress and lose the result list.
     document.addEventListener('keydown', function (evt) {
-        if (evt.key === 'Escape') {
-            closeAllOpenBreakdowns(null);
-        }
+        if (evt.key !== 'Escape' || evt.defaultPrevented) return;
+        if (!document.querySelector('details.score-details[open]')) return;
+        closeAllOpenBreakdowns(null);
+        evt.preventDefault();
     });
     // `toggle` doesn't bubble, so we capture it at the document level.
     document.addEventListener('toggle', function (evt) {
