@@ -22,10 +22,12 @@ pub struct SyncExclusion {
 
 /// Record an exclusion. A positive AniList id or a MAL id is required
 /// (a MAL-only series carries the negative sentinel as its AniList id,
-/// which is dropped here). Idempotent: a row with the AniList id is
-/// left alone; a row with only the MAL id gains the AniList id; the
-/// partial unique indexes make a concurrent double insert a no-op.
-/// `Ok(true)` when a row was written or completed.
+/// which is dropped here). Idempotent: a row with both ids is left
+/// alone; a row with only one of them gains the other, so the merge
+/// loop that has only the MAL id (the Jikan fallback) and the one that
+/// has only the AniList id both match it; the partial unique indexes
+/// make a concurrent double insert a no-op. `Ok(true)` when a row was
+/// written or completed.
 pub async fn add(
     db: &SqlitePool,
     anilist_id: i64,
@@ -38,12 +40,25 @@ pub async fn add(
         return Ok(false);
     }
     if let Some(a) = anilist {
-        let by_anilist: Option<i64> =
-            sqlx::query_scalar("SELECT id FROM external_sync_exclusions WHERE anilist_id = ?")
+        let by_anilist: Option<(i64, Option<i64>)> =
+            sqlx::query_as("SELECT id, mal_id FROM external_sync_exclusions WHERE anilist_id = ?")
                 .bind(a)
                 .fetch_optional(db)
                 .await?;
-        if by_anilist.is_some() {
+        if let Some((id, existing_mal)) = by_anilist {
+            if existing_mal.is_none()
+                && let Some(m) = mal
+            {
+                let result = sqlx::query(
+                    "UPDATE OR IGNORE external_sync_exclusions SET mal_id = ? \
+                     WHERE id = ? AND mal_id IS NULL",
+                )
+                .bind(m)
+                .bind(id)
+                .execute(db)
+                .await?;
+                return Ok(result.rows_affected() > 0);
+            }
             return Ok(false);
         }
     }
@@ -171,12 +186,22 @@ mod tests {
         // Same ids again: no duplicate.
         assert!(!add(&db, 100, None, "Show").await.unwrap());
         assert!(!add(&db, -1, Some(200), "Show").await.unwrap());
+        assert!(!add(&db, 100, Some(200), "Show").await.unwrap());
+        // An AniList-only row gains the MAL id when the series is
+        // removed again with both known, so the MAL fallback merge
+        // loop matches it too.
+        assert!(add(&db, 400, None, "Half").await.unwrap());
+        assert!(!load_set(&db).await.contains(-400, Some(401)));
+        assert!(add(&db, 400, Some(401), "Half").await.unwrap());
+        assert!(load_set(&db).await.contains(-400, Some(401)));
+        assert!(!add(&db, 400, Some(401), "Half").await.unwrap());
+        assert_eq!(delete_for_ids(&db, 0, Some(401)).await.unwrap(), 1);
         // A MAL-only series (negative AniList sentinel) keys by MAL id.
         assert!(add(&db, -300, Some(300), "Other").await.unwrap());
         // Nothing to key on.
         assert!(!add(&db, 0, None, "Nothing").await.unwrap());
         let rows = list(&db).await.unwrap();
-        assert_eq!(rows.len(), 2);
+        assert_eq!(rows.len(), 2, "{rows:?}");
         assert_eq!(rows[1].title, "Show");
         let set = load_set(&db).await;
         assert!(set.contains(100, None));

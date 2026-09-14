@@ -1416,3 +1416,32 @@ async fn merge_skips_an_excluded_entry_and_counts_it() {
     assert_eq!(outcome.excluded, 1);
     assert_eq!(outcome.created, 0);
 }
+
+#[tokio::test]
+async fn merge_honors_a_mal_only_exclusion_for_an_anilist_entry() {
+    // Removed while it was a MAL-fallback row, so only the MAL id was
+    // recorded; the AniList list names the same show by both ids
+    // (the detail carries `idMal`) and the exclusion has to hold.
+    let db = crate::test_support::in_memory_pool().await;
+    crate::models::sync_exclusions::add(&db, -777, Some(777), "MAL only")
+        .await
+        .unwrap();
+    let entries = vec![entry(
+        external_accounts::PROVIDER_ANILIST,
+        4242,
+        NormalizedStatus::Watching,
+    )];
+    let mut detail_map = HashMap::new();
+    let mut detail = make_detail(4242, "MAL only", "TV", "RELEASING");
+    detail.id_mal = Some(777);
+    detail_map.insert(4242, detail);
+    let outcome = merge_into_library(&db, &entries, &detail_map, &prefs_default(), None).await;
+    assert_eq!(outcome.excluded, 1);
+    assert_eq!(outcome.created, 0);
+    assert!(
+        series::get_by_anilist_id(&db, 4242)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

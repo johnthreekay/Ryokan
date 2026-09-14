@@ -67,7 +67,11 @@ pub async fn merge_into_library(
         }
         // An exclusion keeps a removed series out; one the user added
         // back by hand keeps syncing (add_series clears the row too).
-        if exclusions.contains(entry.anilist_id, None)
+        // The MAL id rides on the detail (fetched for every new entry):
+        // a series removed while it was a MAL-fallback row stored only
+        // its MAL id, and the AniList list names it by both.
+        let mal_id = detail_map.get(&entry.anilist_id).and_then(|d| d.id_mal);
+        if exclusions.contains(entry.anilist_id, mal_id)
             && !matches!(
                 series::get_by_anilist_id(db, entry.anilist_id).await,
                 Ok(Some(_))
