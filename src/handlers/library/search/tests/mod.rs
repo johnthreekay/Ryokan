@@ -1212,8 +1212,39 @@ mod handler_endpoints {
         let partial = super::super::interactive::test_helpers::build_partial_for_test(
             vec![hit.clone(), low.clone()],
             Some(3),
+            false,
         );
         let html = partial.render().expect("partial renders");
+
+        // The Wanted page asks with ?from=wanted: the same table, but
+        // the Grab buttons carry data attributes for wanted.js's
+        // delegated handlers instead of the series page's inline calls.
+        {
+            let wanted = super::super::interactive::test_helpers::build_partial_for_test(
+                vec![hit.clone()],
+                Some(3),
+                true,
+            )
+            .render()
+            .expect("wanted partial renders");
+            assert!(wanted.contains("data-wanted-grab=\"3\""), "{wanted}");
+            assert!(!wanted.contains("grabInteractiveResult"), "{wanted}");
+            let wanted_batch = super::super::interactive::test_helpers::build_partial_for_test(
+                vec![hit.clone()],
+                None,
+                true,
+            )
+            .render()
+            .expect("wanted batch partial renders");
+            assert!(
+                wanted_batch.contains("data-wanted-grab-batch"),
+                "{wanted_batch}"
+            );
+            assert!(
+                !wanted_batch.contains("grabInteractiveBatchResult"),
+                "{wanted_batch}"
+            );
+        }
 
         // High-score row class + the score badge value visible.
         assert!(
@@ -1277,7 +1308,8 @@ mod handler_endpoints {
     fn interactive_search_partial_batch_flow_uses_batch_handler() {
         use askama::Template;
 
-        let empty = super::super::interactive::test_helpers::build_partial_for_test(vec![], None);
+        let empty =
+            super::super::interactive::test_helpers::build_partial_for_test(vec![], None, false);
         let html = empty.render().expect("renders empty");
         assert!(
             html.contains("No batch releases found."),
@@ -1423,6 +1455,7 @@ mod handler_endpoints {
         let resp = interactive_search_episode(
             State(state),
             axum_htmx::HxRequest(false),
+            axum::extract::Query(Default::default()),
             Path((request_id, episode)),
         )
         .await
@@ -1791,10 +1824,14 @@ mod handler_endpoints {
             seeded.clone(),
         );
 
-        let resp =
-            interactive_search_batches(State(state), axum_htmx::HxRequest(false), Path(request_id))
-                .await
-                .expect("cache-hit path must succeed");
+        let resp = interactive_search_batches(
+            State(state),
+            axum_htmx::HxRequest(false),
+            axum::extract::Query(Default::default()),
+            Path(request_id),
+        )
+        .await
+        .expect("cache-hit path must succeed");
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
             .expect("read body");

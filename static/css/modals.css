@@ -202,3 +202,148 @@
     color: var(--text-bright);
 }
 
+/* ── Interactive search modal ─────────────────────────────────────
+   Shared by the series page (#isearch-modal) and the Wanted page
+   (#wanted-isearch-modal): both swap
+   partials/series/interactive_search_table.html into a
+   .modal.modal-ep body, so the rules live in the sheet every page
+   loads rather than in one page's sheet. */
+
+.modal-ep {
+    /* Interactive search has 8 columns (Score / Release / Indexer /
+       Group / Quality / Size / Seeds / Grab) and the Release title
+       can be 60+ chars before truncation. Stretch to ~96vw on a
+       desktop screen so the Grab button stays reachable without
+       horizontal scrolling on a typical 1080p+ viewport, and cap at
+       1600px so an ultrawide doesn't get an absurdly stretched
+       modal. The earlier 1320px cap left a long title wrapping on
+       a 1920px viewport, which then forced horizontal scroll
+       inside `.is-modal-scroll` to reach Grab. */
+    max-width: min(96vw, 1600px);
+    width: 100%;
+}
+
+/* Centered spinner + hint text for the interactive-search modal's two
+   loading states (per-episode search at series_interactive_search.js
+   ::openInteractiveSearch, batch at ::openInteractiveBatchSearch).
+   Larger spinner than the per-row `.ep-search-spinner` since this
+   replaces the whole modal body. */
+.isearch-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 48px 24px;
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+.isearch-loading-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(var(--accent-rgb), 0.25);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin-ring 0.7s linear infinite;
+}
+
+/* Empty-state copy ("No results found." / "No batch releases found.")
+   for the interactive-search modal body. Matches the centering +
+   muted color the previous JS string template used inline. */
+.isearch-empty {
+    text-align: center;
+    color: var(--text-dim);
+    padding: 32px;
+}
+
+.isearch-empty-hint {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+    opacity: 0.75;
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.interactive-search-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.interactive-search-table th {
+    text-align: left;
+    padding: 7px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-elevated);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.interactive-search-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(var(--border-rgb), 0.35);
+    vertical-align: middle;
+}
+
+.interactive-search-table tr:hover td {
+    background: var(--bg-elevated);
+}
+
+.interactive-search-table .col-score { width: 55px; text-align: center; }
+
+.interactive-search-table .col-grab { width: 70px; text-align: right; }
+
+.interactive-search-table .col-size { width: 80px; white-space: nowrap; }
+
+.interactive-search-table .col-seeds { width: 78px; text-align: right; white-space: nowrap; }
+
+.interactive-search-table .col-quality { width: 120px; white-space: nowrap; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+/* Indexer attribution column. Narrow enough to fit a typical
+   tracker name ("nekoBT", "AnimeBytes") without word-wrap, wide
+   enough that the longer Generic Newznab fallback ("Generic
+   Newznab") still fits on one line. Nyaa-direct results render
+   "Nyaa" in this column when `indexer_name` is empty. Font size
+   intentionally unset so it inherits 12px from the table — the
+   header used to render larger than its siblings when this was
+   `font-size: 12px` AND the parent th rule was 10px. */
+.interactive-search-table .col-indexer { width: 110px; white-space: nowrap; }
+
+/* Release-title link in each row. Matches the manual search page's
+   `.col-name a:hover` treatment so hovering a row makes it obvious
+   the title opens the Nyaa view page. Without this, the inline
+   `color:var(--text); text-decoration:none` styling gave zero hover
+   affordance. */
+.isearch-release-link {
+    color: var(--text);
+    text-decoration: none;
+}
+
+.isearch-release-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+.is-modal-scroll {
+    /* Both axes of overflow — the table can outgrow the modal on
+       both axes (vertical: many rows; horizontal: long release
+       titles + 8 columns push past the modal-body's inner width
+       on smaller viewports). Without `overflow-x: auto` the table
+       gets clipped at the modal's right edge and the Grab button
+       becomes unreachable; with it, the user can scroll horizontally
+       as a safety net even when the modal-ep max-width can't fit
+       the table at the current viewport. */
+    overflow-y: auto;
+    overflow-x: auto;
+    max-height: 480px;
+    padding-top: 0;
+    padding-bottom: 0;
+}

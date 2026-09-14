@@ -1152,3 +1152,110 @@ window.ryokanCopyInput = function (inputId, btn) {
         }
     });
 })();
+
+// ── Score-breakdown expander ──────────────────────────────────────
+// <details class="score-details"> renders on the search page, in the
+// series page's interactive-search modal, and in the Wanted page's.
+// Close any open one when the user clicks outside it or presses
+// Escape, and lift the panel to `position: fixed` on open when the
+// expander sits inside an overflow-clipping ancestor (a modal body),
+// where the absolutely positioned panel would otherwise open out of
+// sight. Scroll-only edge handling: the panel always opens below the
+// badge, with a viewport-aware max-height and internal scroll, and a
+// left edge clamped into the viewport. Document-level listeners,
+// registered once (this file loads from <head>, once per full load).
+(function () {
+    if (window.__ryokanScoreBreakdownInit) return;
+    window.__ryokanScoreBreakdownInit = true;
+    function closeAllOpenBreakdowns(except) {
+        document.querySelectorAll('details.score-details[open]').forEach(function (d) {
+            if (d !== except) d.removeAttribute('open');
+            // Clear any inline fixed-position styles we applied on open.
+            const panel = d.querySelector('.score-components');
+            if (panel && d !== except) resetPanelPosition(panel);
+        });
+    }
+    function resetPanelPosition(panel) {
+        panel.style.position = '';
+        panel.style.top = '';
+        panel.style.left = '';
+        panel.style.width = '';
+        panel.style.minWidth = '';
+        panel.style.maxWidth = '';
+        panel.style.maxHeight = '';
+        panel.style.overflowY = '';
+    }
+    function positionPanelIfClipped(details) {
+        const panel = details.querySelector('.score-components');
+        if (!panel) return;
+        // Only lift to fixed-positioning when the details is inside an
+        // overflow-clipping ancestor. Outside a modal the regular CSS
+        // `position:absolute` works fine.
+        let clipped = false;
+        let node = details.parentElement;
+        while (node && node !== document.body) {
+            const cs = window.getComputedStyle(node);
+            if (cs.overflow !== 'visible' || cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+                clipped = true;
+                break;
+            }
+            node = node.parentElement;
+        }
+        if (!clipped) {
+            resetPanelPosition(panel);
+            return;
+        }
+        // Scrolling-only strategy — no flip-above fallback. The panel
+        // always opens below the badge; vertical fit is handled by
+        // `max-height` + internal scroll, horizontal fit by clamping
+        // `left` and capping width to the viewport. Works the same on
+        // desktop and mobile: narrow viewports just get a narrower
+        // panel with more internal scroll.
+        const GAP = 6;
+        const MARGIN = 8;
+        const rect = details.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        const top = rect.bottom + GAP;
+        const maxHeight = Math.max(120, vh - top - MARGIN);
+        const maxWidth = Math.max(240, vw - 2 * MARGIN);
+        // Clamp left edge to stay within the viewport; on phones the
+        // panel's full width often exceeds badge.left + panel.width,
+        // so also cap the width when it would otherwise overflow.
+        let left = rect.left;
+        const desiredWidth = Math.min(360, maxWidth);
+        if (left + desiredWidth + MARGIN > vw) {
+            left = Math.max(MARGIN, vw - desiredWidth - MARGIN);
+        }
+        if (left < MARGIN) left = MARGIN;
+
+        panel.style.position = 'fixed';
+        panel.style.top = top + 'px';
+        panel.style.left = left + 'px';
+        panel.style.minWidth = '240px';
+        panel.style.maxWidth = maxWidth + 'px';
+        panel.style.maxHeight = maxHeight + 'px';
+        panel.style.overflowY = 'auto';
+    }
+    document.addEventListener('click', function (evt) {
+        const inside = evt.target.closest('details.score-details');
+        closeAllOpenBreakdowns(inside);
+    });
+    document.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Escape') {
+            closeAllOpenBreakdowns(null);
+        }
+    });
+    // `toggle` doesn't bubble, so we capture it at the document level.
+    document.addEventListener('toggle', function (evt) {
+        const d = evt.target;
+        if (!(d instanceof HTMLDetailsElement)) return;
+        if (!d.classList.contains('score-details')) return;
+        if (d.open) positionPanelIfClipped(d);
+        else {
+            const panel = d.querySelector('.score-components');
+            if (panel) resetPanelPosition(panel);
+        }
+    }, true);
+})();

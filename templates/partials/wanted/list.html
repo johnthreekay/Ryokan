@@ -37,7 +37,8 @@
         </a>
         <div class="wanted-row-actions">
             <span class="form-hint">{{ row.count() }} {% if tab == "cutoff" %}below cutoff{% else %}missing{% endif %}</span>
-            <button type="button" class="btn btn-secondary btn-sm" data-wanted-search-one="{{ row.series_id }}" data-wanted-title="{{ row.title }}">Search</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-wanted-search-one="{{ row.series_id }}" data-wanted-title="{{ row.title }}" title="Grab the best release for every listed episode">Auto search</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-wanted-isearch="{{ row.anilist_id }}" data-series-id="{{ row.series_id }}" data-wanted-title="{{ row.title }}" data-wanted-episodes="{{ row.episode_csv() }}" title="Pick a release yourself">Interactive</button>
         </div>
     </li>
     {% endfor %}

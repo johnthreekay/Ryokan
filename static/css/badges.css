@@ -114,6 +114,8 @@
 
 .leech-count { color: var(--red); font-family: var(--font-mono); font-weight: 600; }
 
+.peer-sep { color: var(--text-dim); font-family: var(--font-mono); }
+
 .tag-score-green {
     background: rgba(var(--green-rgb), 0.15);
     color: var(--green);

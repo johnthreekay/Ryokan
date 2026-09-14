@@ -1,4 +1,4 @@
-/* /wanted page: Sonarr's Wanted → Missing / Cutoff Unmet. Rows
+/* /wanted page: Sonarr's Wanted → Missing / Quality cutoff unmet. Rows
    share the calendar's list recipe (card fill, --radius-lg, cover
    thumbnail); the tabs are the segmented control from base.css. */
 .wanted-page-header {
@@ -116,6 +116,25 @@
     align-items: center;
     gap: 10px;
     flex-shrink: 0;
+}
+
+/* Interactive search modal header: title plus the episode select
+   (the toolbar field recipe) on one line, wrapping on a phone. */
+.wanted-isearch-heading {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.wanted-isearch-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+    white-space: nowrap;
 }
 
 .wanted-empty {

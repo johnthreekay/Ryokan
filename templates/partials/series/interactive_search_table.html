@@ -5,7 +5,9 @@
    server-rendered partial. The full SearchResult is JSON-serialized into
    each row's `data-result` attribute so `grabInteractiveResult` /
    `grabInteractiveBatchResult` can read it on click without keeping a
-   `_isearchResults` JS array in lockstep with the rendered DOM. #}
+   `_isearchResults` JS array in lockstep with the rendered DOM. The
+   Wanted page renders the same partial with `wanted` set, which swaps
+   the inline Grab handlers for data attributes (see the Grab cell). #}
 {% if rows.is_empty() %}
 <div class="isearch-empty">
     <p>{{ empty_message }}</p>
@@ -62,10 +64,21 @@
                 <span class="seed-count">{{ r.result.seeders }}</span><span class="peer-sep">/</span><span class="leech-count">{{ r.result.leechers }}</span>
             </td>
             <td class="col-grab">
+                {% if wanted %}
+                {# The Wanted page (?from=wanted): no inline handler, its
+                   wanted.js delegates on these attributes. The series
+                   page's functions read series-page globals. #}
+                {% if let Some(ep) = grab_episode_number %}
+                <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" data-wanted-grab="{{ ep }}">Grab</button>
+                {% else %}
+                <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" data-wanted-grab-batch="1">Grab</button>
+                {% endif %}
+                {% else %}
                 {% if let Some(ep) = grab_episode_number %}
                 <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" onclick="grabInteractiveResult({{ ep }}, this)">Grab</button>
                 {% else %}
                 <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" onclick="grabInteractiveBatchResult(this)">Grab</button>
+                {% endif %}
                 {% endif %}
             </td>
         </tr>

@@ -1,4 +1,4 @@
-//! The Wanted page: Sonarr's Wanted → Missing / Cutoff Unmet across
+//! The Wanted page: Sonarr's Wanted → Missing / Quality cutoff unmet across
 //! the whole library, with "search selected" / "search all".
 //!
 //! **Missing** is every monitored episode of a monitored series that
@@ -67,6 +67,16 @@ pub struct WantedRow {
 impl WantedRow {
     pub fn count(&self) -> usize {
         self.slots.len()
+    }
+
+    /// `5,6,7`: the row's episode numbers for the Interactive button,
+    /// which wanted.js turns into the modal's episode select.
+    pub fn episode_csv(&self) -> String {
+        self.slots
+            .iter()
+            .map(|s| s.episode.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     }
 }
 
@@ -235,6 +245,9 @@ struct WantedPageTemplate {
     tab: String,
     rows: Vec<WantedRow>,
     library_is_empty: bool,
+    /// `config.grab_preview_mode`, for the interactive search modal's
+    /// batch grabs: `never` skips the file picker, as on the series page.
+    grab_preview_mode: String,
 }
 
 #[derive(Template)]
@@ -301,6 +314,7 @@ pub async fn page(
         tab,
         rows,
         library_is_empty,
+        grab_preview_mode: cfg.grab_preview_mode.clone(),
     };
     Html(tmpl.render().unwrap_or_default())
 }
@@ -589,6 +603,15 @@ mod tests {
         .await
         .0;
         assert!(html.contains("id=\"wanted-page\""), "full page rendered");
+        assert!(html.contains("Quality cutoff unmet"), "{html}");
+        assert!(
+            html.contains("id=\"wanted-isearch-modal\""),
+            "the interactive search modal ships with the page"
+        );
+        assert!(
+            html.contains("id=\"grab-picker-modal\""),
+            "a batch grab from the modal needs the file picker"
+        );
         assert!(html.contains("any series in your library yet"), "{html}");
         // A monitored series with no files: every aired episode is
         // missing on the Missing tab, nothing on the cutoff tab.
@@ -624,6 +647,21 @@ mod tests {
             "{partial}"
         );
         assert!(partial.contains("3 missing"), "{partial}");
+        // Both search buttons per row: the auto-search by series id,
+        // the interactive one by AniList id with the episodes it lists.
+        assert!(
+            partial.contains("data-wanted-search-one=\"1\""),
+            "{partial}"
+        );
+        assert!(partial.contains("data-wanted-isearch=\"1\""), "{partial}");
+        assert!(
+            partial.contains("data-wanted-episodes=\"1,2,3\""),
+            "{partial}"
+        );
+        assert!(
+            partial.contains(">Auto search<") && partial.contains(">Interactive<"),
+            "{partial}"
+        );
         let cutoff = page(
             State(state),
             HxRequest(true),

@@ -51,6 +51,25 @@ struct InteractiveSearchRow {
     data_result_json: String,
 }
 
+/// Which page asked for the partial. The Wanted page renders the same
+/// table, but its Grab buttons carry `data-wanted-grab` /
+/// `data-wanted-grab-batch` for `wanted.js`'s delegated handlers instead
+/// of the series page's inline `grabInteractiveResult` calls, which read
+/// series-page globals (`SD`, the episode rows) that do not exist there.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct InteractiveOrigin {
+    /// `wanted` for the Wanted page; absent or anything else is the
+    /// series page.
+    #[serde(default)]
+    pub from: Option<String>,
+}
+
+impl InteractiveOrigin {
+    fn wanted(&self) -> bool {
+        self.from.as_deref() == Some("wanted")
+    }
+}
+
 #[derive(Template)]
 #[template(path = "partials/series/interactive_search_table.html")]
 pub(super) struct InteractiveSearchTablePartial {
@@ -69,11 +88,15 @@ pub(super) struct InteractiveSearchTablePartial {
     /// voice as the calendar's empty state. An empty result with no
     /// next step is a dead end.
     empty_hint: &'static str,
+    /// Wanted-page rendering: data attributes on the Grab buttons, no
+    /// inline handlers. See `InteractiveOrigin`.
+    wanted: bool,
 }
 
 fn build_interactive_search_partial(
     results: Vec<crate::services::nyaa::SearchResult>,
     grab_episode_number: Option<i32>,
+    wanted: bool,
 ) -> InteractiveSearchTablePartial {
     let rows = results
         .into_iter()
@@ -115,14 +138,16 @@ fn build_interactive_search_partial(
         grab_episode_number,
         empty_message,
         empty_hint,
+        wanted,
     }
 }
 
 fn render_interactive_partial(
     results: Vec<crate::services::nyaa::SearchResult>,
     grab_episode_number: Option<i32>,
+    wanted: bool,
 ) -> Result<Response, (StatusCode, String)> {
-    let partial = build_interactive_search_partial(results, grab_episode_number);
+    let partial = build_interactive_search_partial(results, grab_episode_number, wanted);
     let html = partial
         .render()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -138,8 +163,9 @@ pub(super) mod test_helpers {
     pub fn build_partial_for_test(
         results: Vec<crate::services::nyaa::SearchResult>,
         grab_episode_number: Option<i32>,
+        wanted: bool,
     ) -> super::InteractiveSearchTablePartial {
-        super::build_interactive_search_partial(results, grab_episode_number)
+        super::build_interactive_search_partial(results, grab_episode_number, wanted)
     }
 }
 
@@ -487,6 +513,7 @@ pub async fn search_batch_releases(
     params(
         ("anilist_id" = i64, Path, description = "AniList ID or internal series ID"),
         ("episode_number" = i32, Path, description = "Episode number to search for"),
+        ("from" = Option<String>, Query, description = "Set to `wanted` by the Wanted page; the HTMX partial then carries data attributes for its delegated Grab handlers instead of the series page's inline calls"),
     ),
     responses(
         (status = 200, description = "Search results", body = Vec<crate::services::nyaa::SearchResult>),
@@ -496,6 +523,7 @@ pub async fn search_batch_releases(
 pub async fn interactive_search_episode(
     State(state): State<AppState>,
     HxRequest(is_htmx): HxRequest,
+    Query(origin): Query<InteractiveOrigin>,
     Path((request_id, episode_number)): Path<(i64, i32)>,
 ) -> Result<Response, (StatusCode, String)> {
     // 5-minute TTL cache so rapid reloads of the picker modal during
@@ -507,7 +535,7 @@ pub async fn interactive_search_episode(
     {
         let cached_vec: Vec<_> = (*cached).clone();
         return if is_htmx {
-            render_interactive_partial(cached_vec, Some(episode_number))
+            render_interactive_partial(cached_vec, Some(episode_number), origin.wanted())
         } else {
             Ok(Json(cached_vec).into_response())
         };
@@ -552,7 +580,7 @@ pub async fn interactive_search_episode(
         results.clone(),
     );
     if is_htmx {
-        render_interactive_partial(results, Some(episode_number))
+        render_interactive_partial(results, Some(episode_number), origin.wanted())
     } else {
         Ok(Json(results).into_response())
     }
@@ -571,6 +599,7 @@ pub async fn interactive_search_episode(
     description = "Search Nyaa for batch/complete releases of a series, returning scored results for manual selection.",
     params(
         ("anilist_id" = i64, Path, description = "AniList ID or internal series ID"),
+        ("from" = Option<String>, Query, description = "Set to `wanted` by the Wanted page; the HTMX partial then carries data attributes for its delegated Grab handlers instead of the series page's inline calls"),
     ),
     responses(
         (status = 200, description = "Batch search results", body = Vec<crate::services::nyaa::SearchResult>),
@@ -580,6 +609,7 @@ pub async fn interactive_search_episode(
 pub async fn interactive_search_batches(
     State(state): State<AppState>,
     HxRequest(is_htmx): HxRequest,
+    Query(origin): Query<InteractiveOrigin>,
     Path(request_id): Path<i64>,
 ) -> Result<Response, (StatusCode, String)> {
     // 5-minute TTL cache — see interactive_search_episode for rationale.
@@ -590,7 +620,7 @@ pub async fn interactive_search_batches(
     {
         let cached_vec: Vec<_> = (*cached).clone();
         return if is_htmx {
-            render_interactive_partial(cached_vec, None)
+            render_interactive_partial(cached_vec, None, origin.wanted())
         } else {
             Ok(Json(cached_vec).into_response())
         };
@@ -626,7 +656,7 @@ pub async fn interactive_search_batches(
         results.clone(),
     );
     if is_htmx {
-        render_interactive_partial(results, None)
+        render_interactive_partial(results, None, origin.wanted())
     } else {
         Ok(Json(results).into_response())
     }
