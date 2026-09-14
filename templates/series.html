@@ -94,7 +94,7 @@
         <div class="alert alert-warn metadata-stale-banner" role="status">
             <strong>Metadata may be out of date.</strong>
             Last successful refresh was <span data-ts="{{ metadata_refreshed_at }}" data-ts-rendered="1" title="{{ metadata_refreshed_at }} UTC">{{ crate::services::relative_time::humanize_sqlite_short_now(metadata_refreshed_at) }}</span>.
-            Upstream providers may be temporarily unavailable; check <a href="/system?tab=logs">System &rarr; Logs</a> for fetch errors.
+            The metadata providers may be down, or Ryokan was not running. Check <a href="/system?tab=logs">System &rarr; Logs</a> for fetch errors.
         </div>
         {% else if !metadata_refreshed_at.is_empty() %}
         <div class="detail-meta-refresh">

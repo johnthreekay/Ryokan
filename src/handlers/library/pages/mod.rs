@@ -655,19 +655,21 @@ pub async fn series_detail(
     // WAL-cached) but the pattern of the surrounding handler is "every
     // independent read goes in the join!" so stick with that.
     //
-    // Issue #106 — `is_fresh` (computed by SQLite at fetch time using
-    // the same TTL constant as the periodic refresh task) is the
-    // canonical staleness signal. Re-deriving it client-side from
-    // `cached_at` would duplicate the SQL `CASE WHEN cached_at >=
-    // datetime('now', '-12 hours')` calculation; reuse the value that
-    // already came back from the query.
+    // Issue #106 — `is_stale` is computed by SQLite at fetch time like
+    // `is_fresh`, but against `METADATA_STALE_WARNING_DAYS` rather than
+    // the 12-hour refresh window. A row is past the refresh window
+    // between any two sweeps, so keying the banner on `!is_fresh` put
+    // it on nearly every page view; a week without a successful refresh
+    // is the shape of a provider outage, which is what the banner is
+    // for. Reuse the value that came back from the query rather than
+    // re-deriving it from `cached_at` client-side.
     let db_for_refresh = state.db.clone();
     let refresh_fut = async move {
         crate::models::metadata_cache::get_by_provider_id(&db_for_refresh, provider_id)
             .await
             .ok()
             .flatten()
-            .map(|row| (row.cached_at, !row.is_fresh))
+            .map(|row| (row.cached_at, row.is_stale))
             .unwrap_or_default()
     };
 
