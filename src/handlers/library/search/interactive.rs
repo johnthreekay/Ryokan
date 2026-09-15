@@ -49,18 +49,37 @@ struct InteractiveSearchRow {
     /// module-scope `_isearchResults[idx]` array, so the rendered DOM
     /// is the source of truth for grab metadata.
     data_result_json: String,
+    /// The episode this row's Grab posts for: the partial's episode in
+    /// the per-episode flow, the row's own first wanted episode in the
+    /// episode-set flow, `None` in the batch flow.
+    grab_episode: Option<i32>,
+    /// `E03` / `E05-E06` in the episode-set flow, empty elsewhere.
+    episode_label: String,
+}
+
+/// Which page asked for the partial. The Wanted page renders the same
+/// table, but its Grab buttons carry `data-wanted-grab` /
+/// `data-wanted-grab-batch` for `wanted.js`'s delegated handlers instead
+/// of the series page's inline `grabInteractiveResult` calls, which read
+/// series-page globals (`SD`, the episode rows) that do not exist there.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct InteractiveOrigin {
+    /// `wanted` for the Wanted page; absent or anything else is the
+    /// series page.
+    #[serde(default)]
+    pub from: Option<String>,
+}
+
+impl InteractiveOrigin {
+    fn wanted(&self) -> bool {
+        self.from.as_deref() == Some("wanted")
+    }
 }
 
 #[derive(Template)]
 #[template(path = "partials/series/interactive_search_table.html")]
 pub(super) struct InteractiveSearchTablePartial {
     rows: Vec<InteractiveSearchRow>,
-    /// `Some(N)` for per-episode flow → Grab button calls
-    /// `grabInteractiveResult(N, this)`. `None` for the batch flow →
-    /// `grabInteractiveBatchResult(this)`. The two flows share this
-    /// partial because the table itself is identical; only the click
-    /// target differs.
-    grab_episode_number: Option<i32>,
     /// Rendered when `rows.is_empty()`. Per-episode shows "No results
     /// found."; batch shows "No batch releases found." — matches the
     /// pre-migration JS copy verbatim.
@@ -69,11 +88,17 @@ pub(super) struct InteractiveSearchTablePartial {
     /// voice as the calendar's empty state. An empty result with no
     /// next step is a dead end.
     empty_hint: &'static str,
+    /// Wanted-page rendering: data attributes on the Grab buttons, no
+    /// inline handlers. See `InteractiveOrigin`.
+    wanted: bool,
+    /// Episode-set flow: render the Episode column.
+    show_episode: bool,
 }
 
 fn build_interactive_search_partial(
     results: Vec<crate::services::nyaa::SearchResult>,
     grab_episode_number: Option<i32>,
+    wanted: bool,
 ) -> InteractiveSearchTablePartial {
     let rows = results
         .into_iter()
@@ -96,6 +121,8 @@ fn build_interactive_search_partial(
                 score_class,
                 indexer_display,
                 data_result_json,
+                grab_episode: grab_episode_number,
+                episode_label: String::new(),
             }
         })
         .collect();
@@ -112,17 +139,64 @@ fn build_interactive_search_partial(
     };
     InteractiveSearchTablePartial {
         rows,
-        grab_episode_number,
         empty_message,
         empty_hint,
+        wanted,
+        show_episode: false,
+    }
+}
+
+/// The episode-set flow's table: one row per release, an Episode
+/// column naming the wanted episodes it holds, and a Grab that posts
+/// for the first of them (a multi-episode file records the run it
+/// names, as the per-episode grab does).
+fn build_episode_set_partial(
+    hits: Vec<auto_search::EpisodeSetHit>,
+    wanted: bool,
+) -> InteractiveSearchTablePartial {
+    let rows = hits
+        .into_iter()
+        .map(|hit| {
+            let mut row = build_interactive_search_partial(vec![hit.result], None, wanted)
+                .rows
+                .pop()
+                .expect("one result in, one row out");
+            row.episode_label = episode_range_label(&hit.episodes);
+            row.grab_episode = hit.episodes.first().copied();
+            row
+        })
+        .collect();
+    InteractiveSearchTablePartial {
+        rows,
+        empty_message: "No single-episode releases found.",
+        empty_hint: "Batch releases are left out of this list on purpose. Pick Batch releases at the top to look for a season pack, or search one episode at a time.",
+        wanted,
+        show_episode: true,
+    }
+}
+
+/// `E03` for one episode, `E03-E05` for a run, `E03, E07` otherwise.
+fn episode_range_label(episodes: &[i32]) -> String {
+    match episodes {
+        [] => String::new(),
+        [one] => format!("E{one:02}"),
+        [first, .., last] if (last - first) as usize == episodes.len() - 1 => {
+            format!("E{first:02}-E{last:02}")
+        }
+        many => many
+            .iter()
+            .map(|e| format!("E{e:02}"))
+            .collect::<Vec<_>>()
+            .join(", "),
     }
 }
 
 fn render_interactive_partial(
     results: Vec<crate::services::nyaa::SearchResult>,
     grab_episode_number: Option<i32>,
+    wanted: bool,
 ) -> Result<Response, (StatusCode, String)> {
-    let partial = build_interactive_search_partial(results, grab_episode_number);
+    let partial = build_interactive_search_partial(results, grab_episode_number, wanted);
     let html = partial
         .render()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -138,8 +212,135 @@ pub(super) mod test_helpers {
     pub fn build_partial_for_test(
         results: Vec<crate::services::nyaa::SearchResult>,
         grab_episode_number: Option<i32>,
+        wanted: bool,
     ) -> super::InteractiveSearchTablePartial {
-        super::build_interactive_search_partial(results, grab_episode_number)
+        super::build_interactive_search_partial(results, grab_episode_number, wanted)
+    }
+
+    pub fn build_episode_set_partial_for_test(
+        hits: Vec<crate::services::auto_search::EpisodeSetHit>,
+        wanted: bool,
+    ) -> super::InteractiveSearchTablePartial {
+        super::build_episode_set_partial(hits, wanted)
+    }
+
+    pub fn episode_range_label(episodes: &[i32]) -> String {
+        super::episode_range_label(episodes)
+    }
+}
+
+/// `?episodes=3,4,5` for the episode-set search.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct EpisodeSetQuery {
+    /// Comma-separated episode numbers; anything unparseable or not
+    /// positive is dropped.
+    #[serde(default)]
+    pub episodes: String,
+    /// See `InteractiveOrigin::from`.
+    #[serde(default)]
+    pub from: Option<String>,
+}
+
+impl EpisodeSetQuery {
+    fn episode_list(&self) -> Vec<i32> {
+        let mut eps: Vec<i32> = self
+            .episodes
+            .split(',')
+            .filter_map(|s| s.trim().parse::<i32>().ok())
+            .filter(|e| *e > 0)
+            .collect();
+        eps.sort_unstable();
+        eps.dedup();
+        eps
+    }
+}
+
+/// Interactive search for several episodes at once: every release that
+/// is not a batch and names one of the episodes, from one series-level
+/// sweep. The Wanted page's "Episodes 3-11" entry.
+#[utoipa::path(
+    get,
+    path = "/api/series/{anilist_id}/interactive-search-episodes",
+    tag = "Library",
+    summary = "Interactive search for a set of episodes",
+    description = "One series-level search, filtered to releases that are not batches and whose title names one of the given episodes. Ordered by episode, then score.",
+    params(
+        ("anilist_id" = i64, Path, description = "AniList ID or internal series ID"),
+        ("episodes" = String, Query, description = "Comma-separated episode numbers, e.g. `3,4,5`"),
+        ("from" = Option<String>, Query, description = "Set to `wanted` by the Wanted page; the HTMX partial then carries data attributes for its delegated Grab handlers"),
+    ),
+    responses(
+        (status = 200, description = "Search results", body = Vec<auto_search::EpisodeSetHit>),
+        (status = 400, description = "No usable episode numbers"),
+        (status = 502, description = "Metadata fetch failed"),
+    ),
+)]
+pub async fn interactive_search_episodes(
+    State(state): State<AppState>,
+    HxRequest(is_htmx): HxRequest,
+    Query(q): Query<EpisodeSetQuery>,
+    Path(request_id): Path<i64>,
+) -> Result<Response, (StatusCode, String)> {
+    let episodes = q.episode_list();
+    if episodes.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No episode numbers to search for".to_string(),
+        ));
+    }
+    let wanted = q.from.as_deref() == Some("wanted");
+
+    let (_, _, detail) = resolve_series_context(&state.db, request_id)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
+
+    let cfg = config::get_config(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .unwrap_or_default();
+
+    let cfs = state.custom_formats.read().await.clone();
+
+    // The same 5-minute cache as the other two interactive searches,
+    // over the raw results (the sweep plus the per-episode probes);
+    // the episode-set selection is cheap and runs on every hit.
+    let mut key_episodes = episodes.clone();
+    key_episodes.sort_unstable();
+    key_episodes.dedup();
+    let cache_key =
+        crate::services::interactive_search_cache::Key::EpisodeSet(request_id, key_episodes);
+    let results = match crate::services::interactive_search_cache::get(
+        &state.interactive_search_cache,
+        cache_key.clone(),
+    ) {
+        Some(cached) => (*cached).clone(),
+        None => {
+            let results = auto_search::search_episode_set(
+                &state.db,
+                &detail,
+                &cfg,
+                &episodes,
+                &cfs,
+                &state.indexers,
+            )
+            .await;
+            crate::services::interactive_search_cache::insert(
+                &state.interactive_search_cache,
+                cache_key,
+                results.clone(),
+            );
+            results
+        }
+    };
+    let hits = auto_search::select_episode_set(&state.db, &detail, &cfg, results, &episodes).await;
+
+    if is_htmx {
+        let html = build_episode_set_partial(hits, wanted)
+            .render()
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        Ok(Html(html).into_response())
+    } else {
+        Ok(Json(hits).into_response())
     }
 }
 
@@ -487,6 +688,7 @@ pub async fn search_batch_releases(
     params(
         ("anilist_id" = i64, Path, description = "AniList ID or internal series ID"),
         ("episode_number" = i32, Path, description = "Episode number to search for"),
+        ("from" = Option<String>, Query, description = "Set to `wanted` by the Wanted page; the HTMX partial then carries data attributes for its delegated Grab handlers instead of the series page's inline calls"),
     ),
     responses(
         (status = 200, description = "Search results", body = Vec<crate::services::nyaa::SearchResult>),
@@ -496,18 +698,21 @@ pub async fn search_batch_releases(
 pub async fn interactive_search_episode(
     State(state): State<AppState>,
     HxRequest(is_htmx): HxRequest,
+    Query(origin): Query<InteractiveOrigin>,
     Path((request_id, episode_number)): Path<(i64, i32)>,
 ) -> Result<Response, (StatusCode, String)> {
     // 5-minute TTL cache so rapid reloads of the picker modal during
     // UI iteration don't hammer Nyaa. Scope-limited to interactive
     // search only; auto-search / RSS / manual grabs still go direct.
-    let cache_key = (request_id, Some(episode_number));
-    if let Some(cached) =
-        crate::services::interactive_search_cache::get(&state.interactive_search_cache, cache_key)
-    {
+    let cache_key =
+        crate::services::interactive_search_cache::Key::Episode(request_id, episode_number);
+    if let Some(cached) = crate::services::interactive_search_cache::get(
+        &state.interactive_search_cache,
+        cache_key.clone(),
+    ) {
         let cached_vec: Vec<_> = (*cached).clone();
         return if is_htmx {
-            render_interactive_partial(cached_vec, Some(episode_number))
+            render_interactive_partial(cached_vec, Some(episode_number), origin.wanted())
         } else {
             Ok(Json(cached_vec).into_response())
         };
@@ -552,7 +757,7 @@ pub async fn interactive_search_episode(
         results.clone(),
     );
     if is_htmx {
-        render_interactive_partial(results, Some(episode_number))
+        render_interactive_partial(results, Some(episode_number), origin.wanted())
     } else {
         Ok(Json(results).into_response())
     }
@@ -571,6 +776,7 @@ pub async fn interactive_search_episode(
     description = "Search Nyaa for batch/complete releases of a series, returning scored results for manual selection.",
     params(
         ("anilist_id" = i64, Path, description = "AniList ID or internal series ID"),
+        ("from" = Option<String>, Query, description = "Set to `wanted` by the Wanted page; the HTMX partial then carries data attributes for its delegated Grab handlers instead of the series page's inline calls"),
     ),
     responses(
         (status = 200, description = "Batch search results", body = Vec<crate::services::nyaa::SearchResult>),
@@ -580,17 +786,18 @@ pub async fn interactive_search_episode(
 pub async fn interactive_search_batches(
     State(state): State<AppState>,
     HxRequest(is_htmx): HxRequest,
+    Query(origin): Query<InteractiveOrigin>,
     Path(request_id): Path<i64>,
 ) -> Result<Response, (StatusCode, String)> {
     // 5-minute TTL cache — see interactive_search_episode for rationale.
-    // `None` episode slot distinguishes batch from per-episode.
-    let cache_key = (request_id, None);
-    if let Some(cached) =
-        crate::services::interactive_search_cache::get(&state.interactive_search_cache, cache_key)
-    {
+    let cache_key = crate::services::interactive_search_cache::Key::Batch(request_id);
+    if let Some(cached) = crate::services::interactive_search_cache::get(
+        &state.interactive_search_cache,
+        cache_key.clone(),
+    ) {
         let cached_vec: Vec<_> = (*cached).clone();
         return if is_htmx {
-            render_interactive_partial(cached_vec, None)
+            render_interactive_partial(cached_vec, None, origin.wanted())
         } else {
             Ok(Json(cached_vec).into_response())
         };
@@ -626,7 +833,7 @@ pub async fn interactive_search_batches(
         results.clone(),
     );
     if is_htmx {
-        render_interactive_partial(results, None)
+        render_interactive_partial(results, None, origin.wanted())
     } else {
         Ok(Json(results).into_response())
     }

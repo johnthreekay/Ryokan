@@ -45,7 +45,7 @@ static SEL_VIEW_TORRENT: LazyLock<Selector> = LazyLock::new(|| {
     Selector::parse("a.card-footer-item[href$='.torrent']").expect("SEL_VIEW_TORRENT parses")
 });
 
-/// Episode range like "01-12", "01~24", "1 - 24". Broader than the old
+/// Episode range like "01-12", "01~24", "01 - 24". Broader than the old
 /// `01[-~]\d{2,3}` hard-coded form so releases that start at a non-01
 /// episode (sequels, cour splits) still register as batches.
 static BATCH_RANGE_RE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
@@ -93,7 +93,10 @@ static ROMAN_SEASON_MARKER_RE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
 ///   - `#12`
 static SINGLE_EP_RE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
     regex_lite::Regex::new(
-        r"(?i)(s\d{1,2}e\d{1,3}|\s-\s*\d{1,3}(?:\.\d+)?\b|\bep\.?\s*\d{1,3}\b|\bepisode\s*\d{1,3}\b|#\d{1,3})",
+        // The dash-number form takes a half-episode `.5` and a
+        // revision `v2` tail: `Show Season 2 - 05v2` is a weekly, not
+        // a season pack (`\b` alone does not sit between `5` and `v`).
+        r"(?i)(s\d{1,2}e\d{1,3}|\s-\s*\d{1,3}(?:\.\d+)?(?:v\d+)?\b|\bep\.?\s*\d{1,3}\b|\bepisode\s*\d{1,3}\b|#\d{1,3})",
     )
     .expect("SINGLE_EP_RE parses")
 });
@@ -348,8 +351,14 @@ fn detect_batch(title: &str) -> bool {
         return true;
     }
 
-    // Numeric episode ranges like "01-12", "01~24", "1 - 24".
-    if BATCH_RANGE_RE.is_match(&lower) {
+    // Numeric episode ranges like "01-12", "01~24", "01 - 24". A range
+    // ascends, and a spaced one pairs numbers of one width: in
+    // `Chihayafuru 2 - 05`, `Mob Psycho 100 - 05`, and `Season 2 - 05`
+    // (season markers are masked first) the left number is the
+    // title's own, the shape every weekly of such a series has. The
+    // dash between a title and its episode is spaced; a pack's range
+    // is `01-12` or `01 - 12`.
+    if has_plausible_range(&SEASON_MARKER_RE.replace_all(&lower, " ")) {
         return true;
     }
 
@@ -368,6 +377,23 @@ fn detect_batch(title: &str) -> bool {
     }
 
     false
+}
+
+/// See the range rule in `detect_batch`.
+fn has_plausible_range(text: &str) -> bool {
+    BATCH_RANGE_RE.find_iter(text).any(|m| {
+        let found = m.as_str();
+        let spaced = found.contains(char::is_whitespace);
+        let mut parts = found.split(['-', '~']);
+        let (Some(left), Some(right)) = (parts.next(), parts.next()) else {
+            return false;
+        };
+        let (left, right) = (left.trim(), right.trim());
+        let (Ok(l), Ok(r)) = (left.parse::<u32>(), right.parse::<u32>()) else {
+            return false;
+        };
+        l < r && (!spaced || left.len() == right.len())
+    })
 }
 
 fn parse_size(s: &str) -> i64 {
@@ -727,6 +753,40 @@ mod tests {
     fn detect_batch_roman_numeral_season_marker_ii_and_iv() {
         assert!(detect_batch("[MTBB] KanColle II (BD 1080p)"));
         assert!(detect_batch("[smol] Overlord IV (BD 1080p)"));
+    }
+
+    #[test]
+    fn detect_batch_season_marker_with_a_revision_tail_is_a_single_episode() {
+        // `\b` does not sit between `5` and `v`, so the single-episode
+        // guard used to miss `- 05v2` and the season marker made the
+        // weekly a batch.
+        assert!(!detect_batch(
+            "[SubsPlease] Show Season 2 - 05v2 (1080p) [ABCD1234].mkv"
+        ));
+        assert!(!detect_batch("[Group] Show S2 - 05v2 (1080p)"));
+        assert!(!detect_batch("[Group] Show Season 2 - 05.5 (1080p)"));
+        assert!(detect_batch("[Group] Show Season 2 (BD 1080p)"));
+    }
+
+    #[test]
+    fn detect_batch_a_title_number_beside_the_episode_is_not_a_range() {
+        // `2 - 05` and `100 - 05` used to read as ranges, so every
+        // weekly of a series whose title ends in a number was a batch.
+        assert!(!detect_batch(
+            "[HorribleSubs] Chihayafuru 2 - 05 [720p].mkv"
+        ));
+        assert!(!detect_batch(
+            "[SubsPlease] Mob Psycho 100 - 05 (1080p) [ABCD1234].mkv"
+        ));
+        assert!(!detect_batch(
+            "[SubsPlease] Show Season 2 - 05 (1080p) [ABCD1234].mkv"
+        ));
+        assert!(!detect_batch("[Group] Log Horizon 2 - 12 (1080p)"));
+        // Real ranges, spaced or not, still are.
+        assert!(detect_batch("[Group] Show - 01 - 12 (BD 1080p)"));
+        assert!(detect_batch("[Group] Show 01-12 (BD 1080p)"));
+        assert!(detect_batch("[Group] Show (1-24) (BD 1080p)"));
+        assert!(detect_batch("[Group] Show 01~24 (BD 1080p)"));
     }
 
     #[test]

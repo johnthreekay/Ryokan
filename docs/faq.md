@@ -39,6 +39,10 @@ Yes. Ryokan exposes a Swagger UI at `/api-docs` and the OpenAPI JSON at `/api-do
 
 Yes. A release like `Title - 05-06` or `S01E05-E06` imports as one file named with the range (`Title - S01E05-E06 - Title A + Title B.mkv` with the default template) and both episodes show as present, so neither is searched for again. Deleting the file clears both episodes. Ryokan reads the range from the file name: numbers joined by dashes in the episode slot (`05-06`, `S01E05-E06`, or a run like `S01E01-02-03`), each at least two digits, at most six episodes in one file. A file that already holds two episodes is only replaced by a release that covers both; a single-episode release for one of them is not imported, since that would drop the other episode.
 
+## Where do OVAs and specials go?
+
+A file whose name marks it as a special (`Show - OVA 01`, `Show - SP1`, `Show - 01 Special`) is not an episode of a TV series, so Ryokan keeps it apart the way Sonarr's Season 0 does. When a batch for a TV series contains one, it lands in a `Specials` folder inside the series folder, named `S00E01`-style, which Jellyfin, Plex and Kodi all read as a special. It gets no entry in the episode list and never replaces anything already in that folder. Automatic search and RSS skip special releases for a TV series, since the special is never the episode they are looking for. Grab one from interactive search when you want it. For a series that is itself an OVA or special on AniList the marker is part of its name, and its files are ordinary episodes.
+
 ## How do I back up?
 
 Ryokan has a built-in backup on [System → Backup](system.md#backup): download a snapshot, save one to the backup folder, schedule daily or weekly backups under Settings → General, and restore by uploading an archive. That is the supported path; a plain file copy taken while Ryokan is running can miss writes.

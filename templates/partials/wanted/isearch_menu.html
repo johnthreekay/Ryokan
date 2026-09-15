@@ -1,0 +1,22 @@
+{# The interactive search modal's "Search for" dropdown, rendered by
+   GET /wanted/search-menu for one series: Batch releases first, then
+   the whole wanted set as one episode-set search (no batches), then
+   each wanted episode. wanted.js opens and closes the menu, moves the
+   pick, and loads the search the picked item names; the trigger shows
+   the current pick. Rendered here rather than as <option>s so it wears
+   the control recipe and scrolls inside itself on a phone. #}
+<div class="dropdown wanted-isearch-dropdown" data-dropdown>
+    <button type="button" class="dropdown-trigger" data-dropdown-trigger aria-haspopup="listbox" aria-expanded="false">
+        <span class="dropdown-label" data-dropdown-label>{{ default_label }}</span>
+    </button>
+    <div class="dropdown-menu" role="listbox" aria-label="Search for" hidden>
+        <button type="button" class="dropdown-item" role="option" data-isearch-choice="batch" data-label="Batch releases">Batch releases</button>
+        {% if episodes.len() > 1 %}
+        <button type="button" class="dropdown-item active" role="option" data-isearch-choice="episodes" data-episodes="{{ episodes_csv }}" data-label="{{ range_label }}" data-default>{{ range_label }}<span class="dropdown-item-hint">no batches</span></button>
+        {% endif %}
+        <div class="dropdown-sep" role="separator"></div>
+        {% for ep in episodes %}
+        <button type="button" class="dropdown-item{% if default_choice == "episode" %} active{% endif %}" role="option" data-isearch-choice="episode" data-episode="{{ ep }}" data-label="Episode {{ ep }}"{% if default_choice == "episode" %} data-default{% endif %}>Episode {{ ep }}</button>
+        {% endfor %}
+    </div>
+</div>

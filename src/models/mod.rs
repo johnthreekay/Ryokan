@@ -23,6 +23,7 @@ pub mod series;
 pub mod series_custom_lists;
 pub mod series_genres;
 pub mod session;
+pub mod sync_exclusions;
 pub mod user;
 
 pub mod migrations;

@@ -46,6 +46,9 @@ use std::sync::Mutex;
 struct RecordingClient {
     list_calls: Mutex<u32>,
     list_fails: bool,
+    /// Every `delete(hash, _)` the sweep issued, for the failed-download
+    /// removal assertions.
+    delete_calls: Mutex<Vec<String>>,
     /// Canned response for `list_scoped`. Each entry maps to one
     /// `DownloadItem` returned with the given hash + state.
     canned: Vec<DownloadItem>,
@@ -56,6 +59,7 @@ impl RecordingClient {
         Self {
             list_calls: Mutex::new(0),
             list_fails: false,
+            delete_calls: Mutex::new(Vec::new()),
             canned,
         }
     }
@@ -64,8 +68,13 @@ impl RecordingClient {
         Self {
             list_calls: Mutex::new(0),
             list_fails: true,
+            delete_calls: Mutex::new(Vec::new()),
             canned: Vec::new(),
         }
+    }
+
+    fn deleted(&self) -> Vec<String> {
+        self.delete_calls.lock().unwrap().clone()
     }
 
     fn list_call_count(&self) -> u32 {
@@ -106,7 +115,8 @@ impl DownloadClient for RecordingClient {
     async fn resume(&self, _hash: &str) -> Result<(), String> {
         Ok(())
     }
-    async fn delete(&self, _hash: &str, _delete_files: bool) -> Result<(), String> {
+    async fn delete(&self, hash: &str, _delete_files: bool) -> Result<(), String> {
+        self.delete_calls.lock().unwrap().push(hash.to_string());
         Ok(())
     }
     async fn set_file_wanted(
@@ -148,11 +158,12 @@ fn fake_torrent(hash: &str, state_kind: DownloadItemState) -> DownloadItem {
 /// guard for every match and never enters `import_torrent`.
 async fn seed_config(db: &sqlx::SqlitePool) {
     sqlx::query(
-        "INSERT INTO config (id, post_processing_enabled, media_root) \
-         VALUES (1, 1, '/tmp/test-media-root') \
+        "INSERT INTO config (id, post_processing_enabled, media_root, auto_redownload_failed) \
+         VALUES (1, 1, '/tmp/test-media-root', 0) \
          ON CONFLICT(id) DO UPDATE SET \
              post_processing_enabled = 1, \
-             media_root = '/tmp/test-media-root'",
+             media_root = '/tmp/test-media-root', \
+             auto_redownload_failed = 0",
     )
     .execute(db)
     .await
@@ -887,6 +898,93 @@ async fn run_once_marks_grab_failed_when_client_reports_torrent_in_error_state()
     assert_eq!(
         final_state, "failed",
         "errored torrent must transition to 'failed', not stay 'pending' or get marked 'removed'"
+    );
+    let reason: String = sqlx::query_scalar(
+        "SELECT COALESCE(failure_reason, '') FROM grabbed_torrents WHERE id = ?",
+    )
+    .bind(g)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        reason,
+        crate::services::redownload::CLIENT_ERROR_REASON,
+        "a client-reported failure carries its reason onto the blocklist row"
+    );
+    assert_eq!(
+        grabbed_torrents::count_recent_failed(&db, series_id, 24)
+            .await
+            .unwrap(),
+        1,
+        "the failed grab counts toward the re-search loop breaker"
+    );
+    assert_eq!(
+        default_client.deleted(),
+        vec!["errhash".to_string()],
+        "with the client's remove-failed switch on (the default) the item is removed"
+    );
+}
+
+#[tokio::test]
+async fn run_once_keeps_a_failed_download_when_the_client_switch_is_off() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // Sonarr's per-client "Remove Failed Downloads" off: the grab still
+    // fails and blocklists, the item stays in the client for a look.
+    let db = in_memory_pool().await;
+    seed_config(&db).await;
+    let series_id = seed_series(&db, 1, "Show").await;
+    let g = grabbed_torrents::record_grab(&db, "keephash", "rel", series_id, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    let dc_id = insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    crate::models::download_clients::set_remove_failed(&db, dc_id, false)
+        .await
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(dc_id))
+        .await
+        .unwrap();
+    let state = build_test_app_state(db.clone(), None);
+    let default_client = Arc::new(RecordingClient::new(vec![fake_torrent(
+        "keephash",
+        DownloadItemState::Errored,
+    )]));
+    install_pool(
+        &state,
+        vec![(
+            dc_id,
+            default_client.clone() as Arc<dyn DownloadClient>,
+            true,
+        )],
+    )
+    .await;
+
+    post_processing::run_once(&state).await;
+
+    let final_state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(g)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(final_state, "failed");
+    assert!(
+        default_client.deleted().is_empty(),
+        "the item stays in the client when its remove-failed switch is off"
     );
 }
 
@@ -2030,5 +2128,863 @@ async fn run_once_batch_refusal_fails_only_the_refused_episodes_and_keeps_pins()
     assert_eq!(
         history,
         vec![(1, "completed".to_string()), (3, "failed".to_string())]
+    );
+}
+
+#[tokio::test]
+async fn run_once_files_a_tv_series_special_under_specials_instead_of_failing_the_pack() {
+    // A pack with `01` and `OVA 01` for a TV entry: before specials
+    // existed both parsed to episode 1 and the preflight failed the
+    // whole grab. Now the OVA lands in `Specials/` as S00E01 with no
+    // episode row, and `01` imports as usual.
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let source_dir = tempfile::TempDir::new().expect("source tempdir");
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let source_path = source_dir.path().to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode) \
+         VALUES (1, 1, ?, 'hardlink')",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    sqlx::query("UPDATE series SET format = 'TV' WHERE id = ?")
+        .bind(series_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let title = "[Group] Show Title (BD 1080p) [Batch]";
+    let pack = source_dir.path().join("pack");
+    std::fs::create_dir_all(&pack).unwrap();
+    for name in [
+        "[Group] Show Title - 01 (BD 1080p).mkv",
+        "[Group] Show Title - OVA 01 (BD 1080p).mkv",
+    ] {
+        std::fs::write(pack.join(name), name.as_bytes()).unwrap();
+    }
+    let g = grabbed_torrents::record_grab(&db, "cafebabe", title, series_id, &[1], true)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(1))
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let torrent = DownloadItem {
+        hash: "cafebabe".into(),
+        name: title.into(),
+        size: 80,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: source_path.clone(),
+        content_path: pack.to_string_lossy().to_string(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let files = vec![
+        DownloadFile {
+            name: "pack/[Group] Show Title - 01 (BD 1080p).mkv".to_string(),
+            size: 40,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "pack/[Group] Show Title - OVA 01 (BD 1080p).mkv".to_string(),
+            size: 40,
+            progress: 1.0,
+            wanted: true,
+        },
+    ];
+    let state = build_test_app_state(db.clone(), None);
+    let client = Arc::new(ImportingClient { torrent, files });
+    install_pool(
+        &state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+    let final_state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(g)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(final_state, "imported");
+    let series_dir = media_root.path().join("Show Title");
+    let list = |dir: &std::path::Path| -> Vec<String> {
+        let mut v: Vec<String> = std::fs::read_dir(dir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .filter(|n| n.ends_with(".mkv"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        v.sort();
+        v
+    };
+    let season = list(&series_dir.join("Season 01"));
+    assert_eq!(season.len(), 1, "{season:?}");
+    assert!(season[0].contains("S01E01"), "{season:?}");
+    let specials = list(&series_dir.join(post_processing::SPECIALS_FOLDER));
+    assert_eq!(specials.len(), 1, "{specials:?}");
+    assert!(specials[0].contains("S00E01"), "{specials:?}");
+    let rows: Vec<i32> =
+        sqlx::query_scalar("SELECT episode_number FROM episode_quality_tags WHERE series_id = ?")
+            .bind(series_id)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(rows, vec![1], "the special gets no episode row");
+}
+
+#[tokio::test]
+async fn run_once_imports_the_subtitle_next_to_the_video_when_enabled() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let source_dir = tempfile::TempDir::new().expect("source tempdir");
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let source_path = source_dir.path().to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode, \
+         import_extra_files, extra_file_extensions, auto_redownload_failed) \
+         VALUES (1, 1, ?, 'copy', 1, 'srt,ass', 0)",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    let title = "[Group] Show Title - 01 (1080p)";
+    let video = "[Group] Show Title - 01 (1080p).mkv";
+    std::fs::write(source_dir.path().join(video), b"video").unwrap();
+    std::fs::write(
+        source_dir
+            .path()
+            .join("[Group] Show Title - 01 (1080p).eng.ass"),
+        b"subs",
+    )
+    .unwrap();
+    std::fs::write(source_dir.path().join("readme.txt"), b"x").unwrap();
+    let g = grabbed_torrents::record_grab(&db, "subhash", title, series_id, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(1))
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let torrent = DownloadItem {
+        hash: "subhash".into(),
+        name: title.into(),
+        size: 5,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: source_path.clone(),
+        content_path: source_path.clone(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    // The client lists every file of the download, subtitles included;
+    // the import reads its subtitle candidates from that list.
+    let files = vec![
+        DownloadFile {
+            name: video.to_string(),
+            size: 5,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "[Group] Show Title - 01 (1080p).eng.ass".to_string(),
+            size: 4,
+            progress: 1.0,
+            wanted: true,
+        },
+    ];
+    let state = build_test_app_state(db.clone(), None);
+    let client = Arc::new(ImportingClient { torrent, files });
+    install_pool(
+        &state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+    let season_dir = media_root.path().join("Show Title").join("Season 01");
+    let mut names: Vec<String> = std::fs::read_dir(&season_dir)
+        .expect("season dir")
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| !n.ends_with(".nfo"))
+        .collect();
+    names.sort();
+    assert_eq!(names.len(), 2, "{names:?}");
+    let video_name = names.iter().find(|n| n.ends_with(".mkv")).expect("video");
+    let stem = video_name.trim_end_matches(".mkv");
+    assert!(
+        names.contains(&format!("{stem}.en.ass")),
+        "subtitle named after the episode file: {names:?}"
+    );
+}
+
+// ─── Warning state and the errored branch's boot grace ─────────────
+
+#[tokio::test]
+async fn run_once_waits_out_the_boot_grace_before_failing_an_errored_grab() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // The errored branch blocklists the release and removes the item
+    // with its data, so a client that came up alongside Ryokan with a
+    // stale error gets the same grace the stall timer has.
+    let db = in_memory_pool().await;
+    seed_config(&db).await;
+    let series_id = seed_series(&db, 1, "Show").await;
+    let g = grabbed_torrents::record_grab(&db, "boothash", "rel", series_id, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let mut state = build_test_app_state(db.clone(), None);
+    state.start_time = chrono::Utc::now();
+    let default_client = Arc::new(RecordingClient::new(vec![fake_torrent(
+        "boothash",
+        DownloadItemState::Errored,
+    )]));
+    install_pool(
+        &state,
+        vec![(1, default_client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+
+    post_processing::run_once(&state).await;
+
+    let final_state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(g)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        final_state, "pending",
+        "an errored item is left alone during the boot grace"
+    );
+}
+
+#[tokio::test]
+async fn run_once_leaves_a_warning_item_pending_without_a_stall_clock() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // qBittorrent's missingFiles, a Transmission local error, Deluge's
+    // Error: the client may recover (a mount coming back), so the grab
+    // is neither failed, which would delete the data, nor imported,
+    // and the stall clock does not start, since nothing is complete.
+    let db = in_memory_pool().await;
+    seed_config(&db).await;
+    let series_id = seed_series(&db, 1, "Show").await;
+    let g = grabbed_torrents::record_grab(&db, "warnhash", "rel", series_id, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let state = build_test_app_state(db.clone(), None);
+    let default_client = Arc::new(RecordingClient::new(vec![fake_torrent(
+        "warnhash",
+        DownloadItemState::Warning,
+    )]));
+    install_pool(
+        &state,
+        vec![(1, default_client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+
+    post_processing::run_once(&state).await;
+
+    let final_state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(g)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(final_state, "pending");
+    assert!(
+        grabbed_torrents::completed_seen_at(&db, g).await.is_none(),
+        "a warning is not a completion; the stall clock stays unset"
+    );
+}
+
+// ─── Subtitle candidates come from the download only ───────────────
+
+#[tokio::test]
+async fn run_once_never_imports_a_subtitle_from_outside_the_download() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // The subtitle candidates come from the client's file list. A `../`
+    // entry joined onto the source base reaches outside the download,
+    // and with one video in the download the "every subtitle is its"
+    // rule would have claimed it; the same path-fragment check as the
+    // video loop drops it. An entry the client never downloaded
+    // (`wanted = false`, a narrowed batch) is no candidate either.
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let outer = tempfile::TempDir::new().expect("outer tempdir");
+    let source = outer.path().join("a").join("b");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::write(outer.path().join("evil.srt"), b"outside").unwrap();
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode, \
+         import_extra_files, extra_file_extensions, auto_redownload_failed) \
+         VALUES (1, 1, ?, 'copy', 1, 'srt,ass', 0)",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    let title = "[Group] Show Title - 01 (1080p)";
+    let video = "[Group] Show Title - 01 (1080p).mkv";
+    std::fs::write(source.join(video), b"video").unwrap();
+    std::fs::write(
+        source.join("[Group] Show Title - 01 (1080p).eng.ass"),
+        b"subs",
+    )
+    .unwrap();
+    let g = grabbed_torrents::record_grab(&db, "evilhash", title, series_id, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(1))
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let torrent = DownloadItem {
+        hash: "evilhash".into(),
+        name: title.into(),
+        size: 5,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: source_path.clone(),
+        content_path: source_path.clone(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let files = vec![
+        DownloadFile {
+            name: video.to_string(),
+            size: 5,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "[Group] Show Title - 01 (1080p).eng.ass".to_string(),
+            size: 4,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "../../evil.srt".to_string(),
+            size: 7,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "[Group] Show Title - 01 (1080p).jpn.ass".to_string(),
+            size: 4,
+            progress: 0.0,
+            wanted: false,
+        },
+    ];
+    let state = build_test_app_state(db.clone(), None);
+    let client = Arc::new(ImportingClient { torrent, files });
+    install_pool(
+        &state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+    let season_dir = media_root.path().join("Show Title").join("Season 01");
+    let mut names: Vec<String> = std::fs::read_dir(&season_dir)
+        .expect("season dir")
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| !n.ends_with(".nfo"))
+        .collect();
+    names.sort();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert!(
+        names.iter().all(|n| !n.ends_with(".srt")),
+        "the entry outside the download never lands in the library: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.ends_with(".en.ass")),
+        "the download's own subtitle still imports: {names:?}"
+    );
+}
+
+// ─── Specials respect the grab-ownership rule ──────────────────────
+
+#[tokio::test]
+async fn run_once_skips_a_pack_special_inside_a_single_episode_grab() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // A `- 05` grab whose download holds a pack's OVA (the torrent was
+    // really the whole BD, or SAB's parent complete dir swept it in):
+    // the OVA is a stranger to a single-episode grab, as it was when
+    // `OVA 01` parsed to episode 1 and the ownership rule rejected it.
+    // The episode imports; nothing lands under Specials.
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let source_dir = tempfile::TempDir::new().expect("source tempdir");
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let source_path = source_dir.path().to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode) \
+         VALUES (1, 1, ?, 'hardlink')",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    sqlx::query("UPDATE series SET format = 'TV' WHERE id = ?")
+        .bind(series_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let title = "[Group] Show Title - 05 (1080p)";
+    let pack = source_dir.path().join("pack");
+    std::fs::create_dir_all(&pack).unwrap();
+    for name in [
+        "[Group] Show Title - 05 (1080p).mkv",
+        "[Group] Show Title - OVA 01 (1080p).mkv",
+    ] {
+        std::fs::write(pack.join(name), name.as_bytes()).unwrap();
+    }
+    let g = grabbed_torrents::record_grab(&db, "strangerova", title, series_id, &[5], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(1))
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let torrent = DownloadItem {
+        hash: "strangerova".into(),
+        name: title.into(),
+        size: 80,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: source_path.clone(),
+        content_path: pack.to_string_lossy().to_string(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let files = vec![
+        DownloadFile {
+            name: "pack/[Group] Show Title - 05 (1080p).mkv".to_string(),
+            size: 40,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "pack/[Group] Show Title - OVA 01 (1080p).mkv".to_string(),
+            size: 40,
+            progress: 1.0,
+            wanted: true,
+        },
+    ];
+    let state = build_test_app_state(db.clone(), None);
+    let client = Arc::new(ImportingClient { torrent, files });
+    install_pool(
+        &state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+    let final_state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(g)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(final_state, "imported");
+    let series_dir = media_root.path().join("Show Title");
+    let season: Vec<String> = std::fs::read_dir(series_dir.join("Season 01"))
+        .expect("season dir")
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.ends_with(".mkv"))
+        .collect();
+    assert_eq!(season.len(), 1, "{season:?}");
+    assert!(season[0].contains("S01E05"), "{season:?}");
+    assert!(
+        !series_dir.join(post_processing::SPECIALS_FOLDER).exists(),
+        "the pack's OVA is a stranger to a single-episode grab"
+    );
+}
+
+#[tokio::test]
+async fn run_once_imports_the_special_a_grab_was_for() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // The other side of the rule: a special grabbed from the interactive
+    // list (the row records the clicked episode, here 3) is claimed by
+    // its own release title and lands under Specials.
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let source_dir = tempfile::TempDir::new().expect("source tempdir");
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let source_path = source_dir.path().to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode) \
+         VALUES (1, 1, ?, 'hardlink')",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    sqlx::query("UPDATE series SET format = 'TV' WHERE id = ?")
+        .bind(series_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let title = "[Group] Show Title - OVA 01 (1080p)";
+    let video = "[Group] Show Title - OVA 01 (1080p).mkv";
+    std::fs::write(source_dir.path().join(video), b"ova").unwrap();
+    let g = grabbed_torrents::record_grab(&db, "ownova", title, series_id, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(1))
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let torrent = DownloadItem {
+        hash: "ownova".into(),
+        name: title.into(),
+        size: 3,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: source_path.clone(),
+        content_path: source_path.clone(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let files = vec![DownloadFile {
+        name: video.to_string(),
+        size: 3,
+        progress: 1.0,
+        wanted: true,
+    }];
+    let state = build_test_app_state(db.clone(), None);
+    let client = Arc::new(ImportingClient { torrent, files });
+    install_pool(
+        &state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+    let final_state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(g)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(final_state, "imported");
+    let specials: Vec<String> = std::fs::read_dir(
+        media_root
+            .path()
+            .join("Show Title")
+            .join(post_processing::SPECIALS_FOLDER),
+    )
+    .expect("specials dir")
+    .filter_map(|e| e.ok())
+    .filter_map(|e| e.file_name().into_string().ok())
+    .filter(|n| n.ends_with(".mkv"))
+    .collect();
+    assert_eq!(specials.len(), 1, "{specials:?}");
+    assert!(specials[0].contains("S00E01"), "{specials:?}");
+}
+
+#[tokio::test]
+async fn run_once_fails_a_special_the_folder_already_holds_as_a_different_file() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // A special whose S00Exx name is taken by a different file never
+    // lands, and the grab used to count it as imported, which let the
+    // client cleanup delete a download that was still the only copy.
+    // Now the grab fails and the download stays in the client.
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let first_dir = tempfile::TempDir::new().expect("first source tempdir");
+    let second_dir = tempfile::TempDir::new().expect("second source tempdir");
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode) \
+         VALUES (1, 1, ?, 'hardlink')",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    sqlx::query("UPDATE series SET format = 'TV' WHERE id = ?")
+        .bind(series_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let state = build_test_app_state(db.clone(), None);
+    let item = |hash: &str, title: &str, dir: &std::path::Path| DownloadItem {
+        hash: hash.into(),
+        name: title.into(),
+        size: 3,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: dir.to_string_lossy().to_string(),
+        content_path: dir.to_string_lossy().to_string(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let specials_dir = media_root
+        .path()
+        .join("Show Title")
+        .join(post_processing::SPECIALS_FOLDER);
+    let list_specials = || -> Vec<String> {
+        std::fs::read_dir(&specials_dir)
+            .expect("specials dir")
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.ends_with(".mkv"))
+            .collect()
+    };
+
+    // First grab: the OVA lands as S00E01.
+    let first_title = "[Group] Show Title - OVA 01 (1080p)";
+    let first_video = "[Group] Show Title - OVA 01 (1080p).mkv";
+    std::fs::write(first_dir.path().join(first_video), b"ova").unwrap();
+    let g1 = grabbed_torrents::record_grab(&db, "firstova", first_title, series_id, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g1, Some(1))
+        .await
+        .unwrap();
+    let first_client = Arc::new(ImportingClient {
+        torrent: item("firstova", first_title, first_dir.path()),
+        files: vec![DownloadFile {
+            name: first_video.to_string(),
+            size: 3,
+            progress: 1.0,
+            wanted: true,
+        }],
+    });
+    install_pool(
+        &state,
+        vec![(1, first_client as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+    let state_of = |id: i64| {
+        let db = db.clone();
+        async move {
+            sqlx::query_scalar::<_, String>("SELECT state FROM grabbed_torrents WHERE id = ?")
+                .bind(id)
+                .fetch_one(&db)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(state_of(g1).await, "imported");
+    let placed = list_specials();
+    assert_eq!(placed.len(), 1, "{placed:?}");
+
+    // Second grab: another group's OVA renders the same S00E01 name
+    // and is a different file (another length, another inode).
+    let second_title = "[Other] Show Title - OVA 01 (1080p)";
+    let second_video = "[Other] Show Title - OVA 01 (1080p).mkv";
+    std::fs::write(second_dir.path().join(second_video), b"ova-two").unwrap();
+    let g2 = grabbed_torrents::record_grab(&db, "otherova", second_title, series_id, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g2, Some(1))
+        .await
+        .unwrap();
+    let second_client = Arc::new(ImportingClient {
+        torrent: item("otherova", second_title, second_dir.path()),
+        files: vec![DownloadFile {
+            name: second_video.to_string(),
+            size: 7,
+            progress: 1.0,
+            wanted: true,
+        }],
+    });
+    install_pool(
+        &state,
+        vec![(1, second_client as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+
+    assert_eq!(
+        state_of(g2).await,
+        "failed",
+        "nothing landed, so the grab fails"
+    );
+    assert_eq!(state_of(g1).await, "imported");
+    let after = list_specials();
+    assert_eq!(after, placed, "the folder keeps the first special only");
+    assert_eq!(
+        std::fs::read(specials_dir.join(&placed[0])).unwrap(),
+        b"ova",
+        "the first file is untouched"
+    );
+    assert!(
+        second_dir.path().join(second_video).exists(),
+        "the refused download is still where the client left it"
+    );
+    let removed: Option<i64> =
+        sqlx::query_scalar("SELECT client_removed_at FROM grabbed_torrents WHERE id = ?")
+            .bind(g2)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        removed, None,
+        "client cleanup never ran for the failed grab"
     );
 }

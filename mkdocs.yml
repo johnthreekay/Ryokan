@@ -77,6 +77,7 @@ nav:
     - Configuration (cont.): system.md
     - How releases are scored: scoring.md
     - Calendar: calendar.md
+    - Wanted: wanted.md
     - Importing an existing library: manual-import.md
     - Download clients: download-clients.md
     - External accounts: external-accounts.md

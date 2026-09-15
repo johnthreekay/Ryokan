@@ -951,6 +951,93 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn expand_from_files_ignores_files_the_client_was_told_to_skip() {
+        // A partial pick from the file picker: the client holds the
+        // whole pack but downloads one file. The import-time pass gets
+        // the skipped files as empty names (index-aligned with the
+        // client's list) and must neither widen the grab to the pack
+        // nor mark the skipped episodes as downloading.
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let (parent_id, _) = series::upsert(
+            &db,
+            series::SeriesCore {
+                anilist_id: 130003,
+                mal_id: None,
+                title: "BOCCHI THE ROCK!",
+                title_romaji: "BOCCHI THE ROCK!",
+                title_english: "Bocchi the Rock!",
+                title_native: "",
+                cover_url: "",
+                format: "TV",
+                status: "FINISHED",
+                episodes: Some(12),
+                season_year: Some(2022),
+                end_year: None,
+            },
+        )
+        .await
+        .unwrap();
+        let hash = "0123456789abcdef0123456789abcdef01234567";
+        let title = "[Judas] Bocchi the Rock! (Season 1) [BD 1080p] (Batch)";
+        let grab_id = grabbed_torrents::record_grab(&db, hash, title, parent_id, &[2], true)
+            .await
+            .unwrap()
+            .unwrap();
+        let parent_detail = empty_anime_detail(130003, "BOCCHI THE ROCK!", Some(12));
+        let filenames: Vec<String> = (1..=12)
+            .map(|n| {
+                if n == 2 {
+                    format!(
+                        "[Judas] Bocchi the Rock! (Season 01)/[Judas] Bocchi the Rock! - {n:02}.mkv"
+                    )
+                } else {
+                    String::new()
+                }
+            })
+            .collect();
+        let ctx = AutoExpandGrabContext {
+            classification: ClassificationResult::unknown(),
+            release_group: "Judas".to_string(),
+            size_bytes: 0,
+        };
+
+        let added = expand_from_files(
+            &db,
+            &filenames,
+            &parent_detail,
+            parent_id,
+            &[2],
+            grab_id,
+            title,
+            &ctx,
+        )
+        .await;
+
+        assert_eq!(added, 0);
+        let row = grabbed_torrents::get_by_id(&db, grab_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.episode_numbers,
+            vec![2],
+            "skipped files do not widen the grab"
+        );
+        let tagged: Vec<i32> = sqlx::query_scalar(
+            "SELECT episode_number FROM episode_grab_history WHERE series_id = ? ORDER BY episode_number",
+        )
+        .bind(parent_id)
+        .fetch_all(&db)
+        .await
+        .unwrap();
+        assert!(
+            tagged.iter().all(|ep| *ep == 2),
+            "no downloading tag for a skipped episode: {tagged:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn expand_from_files_honors_a_verdict_the_sweep_already_stamped() {
         // The grab-time waiter can lose the race to the sweep: by the
         // time the client hands back the file list, the sweep has

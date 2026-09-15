@@ -250,5 +250,34 @@
                         </div>
                     </div>
             {% endmatch %}
+            {# Shown once the list has a use: an account is linked, or a
+               series is already on it (an exclusion recorded before the
+               account was unlinked still needs its "Allow again"). #}
+            {% if external_account.is_some() || !sync_exclusions.is_empty() %}
+            <div class="form-group">
+                <label>Sync exclusions</label>
+                {% if sync_exclusions.is_empty() %}
+                <span class="form-hint">Nothing yet. Tick the box that keeps a series off your sync when removing it, and it is listed here.</span>
+                {% else %}
+                <span class="form-hint">Series kept off the sync when they were removed. A sync does not add them back until you allow them again.</span>
+                <ul class="sync-exclusions">
+                    {% for x in sync_exclusions %}
+                    {# A button, not a form: this partial sits inside the
+                       Integrations <form>, and a nested form would be
+                       dropped by the parser and its submit re-owned by
+                       the outer one (the autobrr regen button has the
+                       same story). Swaps the region like the outer form. #}
+                    <li class="sync-exclusion-row">
+                        <span class="sync-exclusion-title">{{ x.title }}</span>
+                        <button type="button" class="btn btn-ghost btn-sm"
+                                hx-post="/settings/sync-exclusions/{{ x.id }}/delete"
+                                hx-target="#settings-integrations-region"
+                                hx-swap="outerHTML">Allow again</button>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
 

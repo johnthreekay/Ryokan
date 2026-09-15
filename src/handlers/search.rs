@@ -121,6 +121,12 @@ async fn build_opts(
         .unwrap_or_else(|| "1080".to_string());
 
     let prefer_subs = config.as_ref().map(|c| c.prefer_subs).unwrap_or(true);
+    let prefer_revisions = config
+        .as_ref()
+        .map(|c| {
+            crate::services::source::ProperPolicy::from_str(&c.proper_policy).prefers_revisions()
+        })
+        .unwrap_or(true);
 
     nyaa::SearchOptions {
         query,
@@ -143,6 +149,7 @@ async fn build_opts(
         preferred_groups,
         preferred_resolution: preferred_res,
         prefer_subs,
+        prefer_revisions,
     }
 }
 

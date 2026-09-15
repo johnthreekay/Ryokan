@@ -473,6 +473,10 @@ pub(super) async fn fetch_seadex_payload(
                 preferred_groups: preferred_groups.to_vec(),
                 preferred_resolution: preferred_resolution.to_string(),
                 prefer_subs,
+                // SeaDex picks are scored for the seed only; a `v2`
+                // among them is worth the bonus whatever the proper
+                // policy says, since the pick itself is curated.
+                prefer_revisions: true,
             };
             let mut join_set: tokio::task::JoinSet<(String, Result<SearchResult, String>)> =
                 tokio::task::JoinSet::new();

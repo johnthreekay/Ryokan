@@ -1387,8 +1387,9 @@ pub struct GrabbedTorrentWithSeries {
     /// common case.
     pub replaces_count: i64,
     /// Why a `failed` row is on the blocklist: `misgrab`,
-    /// `import_stalled`, or empty for a client error / disk-full failure
-    /// that recorded no reason.
+    /// `import_stalled`, `client_error` (the download client reported
+    /// the item failed), or empty for an import failure that recorded
+    /// no reason.
     pub failure_reason: String,
 }
 
@@ -1411,7 +1412,8 @@ impl GrabbedTorrentWithSeries {
     pub fn failure_reason_label(&self) -> &str {
         match self.failure_reason.as_str() {
             "misgrab" => "Misgrab",
-            "import_stalled" => "Import stalled",
+            crate::services::post_processing::IMPORT_STALLED_REASON => "Import stalled",
+            crate::services::redownload::CLIENT_ERROR_REASON => "Download failed",
             other => other,
         }
     }
@@ -1721,6 +1723,27 @@ pub async fn blocklist_snapshot(db: &SqlitePool, anilist_id: i64) -> BlocklistSn
             .extend(titles.into_iter().map(|t| t.to_lowercase()));
     }
     snapshot
+}
+
+/// Failed grabs of a series *grabbed* within the last `hours`: the
+/// loop breaker for the automatic re-search after a failed download.
+/// Windowed on the grab time on purpose: the loop it breaks is a run
+/// of quick re-grabs that keep failing, and each re-grab is a fresh
+/// row; one old download that fails after days is a single failure.
+pub async fn count_recent_failed(
+    db: &SqlitePool,
+    series_id: i64,
+    hours: i64,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM grabbed_torrents \
+         WHERE series_id = ? AND state = 'failed' \
+           AND grabbed_at >= datetime('now', ? || ' hours')",
+    )
+    .bind(series_id)
+    .bind(format!("-{hours}"))
+    .fetch_one(db)
+    .await
 }
 
 /// Misgrabs detected for the series within the window; the re-search

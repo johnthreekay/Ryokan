@@ -466,68 +466,7 @@ async fn schedule_research(state: &AppState, grab: &GrabbedTorrent) {
         .await;
         return;
     }
-    let Some(series_row) = series::get_by_id(&state.db, grab.series_id)
-        .await
-        .ok()
-        .flatten()
-    else {
-        return;
-    };
-    let anilist_id = series_row.anilist_id;
-    let series_id = grab.series_id;
-    let single_episode = if !grab.is_batch && grab.episode_numbers.len() == 1 {
-        Some(grab.episode_numbers[0])
-    } else {
-        None
-    };
-    let title = grab.torrent_name.clone();
-    let state = state.clone();
-    tokio::spawn(async move {
-        use crate::handlers::library::search::{
-            AutoSearchQuery, auto_search_series, run_auto_search_targets,
-        };
-        let outcome = match single_episode {
-            Some(ep) => {
-                let target = match metadata_cache::get_by_series_id(&state.db, series_id).await {
-                    Ok(Some(cached)) => auto_search::SearchTarget::for_episode(&cached.detail, ep),
-                    _ => auto_search::SearchTarget::Episode(ep),
-                };
-                run_auto_search_targets(&state, anilist_id, vec![target], false, Some(series_id))
-                    .await
-                    .map(|r| r.grabbed.len())
-            }
-            None => auto_search_series(
-                axum::extract::State(state.clone()),
-                axum::extract::Path(anilist_id),
-                axum::extract::Query(AutoSearchQuery::default()),
-            )
-            .await
-            .map(|json| json.0.grabbed.len()),
-        };
-        match outcome {
-            Ok(n) => {
-                logger::info(
-                    &state.db,
-                    LogCategory::AutoSearch,
-                    &format!(
-                        "Re-search after misgrab '{}' grabbed {} release(s)",
-                        title, n
-                    ),
-                    &format!("series_id={series_id}"),
-                )
-                .await
-            }
-            Err((_, e)) => {
-                logger::warn(
-                    &state.db,
-                    LogCategory::AutoSearch,
-                    &format!("Re-search after misgrab '{}' failed", title),
-                    &e,
-                )
-                .await
-            }
-        }
-    });
+    crate::services::redownload::search_replacement(state, grab, "misgrab").await;
 }
 
 /// One tick: verify what has not been checked, remediate what has been

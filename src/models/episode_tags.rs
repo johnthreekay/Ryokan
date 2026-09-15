@@ -397,6 +397,40 @@ pub async fn get_for_series(
     Ok(rows.into_iter().map(|t| (t.episode_number, t)).collect())
 }
 
+/// Every series' quality tags in one query, keyed by series id then
+/// episode, for the Wanted page's cutoff tab (one query for the
+/// library instead of one per series).
+pub async fn get_for_all_series(
+    db: &SqlitePool,
+) -> Result<
+    std::collections::HashMap<i64, std::collections::HashMap<i32, EpisodeQualityTag>>,
+    sqlx::Error,
+> {
+    let rows = sqlx::query(
+        "SELECT series_id, episode_number, quality_tag, release_title, release_group, state,
+                source, resolution, is_remux,
+                COALESCE(is_bdmv, 0) AS is_bdmv,
+                COALESCE(web_kind, '') AS web_kind,
+                classification_confidence, needs_review,
+                COALESCE(manual_override, 0) AS manual_override,
+                COALESCE(classification_evidence, '') AS classification_evidence,
+                classification_attempted_at
+         FROM episode_quality_tags",
+    )
+    .fetch_all(db)
+    .await?;
+    let mut out: std::collections::HashMap<i64, std::collections::HashMap<i32, EpisodeQualityTag>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let series_id: i64 = row.try_get("series_id")?;
+        let tag = <EpisodeQualityTag as sqlx::FromRow<_>>::from_row(&row)?;
+        out.entry(series_id)
+            .or_default()
+            .insert(tag.episode_number, tag);
+    }
+    Ok(out)
+}
+
 /// Library-wide slice of active tag states for the index page's
 /// per-card completeness bars: every (series_id, episode_number,
 /// state) row whose state is 'completed' (counts toward downloaded,

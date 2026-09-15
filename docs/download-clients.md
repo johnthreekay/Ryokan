@@ -115,6 +115,8 @@ An indexer row can carry a **Seed Ratio** and a **Seed Time** (minutes). Ryokan 
 
 Each client row has a **Remove completed downloads** box, on by default. With it on, a torrent is removed from that client, files included, once it has been imported and the client reports it finished; usenet jobs and Move-mode torrents go right after import. Ryokan checks every five minutes. The library keeps its own copy in every mode. Partial and failed imports, and torrents you paused by hand, stay.
 
+Each row also has a **Remove failed downloads** box, on by default. When the client itself reports a download as failed (SABnzbd's Failed, qBittorrent's error state), Ryokan removes it from the client, files included, before it searches for a replacement. With the box off the failed download stays in the client so you can look at it; the release is blocklisted and the search runs either way.
+
 For this to work the client has to keep finished downloads long enough for Ryokan to import them, the same requirement Sonarr and Radarr have: SABnzbd should keep completed jobs in its history (its History Retention setting), and a torrent client should pause or stop a torrent when its limit is reached rather than delete it. Ryokan does the deleting once the import is done. If the client removes a download first, Ryokan never sees it finish.
 
 ## If "Test connection" fails

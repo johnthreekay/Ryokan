@@ -68,6 +68,10 @@ function removeSeries(dbId) {
     const cancelBtn = document.getElementById('remove-series-cancel');
     const closeBtn = document.getElementById('remove-series-close');
     const confirmBtn = document.getElementById('remove-series-confirm');
+    // A fresh open starts with the sync-exclusion box unticked; a tick
+    // from a dialog that was cancelled must not carry over.
+    const excludeBox = document.getElementById('remove-series-exclude');
+    if (excludeBox) excludeBox.checked = false;
 
     function close() {
         modal.style.display = 'none';
@@ -104,7 +108,11 @@ function performRemoveSeries(dbId) {
     fetch('/api/library/remove', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({id: dbId, delete_files: true})
+        body: JSON.stringify({
+            id: dbId,
+            delete_files: true,
+            add_exclusion: !!(document.getElementById('remove-series-exclude') || {}).checked,
+        })
     })
     .then(async r => {
         // Backend always replies with JSON now — success body is the

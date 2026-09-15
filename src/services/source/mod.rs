@@ -41,6 +41,11 @@ use crate::services::source_temporal::classify_temporal;
 
 mod types;
 pub use types::*;
+pub mod upgrade_policy;
+pub use upgrade_policy::{
+    ExistingFile, ProperPolicy, UpgradeCandidate, UpgradeKind, UpgradePolicy, UpgradeRejection,
+    judge_upgrade,
+};
 
 // ───────────────────────────────────────────────────────────────────────────
 // Aggregator
@@ -894,9 +899,11 @@ pub fn parse_cutoff_source(s: &str) -> (Source, bool, bool) {
 ///    unaffected because they route through the missing-episode
 ///    path, not the upgrade path.
 ///
-/// Used by both RSS's per-item gate (`episode_is_upgradeable`) and the
-/// `upgrade_search` background task's candidate verification. Keeping
-/// the rule in one place ensures the two paths stay consistent.
+/// This is the quality-only half of the decision. The automatic paths
+/// (RSS, the upgrade sweep, the manual-import preview) go through
+/// [`judge_upgrade`], which adds the cutoff, release revisions (`v2`,
+/// PROPER, REPACK) and Custom Format score on top and calls this rule
+/// for the BDMV crossing.
 pub fn is_valid_upgrade(existing: &ClassificationResult, incoming: &ClassificationResult) -> bool {
     if incoming.rank() <= existing.rank() {
         return false;

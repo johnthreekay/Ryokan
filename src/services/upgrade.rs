@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::AppState;
 use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, metadata_cache, series};
-use crate::services::source::{self, ClassificationResult, Resolution, Source};
+use crate::services::source::{self, ClassificationResult, Resolution};
 use crate::services::{auto_search, logger, media};
 
 static UPGRADE_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
@@ -14,6 +14,68 @@ pub struct UpgradeSummary {
     pub episodes_checked: usize,
     pub upgrades_grabbed: usize,
     pub detail: String,
+}
+
+/// The upgrade decision for one on-disk episode against a found
+/// release: `source::judge_upgrade` over the tag row's release title,
+/// group, and Custom Format score, or the bare file when there is no
+/// row (no group, so no revision, and no score). Shared by the daily
+/// sweep and the Wanted page's cutoff search, so the two surfaces
+/// agree on the same file; RSS builds the same inputs from its item.
+pub fn judge_release_for_episode(
+    policy: &source::UpgradePolicy,
+    cfs: &[crate::services::custom_formats::CompiledCustomFormat],
+    existing_classification: &source::ClassificationResult,
+    tag: Option<&crate::models::episode_tags::EpisodeQualityTag>,
+    disk_file: Option<&media::EpisodeFile>,
+    incoming_classification: &source::ClassificationResult,
+    result: &crate::services::nyaa::SearchResult,
+) -> Result<source::UpgradeKind, source::UpgradeRejection> {
+    let no_seadex_hashes: HashSet<String> = HashSet::new();
+    // No tag row: no group (no revision) and no score; the renamed
+    // library file is not a release title.
+    let (existing_title, existing_group, scorable) = match tag {
+        Some(t) if !t.release_title.is_empty() => {
+            (t.release_title.as_str(), t.release_group.as_str(), true)
+        }
+        _ => (
+            disk_file.map(|f| f.filename.as_str()).unwrap_or_default(),
+            "",
+            false,
+        ),
+    };
+    let existing_file = source::ExistingFile {
+        classification: existing_classification,
+        revision: media::parse_release_revision(existing_title),
+        release_group: existing_group,
+        cf_score: scorable.then(|| {
+            crate::services::custom_formats::total_cf_score_for_release(
+                cfs,
+                existing_classification,
+                existing_title,
+                existing_group,
+                disk_file.map(|f| f.size_bytes as i64).unwrap_or(0),
+                "",
+                &no_seadex_hashes,
+            )
+        }),
+        age_days: None,
+    };
+    let candidate = source::UpgradeCandidate {
+        classification: incoming_classification,
+        revision: media::parse_release_revision(&result.title),
+        release_group: &result.group,
+        cf_score: crate::services::custom_formats::total_cf_score_for_release(
+            cfs,
+            incoming_classification,
+            &result.title,
+            &result.group,
+            result.size_bytes,
+            &result.info_hash,
+            &no_seadex_hashes,
+        ),
+    };
+    source::judge_upgrade(policy, &existing_file, &candidate, false)
 }
 
 pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
@@ -29,7 +91,11 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
     let (cutoff_source, cutoff_is_remux, cutoff_is_bdmv) =
         source::parse_cutoff_source(&cfg.cutoff_source);
     let cutoff_resolution = Resolution::from_str(&cfg.cutoff_resolution);
-    if cutoff_source == Source::Unknown && cutoff_resolution == Resolution::Unknown {
+    // The full upgrade decision (cutoff, revisions, Custom Format
+    // score) for the per-candidate gate below; the quality cutoff
+    // pieces above still drive the target selection.
+    let policy = source::UpgradePolicy::from_config(&cfg);
+    if !policy.has_quality_cutoff() {
         return Ok(UpgradeSummary {
             series_checked: 0,
             episodes_checked: 0,
@@ -66,6 +132,11 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
     // scheduler can't race a CF edit during this run — if the user edits
     // a CF mid-sweep, the next scheduled run picks it up.
     let cfs = state.custom_formats.read().await.clone();
+    // The upgrade gate scores both sides of the comparison without
+    // SeaDex: the file on disk has no hash to look up, and giving the
+    // candidate the SeaDex Custom Format alone would let a curated
+    // pick replace an identical file for score. The seed and the
+    // scoring of the search itself still consult SeaDex.
 
     // Issue #28 — snapshot the set of PT indexer IDs once per
     // sweep so the per-series PT-upgrade gate doesn't re-read the
@@ -153,6 +224,12 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             cutoff_is_bdmv,
             &quality_tags,
         );
+        // Targets are quality-only, as in Sonarr: a file at the quality
+        // cutoff with a Custom Format total under the format cutoff is
+        // reached through RSS, not swept. `find_best_for_target` returns
+        // one candidate and a higher-quality one is "cutoff met" for
+        // such a file, so sweeping it would burn a search per day that
+        // can never succeed.
         if upgrade_targets.is_empty() {
             continue;
         }
@@ -295,28 +372,48 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             .await;
 
             // Verify this is actually an upgrade via the shared policy
-            // gate (strict rank improvement AND not a non-BDMV → BDMV
-            // crossing — see source::is_valid_upgrade for the BDMV
-            // rationale). Keeps RSS and upgrade_search consistent.
+            // gate (`source::judge_upgrade`: quality against the
+            // cutoff, a `v2` from the same group, or a better Custom
+            // Format score). Keeps RSS and upgrade_search consistent.
             if let auto_search::SearchTarget::Episode(ep_num) = &target
                 && let Some(existing_classification) = upgrade_classifications.get(ep_num)
             {
-                if !source::is_valid_upgrade(existing_classification, &incoming_classification) {
-                    continue;
+                match judge_release_for_episode(
+                    &policy,
+                    &cfs,
+                    existing_classification,
+                    quality_tags.get(ep_num),
+                    disk_files.iter().find(|f| f.holds(*ep_num)),
+                    &incoming_classification,
+                    &result,
+                ) {
+                    Ok(kind) => {
+                        logger::info(
+                            &state.db,
+                            LogCategory::AutoSearch,
+                            &format!(
+                                "Upgrade ({}): {} {} — {} -> {}",
+                                kind.as_str(),
+                                title,
+                                label,
+                                existing_classification.label(),
+                                incoming_classification.label()
+                            ),
+                            &result.title,
+                        )
+                        .await;
+                    }
+                    Err(rejection) => {
+                        logger::debug(
+                            &state.db,
+                            LogCategory::AutoSearch,
+                            &format!("Upgrade: {} {} skipped — {}", title, label, rejection),
+                            &result.title,
+                        )
+                        .await;
+                        continue;
+                    }
                 }
-                logger::info(
-                    &state.db,
-                    LogCategory::AutoSearch,
-                    &format!(
-                        "Upgrade: {} {} — {} -> {}",
-                        title,
-                        label,
-                        existing_classification.label(),
-                        incoming_classification.label()
-                    ),
-                    &result.title,
-                )
-                .await;
             }
 
             let url = if !result.magnet.is_empty() {

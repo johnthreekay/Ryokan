@@ -89,19 +89,16 @@ pub async fn commit_grab_and_expand(
         return None;
     }
 
-    // Derive episode numbers from the release title. `parse_release_numbers`
-    // handles single-episode (`... - 05 ...`), range (`01-12`), and
-    // absolute-numbered (`25-48` for JoJo P3 Egypt-hen) forms. If the
-    // title doesn't parse, fall back to an empty vec — post-processing
-    // still classifies imported files individually, and the series
-    // page's per-episode grab state backfills when `episode_tags` rows
-    // land via auto-expand / post-processing. Writing an empty slice
-    // matches the auto_search path's behavior for releases where the
-    // title parser returns nothing.
-    let mut ep_nums: Vec<i32> = auto_search::parse_release_numbers(release_title)
-        .into_iter()
-        .collect();
-    ep_nums.sort_unstable();
+    // The series' absolute-numbering offset, so a pack whose files are
+    // numbered `25..48` for the second season records episodes 1..24
+    // the way the Wanted page asked for them and the import files them.
+    let cumulative_prior_episodes = crate::models::series::get_by_id(&state.db, series_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|s| s.cumulative_prior_episodes)
+        .unwrap_or(0);
+    let ep_nums = episode_numbers_for_commit(release_title, &filenames, cumulative_prior_episodes);
 
     let grab_id = match grabbed_torrents::record_grab(
         &state.db,
@@ -162,6 +159,50 @@ pub async fn commit_grab_and_expand(
         }
     };
 
+    // The grab's own episodes read as downloading from here on. The
+    // direct grab endpoints write these rows themselves; this path
+    // (picker confirm, walkaway auto-commit) used to leave the parent
+    // untagged, so the Wanted page kept listing a picked episode as
+    // missing until the import landed. Auto-expand only backfills what
+    // the grab did not already claim, so nothing is written twice.
+    let classification = crate::services::source::classify_release_sync(release_title, None);
+    let release_group = release_group_from_metadata(&row.release_metadata_json);
+    let tags = crate::models::episode_tags::get_for_series(&state.db, series_id)
+        .await
+        .unwrap_or_default();
+    for ep in &ep_nums {
+        // An episode with a file on disk keeps its `completed` row. The
+        // upsert would replace the file's classification with the
+        // pack's, and a cancelled download would then delete the row
+        // (`clear_tags_for_removal`) with the file still there. The
+        // walkaway auto-commit takes a whole pack, episodes on disk
+        // included; a hand-picked upgrade reads as downloading only
+        // once the import has replaced the file.
+        if tags.get(ep).is_some_and(|t| t.state == "completed") {
+            continue;
+        }
+        if let Err(e) = crate::models::episode_tags::record_grab(
+            &state.db,
+            series_id,
+            *ep,
+            &classification,
+            release_title,
+            &release_group,
+            0,
+            is_batch,
+        )
+        .await
+        {
+            logger::warn(
+                &state.db,
+                LogCategory::Grab,
+                &format!("failed to record grabbed tag for episode {ep}"),
+                &format!("{} ({})", e, row.info_hash),
+            )
+            .await;
+        }
+    }
+
     // Issue #118 — fire `NotificationEvent::Grabbed` for this commit.
     // No-op early-return when no providers are configured (the
     // foundation PR ships an always-empty cache); subsequent provider
@@ -211,6 +252,85 @@ pub async fn commit_grab_and_expand(
     }
 
     Some(grab_id)
+}
+
+/// The episodes a confirmed grab is for: the selected files' own
+/// numbers when any of them parse (a picker grab that kept two files
+/// of a twelve-episode batch is a grab for those two, so the Wanted
+/// page and the series page show only those as downloading and the
+/// import claims only those), else the release title's numbers (a
+/// single-file release, or a pack whose files carry no numbers).
+/// `parse_release_numbers` handles single (`... - 05 ...`), range
+/// (`01-12`), and absolute-numbered (`25-48`) titles; an unparseable
+/// title yields an empty list, which post-processing tolerates.
+///
+/// A special (`OVA 01`) is no episode slot, and a pick made only of
+/// specials is a grab for no episode at all: the title's range must
+/// not stand in for it, or one OVA would tag a whole pack as
+/// downloading. Numbers are series-relative: `cumulative_prior_episodes`
+/// is taken off an absolute-numbered file the way the import does it
+/// (`fallback_ep_offset`), so the row's list matches what the Wanted
+/// page asked for and the tag on the imported slot is the one promoted.
+pub(crate) fn episode_numbers_for_commit(
+    release_title: &str,
+    filenames: &[String],
+    cumulative_prior_episodes: i32,
+) -> Vec<i32> {
+    let mut any_parsed = false;
+    let mut eps: Vec<i32> = Vec::new();
+    for name in filenames
+        .iter()
+        .filter(|n| auto_search::is_media_filename(n))
+    {
+        let base = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
+        let Some(span) = crate::services::media::parse_episode_span(&base) else {
+            continue;
+        };
+        any_parsed = true;
+        if span.special {
+            continue;
+        }
+        eps.extend(file_slot_episodes(span, cumulative_prior_episodes));
+    }
+    if eps.is_empty() && !any_parsed {
+        eps = auto_search::parse_release_numbers(release_title)
+            .into_iter()
+            .map(|n| {
+                n - crate::services::post_processing::fallback_ep_offset(
+                    n,
+                    cumulative_prior_episodes,
+                )
+            })
+            .filter(|e| *e > 0)
+            .collect();
+    }
+    eps.sort_unstable();
+    eps.dedup();
+    eps
+}
+
+/// The library slots a file's parsed span lands in: the import's own
+/// rule (`resolve_episode`), a `SxxExx` name is already relative and a
+/// bare number past `cumulative_prior_episodes` is absolute.
+pub(crate) fn file_slot_episodes(
+    span: crate::services::media::EpisodeSpan,
+    cumulative_prior_episodes: i32,
+) -> impl Iterator<Item = i32> {
+    let offset = if span.season.is_some() {
+        0
+    } else {
+        crate::services::post_processing::fallback_ep_offset(span.first, cumulative_prior_episodes)
+    };
+    (span.first - offset..=span.last - offset).filter(|e| *e > 0)
+}
+
+/// The `group` the picker stored in the pending row's release
+/// metadata, empty when absent.
+fn release_group_from_metadata(release_metadata_json: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(release_metadata_json)
+        .ok()
+        .and_then(|v| v.get("group").and_then(|g| g.as_str()).map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// Resolve the parent series's AL detail and invoke `expand_from_files`.
@@ -319,6 +439,7 @@ mod tests {
     fn pending_grab_for(series_id: Option<i64>, info_hash: &str) -> PendingGrab {
         PendingGrab {
             preview_id: "pv-1".to_string(),
+            wanted_indices_json: String::new(),
             info_hash: info_hash.to_string(),
             client_kind: "qbittorrent".to_string(),
             indexer_id: None,
@@ -402,6 +523,83 @@ mod tests {
         assert_eq!(got_hash, "abcdef0001");
         assert_eq!(got_series, series_id);
         assert_eq!(got_eps, "[1]", "parsed episode numbers should round-trip");
+
+        // The grab's episode reads as downloading from now on.
+        let state_row: Option<String> = sqlx::query_scalar(
+            "SELECT state FROM episode_quality_tags WHERE series_id = ? AND episode_number = 1",
+        )
+        .bind(series_id)
+        .fetch_optional(&db)
+        .await
+        .unwrap();
+        assert_eq!(state_row.as_deref(), Some("grabbed"));
+    }
+
+    #[test]
+    fn commit_episodes_come_from_the_selected_files_when_they_parse() {
+        let title = "[Group] Show - 01-12 (BD 1080p) [Batch]";
+        let picked = vec![
+            "Show/[Group] Show - 02 (BD 1080p).mkv".to_string(),
+            "Show/[Group] Show - 03 (BD 1080p).mkv".to_string(),
+            "Show/Extras/[Group] Show - NCOP1.mkv".to_string(),
+            "Show/readme.txt".to_string(),
+        ];
+        assert_eq!(episode_numbers_for_commit(title, &picked, 0), vec![2, 3]);
+        // No selected file parses: the title's range stands.
+        let unnumbered = vec!["Show/movie.mkv".to_string()];
+        assert_eq!(
+            episode_numbers_for_commit(title, &unnumbered, 0),
+            (1..=12).collect::<Vec<i32>>()
+        );
+        // A single-file release: file and title agree.
+        assert_eq!(
+            episode_numbers_for_commit(
+                "[Group] Show - 05 (1080p).mkv",
+                &["[Group] Show - 05 (1080p).mkv".to_string()],
+                0
+            ),
+            vec![5]
+        );
+    }
+
+    #[test]
+    fn a_pick_of_specials_only_is_a_grab_for_no_episode() {
+        // One OVA out of a twelve-episode pack used to fall through to
+        // the title's range and tag all twelve as downloading.
+        let title = "[Group] Show - 01-12 (BD 1080p) [Batch]";
+        let ova = vec!["Show/[Group] Show - OVA 01 (BD 1080p).mkv".to_string()];
+        assert!(episode_numbers_for_commit(title, &ova, 0).is_empty());
+        // A special beside an episode: only the episode counts.
+        let mixed = vec![
+            "Show/[Group] Show - OVA 01 (BD 1080p).mkv".to_string(),
+            "Show/[Group] Show - 04 (BD 1080p).mkv".to_string(),
+        ];
+        assert_eq!(episode_numbers_for_commit(title, &mixed, 0), vec![4]);
+    }
+
+    #[test]
+    fn commit_episodes_are_series_relative_for_absolute_numbered_files() {
+        // Season 2 (24 prior episodes) shipped as `25..48`: the row
+        // records what the Wanted page asked for and the import files.
+        let title = "[Group] Show - 25-48 (BD 1080p) [Batch]";
+        let picked = vec![
+            "Show/[Group] Show - 25 (BD 1080p).mkv".to_string(),
+            "Show/[Group] Show - 27 (BD 1080p).mkv".to_string(),
+        ];
+        assert_eq!(episode_numbers_for_commit(title, &picked, 24), vec![1, 3]);
+        // The title fallback takes the same offset.
+        let unnumbered = vec!["Show/movie.mkv".to_string()];
+        assert_eq!(
+            episode_numbers_for_commit(title, &unnumbered, 24),
+            (1..=24).collect::<Vec<i32>>()
+        );
+        // A `SxxExx` name is already relative; a number under the
+        // offset is a first-season file and stays as it is.
+        let relative = vec![
+            "Show/Show - S02E02.mkv".to_string(),
+            "Show/[Group] Show - 03 (BD 1080p).mkv".to_string(),
+        ];
+        assert_eq!(episode_numbers_for_commit(title, &relative, 24), vec![2, 3]);
     }
 
     #[tokio::test]

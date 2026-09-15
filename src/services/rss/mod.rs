@@ -696,14 +696,11 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
     > = HashMap::new();
 
-    let (cutoff_src, cutoff_is_remux, cutoff_is_bdmv) =
-        source::parse_cutoff_source(&cfg.cutoff_source);
-    let cutoff = source::cutoff_classification(
-        cutoff_src,
-        Resolution::from_str(&cfg.cutoff_resolution),
-        cutoff_is_remux,
-        cutoff_is_bdmv,
-    );
+    // Upgrade policy for the on-disk gate: quality cutoff, proper
+    // policy, and the Custom Format cutoff / increment, read once per
+    // sync. `now_secs` anchors the RSS revision window.
+    let policy = source::UpgradePolicy::from_config(&cfg);
+    let now_secs = chrono::Utc::now().timestamp();
 
     let mut items_seen = 0;
     let mut matched = 0;
@@ -882,6 +879,34 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             continue;
         }
 
+        // A special (`OVA 01`, `- SP1`) of a TV series is not one of its
+        // episodes. The interactive picker is the way to grab one; the
+        // import then files it under Specials.
+        if media::is_tv_format(&found.series.format) && media::is_special_release(&item.title) {
+            skipped += 1;
+            let reason = format!(
+                "Special release of a TV series | {}",
+                build_match_diag(&item, Some(&found), 0)
+            );
+            let _ = rss::record_decision(
+                &state.db,
+                rss::DecisionRecord {
+                    item_key: &item_key,
+                    title: &item.title,
+                    link: &item.link,
+                    series_id: Some(found.series.id),
+                    series_title: &found.series.title,
+                    group_name: &item.group,
+                    is_batch: item.is_batch,
+                    decision: "rejected",
+                    reason: &reason,
+                    source: src_str,
+                    source_id: src_id,
+                },
+            )
+            .await;
+            continue;
+        }
         let monitored_eps = if let Some(cached) = monitored_cache.get(&found.series.id) {
             cached.clone()
         } else {
@@ -945,13 +970,35 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             }),
         )
         .await;
+        // The release's own Custom Format total, compared against the
+        // on-disk file's inside the upgrade gate. Same evaluator call
+        // `score_candidate` makes; RssItem carries no size, so Size
+        // specs stay unmatched on this side too.
+        let incoming_cf_score = crate::services::custom_formats::total_cf_score_for_release(
+            &cfs,
+            &incoming_classification,
+            &item.title,
+            &item.group,
+            0,
+            &item.info_hash,
+            &empty_seadex_hashes,
+        );
+        let gate = UpgradeGate {
+            policy: &policy,
+            cfs: &cfs,
+            seadex_hashes: &empty_seadex_hashes,
+            now_secs,
+            incoming_revision: media::parse_release_revision(&item.title),
+            incoming_group: &item.group,
+            incoming_cf_score,
+        };
         let decision = evaluate_candidate(
             &found.series,
             &item,
             &incoming_classification,
             disk_files,
             &actionable_eps,
-            &cutoff,
+            &gate,
             qtags,
         );
         if let Some(reason) = decision.reject_reason {
@@ -977,13 +1024,27 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             continue;
         }
 
-        let canonical_key = canonical_episode_key(&found, item.is_batch);
-        if !canonical_key.is_empty() && canonical_history.contains(&canonical_key) {
+        // The exact-revision history check, then Sonarr's queue check:
+        // the gate above judged disk files only, and a lower revision
+        // of the same item still in history while the episode is not
+        // on disk is the `v1` downloading when its `v2` posts. The
+        // release would replace it at import, so the rules for a file
+        // apply here too (`judge_queued_revision`).
+        let incoming_version = media::parse_release_revision(&item.title).version;
+        let history_reason = if canonical_history.contains(&found, item.is_batch, incoming_version)
+        {
+            Some("Logical episode is already queued or was grabbed earlier".to_string())
+        } else if !decision.is_upgrade
+            && let Some(queued) =
+                canonical_history.lower_revision(&found, item.is_batch, incoming_version)
+        {
+            judge_queued_revision(&policy, queued, &item.group).err()
+        } else {
+            None
+        };
+        if let Some(reason) = history_reason {
             skipped += 1;
-            let reason = format!(
-                "Logical episode is already queued or was grabbed earlier | {}",
-                build_match_diag(&item, Some(&found), 0)
-            );
+            let reason = format!("{} | {}", reason, build_match_diag(&item, Some(&found), 0));
             let _ = rss::record_decision(
                 &state.db,
                 rss::DecisionRecord {
@@ -1217,7 +1278,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                         build_match_diag(&cand.item, Some(&cand.found), cand.score)
                     )
                 };
-                canonical_history.insert(canonical_episode_key(&cand.found, cand.item.is_batch));
+                canonical_history.insert(&cand.found, cand.item.is_batch, &cand.item.title);
                 let _ = rss::record_decision(
                     &state.db,
                     rss::DecisionRecord {
@@ -1442,14 +1503,12 @@ async fn load_canonical_history(
     db: &sqlx::SqlitePool,
     client: Option<&dyn crate::services::download_client::DownloadClient>,
     all_meta: &[SeriesMeta],
-) -> HashSet<String> {
-    let mut keys = HashSet::new();
+) -> CanonicalHistory {
+    let mut history = CanonicalHistory::default();
 
     if let Ok(titles) = rss::grabbed_titles(db, 5000).await {
         for title in titles {
-            if let Some(key) = canonical_key_for_title(&title, all_meta) {
-                keys.insert(key);
-            }
+            history.insert_title(&title, all_meta);
         }
     }
 
@@ -1457,13 +1516,11 @@ async fn load_canonical_history(
         && let Ok(torrents) = client.list_scoped().await
     {
         for torrent in torrents {
-            if let Some(key) = canonical_key_for_title(&torrent.name, all_meta) {
-                keys.insert(key);
-            }
+            history.insert_title(&torrent.name, all_meta);
         }
     }
 
-    keys
+    history
 }
 
 /// Match a release title against every tracked series in the library
@@ -1507,40 +1564,151 @@ pub async fn match_library_title(
     Some((found.series, eps))
 }
 
-fn canonical_key_for_title(title: &str, all_meta: &[SeriesMeta]) -> Option<String> {
-    // Same synthetic-item pattern as `find_series_for_title` —
-    // matcher inputs only, no real grab.
-    let pseudo = RssItem {
-        title: title.to_string(),
-        link: String::new(),
-        guid: String::new(),
-        torrent: String::new(),
-        magnet: String::new(),
-        info_hash: String::new(),
-        group: extract_group(title),
-        resolution: extract_resolution(title),
-        is_batch: detect_batch(title),
-        source: RssSource::Nyaa,
-    };
-    let found = best_series_match(&pseudo, all_meta)?;
-    let key = canonical_episode_key(&found, pseudo.is_batch);
-    if key.is_empty() { None } else { Some(key) }
+/// A release the history holds for a logical item: its revision and
+/// group, so a later revision of the same item can be judged against
+/// the one already queued or grabbed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HistoryRelease {
+    pub revision: u32,
+    pub group: String,
+}
+
+/// What the sweep already has, keyed by `logical_episode_key`: the
+/// grabbed titles and the client's queue, one entry per release. The
+/// revision lives on the entry rather than in the key, so a `v2` is
+/// not swallowed as "already grabbed" by its `v1` (`contains`) while
+/// the `v1` is still there to judge the `v2` against
+/// (`lower_revision`, the queue check).
+#[derive(Debug, Default)]
+struct CanonicalHistory {
+    items: HashMap<String, Vec<HistoryRelease>>,
+}
+
+impl CanonicalHistory {
+    fn insert(&mut self, found: &MatchResult, is_batch: bool, title: &str) {
+        let key = logical_episode_key(found, is_batch);
+        if key.is_empty() {
+            return;
+        }
+        self.items.entry(key).or_default().push(HistoryRelease {
+            revision: media::parse_release_revision(title).version,
+            group: extract_group(title),
+        });
+    }
+
+    /// A title from the grab history or the client's queue, matched
+    /// against the library the way the sweep matches a feed item.
+    fn insert_title(&mut self, title: &str, all_meta: &[SeriesMeta]) {
+        // Same synthetic-item pattern as `find_series_for_title` —
+        // matcher inputs only, no real grab.
+        let pseudo = RssItem {
+            title: title.to_string(),
+            link: String::new(),
+            guid: String::new(),
+            torrent: String::new(),
+            magnet: String::new(),
+            info_hash: String::new(),
+            group: extract_group(title),
+            resolution: extract_resolution(title),
+            is_batch: detect_batch(title),
+            source: RssSource::Nyaa,
+        };
+        if let Some(found) = best_series_match(&pseudo, all_meta) {
+            self.insert(&found, pseudo.is_batch, title);
+        }
+    }
+
+    /// True when this revision of the item was queued or grabbed.
+    fn contains(&self, found: &MatchResult, is_batch: bool, revision: u32) -> bool {
+        let key = logical_episode_key(found, is_batch);
+        !key.is_empty()
+            && self
+                .items
+                .get(&key)
+                .is_some_and(|held| held.iter().any(|r| r.revision == revision))
+    }
+
+    /// The highest revision of the item below `revision` that was
+    /// queued or grabbed, if any: what a `v2` would replace before the
+    /// `v1` reaches the disk.
+    fn lower_revision(
+        &self,
+        found: &MatchResult,
+        is_batch: bool,
+        revision: u32,
+    ) -> Option<&HistoryRelease> {
+        let key = logical_episode_key(found, is_batch);
+        if key.is_empty() {
+            return None;
+        }
+        self.items
+            .get(&key)?
+            .iter()
+            .filter(|r| r.revision < revision)
+            .max_by_key(|r| r.revision)
+    }
+}
+
+/// Sonarr's queue check for a revision: what a release has to satisfy
+/// to be grabbed while a lower revision of the same item is still
+/// downloading, or grabbed and not yet on disk. The file gate
+/// (`episode_is_upgradeable`) never sees that release, so the same two
+/// rules it applies to a file apply here: the proper policy has to
+/// allow revision upgrades, and the release has to come from the
+/// queued one's group. `Err` carries the decision-log reason.
+fn judge_queued_revision(
+    policy: &source::UpgradePolicy,
+    queued: &HistoryRelease,
+    incoming_group: &str,
+) -> Result<(), String> {
+    let held = format!(
+        "A v{} of this episode is already queued or grabbed",
+        queued.revision
+    );
+    if policy.propers != source::ProperPolicy::PreferAndUpgrade {
+        return Err(format!("{held}; revision upgrades are disabled"));
+    }
+    let queued_group = queued.group.trim();
+    let incoming_group = incoming_group.trim();
+    if queued_group.is_empty() || incoming_group.is_empty() {
+        return Err(format!(
+            "{held}; the release group is unknown, and a revision has to come from the group that made it"
+        ));
+    }
+    if !queued_group.eq_ignore_ascii_case(incoming_group) {
+        return Err(format!(
+            "{held} from {queued_group}; a revision has to come from the same group"
+        ));
+    }
+    Ok(())
 }
 
 fn compare_candidates(a: &PendingCandidate, b: &PendingCandidate) -> Ordering {
+    // A `v2` and its `v1` share a bucket; at equal score the later
+    // revision wins, so one feed window listing both grabs one.
+    let revision = |c: &PendingCandidate| media::parse_release_revision(&c.item.title).version;
     a.score
         .cmp(&b.score)
+        .then_with(|| revision(a).cmp(&revision(b)))
         .then_with(|| (!a.item.is_batch).cmp(&(!b.item.is_batch)))
         .then_with(|| resolution_rank(&a.item.resolution).cmp(&resolution_rank(&b.item.resolution)))
         .then_with(|| a.item.group.cmp(&b.item.group))
         .then_with(|| a.item.title.cmp(&b.item.title))
 }
 
+/// The within-sweep bucket: every release that delivers the same
+/// logical item competes for one grab, a `v1` and its `v2` included
+/// (`compare_candidates` prefers the higher revision at equal score).
+/// The revision is deliberately not part of this key; it belongs to
+/// the history (`CanonicalHistory`), where it keeps a later `v2` from
+/// being swallowed as "already grabbed".
 fn logical_bucket_key(cand: &PendingCandidate) -> String {
-    canonical_episode_key(&cand.found, cand.item.is_batch)
+    logical_episode_key(&cand.found, cand.item.is_batch)
 }
 
-fn canonical_episode_key(found: &MatchResult, is_batch: bool) -> String {
+/// The logical item a release delivers: series family, batch or
+/// single, and the episode set. Empty when no episode resolved.
+fn logical_episode_key(found: &MatchResult, is_batch: bool) -> String {
     let episode_key = if !found.canonical_abs_eps.is_empty() {
         format_episode_set(&found.canonical_abs_eps)
     } else {
@@ -1634,6 +1802,14 @@ async fn score_candidate(
         "range" => score += 10,
         _ => score -= 10,
     }
+    // Release revision: same bonus the Nyaa scorer gives a `v2` /
+    // PROPER / REPACK, off under the `do_not_prefer` proper policy.
+    if source::ProperPolicy::from_str(&cfg.proper_policy).prefers_revisions()
+        && let Some((delta, _)) =
+            crate::services::scoring::revision_bonus(media::parse_release_revision(&item.title))
+    {
+        score += delta;
+    }
 
     // CF overlay — the auto-search and upgrade paths fold the user's
     // compiled Custom Formats into scoring at the equivalent layer; RSS
@@ -1676,13 +1852,28 @@ fn resolution_rank(value: &str) -> i32 {
 /// Synchronous: no DB or HTTP inside this function. All the live
 /// lookups happen in the caller before calling this. That also makes
 /// the function unit-testable without a pool or mock client.
+/// Everything the on-disk upgrade gate needs beyond the item's
+/// classification: the user's policy, the compiled Custom Formats
+/// (to score the file on disk), and the release's own revision, group
+/// and CF total.
+pub(crate) struct UpgradeGate<'a> {
+    pub policy: &'a source::UpgradePolicy,
+    pub cfs: &'a [crate::services::custom_formats::CompiledCustomFormat],
+    pub seadex_hashes: &'a HashSet<String>,
+    /// Unix seconds "now", for the file-age window.
+    pub now_secs: i64,
+    pub incoming_revision: media::ReleaseRevision,
+    pub incoming_group: &'a str,
+    pub incoming_cf_score: i32,
+}
+
 fn evaluate_candidate(
     found: &series::Series,
     item: &RssItem,
     incoming: &ClassificationResult,
     disk_files: &[media::EpisodeFile],
     parsed_eps: &HashSet<i32>,
-    cutoff: &ClassificationResult,
+    gate: &UpgradeGate<'_>,
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
 ) -> CandidateDecision {
     let existing_ep_numbers: HashSet<i32> = disk_files.iter().flat_map(|f| f.episodes()).collect();
@@ -1716,9 +1907,10 @@ fn evaluate_candidate(
                             parsed_eps,
                             disk_files,
                             incoming,
-                            cutoff,
+                            gate,
                             quality_tags,
                         )
+                        .is_ok()
                 })
                 .count() as i32;
             let actionable = new_count + upgrade_count;
@@ -1797,25 +1989,34 @@ fn evaluate_candidate(
         .iter()
         .filter(|ep| !existing_ep_numbers.contains(ep))
         .count() as i32;
-    let upgrade_count = parsed_eps
+    let mut upgrade_count: i32 = 0;
+    let mut first_rejection: Option<source::UpgradeRejection> = None;
+    let mut on_disk: Vec<i32> = parsed_eps
         .iter()
-        .filter(|ep| {
-            existing_ep_numbers.contains(ep)
-                && episode_is_upgradeable(
-                    ep,
-                    parsed_eps,
-                    disk_files,
-                    incoming,
-                    cutoff,
-                    quality_tags,
-                )
-        })
-        .count() as i32;
+        .copied()
+        .filter(|ep| existing_ep_numbers.contains(ep))
+        .collect();
+    on_disk.sort_unstable();
+    for ep in &on_disk {
+        match episode_is_upgradeable(ep, parsed_eps, disk_files, incoming, gate, quality_tags) {
+            Ok(_) => upgrade_count += 1,
+            Err(rejection) => {
+                first_rejection.get_or_insert(rejection);
+            }
+        }
+    }
     let actionable = new_count + upgrade_count;
 
     if actionable == 0 {
+        // The gate's own words for the lowest episode it refused (a
+        // `v2` from another group, a file at the cutoff, a span the
+        // release does not cover).
+        let reason = match first_rejection {
+            Some(rejection) => format!("Episode is already on disk: {rejection}"),
+            None => "Episode is already on disk at or above cutoff".to_string(),
+        };
         return CandidateDecision {
-            reject_reason: Some("Episode is already on disk at or above cutoff".to_string()),
+            reject_reason: Some(reason),
             new_episode_count: 0,
             is_upgrade: false,
         };
@@ -1828,47 +2029,88 @@ fn evaluate_candidate(
     }
 }
 
-/// Check if an episode on disk is below the quality cutoff and the
-/// already-classified incoming release would be an upgrade.
+/// Decide whether the release would upgrade the file on disk for
+/// `ep`. `Err` carries the gate's reason (`source::judge_upgrade`),
+/// `Ok` the kind of upgrade.
+///
+/// The multi-episode span rule (issue #246) runs first: a file holding
+/// several episodes is only replaced by a release that covers every
+/// one of them. The existing side is rehydrated from the tag row
+/// (structured columns, else its release title), its revision and
+/// group from the same row's release title and group, its Custom
+/// Format total from the compiled set against that release title,
+/// and its age from the file's mtime. A file with no tag row has no
+/// known group, so a revision can never replace it (Sonarr's
+/// "existing release group is unknown"), while quality and score
+/// upgrades still can.
 ///
 /// Caller is responsible for running the incoming classification once
 /// per item (it's expensive enough — group-map DB lookup + potentially
 /// a description fetch — that re-doing it per covered episode in a
-/// batch would be wasteful). Existing side still classifies
-/// per-episode because each row on disk can have its own
-/// `episode_quality_tags` verdict.
+/// batch would be wasteful).
 fn episode_is_upgradeable(
     ep: &i32,
     parsed_eps: &HashSet<i32>,
     disk_files: &[media::EpisodeFile],
     incoming: &ClassificationResult,
-    cutoff: &ClassificationResult,
+    gate: &UpgradeGate<'_>,
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
-) -> bool {
+) -> Result<source::UpgradeKind, source::UpgradeRejection> {
     let Some(existing) = disk_files.iter().find(|f| f.holds(*ep)) else {
-        return false; // not on disk — not an "upgrade", it's a new episode
+        // Not on disk: a new episode, not an upgrade. Callers never
+        // ask about one, so any verdict here is unreachable in
+        // practice; "unclassified" is the conservative one.
+        return Err(source::UpgradeRejection::ExistingUnclassified);
     };
     // A multi-episode file (issue #246) is only replaced by a release
     // that covers every episode it holds; the import would otherwise
     // retire the file and lose the rest (Sonarr's "same episodes" rule).
     if existing.is_multi_episode() && !existing.episodes().all(|e| parsed_eps.contains(&e)) {
-        return false;
+        return Err(source::UpgradeRejection::SpanNotCovered);
     }
-    let existing_classification =
-        auto_search::resolve_existing_classification(existing, quality_tags.get(ep));
-    // If we can't place existing anywhere, be conservative and don't upgrade.
-    if existing_classification.source == Source::Unknown
-        && existing_classification.resolution == Resolution::Unknown
-    {
-        return false;
+    let tag = quality_tags.get(ep);
+    if tag.is_some_and(|t| t.manual_override) {
+        return Err(source::UpgradeRejection::Pinned);
     }
-    // Only upgrade if existing is below cutoff.
-    if existing_classification.rank() >= cutoff.rank() {
-        return false;
-    }
-    // Shared upgrade policy: strictly better on the rank tuple AND
-    // not a non-BDMV → BDMV crossing. See `source::is_valid_upgrade`.
-    source::is_valid_upgrade(&existing_classification, incoming)
+    let existing_classification = auto_search::resolve_existing_classification(existing, tag);
+    // A file with no tag row has no release title: no group (so no
+    // revision) and no score. The renamed library file is not a
+    // release title and is not scored.
+    let (release_title, release_group, scorable) = match tag {
+        Some(t) if !t.release_title.is_empty() => {
+            (t.release_title.as_str(), t.release_group.as_str(), true)
+        }
+        _ => (existing.filename.as_str(), "", false),
+    };
+    // Size 0 on both sides: RssItem carries no size, so a Size spec
+    // matching only the file on disk would tilt the comparison.
+    let existing_cf_score = scorable.then(|| {
+        crate::services::custom_formats::total_cf_score_for_release(
+            gate.cfs,
+            &existing_classification,
+            release_title,
+            release_group,
+            0,
+            "",
+            gate.seadex_hashes,
+        )
+    });
+    let existing_file = source::ExistingFile {
+        classification: &existing_classification,
+        revision: media::parse_release_revision(release_title),
+        release_group,
+        cf_score: existing_cf_score,
+        age_days: existing
+            .modified_secs
+            .map(|m| (gate.now_secs - m).max(0) / 86_400),
+    };
+    let candidate = source::UpgradeCandidate {
+        classification: incoming,
+        revision: gate.incoming_revision,
+        release_group: gate.incoming_group,
+        cf_score: gate.incoming_cf_score,
+    };
+    source::judge_upgrade(gate.policy, &existing_file, &candidate, true)
 }
 
 fn is_finished_status(status: &str) -> bool {

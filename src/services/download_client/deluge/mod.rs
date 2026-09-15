@@ -870,7 +870,12 @@ fn to_download_files(raw: &DelugeRawTorrent) -> Vec<DownloadFile> {
 fn map_deluge_state(raw: &DelugeRawTorrent) -> DownloadItemState {
     use DownloadItemState::*;
     match raw.state.as_str() {
-        "Error" => Errored,
+        // Deluge's `Error` covers a missing download path and disk
+        // errors alongside real failures; Sonarr reports it as a
+        // warning and never fails the download, so neither does
+        // Ryokan (failing it would blocklist the release and delete
+        // its data).
+        "Error" => Warning,
         "Checking" | "Allocating" if raw.is_finished => CheckingSeed,
         "Checking" | "Allocating" => CheckingDownload,
         "Moving" => {
@@ -1055,7 +1060,9 @@ mod tests {
             state: "Error".into(),
             ..Default::default()
         };
-        assert!(map_deluge_state(&errored).is_errored());
+        assert_eq!(map_deluge_state(&errored), DownloadItemState::Warning);
+        assert!(!map_deluge_state(&errored).is_errored());
+        assert!(!map_deluge_state(&errored).is_complete());
 
         let downloading = DelugeRawTorrent {
             state: "Downloading".into(),

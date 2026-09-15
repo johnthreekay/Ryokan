@@ -98,11 +98,20 @@ fn has_valid_batch_range(text: &str) -> bool {
         let Some(cap) = RE_BATCH_RIGHT_AFTER.captures(tail) else {
             continue;
         };
-        let right = match cap.get(1).and_then(|s| s.as_str().parse::<u32>().ok()) {
-            Some(v) => v,
-            None => continue,
+        let Some(right_digits) = cap.get(1) else {
+            continue;
         };
-        if left < right {
+        let Ok(right) = right_digits.as_str().parse::<u32>() else {
+            continue;
+        };
+        // A spaced range pairs numbers of one width (`01 - 12`): with
+        // `Chihayafuru 2 - 05` or `Mob Psycho 100 - 05` the left number
+        // is the title's own beside the episode, the shape every
+        // weekly of such a series has. Same rule as the Nyaa scraper.
+        let spaced = cap
+            .get(0)
+            .is_some_and(|whole| whole.as_str().contains(char::is_whitespace));
+        if left < right && (!spaced || m.as_str().len() == right_digits.as_str().len()) {
             return true;
         }
     }
@@ -539,6 +548,18 @@ mod detect_batch_tests {
         // otherwise catch the season digit + episode as a range; the
         // season-marker mask applied before RE_BATCH runs prevents it.
         assert!(!detect_batch("[Group] Cool Anime Season 3 - 05 (1080p)"));
+    }
+
+    #[test]
+    fn title_number_dash_episode_not_mistaken_for_range() {
+        // No marker to mask here: the title itself ends in a number.
+        assert!(!detect_batch(
+            "[HorribleSubs] Chihayafuru 2 - 05 [720p].mkv"
+        ));
+        assert!(!detect_batch(
+            "[SubsPlease] Mob Psycho 100 - 05 (1080p) [ABCD1234].mkv"
+        ));
+        assert!(detect_batch("[Group] Cool Anime - 01 - 12 (1080p)"));
     }
 
     #[test]

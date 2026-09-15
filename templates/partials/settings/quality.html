@@ -61,6 +61,27 @@
                 </div>
             </div>
             <div class="form-group">
+                <label for="proper_policy">Propers and Repacks</label>
+                <select name="proper_policy" id="proper_policy">
+                    <option value="prefer_and_upgrade" {% if config.proper_policy == "prefer_and_upgrade" %}selected{% endif %}>Prefer and upgrade</option>
+                    <option value="do_not_upgrade" {% if config.proper_policy == "do_not_upgrade" %}selected{% endif %}>Prefer, do not upgrade</option>
+                    <option value="do_not_prefer" {% if config.proper_policy == "do_not_prefer" %}selected{% endif %}>Do not prefer</option>
+                </select>
+                <span class="form-hint">A v2, PROPER or REPACK from the group that made the file replaces it. Through RSS only while the file is under a week old.</span>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="custom_format_cutoff_score">Upgrade Until Custom Format Score</label>
+                    <input type="number" name="custom_format_cutoff_score" id="custom_format_cutoff_score" value="{{ config.custom_format_cutoff_score }}" step="1">
+                    <span class="form-hint">A file at the quality cutoff is still replaced by a same-quality release with a higher Custom Format score until its score reaches this. The default of 0 means no score upgrades for a file scoring 0 or better.</span>
+                </div>
+                <div class="form-group">
+                    <label for="custom_format_upgrade_increment">Minimum Custom Format Score Increment</label>
+                    <input type="number" name="custom_format_upgrade_increment" id="custom_format_upgrade_increment" value="{{ config.custom_format_upgrade_increment }}" min="1" step="1">
+                    <span class="form-hint">The least a score-only upgrade has to gain.</span>
+                </div>
+            </div>
+            <div class="form-group">
                 <label for="finished_series_quality">Finished Series</label>
                 <select name="finished_series_quality" id="finished_series_quality">
                     <option value="same" {% if config.finished_series_quality == "same" %}selected{% endif %}>Same as airing</option>

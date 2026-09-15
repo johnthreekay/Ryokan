@@ -875,15 +875,17 @@ fn content_path(base_path: &str, directory: &str, name: &str) -> String {
 /// distinctions are preserved but stalled-vs-active isn't exposed
 /// natively so we collapse it into Downloading/Seeding.
 ///
-/// **Errored is intentionally conservative.** We only surface Errored
-/// when the torrent is entirely stopped (`!is_active && !hashing &&
-/// !is_open`) with a non-empty `d.message`. An active torrent that's
-/// seeing a persistent tracker 410 won't flag as Errored here — it'll
-/// show Downloading/Seeding with the raw message still available in
-/// `DownloadItem.state` for the UI. This matches the rest of the
-/// trait's "prefer false negatives over false positives" error
-/// semantics: transient tracker hiccups on running torrents are
-/// normal and Ryokan shouldn't panic every time a tracker burps.
+/// **rtorrent never reports a failed download.** A torrent that is
+/// entirely stopped (`!is_active && !hashing && !is_open`) with a
+/// non-empty `d.message` surfaces as `Warning`: post-processing waits
+/// on it and the Downloads page shows the message. It is never
+/// `Errored`, which blocklists the release, deletes it with its data,
+/// and searches again; rtorrent's message is a tracker or disk fault
+/// the user may fix, and Sonarr's rtorrent client has no failed
+/// state either. An active torrent that's seeing a persistent tracker
+/// 410 shows Downloading/Seeding with the raw message still available
+/// in `DownloadItem.state` for the UI: transient tracker hiccups on
+/// running torrents are normal.
 fn map_state(
     complete: bool,
     is_active: bool,
@@ -893,13 +895,12 @@ fn map_state(
 ) -> DownloadItemState {
     use DownloadItemState::*;
     // rtorrent uses `d.message` to surface tracker errors and other
-    // fault conditions. Non-empty + "[No peers]" etc. are normal; we
-    // only flag errors on messages rtorrent itself classifies as such.
-    // For now, treat any non-empty non-tracker-info message as Errored
-    // only if hashing is false AND is_active is false — conservative
-    // to avoid flagging transient tracker hiccups.
+    // fault conditions. Non-empty + "[No peers]" etc. are normal; a
+    // message on a torrent that is stopped in every sense is the
+    // warning shape (see the doc comment above), still never a failed
+    // download.
     if !message.is_empty() && !is_active && !hashing && !is_open {
-        return Errored;
+        return Warning;
     }
     if hashing {
         return if complete {
@@ -927,6 +928,7 @@ fn state_label(s: DownloadItemState) -> &'static str {
         CheckingSeed => "Checking (seed)",
         Paused => "Paused",
         PausedComplete => "Paused (complete)",
+        Warning => "Warning",
         Errored => "Errored",
     }
 }
@@ -1061,10 +1063,12 @@ mod tests {
         let s_checking_seed = map_state(true, false, true, false, "");
         assert_eq!(s_checking_seed, DownloadItemState::CheckingSeed);
 
-        // Errored: non-empty message AND not active AND not hashing AND not open.
+        // Warning: non-empty message AND not active AND not hashing AND
+        // not open. Never Errored: that blocklists and deletes.
         let s = map_state(false, false, false, false, "Tracker returned 410");
-        assert_eq!(s, DownloadItemState::Errored);
-        assert!(s.is_errored());
+        assert_eq!(s, DownloadItemState::Warning);
+        assert!(!s.is_errored());
+        assert!(!s.is_complete());
     }
 
     #[test]

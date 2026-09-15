@@ -247,12 +247,19 @@ impl SabClient {
             "Failed" => DownloadItemState::Errored,
             _ => {
                 // History rows in unknown post-proc states usually
-                // mean "completed-with-some-issue" — surface as
-                // Errored so post-processing skips the import. Queue
-                // rows in unknown states default to Downloading
+                // mean "completed-with-some-issue". Treat them as
+                // complete: the import takes what is there, and when
+                // nothing importable is, the #205 stall timer fails
+                // the grab after `import_stall_hours`. Neither Errored
+                // (which blocklists the release and grabs a
+                // replacement; only SAB's own "Failed" earns that) nor
+                // CheckingDownload, which never completes and so never
+                // starts the stall clock: the grab would sit pending
+                // forever with the series page saying "Importing".
+                // Queue rows in unknown states default to Downloading
                 // (best-effort assumption that motion is happening).
                 if is_history {
-                    DownloadItemState::Errored
+                    DownloadItemState::PausedComplete
                 } else {
                     DownloadItemState::Downloading
                 }
@@ -1647,12 +1654,21 @@ mod tests {
     }
 
     #[test]
-    fn map_state_unknown_history_status_surfaces_as_errored() {
-        // History rows in odd post-proc states ("Repair Failed",
-        // "Move Failed") would import broken data if treated as
-        // complete. Errored makes post-processing skip them.
+    fn map_state_unknown_history_status_waits_instead_of_failing() {
+        // History rows in odd post-proc states used to read as
+        // Errored; now that Errored blocklists the release and grabs a
+        // replacement, only SAB's own "Failed" earns it. An unknown
+        // history state counts as complete so the import runs and,
+        // when nothing importable is there, the stall timer gives up
+        // on it; a state that is neither complete nor errored would
+        // never start that clock.
         assert_eq!(
-            SabClient::map_state("Repair Failed", true),
+            SabClient::map_state("Something New", true),
+            DownloadItemState::PausedComplete
+        );
+        assert!(SabClient::map_state("Something New", true).is_complete());
+        assert_eq!(
+            SabClient::map_state("Failed", true),
             DownloadItemState::Errored
         );
     }
