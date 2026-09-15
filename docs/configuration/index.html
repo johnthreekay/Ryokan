@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.61">
+      <meta name="generator" content="zensical-0.0.62">
     
     
       
@@ -941,6 +941,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../wanted/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Wanted
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../manual-import/" class="md-nav__link">
         
   
@@ -1272,6 +1299,9 @@
 <li><strong>Preferred / blocked groups</strong>: whitelists and blacklists of release-group names (e.g. <code>[VCB-Studio]</code>). Preferred groups boost scores; blocked groups exclude their releases entirely.</li>
 <li><strong>Preferred resolution / source</strong>: a coarse first-pass filter. Releases below the resolution floor or wrong source (e.g. WEB-DL when you want BluRay) get filtered out before scoring runs.</li>
 <li><strong>Cutoff source / resolution</strong>: once an episode has a release at or above the cutoff, the upgrade-search task stops looking for better. Set this to "I'll take 1080p WEB-DL but stop churning through grabs once I've got that."</li>
+<li><strong>Propers and Repacks</strong>: what a v2, PROPER or REPACK of a release you already have is worth. <em>Prefer and upgrade</em> (the default) scores it higher and replaces your file with it when it comes from the same group. <em>Prefer, do not upgrade</em> only scores it higher. <em>Do not prefer</em> ignores revisions. See <a href="../scoring/#replacing-a-file-you-already-have">Replacing a file you already have</a>.</li>
+<li><strong>Upgrade Until Custom Format Score</strong>: a file at the quality cutoff is still replaced, through RSS, by a same-quality release with a higher Custom Format score, until the file's score reaches this. 0 (the default) turns score-only upgrades off for any file scoring 0 or better; TRaSH-style setups raise it.</li>
+<li><strong>Minimum Custom Format Score Increment</strong>: the least a score-only upgrade has to gain over the file on disk. Default 1.</li>
 <li><strong>Finished-series quality</strong>: a separate cutoff that applies once AniList marks the series as <code>FINISHED</code>. Pattern: WEB while a series is airing, BluRay once the season's done.</li>
 <li><strong>Audio preference</strong>: subtitled, dubbed, or no preference. Affects scoring, not filtering.</li>
 <li><strong>SeaDex enabled</strong>: when on, Ryokan consults <a href="https://releases.moe">SeaDex</a> (a community-curated list of "best release" picks per AniList ID) and gives matching releases a large score bonus. Adding a Custom Format that uses the <code>SeaDexBest</code> spec automatically suppresses this toggle so you don't double-count.</li>
@@ -1302,6 +1332,7 @@
 <li><strong>RSS Sync Interval (minutes)</strong>: how often the background RSS poller runs. Default 15 minutes; minimum 1, maximum 60.</li>
 <li><strong>Enable post-processing</strong>: rename and move completed downloads into the media library and write NFO sidecars for Jellyfin. Needs a media root and a download client.</li>
 <li><strong>File operation mode</strong>: <code>hardlink</code> (default; keeps the torrent seeding by sharing the same inode between the download folder and the library), <code>copy</code>, or <code>move</code>. Hardlink automatically falls back to copy when the source and destination are on different filesystems (where hardlinks aren't possible).</li>
+<li><strong>Import subtitle files</strong>: off by default. When on, subtitle files that come with a download (<code>srt</code> and <code>ass</code> unless you change <strong>Subtitle file extensions</strong>) are placed next to the episode with the same file operation, named after it with the language read from the subtitle's own name, like <code>Show - S01E05 - Title.en.ass</code>, and a running number when a download carries several of the same kind. A subtitle belongs to a video when its name starts with the video's, when it carries the same episode number, or when its folder is named after the video (a pack's <code>Subs/</code> layout). When none of those match and the download holds a single video, every subtitle in it goes to that episode. Deleting or replacing the episode takes its subtitles along.</li>
 <li><strong>Give up on stuck imports after (hours)</strong>: when the download client reports a download finished but Ryokan still finds no video file to import after this many hours (the download folder is not visible to Ryokan, or the release turned out to be all extras), the download is marked failed, the episode shows as failed, an Import Failed notification goes out, and the release is listed under Downloads → Blocklist. Remove it from the blocklist to let a search grab it again. Default 24. <code>0</code> keeps retrying forever. Nothing is given up on in the first 15 minutes after a restart, so a download folder that mounts late is not mistaken for a stuck import. Leftover partial files from an import that stopped mid-copy (they end in <code>.ryokan-tmp</code> or <code>.ryokan-new</code>) are removed from the media library by the hourly cleanup once they are older than two hours; a <code>.ryokan-new</code> goes to the recycle bin when one is configured.</li>
 <li><strong>Preferred Title Language</strong>: <code>romaji</code> / <code>english</code> / <code>native</code>. Display-only for scoring and search, which match across all three regardless. It also picks the title the <code>{series.title}</code> naming token renders.</li>
 <li>
@@ -1329,6 +1360,10 @@
 <tr>
 <td><code>{episode.number}</code></td>
 <td>Episode number. <code>{episode.number:00}</code> pads to <code>01</code>, <code>{episode.number:000}</code> to <code>001</code>. A file holding several episodes renders the range, <code>S01E05-E06</code> or <code>05-06</code></td>
+</tr>
+<tr>
+<td><code>{episode.absolute}</code></td>
+<td>Absolute episode number counted across the show's seasons, the way fansub groups number a sequel: <code>019</code> for episode 7 of a second season that follows 12 episodes. <code>{episode.absolute:000}</code> pads. Empty until Ryokan knows the season chain (after the first metadata refresh or grab), and always empty for a special. Keep it after the episode number, as in <code>S01E07 - 019</code>, so scans read the episode number and not the absolute one. The sample check refuses a template where the absolute number would win</td>
 </tr>
 <tr>
 <td><code>{episode.title}</code></td>
@@ -1364,9 +1399,10 @@
 - <strong>Purge after (days)</strong>: how long recycled items survive before the hourly cleanup task deletes them for good. Default 14. <code>0</code> keeps everything until you empty the bin manually.
 - <strong>Search when monitoring is widened</strong>: when a series switches to monitoring more episodes (for example none → all), run a search for the newly monitored ones. Off by default.
 - <strong>Add the series to the library when grabbing from Search</strong>: on by default. Off sends the release to the download client without tracking the series.
-- <strong>Interactive file picker</strong>: whether the file picker opens for multi-file releases. <strong>Batches only</strong> (default) opens it for batches and one-clicks single-file releases; <strong>Never</strong> is one-click everywhere.
+- <strong>Interactive file picker</strong>: whether the file picker opens for multi-file releases. <strong>Batches only</strong> (default) opens it for batches and one-clicks single-file releases; <strong>Never</strong> is one-click everywhere. The picker is for torrents. A Usenet batch has no per-file selection and downloads whole.
 - <strong>Search for monitored episodes when a series is added</strong>: on by default. Off adds the series without starting a download.
-- <strong>Remove and blocklist detected misgrabs</strong>: when the files inside a download clearly name a different series, Ryokan removes the download from the client, blocklists the release, notifies you, and searches again. On by default. Off keeps the download in the client, never imports it, and lists it under System, Misgrabs for you to restore or dismiss.</p>
+- <strong>Remove and blocklist detected misgrabs</strong>: when the files inside a download clearly name a different series, Ryokan removes the download from the client, blocklists the release, notifies you, and searches again. On by default. Off keeps the download in the client, never imports it, and lists it under System, Misgrabs for you to restore or dismiss.
+- <strong>Search again after a failed download</strong>: when the download client itself reports a download as failed (SABnzbd's Failed, qBittorrent's error state), Ryokan blocklists the release, removes the download with its files, notifies you, and searches for a replacement right away, the way Sonarr's failed download handling does. On by default. It stops after three failed grabs of one series within a day so a broken indexer cannot loop. A download the client only flags with a warning (qBittorrent's missing files, a Transmission or Deluge error, an rtorrent item stopped with a message) is left alone and stays on the Downloads page with the client's own state until you sort it out; a download folder that went away comes back with its files intact. Nothing is failed in the first 15 minutes after a restart. Each client row's <strong>Remove failed downloads</strong> box (Settings → Download Clients, on by default) decides whether the failed download is removed from that client; with it off the download stays there for a look. An import that fails is different: the download is fine, something on your side is not, so Ryokan leaves it for you to look at rather than downloading the same thing again.</p>
 </li>
 </ul>
 <h2 id="on-the-system-page-not-settings">On the System page (not Settings)<a class="headerlink" href="#on-the-system-page-not-settings" title="Anchor link">&para;</a></h2>
@@ -1443,7 +1479,7 @@
       <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.df5d1f2b.min.js"></script>
+      <script src="../assets/javascripts/bundle.8dcc8e9c.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.61">
+      <meta name="generator" content="zensical-0.0.62">
     
     
       
@@ -822,6 +822,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#replacing-a-file-you-already-have" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Replacing a file you already have
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-automatic-search-will-and-will-not-grab" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -878,6 +889,33 @@
     
   
   Calendar
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wanted/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Wanted
 
     
   </span>
@@ -1104,6 +1142,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#replacing-a-file-you-already-have" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Replacing a file you already have
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-automatic-search-will-and-will-not-grab" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1277,6 +1326,14 @@
 <p>Custom Format scores are added on top (<a href="../configuration/#custom-formats">Configuration</a>). Every format that matches a release contributes its score, so the total is what separates releases that fit the episode equally well. <strong>Minimum Score</strong> on the same tab drops automatic candidates below a floor; interactive search still shows them.</p>
 <p>A release that <a href="https://releases.moe">SeaDex</a> lists as best gets +10,000, through either the SeaDex toggle on Quality &amp; Releases or the SeaDex Best Custom Format, never both. That is large enough to beat every other part combined, which is the point: when the community has a settled answer, Ryokan takes it.</p>
 <p>Releases on the blocklist (Downloads → Blocklist) are skipped before any of this runs.</p>
+<h2 id="replacing-a-file-you-already-have">Replacing a file you already have<a class="headerlink" href="#replacing-a-file-you-already-have" title="Anchor link">&para;</a></h2>
+<p>An episode on disk is replaced when a release is better in one of three ways, checked in this order:</p>
+<ul>
+<li><strong>Quality</strong>: a higher source or resolution, as long as the file is still below your cutoff. Once a file meets the cutoff, quality alone no longer replaces it.</li>
+<li><strong>Revision</strong>: a v2, PROPER or REPACK of the same release, from the same group that made the file. Groups put out a v2 to fix a mistake, so it replaces the file even when the cutoff is already met. Through RSS this only happens while the file is under a week old. The daily upgrade search only looks at files below your quality cutoff, so a fix for a file that already meets it comes through RSS or not at all. A v2 from a different group is not a fix of your file and is left alone.</li>
+<li><strong>Custom Format score</strong>: a same-quality release whose Custom Formats score higher, until the file's score reaches <strong>Upgrade Until Custom Format Score</strong>. The gain has to be at least the <strong>Minimum Custom Format Score Increment</strong>. The default cutoff of 0 turns this off for any file scoring 0 or better. These arrive through RSS; the daily upgrade search only looks for files below the quality cutoff. A file Ryokan did not grab itself has no release title to score and is only replaced for quality.</li>
+</ul>
+<p>A v2 also scores a little higher than the plain release when both are on offer, so the fixed one wins the tie. All of this follows <strong>Propers and Repacks</strong> on Quality &amp; Releases: <strong>Prefer and upgrade</strong> (the default), <strong>Prefer, do not upgrade</strong>, or <strong>Do not prefer</strong>. The reason a release was not taken is written to the RSS decision log and the auto-search log.</p>
 <h2 id="what-automatic-search-will-and-will-not-grab">What automatic search will and will not grab<a class="headerlink" href="#what-automatic-search-will-and-will-not-grab" title="Anchor link">&para;</a></h2>
 <p>Automatic search and RSS only take a release whose name contains one of the series' titles as written, or an alternate title you added, and names nothing beyond it. The other names AniList lists for a show are tried only when the titles themselves find nothing. A release that merely looks similar is left alone, and so is one that names more, such as "Dr. Stone New World" for Dr. STONE, and the search says so: the toast and the log list the releases it saw and skipped. When one of them is right, open the series page, expand <strong>Advanced search overrides</strong>, and add the name that group uses under <strong>Alternate titles</strong>, one per line. From then on that name is searched for and counts as an exact match, the same as the series' own titles, for automatic search, RSS, the upgrade search, and the misgrab check. Interactive search keeps showing near matches, since you are the one choosing there.</p>
 <p>Fansub groups often number a sequel as if the show never ended, so "Jujutsu Kaisen - 56" is season 3, episode 9. Ryokan works out how many episodes came before from AniList's sequel chain and searches under the earlier seasons' names as well. Where that chain is missing a link, as with Dragon Ball Kai and its 2014 continuation, it uses <a href="https://github.com/erengy/anime-relations">anime-relations</a>, the community-maintained list behind Taiga. A copy ships inside Ryokan and is updated with each release.</p>
@@ -1287,7 +1344,7 @@
 <li><strong>Interactive search</strong> on a series page searches every source at once (Nyaa, your indexers, and your feeds) and ranks the results with the scoring above. <strong>Default custom query tokens</strong> and <strong>Default restrict to uploader</strong> under Quality &amp; Releases pre-fill it, and a series can override both on its own page under <strong>Advanced search overrides</strong>.</li>
 </ul>
 <h2 id="grabbing-a-release">Grabbing a release<a class="headerlink" href="#grabbing-a-release" title="Anchor link">&para;</a></h2>
-<p>Click <strong>Grab</strong> next to a release to send it to your download client. A multi-file release opens the file picker first so you can leave out samples and extras; <strong>Interactive file picker</strong> under <strong>Settings → General</strong> turns that off. The release goes to the client Ryokan routes it to (see <a href="../download-clients/">Download clients</a>) with your category or label, and post-processing takes it from there once the download finishes.</p>
+<p>Click <strong>Grab</strong> next to a release to send it to your download client. A multi-file release opens the file picker first so you can leave out samples and extras; <strong>Interactive file picker</strong> under <strong>Settings → General</strong> turns that off. If you close the picker, the tab, or the page without confirming, the release is grabbed a couple of minutes later with the files you had ticked. With nothing ticked, it is cancelled instead. The release goes to the client Ryokan routes it to (see <a href="../download-clients/">Download clients</a>) with your category or label, and post-processing takes it from there once the download finishes.</p>
 
 
 
@@ -1352,7 +1409,7 @@
       <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.df5d1f2b.min.js"></script>
+      <script src="../assets/javascripts/bundle.8dcc8e9c.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       
