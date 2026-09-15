@@ -38,6 +38,7 @@ pub mod monitoring;
 
 pub mod metadata_sync;
 pub mod misgrab;
+pub mod redownload;
 
 pub mod artwork;
 

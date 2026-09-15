@@ -51,8 +51,8 @@ pub use grab::{
 };
 pub use interactive::{
     __path_interactive_search_batches, __path_interactive_search_episode,
-    __path_search_batch_releases, interactive_search_batches, interactive_search_episode,
-    search_batch_releases,
+    __path_interactive_search_episodes, __path_search_batch_releases, interactive_search_batches,
+    interactive_search_episode, interactive_search_episodes, search_batch_releases,
 };
 
 /// Pre-computed display fields for one search result row. Built by

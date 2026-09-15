@@ -157,6 +157,16 @@ pub fn build_upgrade_targets(
         {
             continue;
         }
+        // An upgrade already downloading (the tag row is `grabbed`) is
+        // not searched for again: the Wanted cutoff tab hides such a
+        // slot, and its "Search all" and the daily sweep used to target
+        // it anyway and grab a second release for the same episode.
+        if quality_tags
+            .get(&file.episode_number)
+            .is_some_and(|t| t.state == "grabbed")
+        {
+            continue;
+        }
         let existing =
             resolve_existing_classification(file, quality_tags.get(&file.episode_number));
         // Skip completely unclassified episodes — we have no way to know

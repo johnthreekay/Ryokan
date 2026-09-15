@@ -178,6 +178,9 @@ pub struct SearchOptions {
     pub preferred_groups: Vec<String>,
     pub preferred_resolution: String,
     pub prefer_subs: bool,
+    /// Score a newer release revision (`v2`, PROPER, REPACK) above the
+    /// plain release. Off under the `do_not_prefer` proper policy.
+    pub prefer_revisions: bool,
 }
 
 impl Default for SearchOptions {
@@ -190,6 +193,7 @@ impl Default for SearchOptions {
             preferred_groups: Vec::new(),
             preferred_resolution: "1080".to_string(),
             prefer_subs: true,
+            prefer_revisions: true,
         }
     }
 }

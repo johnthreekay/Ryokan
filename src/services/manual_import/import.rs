@@ -437,6 +437,51 @@ pub async fn run_import(
             let replacing = match fv.status {
                 FileStatus::Import => false,
                 FileStatus::WouldReplace => true,
+                FileStatus::Special => {
+                    // A special of a TV entry: into the Specials folder
+                    // under its own name, no episode row, never
+                    // replacing anything.
+                    progress::emit(
+                        "import",
+                        "info",
+                        format!("Importing {} special {}", series_title, file.file_name),
+                        Some(format!("{} of {total_writes} files", done_files + 1)),
+                        false,
+                    )
+                    .await;
+                    let specials_dir = Path::new(&media_root)
+                        .join(&row.folder_name)
+                        .join(post_processing::SPECIALS_FOLDER);
+                    if let Err(e) = tokio::fs::create_dir_all(&specials_dir).await {
+                        gr.errors.push(format!("{}: {e}", file.rel_path));
+                        report.files_failed += 1;
+                        done_files += 1;
+                        continue;
+                    }
+                    let dest = specials_dir.join(&file.file_name);
+                    if dest.exists() && !post_processing::files_share_inode(&file.path, &dest) {
+                        gr.errors.push(format!(
+                            "{}: a different file is already in the Specials folder, left alone",
+                            file.rel_path
+                        ));
+                        report.files_failed += 1;
+                        done_files += 1;
+                        continue;
+                    }
+                    match post_processing::do_file_op(mode, &file.path, &dest).await {
+                        Ok(()) => {
+                            gr.written += 1;
+                            report.files_written += 1;
+                            report.bytes_written += file.size_bytes;
+                        }
+                        Err(e) => {
+                            gr.errors.push(format!("{}: {e}", file.rel_path));
+                            report.files_failed += 1;
+                        }
+                    }
+                    done_files += 1;
+                    continue;
+                }
                 _ => {
                     gr.skipped += 1;
                     report.files_skipped += 1;
@@ -800,6 +845,7 @@ mod tests {
             quality_label: source::classify_release_sync(&file_name, None).label(),
             selected: true,
             episode_count: 1,
+            special: false,
             source_episode: None,
         }
     }

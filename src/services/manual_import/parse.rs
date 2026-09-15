@@ -38,6 +38,10 @@ pub struct ParsedFile {
     /// How many episodes the file holds (issue #246): 1 for the usual
     /// file, 2 for `S01E05-E06`.
     pub episode_count: i32,
+    /// The name marks a special (`OVA 01`, `SP1`, `S00E01`). Whether
+    /// that means the Specials folder depends on the matched entry's
+    /// format (`media::is_tv_format`).
+    pub special: bool,
     /// Year hint from the filename or, failing that, the folder the
     /// title came from. Feeds the match ranking; never persisted.
     pub year: Option<i32>,
@@ -69,6 +73,14 @@ static RE_TITLE_SEASON: LazyLock<Regex> = LazyLock::new(|| {
 /// ending in a lone `V` or `X` must stay put.
 static RE_TITLE_ROMAN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s+(II|III|IV)$").expect("RE_TITLE_ROMAN compiles"));
+
+/// Trailing special marker on a title: `Title - OVA`, `Title OAD`,
+/// `Title Specials`. anitomy leaves the marker inside the title when
+/// it sits between the show and the number (`Title - OVA 02`), which
+/// would put the file in a group of its own beside its series.
+static RE_TITLE_SPECIAL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)[\s._-]+(?:ovas?|oads?|sp|specials?)\s*$").expect("RE_TITLE_SPECIAL compiles")
+});
 
 /// Number carried by a season-style folder (`Season 3`, `S03`,
 /// `Series 2`). `Specials` and friends carry none.
@@ -138,6 +150,20 @@ pub fn split_season_marker(title: &str) -> (String, Option<i32>) {
         }
     }
     (t.to_string(), None)
+}
+
+/// Drop a trailing special marker from a title that names a special:
+/// `Mob Psycho 100 - OVA` becomes `Mob Psycho 100`. A title that is
+/// nothing but the marker stays as it is.
+pub fn strip_special_marker(title: &str) -> String {
+    let t = title.trim();
+    if let Some(m) = RE_TITLE_SPECIAL.find(t) {
+        let head = t[..m.start()].trim_end_matches([' ', '.', '_', '-']);
+        if looks_like_title(head) {
+            return head.to_string();
+        }
+    }
+    t.to_string()
 }
 
 /// Season marker on the series folder, when the folder names the same
@@ -294,11 +320,16 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         .map(|g| g.trim().to_string())
         .filter(|g| !g.is_empty());
 
-    let (season, episode, episode_count) =
+    let (season, episode, episode_count, mut special) =
         match media::parse_episode_span(&file_name.to_lowercase()) {
-            Some(span) => (span.season, Some(span.first), span.count()),
-            None => (None, None, 1),
+            Some(span) => (span.season, Some(span.first), span.count(), span.special),
+            None => (None, None, 1, false),
         };
+    // A `Specials/` or `Season 00` parent is authoritative whatever
+    // the file is called (the Sonarr / Jellyfin layout).
+    if media::path_names_specials(rel_path) || season == Some(0) {
+        special = true;
+    }
 
     let mut title_source = if title.is_some() {
         TitleSource::Filename
@@ -328,6 +359,12 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
             season = marker;
         }
     }
+    // The marker that flagged the special (`- OVA 02`) is part of
+    // anitomy's title; it names the Specials folder, not the show, and
+    // left in place it groups the file apart from its own series.
+    if special && let Some(t) = title.take() {
+        title = Some(strip_special_marker(&t));
+    }
     if season.is_none()
         && title_source == TitleSource::Filename
         && let Some(t) = title.as_deref()
@@ -344,6 +381,7 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         season,
         episode,
         episode_count,
+        special,
         year,
         group,
     }
@@ -355,6 +393,24 @@ mod tests {
 
     fn p(s: &str) -> ParsedFile {
         parse_file(Path::new(s))
+    }
+
+    #[test]
+    fn special_marker_leaves_the_title_so_the_file_groups_with_its_series() {
+        let f = p("Mob Psycho 100/Mob Psycho 100 - OVA 02 [1080p].mkv");
+        assert_eq!(f.title.as_deref(), Some("Mob Psycho 100"));
+        assert!(f.special);
+        assert_eq!(f.episode, Some(2));
+        let f = p("Anime/Sound! Euphonium - Specials/Sound! Euphonium - SP 01.mkv");
+        assert_eq!(f.title.as_deref(), Some("Sound! Euphonium"));
+        assert!(f.special);
+        // The marker alone is no title; it stays for the folder fallback to judge.
+        assert_eq!(strip_special_marker("OVA"), "OVA");
+        assert_eq!(
+            strip_special_marker("Mob Psycho 100 - OVA"),
+            "Mob Psycho 100"
+        );
+        assert_eq!(strip_special_marker("Kowaremono"), "Kowaremono");
     }
 
     #[test]

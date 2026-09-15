@@ -115,6 +115,7 @@ enum Token {
     SeriesYear,
     SeasonNumber,
     EpisodeNumber,
+    EpisodeAbsolute,
     EpisodeTitle,
     QualityFull,
     QualityResolution,
@@ -137,6 +138,10 @@ pub const TOKEN_REFERENCE: &[(&str, &str)] = &[
     (
         "{episode.number}",
         "episode number. {episode.number:00} pads to 01, {episode.number:000} to 001. A file holding several episodes renders the range, like S01E05-E06 or 05-06",
+    ),
+    (
+        "{episode.absolute}",
+        "absolute episode number counted across the show's seasons, like 019 for episode 7 of a second season that follows 12 episodes. {episode.absolute:000} pads. Empty until Ryokan knows the season chain, and always for a special. Keep it after the episode number so scans read the right one",
     ),
     (
         "{episode.title}",
@@ -165,6 +170,7 @@ impl Token {
             "series.year" => Token::SeriesYear,
             "season.number" => Token::SeasonNumber,
             "episode.number" => Token::EpisodeNumber,
+            "episode.absolute" => Token::EpisodeAbsolute,
             "episode.title" => Token::EpisodeTitle,
             "quality.full" => Token::QualityFull,
             "quality.resolution" => Token::QualityResolution,
@@ -181,6 +187,7 @@ impl Token {
             Token::SeriesYear => "series.year",
             Token::SeasonNumber => "season.number",
             Token::EpisodeNumber => "episode.number",
+            Token::EpisodeAbsolute => "episode.absolute",
             Token::EpisodeTitle => "episode.title",
             Token::QualityFull => "quality.full",
             Token::QualityResolution => "quality.resolution",
@@ -318,6 +325,12 @@ pub struct NameContext {
     /// range (`05-E06` after an `E`, `05-06` elsewhere) so the name
     /// parses back to the same span.
     pub episode_last: i32,
+    /// Absolute number of `episode_number` across the show's seasons
+    /// (`series.cumulative_prior_episodes + episode_number`), Sonarr's
+    /// `{absolute}`. `None` when the offset is not known yet or the
+    /// file is a special; `{episode.absolute}` then renders nothing
+    /// and the literal cleanup drops its separator.
+    pub episode_absolute: Option<i32>,
     pub episode_title: String,
     /// `1080p`, `720p`, ... or empty.
     pub quality_resolution: String,
@@ -479,6 +492,22 @@ fn episode_range_value(pad: usize, ctx: &NameContext, preceding_literal: Option<
     )
 }
 
+/// `{episode.absolute}` for a multi-episode file: `019-020`, both
+/// numbers padded. Sonarr repeats the token per episode in the
+/// multi-episode style; the plain range is the one shape that stays
+/// out of the episode parser's way.
+fn absolute_range_value(pad: usize, ctx: &NameContext, first: i32) -> String {
+    let number = |n: i32| -> String {
+        if pad > 0 {
+            format!("{n:0pad$}")
+        } else {
+            n.to_string()
+        }
+    };
+    let last = first + (ctx.episode_last - ctx.episode_number);
+    format!("{}-{}", number(first), number(last))
+}
+
 fn token_value(token: Token, pad: usize, ctx: &NameContext) -> String {
     let number = |n: i32| -> String {
         if pad > 0 {
@@ -492,6 +521,11 @@ fn token_value(token: Token, pad: usize, ctx: &NameContext) -> String {
         Token::SeriesYear => ctx.series_year.map(number).unwrap_or_default(),
         Token::SeasonNumber => number(ctx.season_number),
         Token::EpisodeNumber => number(ctx.episode_number),
+        Token::EpisodeAbsolute => ctx
+            .episode_absolute
+            .filter(|n| *n > 0)
+            .map(number)
+            .unwrap_or_default(),
         Token::EpisodeTitle => ctx.episode_title.clone(),
         Token::QualityFull => quality_full(&ctx.quality_resolution, &ctx.quality_source),
         Token::QualityResolution => ctx.quality_resolution.clone(),
@@ -521,6 +555,15 @@ fn render_stem(pieces: &[Piece<'_>], ctx: &NameContext) -> String {
                 };
                 Segment::Value(sanitize_folder_name(&episode_range_value(
                     *pad, ctx, preceding,
+                )))
+            }
+            Piece::Token {
+                token: Token::EpisodeAbsolute,
+                pad,
+            } if ctx.is_multi_episode() && ctx.episode_absolute.is_some_and(|n| n > 0) => {
+                let first = ctx.episode_absolute.unwrap_or_default();
+                Segment::Value(sanitize_folder_name(&absolute_range_value(
+                    *pad, ctx, first,
                 )))
             }
             Piece::Token { token, pad } => {
@@ -702,6 +745,10 @@ pub fn sample_context() -> NameContext {
         season_number: 1,
         episode_number: 7,
         episode_last: 7,
+        // A second-season shape (12 episodes before it), so a template
+        // that lets the absolute number win the parse-back is caught:
+        // with 7 on both the sample could not tell them apart.
+        episode_absolute: Some(19),
         episode_title: "Like a Fairy Tale".to_string(),
         quality_resolution: "1080p".to_string(),
         quality_source: "WEB-DL".to_string(),
@@ -799,9 +846,23 @@ pub fn validate(kind: TemplateKind, template: &str) -> Result<(), String> {
             let parsed = parse_episode_number(&name.to_lowercase());
             let ok = matches!(parsed, Some((season, 7)) if season.is_none_or(|s| s == 1));
             if !ok {
+                let uses_absolute = pieces.iter().any(|p| {
+                    matches!(
+                        p,
+                        Piece::Token {
+                            token: Token::EpisodeAbsolute,
+                            ..
+                        }
+                    )
+                });
+                let absolute_note = if uses_absolute {
+                    " Put {episode.absolute} after the episode number, never in the ' - NN' slot on its own, or scans read the absolute number as the episode."
+                } else {
+                    ""
+                };
                 return Err(format!(
-                    "Ryokan cannot read the episode number back from '{}'. Keep S{{season.number:00}}E{{episode.number:00}} or ' - {{episode.number:00}}' in the template so library scans and upgrades still find the file.",
-                    name
+                    "Ryokan cannot read the episode number back from '{}'. Keep S{{season.number:00}}E{{episode.number:00}} or ' - {{episode.number:00}}' in the template so library scans and upgrades still find the file.{}",
+                    name, absolute_note
                 ));
             }
         }

@@ -29,7 +29,7 @@ pub fn grab_is_stale(grabbed_at: &str, max_age_secs: i64) -> bool {
     sqlite_age_secs(grabbed_at).is_some_and(|elapsed| elapsed > max_age_secs)
 }
 
-pub(super) fn fallback_ep_offset(raw_ep_num: i32, cumulative_prior_episodes: i32) -> i32 {
+pub(crate) fn fallback_ep_offset(raw_ep_num: i32, cumulative_prior_episodes: i32) -> i32 {
     if cumulative_prior_episodes > 0 && raw_ep_num > cumulative_prior_episodes {
         cumulative_prior_episodes
     } else {

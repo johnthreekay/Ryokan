@@ -780,7 +780,11 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
             -- a pre-existing torrent doesn't nuke prior-grab data. The
             -- ALTER TABLE below is idempotency for upgraders; fresh
             -- installs pick up the column from this CREATE.
-            we_added_torrent INTEGER NOT NULL DEFAULT 1
+            we_added_torrent INTEGER NOT NULL DEFAULT 1,
+            -- The picker's last tick state as a JSON index list, posted
+            -- while the modal is open, so the walkaway auto-commit takes
+            -- the files the user had selected. Empty = every file.
+            wanted_indices_json TEXT NOT NULL DEFAULT ''
         )
         "#,
     )
@@ -820,6 +824,12 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(db)
         .await
         .ok();
+    sqlx::query(
+        "ALTER TABLE pending_grabs ADD COLUMN wanted_indices_json TEXT NOT NULL DEFAULT ''",
+    )
+    .execute(db)
+    .await
+    .ok();
 
     // Multi-client refactor follow-up — capture which `download_clients`
     // row the preview's `add_torrent_paused` call landed on so the
@@ -2870,6 +2880,96 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
             .ok();
     }
 
+    {
+        // Sonarr-style upgrade policy: propers / repacks / fansub `v2`
+        // as upgrades, and "upgrade until Custom Format score". The
+        // defaults reproduce Sonarr's (prefer and upgrade revisions,
+        // format cutoff 0, increment 1), so an upgrade changes nothing
+        // for a library that has no revisions in flight.
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN proper_policy TEXT NOT NULL DEFAULT 'prefer_and_upgrade'",
+        )
+        .execute(db)
+        .await
+        .ok();
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN custom_format_cutoff_score INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(db)
+        .await
+        .ok();
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN custom_format_upgrade_increment INTEGER NOT NULL DEFAULT 1",
+        )
+        .execute(db)
+        .await
+        .ok();
+        // Sonarr's "Redownload failed": search again when the download
+        // client reports a grab as failed. Default on, like Sonarr.
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN auto_redownload_failed INTEGER NOT NULL DEFAULT 1",
+        )
+        .execute(db)
+        .await
+        .ok();
+        // Sonarr's "Import Extra Files": subtitles next to the video.
+        // Off by default, like Sonarr.
+        sqlx::query("ALTER TABLE config ADD COLUMN import_extra_files INTEGER NOT NULL DEFAULT 0")
+            .execute(db)
+            .await
+            .ok();
+        sqlx::query(
+            "ALTER TABLE config ADD COLUMN extra_file_extensions TEXT NOT NULL DEFAULT 'srt,ass'",
+        )
+        .execute(db)
+        .await
+        .ok();
+    }
+
+    {
+        // `{episode.absolute}` naming token: set once
+        // `series::update_cumulative_prior_episodes` has written the
+        // offset, so a sequel whose PREQUEL chain is not hydrated yet
+        // renders no absolute number rather than a wrong one. The
+        // default 0 makes existing rows "unknown" until the next
+        // metadata refresh (12h) or first grab writes them.
+        sqlx::query(
+            "ALTER TABLE series ADD COLUMN cumulative_offset_known INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(db)
+        .await
+        .ok();
+    }
+
+    // Watch-list sync exclusions (Sonarr's import-list exclusions): a
+    // series removed with "keep it off my watch-list sync" is not added
+    // again by the AniList / MAL sync until the row is deleted.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS external_sync_exclusions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            anilist_id INTEGER,
+            mal_id INTEGER,
+            title TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(db)
+    .await?;
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_exclusions_anilist \
+         ON external_sync_exclusions(anilist_id) WHERE anilist_id IS NOT NULL",
+    )
+    .execute(db)
+    .await?;
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_exclusions_mal \
+         ON external_sync_exclusions(mal_id) WHERE mal_id IS NOT NULL",
+    )
+    .execute(db)
+    .await?;
+
     // Issue #228 — remove finished downloads from the client. The
     // switch is per client (Sonarr's "Remove Completed"), default on.
     // `client_removed_at` is stamped when post-processing removed an
@@ -2877,6 +2977,10 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
     // so the finished-seed sweep stops looking at the row.
     for sql in [
         "ALTER TABLE download_clients ADD COLUMN remove_completed INTEGER NOT NULL DEFAULT 1",
+        // Sonarr's per-client "Remove Failed Downloads": whether a
+        // download the client itself reported as failed is deleted
+        // from it, files included, before the re-search. Default on.
+        "ALTER TABLE download_clients ADD COLUMN remove_failed INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE grabbed_torrents ADD COLUMN client_removed_at TEXT",
         // The file-operation mode a grab was imported under, so the
         // sweep's move-mode rule never applies to a row imported by

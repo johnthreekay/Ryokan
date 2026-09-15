@@ -118,6 +118,34 @@ async fn auto_commit_row(state: &AppState, row: &pending_grabs::PendingGrab) {
         return;
     };
 
+    // The picker posted an empty selection: the user left with nothing
+    // ticked (the modal disables Confirm in that state). Committing
+    // every file would download what they had just unticked, so this
+    // is a cancel, the way the Cancel button does it: the torrent is
+    // deleted only when this preview added it, and the caller drops
+    // the row.
+    if pending_grabs::wanted_indices(row).is_some_and(|v| v.is_empty()) {
+        if row.we_added_torrent
+            && let Err(e) = client.delete(&row.info_hash, true).await
+        {
+            tracing::warn!(
+                target: "ryokan::services::grab_sweep",
+                preview_id = %row.preview_id,
+                info_hash = %row.info_hash,
+                error = %e,
+                "auto-cancel delete failed; the paused torrent stays in the client"
+            );
+        }
+        tracing::info!(
+            target: "ryokan::services::grab_sweep",
+            preview_id = %row.preview_id,
+            info_hash = %row.info_hash,
+            we_added_torrent = %row.we_added_torrent,
+            "cancelled abandoned pending grab; the picker's last selection was empty"
+        );
+        return;
+    }
+
     // Parse the file list — we need the filenames for auto-expand
     // and the length for the `0..len` index slice passed to
     // `set_file_wanted`.
@@ -134,8 +162,40 @@ async fn auto_commit_row(state: &AppState, row: &pending_grabs::PendingGrab) {
         return;
     }
 
-    let all: Vec<usize> = (0..file_count).collect();
-    if let Err(e) = client.set_file_wanted(&row.info_hash, &all, true).await {
+    // The picker's last posted selection, when there is one: the
+    // walkaway commits what the user had ticked, the way Confirm would
+    // have. Nothing posted (an older modal, metadata that arrived
+    // after the tab closed) means every file, as before; so does a
+    // selection with no index in range, which a modal never posts.
+    let selection: Option<Vec<usize>> = pending_grabs::wanted_indices(row)
+        .map(|v| {
+            v.into_iter()
+                .filter(|&i| i < file_count)
+                .collect::<Vec<_>>()
+        })
+        .filter(|v| !v.is_empty());
+    let wanted: Vec<usize> = match &selection {
+        Some(v) => v.clone(),
+        None => (0..file_count).collect(),
+    };
+    if let Some(sel) = &selection {
+        let chosen: std::collections::HashSet<usize> = sel.iter().copied().collect();
+        let unwanted: Vec<usize> = (0..file_count).filter(|i| !chosen.contains(i)).collect();
+        if !unwanted.is_empty()
+            && let Err(e) = client
+                .set_file_wanted(&row.info_hash, &unwanted, false)
+                .await
+        {
+            tracing::warn!(
+                target: "ryokan::services::grab_sweep",
+                preview_id = %row.preview_id,
+                info_hash = %row.info_hash,
+                error = %e,
+                "auto-commit set_file_wanted(selection, false) failed; the unticked files may download too"
+            );
+        }
+    }
+    if let Err(e) = client.set_file_wanted(&row.info_hash, &wanted, true).await {
         // Skip the resume. Cross-client asymmetry: Deluge /
         // Transmission / rtorrent add with files defaulting to
         // wanted, so a failed `set_file_wanted(all=true)` leaves
@@ -182,11 +242,18 @@ async fn auto_commit_row(state: &AppState, row: &pending_grabs::PendingGrab) {
     // (see `extract_release_is_batch`).
     let is_batch = crate::handlers::grab::extract_release_is_batch(&row.release_metadata_json)
         .unwrap_or(file_count > 1);
-    let all_filenames: Vec<String> = files.into_iter().map(|f| f.name).collect();
+    let wanted_set: std::collections::HashSet<usize> = wanted.iter().copied().collect();
+    let wanted_count = wanted.len();
+    let filenames: Vec<String> = files
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| wanted_set.contains(i))
+        .map(|(_, f)| f.name)
+        .collect();
     crate::services::grab_commit::commit_grab_and_expand(
         state,
         row,
-        all_filenames,
+        filenames,
         &release_title,
         is_batch,
     )
@@ -197,7 +264,8 @@ async fn auto_commit_row(state: &AppState, row: &pending_grabs::PendingGrab) {
         preview_id = %row.preview_id,
         info_hash = %row.info_hash,
         file_count = %file_count,
-        "auto-committed abandoned pending grab; torrent is now downloading with all files wanted"
+        wanted_count = %wanted_count,
+        "auto-committed abandoned pending grab; torrent is now downloading with the picker's selection"
     );
 }
 
@@ -223,6 +291,7 @@ mod tests {
     struct RecordingClient {
         set_wanted_calls: Mutex<Vec<(String, Vec<usize>, bool)>>,
         resume_calls: Mutex<Vec<String>>,
+        delete_calls: Mutex<Vec<(String, bool)>>,
         set_wanted_fails: bool,
     }
 
@@ -255,7 +324,11 @@ mod tests {
             self.resume_calls.lock().unwrap().push(hash.to_string());
             Ok(())
         }
-        async fn delete(&self, _hash: &str, _delete_files: bool) -> Result<(), String> {
+        async fn delete(&self, hash: &str, delete_files: bool) -> Result<(), String> {
+            self.delete_calls
+                .lock()
+                .unwrap()
+                .push((hash.to_string(), delete_files));
             Ok(())
         }
         async fn set_file_wanted(
@@ -457,6 +530,148 @@ mod tests {
             vec!["hash-happy".to_string()],
             "expected one resume call on the row's info_hash"
         );
+    }
+
+    #[tokio::test]
+    async fn sweep_auto_commits_the_pickers_last_selection() {
+        // The modal posted its tick state before the walkaway: the
+        // sweep marks the rest unwanted and the selection wanted, the
+        // way Confirm would, instead of every file.
+        let db = in_memory_pool().await;
+        pending_grabs::create(
+            &db,
+            "picked",
+            "hash-picked",
+            "qbittorrent",
+            None,
+            None,
+            "{}",
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+        pending_grabs::set_file_list(
+            &db,
+            "picked",
+            "[{\"name\":\"a.mkv\",\"size\":1},{\"name\":\"b.mkv\",\"size\":2},{\"name\":\"c.mkv\",\"size\":3}]",
+        )
+        .await
+        .unwrap();
+        // Index 7 is out of range and dropped; nothing else changes.
+        pending_grabs::set_wanted_indices(&db, "picked", "[1,7]")
+            .await
+            .unwrap();
+        sqlx::query("UPDATE pending_grabs SET heartbeat_at = ?")
+            .bind(now_unix() - HEARTBEAT_TTL_SECS - 5)
+            .execute(&db)
+            .await
+            .unwrap();
+
+        let client = Arc::new(RecordingClient::default());
+        let state = build_test_app_state(db.clone(), Some(client.clone()));
+        assert_eq!(sweep_once(&state).await.unwrap(), 1);
+        let wanted = client.set_wanted_calls.lock().unwrap().clone();
+        assert_eq!(
+            wanted,
+            vec![
+                ("hash-picked".to_string(), vec![0, 2], false),
+                ("hash-picked".to_string(), vec![1], true),
+            ],
+            "the unticked files go unwanted, the ticked one wanted"
+        );
+        assert_eq!(
+            client.resume_calls.lock().unwrap().clone(),
+            vec!["hash-picked".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn sweep_cancels_an_abandoned_grab_whose_last_selection_was_empty() {
+        // The modal posted `[]`: the user left with nothing ticked. The
+        // walkaway used to commit every file; now it cancels the way
+        // the Cancel button does, deleting the torrent this preview
+        // added and dropping the row.
+        let db = in_memory_pool().await;
+        pending_grabs::create(
+            &db,
+            "empty",
+            "hash-empty",
+            "qbittorrent",
+            None,
+            None,
+            "{}",
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+        pending_grabs::set_file_list(&db, "empty", "[{\"name\":\"a.mkv\",\"size\":1}]")
+            .await
+            .unwrap();
+        pending_grabs::set_wanted_indices(&db, "empty", "[]")
+            .await
+            .unwrap();
+        sqlx::query("UPDATE pending_grabs SET heartbeat_at = ?")
+            .bind(now_unix() - HEARTBEAT_TTL_SECS - 5)
+            .execute(&db)
+            .await
+            .unwrap();
+
+        let client = Arc::new(RecordingClient::default());
+        let state = build_test_app_state(db.clone(), Some(client.clone()));
+        assert_eq!(sweep_once(&state).await.unwrap(), 1);
+        assert_eq!(
+            client.delete_calls.lock().unwrap().clone(),
+            vec![("hash-empty".to_string(), true)],
+            "the torrent this preview added is deleted with its data"
+        );
+        assert!(client.set_wanted_calls.lock().unwrap().is_empty());
+        assert!(client.resume_calls.lock().unwrap().is_empty());
+        assert!(
+            pending_grabs::get(&db, "empty").await.unwrap().is_none(),
+            "the row is dropped"
+        );
+    }
+
+    #[tokio::test]
+    async fn sweep_cancel_leaves_a_torrent_the_preview_did_not_add() {
+        // `we_added_torrent = false`: the torrent was in the client
+        // before the preview, so a cancel drops the row and touches
+        // nothing else, as the Cancel button does.
+        let db = in_memory_pool().await;
+        pending_grabs::create(
+            &db,
+            "present",
+            "hash-present",
+            "qbittorrent",
+            None,
+            None,
+            "{}",
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+        pending_grabs::set_file_list(&db, "present", "[{\"name\":\"a.mkv\",\"size\":1}]")
+            .await
+            .unwrap();
+        pending_grabs::set_wanted_indices(&db, "present", "[]")
+            .await
+            .unwrap();
+        sqlx::query("UPDATE pending_grabs SET heartbeat_at = ?")
+            .bind(now_unix() - HEARTBEAT_TTL_SECS - 5)
+            .execute(&db)
+            .await
+            .unwrap();
+
+        let client = Arc::new(RecordingClient::default());
+        let state = build_test_app_state(db.clone(), Some(client.clone()));
+        assert_eq!(sweep_once(&state).await.unwrap(), 1);
+        assert!(client.delete_calls.lock().unwrap().is_empty());
+        assert!(client.set_wanted_calls.lock().unwrap().is_empty());
+        assert!(client.resume_calls.lock().unwrap().is_empty());
+        assert!(pending_grabs::get(&db, "present").await.unwrap().is_none());
     }
 
     /// Multi-client routing regression — the auto-commit-on-walkaway

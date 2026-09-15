@@ -113,6 +113,31 @@ pub struct GrabPreviewStatus {
 pub struct PreviewFile {
     pub name: String,
     pub size: i64,
+    /// The episodes the file name parses to (`Show - 05.mkv` is `[5]`,
+    /// `05-06` is `[5, 6]`), empty for extras, specials, and non-media
+    /// files. Filled when the list is served, so the picker can
+    /// pre-select the files a caller wants: the Wanted page's batch
+    /// grab keeps only the missing episodes.
+    #[serde(default)]
+    pub episodes: Vec<i32>,
+}
+
+/// The episodes a torrent file name parses to, series-relative: an
+/// absolute-numbered file (`- 56` when `cumulative_prior_episodes` is
+/// 47) is episode 9, the number the Wanted page asks the picker for and
+/// the import files it under. See `PreviewFile::episodes`.
+pub(crate) fn file_episodes(name: &str, cumulative_prior_episodes: i32) -> Vec<i32> {
+    if !crate::services::auto_search::is_media_filename(name) {
+        return Vec::new();
+    }
+    let base = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
+    match crate::services::media::parse_episode_span(&base) {
+        Some(span) if !span.special => {
+            crate::services::grab_commit::file_slot_episodes(span, cumulative_prior_episodes)
+                .collect()
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// POST body for `/api/grab/confirm`.
@@ -389,6 +414,7 @@ pub async fn grab_preview(
             .map(|f| PreviewFile {
                 name: f.name,
                 size: f.size,
+                episodes: Vec::new(),
             })
             .collect();
         let json = match serde_json::to_string(&preview_files) {
@@ -507,7 +533,32 @@ pub async fn grab_preview_status(
         }));
     }
 
-    let file_list: Vec<PreviewFile> = serde_json::from_str(&row.file_list_json).unwrap_or_default();
+    let mut file_list: Vec<PreviewFile> =
+        serde_json::from_str(&row.file_list_json).unwrap_or_default();
+    let cumulative_prior_episodes = match row.series_id {
+        Some(id) => crate::models::series::get_by_id(&state.db, id)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| s.cumulative_prior_episodes)
+            .unwrap_or(0),
+        None => 0,
+    };
+    // One regex pass plus an anitomy parse per file; a BD pack has
+    // hundreds, so keep it off the async worker.
+    let file_list = tokio::task::spawn_blocking(move || {
+        for f in &mut file_list {
+            f.episodes = file_episodes(&f.name, cumulative_prior_episodes);
+        }
+        file_list
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("file parse task failed: {e}"),
+        )
+    })?;
     Ok(Json(GrabPreviewStatus {
         preview_id,
         status: "ready".to_string(),
@@ -543,6 +594,52 @@ pub async fn grab_heartbeat(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     if !bumped {
+        return Err((StatusCode::NOT_FOUND, "preview not found".to_string()));
+    }
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+/// POST body for `/api/grab/selection/{preview_id}`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct GrabSelectionForm {
+    /// Indices into the preview's `file_list` currently ticked.
+    pub wanted_indices: Vec<usize>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/grab/selection/{preview_id}",
+    tag = "Grab",
+    summary = "Record the file picker's current selection",
+    description = "Stores the ticked file indices on the pending grab so \
+        the walkaway auto-commit (the sweep that commits an abandoned \
+        picker after its heartbeat lapses) takes that selection rather \
+        than every file. The modal posts it when the file list arrives, \
+        after every change, and from pagehide. Returns 404 once the \
+        preview has been committed or swept.",
+    params(
+        ("preview_id" = String, Path, description = "Opaque id from POST /api/grab/preview"),
+    ),
+    request_body = GrabSelectionForm,
+    responses(
+        (status = 200, description = "Selection recorded", body = serde_json::Value),
+        (status = 404, description = "Preview not found"),
+    ),
+)]
+pub async fn grab_selection(
+    State(state): State<AppState>,
+    Path(preview_id): Path<String>,
+    Json(form): Json<GrabSelectionForm>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let mut indices = form.wanted_indices;
+    indices.sort_unstable();
+    indices.dedup();
+    let json = serde_json::to_string(&indices)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let stored = pending_grabs::set_wanted_indices(&state.db, &preview_id, &json)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    if !stored {
         return Err((StatusCode::NOT_FOUND, "preview not found".to_string()));
     }
     Ok(Json(serde_json::json!({"ok": true})))
@@ -897,6 +994,7 @@ mod tests {
         let files = vec![PreviewFile {
             name: "episode_1.mkv".into(),
             size: 8192,
+            episodes: Vec::new(),
         }];
         pending_grabs::set_file_list(&db, "pid-1", &serde_json::to_string(&files).unwrap())
             .await
@@ -1467,5 +1565,46 @@ mod tests {
                 .unwrap();
         assert_eq!(state, "replaced");
         assert_eq!(replaced_by, Some(99999));
+    }
+}
+
+#[cfg(test)]
+mod file_episode_tests {
+    use super::file_episodes;
+
+    #[test]
+    fn media_files_parse_extras_and_junk_do_not() {
+        assert_eq!(file_episodes("[Group] Show - 02 (1080p).mkv", 0), vec![2]);
+        assert_eq!(file_episodes("Show/Season 1/Show - S01E03.mkv", 0), vec![3]);
+        assert_eq!(
+            file_episodes("[Group] Show - 05-06 (1080p).mkv", 0),
+            vec![5, 6]
+        );
+        assert!(file_episodes("[Group] Show - NCOP1.mkv", 0).is_empty());
+        assert!(
+            file_episodes("[Group] Show - OVA 01.mkv", 0).is_empty(),
+            "a special is not an episode slot"
+        );
+        assert!(file_episodes("readme - 01.txt", 0).is_empty());
+    }
+
+    #[test]
+    fn absolute_numbered_files_map_to_the_series_relative_slot() {
+        // JJK S3 E9 ships as `- 56` with 47 prior episodes; the Wanted
+        // page asks the picker for episode 9 and must find this file.
+        assert_eq!(
+            file_episodes("[S] Jujutsu Kaisen - 56 (1080p).mkv", 47),
+            vec![9]
+        );
+        assert_eq!(
+            file_episodes("[S] Jujutsu Kaisen - 56-57 (1080p).mkv", 47),
+            vec![9, 10]
+        );
+        // Already relative: a first-season number, or a SxxExx name.
+        assert_eq!(
+            file_episodes("[S] Jujutsu Kaisen - 09 (1080p).mkv", 47),
+            vec![9]
+        );
+        assert_eq!(file_episodes("Jujutsu Kaisen - S03E09.mkv", 47), vec![9]);
     }
 }

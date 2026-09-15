@@ -149,6 +149,8 @@ pub struct MergeOutcome {
     /// for the deferred bulk-mode pass that runs after merge. Carrying
     /// just the IDs + image URLs (not the full AnimeDetail) keeps
     /// memory bounded on a 500-series first sync.
+    /// Entries on the sync exclusion list, skipped whole.
+    pub excluded: i32,
     pub new_artwork: Vec<NewArtworkSpec>,
 }
 
@@ -166,12 +168,14 @@ impl MergeOutcome {
             + other.unchanged
             + other.skipped_by_preference
             + other.pinned_manually
+            + other.excluded
             + other.failed.len() as i32;
         self.created += other.created;
         self.monitor_mode_updated += other.monitor_mode_updated;
         self.unchanged += other.unchanged;
         self.skipped_by_preference += other.skipped_by_preference;
         self.pinned_manually += other.pinned_manually;
+        self.excluded += other.excluded;
         self.deferred_jikan = (self.deferred_jikan - handled_by_other).max(0);
         self.failed.extend(other.failed);
         self.new_artwork.extend(other.new_artwork);

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::services::download_client::DownloadFile;
 use crate::services::post_processing::{
     ready_wanted_video_indices, requires_episode_map_preflight, span_from_grab_episodes,
@@ -29,7 +31,7 @@ fn accepts_unique_dot_delimited_complete_series_batch() {
             "[SoM] Dragon.Ball.153.DVD.480p.mkv".to_string(),
         ),
     ];
-    assert!(validate_batch_episode_map(&files).is_ok());
+    assert!(validate_batch_episode_map(&files, &HashSet::new()).is_ok());
 }
 
 #[test]
@@ -49,7 +51,7 @@ fn unparseable_extras_are_skipped_without_failing_the_batch() {
         ),
         (3, 42, None, 0, "Dragon.Ball.002.mkv".to_string()),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     assert!(plan.slots.contains_key(&0));
     assert!(plan.slots.contains_key(&3));
     assert!(!plan.slots.contains_key(&1));
@@ -64,7 +66,7 @@ fn non_positive_resolved_episode_is_skipped_without_failing_the_batch() {
         (0, 42, None, 0, "Show - 00 - Special.mkv".to_string()),
         (1, 42, None, 0, "Show - 01.mkv".to_string()),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     assert!(!plan.slots.contains_key(&0));
     assert!(plan.slots.contains_key(&1));
 }
@@ -75,7 +77,7 @@ fn rejects_duplicate_destination_within_batch() {
         (0, 42, None, 0, "Show.S01E01.first.mkv".to_string()),
         (1, 42, None, 0, "Show.S01E01.second.mkv".to_string()),
     ];
-    let err = validate_batch_episode_map(&files).unwrap_err();
+    let err = validate_batch_episode_map(&files, &HashSet::new()).unwrap_err();
     assert!(err.contains("mapped both"));
     assert!(err.contains("series 42 episode 1"));
     assert!(err.contains("no files were changed"));
@@ -91,7 +93,7 @@ fn misclassified_multi_video_grab_still_rejects_duplicate_destination() {
 
     assert!(!is_batch);
     assert!(requires_episode_map_preflight(is_batch, files.len()));
-    let err = validate_batch_episode_map(&files).unwrap_err();
+    let err = validate_batch_episode_map(&files, &HashSet::new()).unwrap_err();
     assert!(err.contains("mapped both"));
     assert!(err.contains("series 42 episode 1"));
 }
@@ -102,7 +104,7 @@ fn same_episode_is_valid_when_routed_to_different_series() {
         (0, 42, None, 0, "Parent.S01E01.mkv".to_string()),
         (1, 43, None, 0, "Sibling.S01E01.mkv".to_string()),
     ];
-    assert!(validate_batch_episode_map(&files).is_ok());
+    assert!(validate_batch_episode_map(&files, &HashSet::new()).is_ok());
 }
 
 #[test]
@@ -111,7 +113,7 @@ fn route_offsets_are_checked_against_final_episode_slot() {
         (0, 43, Some(12), 0, "Arc.S01E13.first.mkv".to_string()),
         (1, 43, Some(13), 0, "Arc.S01E14.second.mkv".to_string()),
     ];
-    let err = validate_batch_episode_map(&files).unwrap_err();
+    let err = validate_batch_episode_map(&files, &HashSet::new()).unwrap_err();
     assert!(err.contains("series 43 episode 1"));
 }
 
@@ -121,7 +123,7 @@ fn cumulative_offset_collision_is_rejected_before_import() {
         (0, 42, None, 12, "Show.S01E01.mkv".to_string()),
         (1, 42, None, 12, "Show.013.mkv".to_string()),
     ];
-    let err = validate_batch_episode_map(&files).unwrap_err();
+    let err = validate_batch_episode_map(&files, &HashSet::new()).unwrap_err();
     assert!(err.contains("series 42 episode 1"));
 }
 
@@ -173,7 +175,7 @@ fn higher_release_version_wins_the_slot_and_supersedes_the_rest() {
         (1, 42, None, 0, "Show - 05v2 (1080p).mkv".to_string()),
         (2, 42, None, 0, "Show - 06 (1080p).mkv".to_string()),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     assert_eq!(plan.slots.get(&1).map(|r| r.episode), Some(5));
     assert!(!plan.slots.contains_key(&0));
     assert_eq!(plan.superseded.get(&0), Some(&1));
@@ -188,7 +190,7 @@ fn version_order_does_not_depend_on_file_order() {
         (1, 42, None, 0, "Show - 05 (1080p).mkv".to_string()),
         (2, 42, None, 0, "Show - 05v2 (1080p).mkv".to_string()),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     assert!(plan.slots.contains_key(&0));
     assert_eq!(plan.superseded.get(&1), Some(&0));
     assert_eq!(plan.superseded.get(&2), Some(&0));
@@ -202,7 +204,7 @@ fn equal_versions_in_one_slot_still_fail_closed() {
         (1, 42, None, 0, "Show - 05v2 (1080p).mkv".to_string()),
         (2, 42, None, 0, "Show - 05 (480p).mkv".to_string()),
     ];
-    let err = validate_batch_episode_map(&files).unwrap_err();
+    let err = validate_batch_episode_map(&files, &HashSet::new()).unwrap_err();
     assert!(err.contains("mapped both"));
     assert!(err.contains("Show - 05v2 (720p).mkv"));
     assert!(err.contains("Show - 05v2 (1080p).mkv"));
@@ -215,7 +217,7 @@ fn unversioned_duplicates_still_fail_closed() {
         (0, 42, None, 0, "Show - 05 (720p).mkv".to_string()),
         (1, 42, None, 0, "Show - 05 (1080p).mkv".to_string()),
     ];
-    let err = validate_batch_episode_map(&files).unwrap_err();
+    let err = validate_batch_episode_map(&files, &HashSet::new()).unwrap_err();
     assert!(err.contains("series 42 episode 5"));
 }
 
@@ -225,7 +227,7 @@ fn sxxexx_version_suffix_is_read_as_a_version() {
         (0, 42, None, 0, "Show.S01E10.1080p.mkv".to_string()),
         (1, 42, None, 0, "Show.S01E10v2.1080p.mkv".to_string()),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     assert!(plan.slots.contains_key(&1));
     assert_eq!(plan.superseded.get(&0), Some(&1));
 }
@@ -294,7 +296,7 @@ fn corpus_pack_extras_are_skipped_without_failing_the_batch() {
             "[npz-Moozzi2] Runway De Waratte - PV 1 (US BD, 1080p) [746B23B1].mkv".to_string(),
         ),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     let mut kept: Vec<usize> = plan.slots.keys().copied().collect();
     kept.sort_unstable();
     assert_eq!(kept, vec![0, 1, 4]);
@@ -311,7 +313,7 @@ fn multi_episode_file_takes_every_slot_in_its_span() {
         (2, 42, None, 0, "Show - S01E04-E05.mkv".to_string()),
         (3, 42, None, 0, "Show - 06 (1080p).mkv".to_string()),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     let span = plan.slots.get(&1).expect("dash range planned");
     assert_eq!((span.episode, span.episode_last), (2, 3));
     let span = plan.slots.get(&2).expect("SxxExx range planned");
@@ -330,7 +332,7 @@ fn single_beats_multi_on_a_shared_slot_at_equal_version() {
         (0, 42, None, 0, "Show - 02-03 (1080p).mkv".to_string()),
         (1, 42, None, 0, "Show - 03 (1080p).mkv".to_string()),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     assert!(plan.slots.contains_key(&1));
     assert!(!plan.slots.contains_key(&0));
     assert_eq!(plan.superseded.get(&0), Some(&1));
@@ -364,11 +366,86 @@ fn range_named_extra_beside_singles_does_not_fail_the_pack() {
             "[Group] Show - OVA 01-02 (BD 1080p).mkv".to_string(),
         ),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     let mut kept: Vec<usize> = plan.slots.keys().copied().collect();
     kept.sort_unstable();
     assert_eq!(kept, vec![0, 1]);
     assert_eq!(plan.superseded.get(&2), Some(&0));
+}
+
+#[test]
+fn special_of_a_tv_series_is_set_aside_instead_of_colliding() {
+    // `01` and `OVA 01` in one pack: for a TV entry the OVA is a
+    // special (Sonarr's Season 0) and takes no slot; for an entry that
+    // is itself an OVA the marker is part of its name and the two
+    // files really do collide.
+    let files = vec![
+        (
+            0,
+            42,
+            None,
+            0,
+            "[Group] Show - 01 (BD 1080p).mkv".to_string(),
+        ),
+        (
+            1,
+            42,
+            None,
+            0,
+            "[Group] Show - OVA 01 (BD 1080p).mkv".to_string(),
+        ),
+        (
+            2,
+            42,
+            None,
+            0,
+            "[Group] Show - OVA 02-03 (BD 1080p).mkv".to_string(),
+        ),
+    ];
+    let tv: HashSet<i64> = [42].into_iter().collect();
+    let plan = validate_batch_episode_map(&files, &tv).unwrap();
+    let mut kept: Vec<usize> = plan.slots.keys().copied().collect();
+    kept.sort_unstable();
+    assert_eq!(kept, vec![0]);
+    let mut specials: Vec<usize> = plan.specials.iter().copied().collect();
+    specials.sort_unstable();
+    assert_eq!(specials, vec![1, 2]);
+    assert!(plan.superseded.is_empty());
+
+    // A bare marker with no number, and a pack's own `Specials/`
+    // subfolder with plain numbering, are specials too; the folder
+    // wins even for an unmarked `01`.
+    let files2 = vec![
+        (
+            0,
+            42,
+            None,
+            0,
+            "pack/[Group] Show - 01 (BD 1080p).mkv".to_string(),
+        ),
+        (
+            1,
+            42,
+            None,
+            0,
+            "pack/[Group] Show - OVA (BD 1080p).mkv".to_string(),
+        ),
+        (
+            2,
+            42,
+            None,
+            0,
+            "pack/Specials/[Group] Show - 01 (BD 1080p).mkv".to_string(),
+        ),
+    ];
+    let plan = validate_batch_episode_map(&files2, &tv).unwrap();
+    let mut specials: Vec<usize> = plan.specials.iter().copied().collect();
+    specials.sort_unstable();
+    assert_eq!(specials, vec![1, 2]);
+    assert_eq!(plan.slots.len(), 1);
+
+    let err = validate_batch_episode_map(&files[..2], &HashSet::new()).unwrap_err();
+    assert!(err.contains("no files were changed"), "{err}");
 }
 
 #[test]
@@ -377,7 +454,7 @@ fn two_ranges_on_one_slot_at_equal_version_fail_closed() {
         (0, 42, None, 0, "Show - 01-02 (1080p).mkv".to_string()),
         (1, 42, None, 0, "Show - 02-03 (1080p).mkv".to_string()),
     ];
-    let err = validate_batch_episode_map(&files).unwrap_err();
+    let err = validate_batch_episode_map(&files, &HashSet::new()).unwrap_err();
     assert!(err.contains("episode 2"), "{err}");
 }
 
@@ -390,7 +467,7 @@ fn a_superseded_range_frees_its_other_slots() {
         (1, 42, None, 0, "Show - 05 (1080p).mkv".to_string()),
         (2, 42, None, 0, "Show - 06v3 (1080p).mkv".to_string()),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     assert!(
         plan.slots.contains_key(&1),
         "episode 5 comes from the v1 single"
@@ -410,7 +487,7 @@ fn multi_episode_file_that_loses_one_slot_is_superseded_whole() {
         (0, 42, None, 0, "Show - 02-03 (1080p).mkv".to_string()),
         (1, 42, None, 0, "Show - 03v2 (1080p).mkv".to_string()),
     ];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     assert!(plan.slots.contains_key(&1));
     assert!(!plan.slots.contains_key(&0));
     assert_eq!(plan.superseded.get(&0), Some(&1));
@@ -421,7 +498,7 @@ fn route_offset_shifts_the_whole_span() {
     // A sibling route with offset 12: the pack's `13-14` lands as the
     // sibling's E01-E02.
     let files = vec![(0, 43, Some(12), 0, "Show - 13-14 (1080p).mkv".to_string())];
-    let plan = validate_batch_episode_map(&files).unwrap();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
     let span = plan.slots.get(&0).unwrap();
     assert_eq!((span.episode, span.episode_last), (1, 2));
 }

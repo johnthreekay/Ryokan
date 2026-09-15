@@ -9,9 +9,10 @@
 //! make Nyaa look like a user under attack.
 //!
 //! Scope deliberately narrow:
-//!   * Only the two interactive-search endpoints use it. Auto-search,
+//!   * Only the three interactive-search endpoints use it. Auto-search,
 //!     RSS, manual batch/episode grabs hit Nyaa directly.
-//!   * Keyed by `(series_request_id, Some(episode) | None-for-batch)`.
+//!   * Keyed by the series request id and what was searched for
+//!     ([`Key`]: one episode, the batch list, an episode set).
 //!     Config changes (preferred_groups, quality profile, etc.) don't
 //!     invalidate the cache — a 5-minute staleness on scoring input is
 //!     fine for the "I'm iterating on the UI" use case.
@@ -30,9 +31,15 @@ use crate::services::nyaa::SearchResult;
 
 pub const INTERACTIVE_SEARCH_TTL: Duration = Duration::from_secs(5 * 60);
 
-/// `(request_id, Some(ep_number))` for a per-episode search;
-/// `(request_id, None)` for a batch search.
-pub type Key = (i64, Option<i32>);
+/// What an interactive search was for: one episode, the batch list, or
+/// the Wanted page's episode set (the sorted wanted episodes, since the
+/// probe queries derive from them).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Key {
+    Episode(i64, i32),
+    Batch(i64),
+    EpisodeSet(i64, Vec<i32>),
+}
 
 pub type InteractiveSearchCache = Arc<Mutex<HashMap<Key, (Instant, Arc<Vec<SearchResult>>)>>>;
 
@@ -74,14 +81,14 @@ mod tests {
     #[test]
     fn miss_returns_none() {
         let cache = new();
-        assert!(get(&cache, (1, Some(5))).is_none());
+        assert!(get(&cache, Key::Episode(1, 5)).is_none());
     }
 
     #[test]
     fn insert_then_hit_returns_same_results() {
         let cache = new();
-        insert(&cache, (1, Some(5)), sample());
-        assert!(get(&cache, (1, Some(5))).is_some());
+        insert(&cache, Key::Episode(1, 5), sample());
+        assert!(get(&cache, Key::Episode(1, 5)).is_some());
     }
 
     #[test]
@@ -91,15 +98,24 @@ mod tests {
         // shared a key the first interactive batch search would
         // pollute the per-episode cache.
         let cache = new();
-        insert(&cache, (1, Some(5)), sample());
+        insert(&cache, Key::Episode(1, 5), sample());
         assert!(
-            get(&cache, (1, None)).is_none(),
+            get(&cache, Key::Batch(1)).is_none(),
             "batch key must not hit the per-episode entry"
         );
         assert!(
-            get(&cache, (2, Some(5))).is_none(),
+            get(&cache, Key::Episode(2, 5)).is_none(),
             "different series id must not hit another series's entry"
         );
+    }
+
+    #[test]
+    fn an_episode_set_key_is_its_own_slot() {
+        let cache = new();
+        insert(&cache, Key::EpisodeSet(1, vec![3, 4, 5]), sample());
+        assert!(get(&cache, Key::EpisodeSet(1, vec![3, 4, 5])).is_some());
+        assert!(get(&cache, Key::EpisodeSet(1, vec![3, 4])).is_none());
+        assert!(get(&cache, Key::Episode(1, 3)).is_none());
     }
 
     #[test]
@@ -112,10 +128,10 @@ mod tests {
         cache
             .lock()
             .unwrap()
-            .insert((1, Some(5)), (stale_time, Arc::new(sample())));
-        assert!(get(&cache, (1, Some(5))).is_none());
+            .insert(Key::Episode(1, 5), (stale_time, Arc::new(sample())));
+        assert!(get(&cache, Key::Episode(1, 5)).is_none());
         assert!(
-            cache.lock().unwrap().get(&(1, Some(5))).is_none(),
+            cache.lock().unwrap().get(&Key::Episode(1, 5)).is_none(),
             "stale entry must be evicted, not just returned as a miss"
         );
     }

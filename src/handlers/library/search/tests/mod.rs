@@ -506,7 +506,7 @@ async fn cumulative_hydration_skips_already_populated_series() {
     )
     .await
     .expect("upsert");
-    series::update_cumulative_prior_episodes(&db, series_id, 24)
+    series::update_cumulative_prior_episodes(&db, series_id, 24, true)
         .await
         .expect("set cumulative");
 
@@ -1212,8 +1212,85 @@ mod handler_endpoints {
         let partial = super::super::interactive::test_helpers::build_partial_for_test(
             vec![hit.clone(), low.clone()],
             Some(3),
+            false,
         );
         let html = partial.render().expect("partial renders");
+
+        // The Wanted page asks with ?from=wanted: the same table, but
+        // the Grab buttons carry data attributes for wanted.js's
+        // delegated handlers instead of the series page's inline calls.
+        {
+            let wanted = super::super::interactive::test_helpers::build_partial_for_test(
+                vec![hit.clone()],
+                Some(3),
+                true,
+            )
+            .render()
+            .expect("wanted partial renders");
+            assert!(wanted.contains("data-wanted-grab=\"3\""), "{wanted}");
+            assert!(!wanted.contains("grabInteractiveResult"), "{wanted}");
+            let wanted_batch = super::super::interactive::test_helpers::build_partial_for_test(
+                vec![hit.clone()],
+                None,
+                true,
+            )
+            .render()
+            .expect("wanted batch partial renders");
+            assert!(
+                wanted_batch.contains("data-wanted-grab-batch"),
+                "{wanted_batch}"
+            );
+            assert!(
+                !wanted_batch.contains("grabInteractiveBatchResult"),
+                "{wanted_batch}"
+            );
+        }
+
+        // The episode-set flow: an Episode column, and each row's Grab
+        // posts for the row's own first wanted episode.
+        {
+            use crate::services::auto_search::EpisodeSetHit;
+            let set = super::super::interactive::test_helpers::build_episode_set_partial_for_test(
+                vec![
+                    EpisodeSetHit {
+                        result: hit.clone(),
+                        episodes: vec![3],
+                    },
+                    EpisodeSetHit {
+                        result: low.clone(),
+                        episodes: vec![4, 5],
+                    },
+                ],
+                true,
+            )
+            .render()
+            .expect("episode-set partial renders");
+            assert!(
+                set.contains("<th class=\"col-episode\">Episode</th>"),
+                "{set}"
+            );
+            assert!(set.contains(">E03<") && set.contains(">E04-E05<"), "{set}");
+            assert!(
+                set.contains("data-wanted-grab=\"3\"") && set.contains("data-wanted-grab=\"4\""),
+                "{set}"
+            );
+            assert!(!set.contains("data-wanted-grab-batch"), "{set}");
+            let empty =
+                super::super::interactive::test_helpers::build_episode_set_partial_for_test(
+                    vec![],
+                    true,
+                )
+                .render()
+                .expect("empty renders");
+            assert!(
+                empty.contains("No single-episode releases found."),
+                "{empty}"
+            );
+            let labels = super::super::interactive::test_helpers::episode_range_label;
+            assert_eq!(labels(&[3]), "E03");
+            assert_eq!(labels(&[3, 4, 5]), "E03-E05");
+            assert_eq!(labels(&[3, 7]), "E03, E07");
+        }
 
         // High-score row class + the score badge value visible.
         assert!(
@@ -1277,7 +1354,8 @@ mod handler_endpoints {
     fn interactive_search_partial_batch_flow_uses_batch_handler() {
         use askama::Template;
 
-        let empty = super::super::interactive::test_helpers::build_partial_for_test(vec![], None);
+        let empty =
+            super::super::interactive::test_helpers::build_partial_for_test(vec![], None, false);
         let html = empty.render().expect("renders empty");
         assert!(
             html.contains("No batch releases found."),
@@ -1409,7 +1487,7 @@ mod handler_endpoints {
 
         let request_id: i64 = 700;
         let episode: i32 = 5;
-        let cache_key = (request_id, Some(episode));
+        let cache_key = interactive_search_cache::Key::Episode(request_id, episode);
         let seeded = vec![empty_search_result(
             "[Group] Cached Show - 05.mkv",
             "0123456789abcdef0123456789abcdef01234567",
@@ -1423,6 +1501,7 @@ mod handler_endpoints {
         let resp = interactive_search_episode(
             State(state),
             axum_htmx::HxRequest(false),
+            axum::extract::Query(Default::default()),
             Path((request_id, episode)),
         )
         .await
@@ -1774,7 +1853,7 @@ mod handler_endpoints {
         let state = build_test_app_state(db, None);
 
         let request_id: i64 = 701;
-        let cache_key = (request_id, None);
+        let cache_key = interactive_search_cache::Key::Batch(request_id);
         let seeded = vec![
             empty_search_result(
                 "[Group] Show - 01-12 Batch (1080p)",
@@ -1791,10 +1870,14 @@ mod handler_endpoints {
             seeded.clone(),
         );
 
-        let resp =
-            interactive_search_batches(State(state), axum_htmx::HxRequest(false), Path(request_id))
-                .await
-                .expect("cache-hit path must succeed");
+        let resp = interactive_search_batches(
+            State(state),
+            axum_htmx::HxRequest(false),
+            axum::extract::Query(Default::default()),
+            Path(request_id),
+        )
+        .await
+        .expect("cache-hit path must succeed");
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
             .expect("read body");

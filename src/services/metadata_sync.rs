@@ -801,7 +801,13 @@ async fn refresh_series_metadata_inner(
             detail.id_mal.or(tracked.mal_id),
         )
         .await;
-        if let Err(err) = series::update_cumulative_prior_episodes(db, tracked.id, cumulative).await
+        // Known once a curated rule or an authoritative AniList detail
+        // produced it; a fallback provider's walk sees no relations and
+        // would stamp a wrong zero as final.
+        let offset_known =
+            matches!(offset_source, anime_relations::OffsetSource::Rule(_)) || authoritative_detail;
+        if let Err(err) =
+            series::update_cumulative_prior_episodes(db, tracked.id, cumulative, offset_known).await
         {
             tracing::warn!(
                 target: "ryokan::metadata_sync",

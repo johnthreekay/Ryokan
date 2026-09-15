@@ -93,7 +93,7 @@
 
     {% if g.kind == "new" || g.kind == "merge" %}
     <p class="import-group-counts">
-        <strong>{{ g.counts.import }}</strong> to import{% if g.counts.replace > 0 %}, <strong>{{ g.counts.replace }}</strong> to replace{% endif %}{% if g.counts.present > 0 %}, {{ g.counts.present }} already have{% endif %}{% if g.counts.downloading > 0 %}, {{ g.counts.downloading }} downloading{% endif %}{% if g.counts.pinned > 0 %}, {{ g.counts.pinned }} pinned{% endif %}{% if g.counts.no_episode > 0 %}, {{ g.counts.no_episode }} without an episode number{% endif %}{% if g.counts.deselected > 0 %}, {{ g.counts.deselected }} excluded{% endif %}.
+        <strong>{{ g.counts.import }}</strong> to import{% if g.counts.replace > 0 %}, <strong>{{ g.counts.replace }}</strong> to replace{% endif %}{% if g.counts.present > 0 %}, {{ g.counts.present }} already have{% endif %}{% if g.counts.downloading > 0 %}, {{ g.counts.downloading }} downloading{% endif %}{% if g.counts.pinned > 0 %}, {{ g.counts.pinned }} pinned{% endif %}{% if g.counts.no_episode > 0 %}, {{ g.counts.no_episode }} without an episode number{% endif %}{% if g.counts.deselected > 0 %}, {{ g.counts.deselected }} excluded{% endif %}{% if g.counts.special > 0 %}, {{ g.counts.special }} to the Specials folder{% endif %}.
     </p>
     {% endif %}
 

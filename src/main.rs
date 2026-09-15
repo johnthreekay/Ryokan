@@ -56,6 +56,7 @@ use services::{
         handlers::library::search::auto_search_episode,
         handlers::library::search::search_batch_releases,
         handlers::library::search::interactive_search_episode,
+        handlers::library::search::interactive_search_episodes,
         handlers::library::search::interactive_search_batches,
         handlers::library::search::grab_interactive_result,
         handlers::library::search::grab_batch_result,
@@ -129,6 +130,7 @@ use services::{
         handlers::grab::grab_preview,
         handlers::grab::grab_preview_status,
         handlers::grab::grab_heartbeat,
+        handlers::grab::grab_selection,
         handlers::grab::grab_confirm,
         handlers::grab::grab_cancel,
         // Library bulk actions + recycle bin (#123)
@@ -152,6 +154,8 @@ use services::{
         handlers::settings::direct_rss_feeds::settings_direct_rss_feeds_test,
         // Settings: naming preview (#124)
         handlers::settings::naming::naming_preview,
+        // Settings: watch-list sync exclusions
+        handlers::settings::sync_exclusion_delete,
         // Scoped API keys (#114)
         handlers::api_keys::list,
         handlers::api_keys::create,
@@ -160,6 +164,8 @@ use services::{
         handlers::api_keys::reveal,
         // Calendar feed (#116)
         handlers::calendar::ical_feed,
+        // Wanted page search
+        handlers::wanted::search,
         // Notifications (#118)
         handlers::notifications::test_provider,
         // Backup / restore (#126)
@@ -858,6 +864,10 @@ async fn main() {
             get(handlers::library::search::interactive_search_batches),
         )
         .route(
+            "/api/series/{anilist_id}/interactive-search-episodes",
+            get(handlers::library::search::interactive_search_episodes),
+        )
+        .route(
             "/api/series/{anilist_id}/grab/{episode_number}",
             post(handlers::library::search::grab_interactive_result),
         )
@@ -905,6 +915,10 @@ async fn main() {
         .route(
             "/api/grab/heartbeat/{preview_id}",
             post(handlers::grab::grab_heartbeat),
+        )
+        .route(
+            "/api/grab/selection/{preview_id}",
+            post(handlers::grab::grab_selection),
         )
         .route("/api/grab/confirm", post(handlers::grab::grab_confirm))
         .route("/api/grab/cancel", post(handlers::grab::grab_cancel))
@@ -1022,6 +1036,10 @@ async fn main() {
             post(handlers::oauth::update_preferences),
         )
         .route("/settings/oauth/unlink", post(handlers::oauth::unlink))
+        .route(
+            "/settings/sync-exclusions/{id}/delete",
+            post(handlers::settings::sync_exclusion_delete),
+        )
         .route("/settings/oauth/sync-now", post(handlers::oauth::sync_now))
         .route(
             "/settings/groups",
@@ -1258,6 +1276,9 @@ async fn main() {
         // swaps (it branches on HxRequest), so there's no
         // separate JSON route.
         .route("/calendar", get(handlers::calendar::page))
+        .route("/wanted", get(handlers::wanted::page))
+        .route("/wanted/search-menu", get(handlers::wanted::search_menu))
+        .route("/api/wanted/search", post(handlers::wanted::search))
         .route("/api/logs/poll", get(handlers::system::api_logs_poll))
         .route("/api/logs/clear", post(handlers::system::api_logs_clear))
         .route("/api/logs/export", get(handlers::system::api_logs_export))

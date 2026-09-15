@@ -18,9 +18,12 @@
 //     commit-with-empty-file-list path). Error state surfaces the
 //     message and a Close button; the TTL sweep handles cleanup if
 //     metadata never arrives.
-//   * No Cancel button, no beforeunload/sendBeacon (plan decision #4).
-//     X-in-corner stops the heartbeat; the sweep auto-commits with
-//     all files wanted within ~2 minutes of walkaway.
+//   * No Cancel button (plan decision #4). X-in-corner, a tab close,
+//     or a boosted navigation stops the heartbeat; the sweep
+//     auto-commits within ~2 minutes of walkaway with the last
+//     selection the modal posted (POST /api/grab/selection/{id}:
+//     when the list arrives, after every change, on close, from
+//     pagehide, and on unmount), or every file when none was posted.
 //   * Same-hash dedup's "show current priorities" path (decision #6)
 //     is deferred — the dedup only covers the Tab 1 / Tab 2
 //     concurrency case via the server-side pre-flight check.
@@ -91,18 +94,74 @@
         return out;
     }
 
+    // `E02` / `E05-E06` for a file's parsed episodes.
+    function episodeLabel(eps) {
+        const pad = n => 'E' + String(n).padStart(2, '0');
+        if (!eps || !eps.length) return '';
+        if (eps.length === 1) return pad(eps[0]);
+        return pad(eps[0]) + '-' + pad(eps[eps.length - 1]);
+    }
+
+    // Wanted-page batch grabs: keep only the files whose parsed
+    // episodes (`PreviewFile.episodes`, parsed server-side) include one
+    // the caller wants, so a twelve-episode pack for two missing
+    // episodes downloads two files, and the commit records those two.
+    // When no file matches (a pack whose names carry no numbers), the
+    // default selection stands and the note says so; the user can still
+    // pick by hand.
+    function applyWantedEpisodes() {
+        if (!session || !session.wantedEpisodes.length) return;
+        const want = new Set(session.wantedEpisodes);
+        const matching = [];
+        session.files.forEach((f, idx) => {
+            const eps = Array.isArray(f.episodes) ? f.episodes : [];
+            if (eps.some(e => want.has(e))) matching.push(idx);
+        });
+        const label = session.wantedEpisodes.map(e => episodeLabel([e])).join(', ');
+        if (matching.length === 0) {
+            session.preselectNote = 'No file in this release matched ' + label
+                + '. Every file is selected; untick what you do not want.';
+            return;
+        }
+        session.wanted = new Set(matching.filter(i => !looksUnwanted(session.files[i].name)));
+        if (session.wanted.size === 0) {
+            // Every match looks like an extra (a sample, an NCOP).
+            // Nothing is ticked, Confirm is off, and a walkaway
+            // cancels; the user picks by hand.
+            session.preselectNote = 'The files for ' + label
+                + ' look like extras, so none is selected. Tick what you want.';
+            return;
+        }
+        session.preselectNote = 'Selected ' + session.wanted.size + ' of ' + session.files.length
+            + ' files for ' + label + '. Tick more to take the rest of the release.';
+    }
+
     // ─── Session lifecycle ─────────────────────────────────────────
 
     function resetSession() {
         if (!session) return;
         if (session.pollTimer) clearTimeout(session.pollTimer);
         if (session.heartbeatTimer) clearInterval(session.heartbeatTimer);
+        if (session.selectionTimer) clearTimeout(session.selectionTimer);
         session = null;
+    }
+
+    // A boosted navigation away from a page that holds the picker: the
+    // modal's markup is gone, so the session ends the way a close does
+    // (selection posted, heartbeat stopped) and the sweep commits it.
+    // Left running, the heartbeat kept the row alive for as long as
+    // the tab lived and the torrent sat paused with nothing wanted.
+    function unmountGrabPicker() {
+        flushSelectionSync(false);
+        resetSession();
     }
 
     function closeModal() {
         const modal = $('grab-picker-modal');
         if (modal) modal.style.display = 'none';
+        // The last tick state goes out before the session is dropped:
+        // the sweep commits it once the heartbeat lapses.
+        flushSelectionSync(false);
         // Heartbeat-loop teardown is what makes walkaway equivalent to
         // "abandoned"; the TTL sweep then auto-commits per decision #3.
         resetSession();
@@ -173,8 +232,11 @@
         const banner = (session.blocklisted && !session.unblockAcked)
             ? renderBlocklistBanner()
             : '';
+        const note = session.preselectNote
+            ? `<div class="grab-picker-preselect form-hint">${escHtml(session.preselectNote)}</div>`
+            : '';
         const list = (session.view === 'tree') ? renderTreeView() : renderFlatView();
-        body.innerHTML = banner + list;
+        body.innerHTML = banner + note + list;
         attachRowHandlers();
         attachBlocklistHandlers();
         updateSelectionTotal();
@@ -216,11 +278,13 @@
             const base = f.name.split('/').pop() || f.name;
             const dir = f.name.substring(0, f.name.length - base.length).replace(/\/$/, '');
             const pathLine = dir ? `<div class="grab-picker-file-path">${escHtml(dir)}</div>` : '';
+            const ep = episodeLabel(f.episodes);
+            const epTag = ep ? `<span class="tag grab-picker-file-ep">${escHtml(ep)}</span>` : '';
             return `
                 <tr data-idx="${idx}" class="${rowCls}">
                     <td class="col-check"><input type="checkbox" data-role="file-check" data-idx="${idx}" ${checked}></td>
                     <td>
-                        <div class="grab-picker-file-name">${escHtml(base)}</div>
+                        <div class="grab-picker-file-name">${escHtml(base)}${epTag}</div>
                         ${pathLine}
                     </td>
                     <td class="col-size">${escHtml(formatBytes(f.size))}</td>
@@ -279,9 +343,11 @@
                 const checked = session.wanted.has(idx) ? 'checked' : '';
                 const rowCls = session.wanted.has(idx) ? '' : ' grab-picker-row-unwanted';
                 const size = session.files[idx].size;
+                const ep = episodeLabel(session.files[idx].episodes);
+                const epTag = ep ? `<span class="tag grab-picker-file-ep">${escHtml(ep)}</span>` : '';
                 html += `<div class="grab-picker-tree-file${rowCls}" data-idx="${idx}">
                     <input type="checkbox" data-role="file-check" data-idx="${idx}" ${checked}>
-                    <span class="grab-picker-file-name">${escHtml(f.name)}</span>
+                    <span class="grab-picker-file-name">${escHtml(f.name)}${epTag}</span>
                     <span class="col-size">${escHtml(formatBytes(size))}</span>
                 </div>`;
             }
@@ -303,7 +369,15 @@
                 // re-render so the user's scroll position stays put.
                 const row = cb.closest('tr, .grab-picker-tree-file');
                 if (row) row.classList.toggle('grab-picker-row-unwanted', !cb.checked);
+                // The preselect note describes a selection the user
+                // has now changed by hand; its count would be stale.
+                if (session.preselectNote) {
+                    session.preselectNote = '';
+                    const note = body.querySelector('.grab-picker-preselect');
+                    if (note) note.remove();
+                }
                 updateSelectionTotal();
+                queueSelectionSync();
             });
         });
     }
@@ -320,6 +394,15 @@
         totalEl.innerHTML = `Selected <strong>${escHtml(formatBytes(selected))}</strong>
             of ${escHtml(formatBytes(total))}
             (${session.wanted.size} of ${session.files.length} files)`;
+        // Nothing ticked is nothing to grab: Confirm would add a
+        // torrent with every file skipped, and the walkaway sweep
+        // reads a posted empty selection as a cancel.
+        const confirmBtn = $('grab-picker-confirm');
+        if (confirmBtn) {
+            const none = session.wanted.size === 0;
+            confirmBtn.disabled = none;
+            confirmBtn.title = none ? 'Tick at least one file' : '';
+        }
     }
 
     function updateViewToggle() {
@@ -336,6 +419,7 @@
     // ─── Toolbar actions (Level A convenience buttons, decision #11) ─
 
     function applyFilter(action) {
+        if (session) session.preselectNote = '';
         if (!session) return;
         switch (action) {
             case 'check-all':
@@ -372,6 +456,7 @@
             }
         }
         renderFileList();
+        queueSelectionSync();
     }
 
     // ─── Server communication ──────────────────────────────────────
@@ -414,7 +499,11 @@
                     for (let i = 0; i < session.files.length; i++) session.wanted.add(i);
                     const unwanted = computeDefaultUnwanted(session.files);
                     unwanted.forEach(i => session.wanted.delete(i));
+                    applyWantedEpisodes();
                     renderFileList();
+                    // The walkaway sweep must know the pre-selection
+                    // from the first moment the list is on screen.
+                    flushSelectionSync();
                     return;
                 }
                 // Still fetching_metadata — keep polling.
@@ -442,6 +531,75 @@
                 }
             })
             .catch(() => {/* transient network errors; next tick retries */});
+    }
+
+    // ─── Selection sync (the walkaway auto-commit's input) ─────────
+    //
+    // The sweep that commits an abandoned picker used to mark every
+    // file wanted; from the Wanted page that meant a whole season pack
+    // for one ticked episode. The modal now posts its tick state so
+    // the sweep commits that instead: debounced after a change, at
+    // once when the list arrives, on close, and from pagehide through
+    // sendBeacon (a fetch would be cancelled with the page).
+    const SELECTION_DEBOUNCE_MS = 400;
+
+    function selectionPayload() {
+        return JSON.stringify({ wanted_indices: Array.from(session.wanted).sort((a, b) => a - b) });
+    }
+
+    function sendSelection(useBeacon) {
+        if (!session || !session.previewId || !session.files.length) return;
+        const url = `/api/grab/selection/${encodeURIComponent(session.previewId)}`;
+        const body = selectionPayload();
+        if (useBeacon && navigator.sendBeacon) {
+            try {
+                navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+                return;
+            } catch (_) { /* fall through to fetch */ }
+        }
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+            keepalive: true,
+        }).catch(() => {/* transient; the next change resends */});
+    }
+
+    function queueSelectionSync() {
+        if (!session) return;
+        if (session.selectionTimer) clearTimeout(session.selectionTimer);
+        session.selectionTimer = setTimeout(() => {
+            if (session) session.selectionTimer = null;
+            sendSelection(false);
+        }, SELECTION_DEBOUNCE_MS);
+    }
+
+    function flushSelectionSync(useBeacon) {
+        if (!session) return;
+        if (session.selectionTimer) {
+            clearTimeout(session.selectionTimer);
+            session.selectionTimer = null;
+        }
+        sendSelection(!!useBeacon);
+    }
+
+    // The window hooks below are reassigned on every execution of this
+    // script (each boosted visit), so the once-bound document and
+    // window listeners always reach the instance that owns `session`
+    // (`window.openGrabPicker` is reassigned the same way) rather
+    // than the first visit's stale closure.
+    window.__ryokanGrabPickerFlush = function () { flushSelectionSync(true); };
+    window.__ryokanGrabPickerEscape = function () {
+        if (!session) return false;
+        closeModal();
+        return true;
+    };
+    if (!window.__ryokanGrabPickerPageHideBound) {
+        window.__ryokanGrabPickerPageHideBound = true;
+        window.addEventListener('pagehide', () => {
+            const flush = window.__ryokanGrabPickerFlush;
+            if (typeof flush === 'function') flush();
+        });
     }
 
     function confirmGrab() {
@@ -565,7 +723,15 @@
                 view: 'flat',
                 pollTimer: null,
                 heartbeatTimer: null,
+                selectionTimer: null,
                 onConfirm: typeof ctx.onConfirm === 'function' ? ctx.onConfirm : null,
+                // Episodes the caller is after (the Wanted page's batch
+                // grab): once the file list arrives, only their files
+                // start checked. See applyWantedEpisodes.
+                wantedEpisodes: Array.isArray(ctx.wantedEpisodes)
+                    ? ctx.wantedEpisodes.map(Number).filter(n => n > 0)
+                    : [],
+                preselectNote: '',
             };
             // Heartbeat immediately so a slow-metadata case doesn't
             // trip the TTL sweep before the first 30s interval fires.
@@ -621,11 +787,17 @@
             if (session) { session.view = 'tree'; renderFileList(); }
         });
 
+        // Escape goes through the window hook (see the selection-sync
+        // block) so the once-bound listener never reads a stale
+        // `session`; claiming the event keeps a page's own Escape
+        // handler (the Wanted page's search modal) from closing its
+        // modal in the same keypress.
         if (!window.__ryokanGrabPickerKeyHandlerBound) {
             window.__ryokanGrabPickerKeyHandlerBound = true;
             document.addEventListener('keydown', ev => {
-                if (!session) return;
-                if (ev.key === 'Escape') closeModal();
+                if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+                const close = window.__ryokanGrabPickerEscape;
+                if (typeof close === 'function' && close()) ev.preventDefault();
             });
         }
 
@@ -657,6 +829,7 @@
         window.ryokanRegisterPageInit('grab-picker', {
             check: function () { return !!document.getElementById('grab-picker-modal'); },
             mount: bindGrabPickerHandlers,
+            unmount: unmountGrabPicker,
         });
     } else if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', bindGrabPickerHandlers);

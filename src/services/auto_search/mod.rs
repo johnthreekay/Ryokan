@@ -97,6 +97,25 @@ pub async fn find_all_for_target(
     cfs: &[CompiledCustomFormat],
     indexers: &crate::IndexerCache,
 ) -> Vec<SearchResult> {
+    find_all_for_target_with_probes(db, detail, config, target, cfs, indexers, &[]).await
+}
+
+/// `find_all_for_target` plus one collapsed `"<alias> NN"` query per
+/// probe episode (the first two canonical aliases), run after the
+/// primary pass through the same gate. The episode-set search needs
+/// them: the series-level queries only see the first page of a title's
+/// uploads, which for anything but a currently airing series is packs
+/// and later seasons, so a request for episodes 3-11 of a 2023 show
+/// found nothing without them.
+async fn find_all_for_target_with_probes(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    target: &SearchTarget,
+    cfs: &[CompiledCustomFormat],
+    indexers: &crate::IndexerCache,
+    probe_episodes: &[i32],
+) -> Vec<SearchResult> {
     // Snapshot the indexer cache once. Same shape as the auto-search
     // entry points: we clone the inner Arc<Vec<...>> under the read
     // lock and release it before any HTTP work begins so a slow indexer
@@ -181,6 +200,7 @@ pub async fn find_all_for_target(
         expected_season,
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
+        prefer_revisions: series_ctx.prefer_revisions,
         absolute_offset: series_ctx.absolute_offset,
         categories: &categories,
         indexers: indexer_slice,
@@ -189,6 +209,21 @@ pub async fn find_all_for_target(
     // Interactive search: allow batch results so user can see & pick them,
     // but filter by season and episode to avoid showing wrong-season results.
     run_queries_interactive(&queries, ctx, &mut seen, &mut candidates).await;
+
+    if !probe_episodes.is_empty() {
+        let probe_aliases: Vec<String> = canonical_aliases.iter().take(2).cloned().collect();
+        let mut probe_queries = Vec::new();
+        for ep in probe_episodes {
+            probe_queries.extend(build_queries_from_aliases(
+                &probe_aliases,
+                &SearchTarget::Episode(*ep),
+                true,
+            ));
+        }
+        let probe_queries =
+            append_custom_tokens(dedupe_strings(probe_queries), &series_ctx.custom_tokens);
+        run_queries_interactive(&probe_queries, ctx, &mut seen, &mut candidates).await;
+    }
 
     // Try extended aliases if primary queries found nothing. Extended
     // aliases expand the own-side of the sibling-rejection comparison,
@@ -408,6 +443,136 @@ pub async fn find_best_for_target_with_diag(
     (scored.into_iter().next(), fuzzy_only)
 }
 
+/// One hit of the episode-set interactive search: the release plus the
+/// wanted episodes its title names, in the series' own numbering.
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+pub struct EpisodeSetHit {
+    pub result: SearchResult,
+    pub episodes: Vec<i32>,
+}
+
+/// How many wanted episodes the episode-set search probes with their
+/// own `"<alias> NN"` query (two aliases each). Past this, only the
+/// series-level sweep runs: a series missing hundreds of episodes is
+/// a batch case, and Nyaa tarpits query bursts.
+pub const EPISODE_SET_PROBE_CAP: usize = 12;
+
+/// Interactive search for several episodes of one series in one sweep
+/// (the Wanted page's "Episodes 3-11" entry): the series-level query
+/// set plus one probe query per wanted episode (the first
+/// `EPISODE_SET_PROBE_CAP`), then every release that is not a batch and
+/// whose parsed numbers name a wanted episode. Batches are left out on
+/// purpose; the batch flow is its own menu entry, so a user who wants
+/// a season pack picks it explicitly. The per-episode search stays the
+/// thorough option for one gap: it also runs the extended-alias,
+/// preferred-group, and franchise passes for that episode.
+pub async fn find_all_for_episodes(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    episodes: &[i32],
+    cfs: &[CompiledCustomFormat],
+    indexers: &crate::IndexerCache,
+) -> Vec<EpisodeSetHit> {
+    let results = search_episode_set(db, detail, config, episodes, cfs, indexers).await;
+    select_episode_set(db, detail, config, results, episodes).await
+}
+
+/// The search half of `find_all_for_episodes`: the `Single` sweep plus
+/// the per-episode probes, group-map enriched, before any selection.
+/// The interactive handler caches this part.
+pub async fn search_episode_set(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    episodes: &[i32],
+    cfs: &[CompiledCustomFormat],
+    indexers: &crate::IndexerCache,
+) -> Vec<SearchResult> {
+    let wanted: HashSet<i32> = episodes.iter().copied().filter(|e| *e > 0).collect();
+    if wanted.is_empty() {
+        return Vec::new();
+    }
+    let mut probes: Vec<i32> = wanted.iter().copied().collect();
+    probes.sort_unstable();
+    probes.truncate(EPISODE_SET_PROBE_CAP);
+    let mut results = find_all_for_target_with_probes(
+        db,
+        detail,
+        config,
+        &SearchTarget::Single,
+        cfs,
+        indexers,
+        &probes,
+    )
+    .await;
+    nyaa::enrich_results_with_group_map(db, &mut results).await;
+    results
+}
+
+/// The selection half of `find_all_for_episodes` over already fetched
+/// results: the series' search overrides (for the absolute offset),
+/// then `select_episode_set_hits`.
+pub async fn select_episode_set(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    config: &Config,
+    results: Vec<SearchResult>,
+    episodes: &[i32],
+) -> Vec<EpisodeSetHit> {
+    let wanted: HashSet<i32> = episodes.iter().copied().filter(|e| *e > 0).collect();
+    if wanted.is_empty() {
+        return Vec::new();
+    }
+    let series_ctx = resolve_search_overrides(db, detail, config).await;
+    select_episode_set_hits(results, &wanted, series_ctx.absolute_offset)
+}
+
+/// The episode-set filter on its own: drop batches and releases whose
+/// title names no wanted episode (relative or absolute numbering, the
+/// per-episode gate's rule), keep the wanted episodes each release
+/// covers, and order by first episode then score so the list reads as
+/// "for episode 3, these; for episode 4, these".
+pub(crate) fn select_episode_set_hits(
+    results: Vec<SearchResult>,
+    wanted: &HashSet<i32>,
+    absolute_offset: i32,
+) -> Vec<EpisodeSetHit> {
+    let mut hits: Vec<EpisodeSetHit> = results
+        .into_iter()
+        .filter(|r| !r.is_batch)
+        .filter_map(|result| {
+            // The strict file-name parser, the one the interactive grab
+            // records with (`held_episodes`): `parse_release_numbers`'s
+            // range regex tolerates whitespace and a version tail, so
+            // `Chihayafuru 2 - 05v2` read as episodes 2-5 and the row's
+            // Grab posted for an episode the file does not hold. A
+            // special is no wanted episode.
+            let span = crate::services::media::parse_episode_span(&result.title.to_lowercase())?;
+            if span.special {
+                return None;
+            }
+            let parsed: HashSet<i32> = span.episodes().collect();
+            let mut episodes: Vec<i32> = wanted
+                .iter()
+                .copied()
+                .filter(|ep| episode_match(&parsed, *ep, absolute_offset))
+                .collect();
+            if episodes.is_empty() {
+                return None;
+            }
+            episodes.sort_unstable();
+            Some(EpisodeSetHit { result, episodes })
+        })
+        .collect();
+    hits.sort_by(|a, b| {
+        a.episodes[0]
+            .cmp(&b.episodes[0])
+            .then_with(|| b.result.score.cmp(&a.result.score))
+    });
+    hits
+}
+
 /// Same multi-phase auto-search as `find_best_for_target`, but picks the
 /// best *batch* release instead of the best overall. Two things had to
 /// change relative to the pre-existing `best + filter(is_batch)` approach
@@ -572,6 +737,8 @@ pub async fn collect_scored_batches_for_target_with_diag(
         batch_episode_match: false,
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
+        prefer_revisions: series_ctx.prefer_revisions,
+        reject_specials: require_verbatim && media::is_tv_format(&detail.format),
         absolute_offset: series_ctx.absolute_offset,
         indexers,
     };
@@ -851,6 +1018,8 @@ async fn collect_scored_for_target(
         batch_episode_match,
         seadex_hashes: &seadex_hashes,
         restrict_user: &series_ctx.restrict_user,
+        prefer_revisions: series_ctx.prefer_revisions,
+        reject_specials: require_verbatim && media::is_tv_format(&detail.format),
         absolute_offset: series_ctx.absolute_offset,
         indexers,
     };
@@ -1126,6 +1295,16 @@ struct AutoQueryCtx<'a> {
     /// means no restriction. Resolved from the per-series override or
     /// the global default at the entry point.
     restrict_user: &'a str,
+    /// Score a `v2` / PROPER / REPACK above the plain release; off
+    /// under the `do_not_prefer` proper policy. Goes straight into
+    /// `SearchOptions.prefer_revisions`.
+    prefer_revisions: bool,
+    /// Drop releases that name a special (`OVA 01`, `- SP1`): true for
+    /// the automatic passes over a TV-format target, whose specials
+    /// are never the episode being searched for. The interactive
+    /// lists (`require_verbatim = false`) and an OVA / special entry
+    /// keep them.
+    reject_specials: bool,
     /// #30 — Cumulative episode count across the shortest TV-format
     /// PREQUEL chain up to this target. Allows an episode-filter match
     /// on either the relative number (target_ep, AL's own numbering)
@@ -1186,6 +1365,8 @@ struct InteractiveQueryCtx<'a> {
     seadex_hashes: &'a HashSet<String>,
     /// #23 — see `AutoQueryCtx::restrict_user`.
     restrict_user: &'a str,
+    /// See `AutoQueryCtx::prefer_revisions`.
+    prefer_revisions: bool,
     /// #30 — see `AutoQueryCtx::absolute_offset`.
     absolute_offset: i32,
 }
@@ -1225,6 +1406,7 @@ async fn run_queries(
                 preferred_groups: ctx.preferred_groups.to_vec(),
                 preferred_resolution: ctx.preferred_resolution.to_string(),
                 prefer_subs: true,
+                prefer_revisions: ctx.prefer_revisions,
             })
         })
         .collect();
@@ -1336,6 +1518,11 @@ async fn run_queries(
             if !ctx.allow_batch && result.is_batch {
                 continue;
             }
+            if ctx.reject_specials && media::is_special_release(&result.title) {
+                tracing::debug!("auto-search: skipping special release {:?}", result.title);
+                rejected_here.insert(dedupe_key);
+                continue;
+            }
             let provenance = if is_seadex_match(&result.info_hash, ctx.seadex_hashes) {
                 tracing::debug!(
                     "seadex: bypassing heuristic filters for SeaDex-best release title={:?} hash={}",
@@ -1395,6 +1582,11 @@ async fn run_queries(
             continue;
         }
         if !ctx.allow_batch && result.is_batch {
+            continue;
+        }
+        if ctx.reject_specials && media::is_special_release(&result.title) {
+            tracing::debug!("auto-search: skipping special release {:?}", result.title);
+            rejected_here.insert(dedupe_key);
             continue;
         }
         let provenance = if is_seadex_match(&result.info_hash, ctx.seadex_hashes) {
@@ -1458,6 +1650,7 @@ async fn run_queries_interactive(
                 preferred_groups: ctx.preferred_groups.to_vec(),
                 preferred_resolution: ctx.preferred_resolution.to_string(),
                 prefer_subs: true,
+                prefer_revisions: ctx.prefer_revisions,
             })
         })
         .collect();
@@ -1772,6 +1965,8 @@ struct SeriesSearchCtx {
     /// #23 — Nyaa uploader name (`?u=<name>`) server-side filter.
     /// Empty means no restriction.
     restrict_user: String,
+    /// From `config.proper_policy`; see `AutoQueryCtx::prefer_revisions`.
+    prefer_revisions: bool,
     /// #30 — Cumulative TV-cour episode count for the entry's PREQUEL
     /// chain. Zero for first-season entries and for series whose
     /// relation cache hasn't populated yet. Used by the episode filter
@@ -1816,6 +2011,10 @@ async fn resolve_search_overrides(
         None => SeriesSearchCtx {
             custom_tokens: config.default_custom_query_tokens.clone(),
             restrict_user: config.default_restrict_to_uploader.clone(),
+            prefer_revisions: crate::services::source::ProperPolicy::from_str(
+                &config.proper_policy,
+            )
+            .prefers_revisions(),
             // No series row means the entry isn't in the library yet;
             // no relation cache to pull an offset from, so the filter
             // stays strict-relative. This only affects provisional
@@ -1888,6 +2087,8 @@ fn resolve_search_overrides_from_row(
     SeriesSearchCtx {
         custom_tokens,
         restrict_user,
+        prefer_revisions: crate::services::source::ProperPolicy::from_str(&config.proper_policy)
+            .prefers_revisions(),
         absolute_offset: series.cumulative_prior_episodes.max(0),
         // Left empty in the sync variant — callers that need them use
         // the async variant. Tests pin the sync variant's behavior on
@@ -2292,6 +2493,7 @@ mod tests {
             expected_season: 0,
             seadex_hashes: &seadex_hashes,
             restrict_user: "",
+            prefer_revisions: true,
             absolute_offset: 0,
             categories: &categories,
             indexers: &[],
@@ -2374,6 +2576,7 @@ mod tests {
             expected_season: 0,
             seadex_hashes: &seadex_hashes,
             restrict_user: "",
+            prefer_revisions: true,
             absolute_offset: 0,
             categories: &categories,
             indexers: &[],
@@ -2499,6 +2702,8 @@ mod tests {
             quality: "720p".to_string(),
             size_bytes: 0,
             size_display: String::new(),
+            modified_secs: None,
+            is_special: false,
         }
     }
 
@@ -2549,6 +2754,33 @@ mod tests {
             &tags,
         );
         assert_eq!(targets.len(), 1, "auto-classified row should be upgraded");
+    }
+
+    // An upgrade already downloading is not searched for again. The
+    // Wanted cutoff tab hid such a slot while its "Search all" and the
+    // daily sweep still targeted it and grabbed a second release.
+    #[test]
+    fn build_upgrade_targets_skips_slots_whose_tag_row_is_grabbed() {
+        let file = dummy_720p_episode_file(1);
+        let mut tag = pinned_720p_web_tag(false);
+        tag.state = "grabbed".to_string();
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(1_i32, tag);
+
+        let targets = build_upgrade_targets(
+            &[file],
+            &[1],
+            Source::BluRay,
+            Resolution::R1080p,
+            false,
+            false,
+            &tags,
+        );
+        assert!(
+            targets.is_empty(),
+            "a grabbed slot is an upgrade in flight, got {} target(s)",
+            targets.len()
+        );
     }
 
     // ── #23 — Search override resolver + token append ──────────────────────
@@ -2968,6 +3200,7 @@ mod tests {
             expected_season: 0,
             seadex_hashes: &seadex_hashes,
             restrict_user: "",
+            prefer_revisions: true,
             absolute_offset: 0,
             categories: &categories,
             indexers: &[],
@@ -3041,5 +3274,110 @@ mod nyaa_gate_tests {
         config.nyaa_enabled = false;
         assert!(nyaa_search_categories(&config, "TV").is_empty());
         assert!(nyaa_search_categories(&config, "MUSIC").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod episode_set_tests {
+    use super::*;
+
+    fn hit(title: &str, score: i32, is_batch: bool) -> SearchResult {
+        SearchResult {
+            match_provenance: None,
+            title: title.to_string(),
+            link: String::new(),
+            magnet: String::new(),
+            torrent: String::new(),
+            size: String::new(),
+            size_bytes: 0,
+            seeders: 1,
+            leechers: 0,
+            downloads: 0,
+            group: String::new(),
+            resolution: "1080".to_string(),
+            quality_label: String::new(),
+            source: String::new(),
+            web_kind: String::new(),
+            is_remux: false,
+            is_bdmv: false,
+            is_batch,
+            is_trusted: false,
+            score,
+            info_hash: String::new(),
+            score_breakdown: Vec::new(),
+            upload_date: String::new(),
+            indexer_id: None,
+            indexer_name: String::new(),
+        }
+    }
+
+    #[test]
+    fn keeps_wanted_singles_drops_batches_orders_by_episode_then_score() {
+        let wanted: HashSet<i32> = [3, 4, 5].into_iter().collect();
+        let hits = select_episode_set_hits(
+            vec![
+                hit("[A] Show - 04 (1080p)", 50, false),
+                hit("[B] Show - 03 (1080p)", 40, false),
+                hit("[C] Show - 03 (720p)", 90, false),
+                hit("[D] Show - 01-12 (Batch)", 999, true),
+                hit("[E] Show - 07 (1080p)", 80, false),
+                hit("[F] Show - 04-05 (1080p)", 10, false),
+                hit("[G] Show (Movie)", 70, false),
+            ],
+            &wanted,
+            0,
+        );
+        let titles: Vec<&str> = hits.iter().map(|h| h.result.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            vec![
+                "[C] Show - 03 (720p)",
+                "[B] Show - 03 (1080p)",
+                "[A] Show - 04 (1080p)",
+                "[F] Show - 04-05 (1080p)",
+            ]
+        );
+        assert_eq!(
+            hits[3].episodes,
+            vec![4, 5],
+            "a multi-episode file lists every wanted episode it holds"
+        );
+    }
+
+    #[test]
+    fn absolute_numbering_reaches_the_relative_target() {
+        // JJK S3 E9 shipped as "Jujutsu Kaisen - 56" with offset 47.
+        let wanted: HashSet<i32> = [9].into_iter().collect();
+        let hits = select_episode_set_hits(
+            vec![hit("[S] Jujutsu Kaisen - 56 (1080p)", 1, false)],
+            &wanted,
+            47,
+        );
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].episodes, vec![9]);
+    }
+
+    #[test]
+    fn a_title_ending_in_a_digit_with_a_revision_names_one_episode() {
+        // The loose release parser read `Chihayafuru 2 - 05v2` as the
+        // range 2-5 and offered episodes 2-4 a file that holds only 5.
+        let wanted: HashSet<i32> = [2, 3, 4, 5].into_iter().collect();
+        let hits = select_episode_set_hits(
+            vec![
+                hit("[HorribleSubs] Chihayafuru 2 - 05v2 [720p].mkv", 1, false),
+                hit("[HorribleSubs] Chihayafuru 2 - 5 [720p].mkv", 1, false),
+                hit("[Group] Show - OVA 02 (1080p).mkv", 1, false),
+            ],
+            &wanted,
+            0,
+        );
+        assert_eq!(
+            hits.len(),
+            2,
+            "{:?}",
+            hits.iter().map(|h| &h.result.title).collect::<Vec<_>>()
+        );
+        assert_eq!(hits[0].episodes, vec![5]);
+        assert_eq!(hits[1].episodes, vec![5]);
     }
 }

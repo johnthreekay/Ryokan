@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use super::{ImportSession, SeriesGroup};
 use crate::services::library_link::pick_title;
 use crate::services::recycle::human_bytes;
-use crate::services::{naming, post_processing, source};
+use crate::services::{media, naming, post_processing, source};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupKind {
@@ -70,6 +70,9 @@ pub enum FileStatus {
     /// Ryokan has no tag for it (a drop-in, or a folder scanned
     /// twice). Never overwritten: that would bypass the recycle bin.
     AlreadyOnDisk,
+    /// The name marks a special (`OVA 01`) of a TV series: it goes to
+    /// the Specials folder as `S00Exx`, with no episode row.
+    Special,
     /// Another file in this group lands on the same destination name.
     DuplicateName,
 }
@@ -88,6 +91,7 @@ impl FileStatus {
             Self::Skipped => "skipped",
             Self::AlreadyOnDisk => "on-disk",
             Self::DuplicateName => "duplicate",
+            Self::Special => "special",
         }
     }
 
@@ -104,12 +108,13 @@ impl FileStatus {
             Self::Skipped => "Skipped",
             Self::AlreadyOnDisk => "Already on disk",
             Self::DuplicateName => "Duplicate name",
+            Self::Special => "Special",
         }
     }
 
     /// Counts toward "will be written".
     pub fn writes(self) -> bool {
-        matches!(self, Self::Import | Self::WouldReplace)
+        matches!(self, Self::Import | Self::WouldReplace | Self::Special)
     }
 }
 
@@ -148,6 +153,8 @@ pub struct GroupCounts {
     pub pinned: usize,
     pub no_episode: usize,
     pub deselected: usize,
+    /// Specials of a TV entry, bound for the Specials folder.
+    pub special: usize,
     /// Untagged file already at the destination, left alone.
     pub on_disk: usize,
     /// Second file in the group with the same destination name.
@@ -157,8 +164,11 @@ pub struct GroupCounts {
 }
 
 impl GroupCounts {
+    /// Files that will be written: imports, replacements, and specials
+    /// (which go to the Specials folder). Matches `FileStatus::writes`,
+    /// so the footer's file count and byte total agree.
     pub fn writes(&self) -> usize {
-        self.import + self.replace
+        self.import + self.replace + self.special
     }
 }
 
@@ -281,7 +291,9 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
     // Only a folder that exists can hold a stranger at a destination
     // path; a new series' folder doesn't, so no stat calls for those.
     let folder_on_disk = !folder_name.is_empty() && ctx.disk_folders.contains(&folder_name);
-    let mut names_taken: HashSet<&str> = HashSet::new();
+    // Destination-keyed: a special goes to the Specials folder and an
+    // episode to the season folder, and one name is free in each.
+    let mut names_taken: HashSet<(&str, &str)> = HashSet::new();
     let mut counts = GroupCounts::default();
     let files = group
         .files
@@ -297,6 +309,11 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                         FileStatus::Deselected
                     } else if f.episode.is_none() {
                         FileStatus::NoEpisodeNumber
+                    } else if f.special && picked.is_some_and(|e| media::is_tv_format(&e.format)) {
+                        // An OVA / SP file for a TV entry: not one of its
+                        // episodes, so no tag lookup and no replace
+                        // decision; it lands in the Specials folder.
+                        FileStatus::Special
                     } else {
                         let first = f.episode.unwrap_or_default();
                         let tags = group.existing.as_ref().map(|e| &e.tags);
@@ -323,7 +340,18 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                                 } else {
                                     let incoming =
                                         source::classify_release_sync(&f.file_name, None);
-                                    if source::is_valid_upgrade(&t.classification, &incoming) {
+                                    // Quality, or the same quality as a
+                                    // newer revision (`05v2` beside an
+                                    // imported `05`). No group rule here:
+                                    // the user reviews the preview.
+                                    if source::is_valid_upgrade(&t.classification, &incoming)
+                                        || source::upgrade_policy::is_revision_upgrade(
+                                            &t.classification,
+                                            &t.release_title,
+                                            &incoming,
+                                            &f.file_name,
+                                        )
+                                    {
                                         FileStatus::WouldReplace
                                     } else {
                                         FileStatus::AlreadyPresent
@@ -334,16 +362,21 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                     }
                 }
             };
-            if status == FileStatus::Import && folder_on_disk {
+            let dest_sub = if status == FileStatus::Special {
+                post_processing::SPECIALS_FOLDER
+            } else {
+                season_folder.as_str()
+            };
+            if matches!(status, FileStatus::Import | FileStatus::Special) && folder_on_disk {
                 let dest = std::path::Path::new(ctx.media_root)
                     .join(&folder_name)
-                    .join(&season_folder)
+                    .join(dest_sub)
                     .join(&f.file_name);
                 if dest.exists() && !post_processing::files_share_inode(&f.path, &dest) {
                     status = FileStatus::AlreadyOnDisk;
                 }
             }
-            if status.writes() && !names_taken.insert(f.file_name.as_str()) {
+            if status.writes() && !names_taken.insert((dest_sub, f.file_name.as_str())) {
                 status = FileStatus::DuplicateName;
             }
             match status {
@@ -356,12 +389,20 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                 FileStatus::Deselected => counts.deselected += 1,
                 FileStatus::AlreadyOnDisk => counts.on_disk += 1,
                 FileStatus::DuplicateName => counts.duplicate += 1,
+                FileStatus::Special => counts.special += 1,
                 FileStatus::Unmatched | FileStatus::Skipped => {}
             }
             if status.writes() {
                 counts.write_bytes += f.size_bytes;
             }
-            let dest = if status.writes() {
+            let dest = if status == FileStatus::Special {
+                dest_for(
+                    ctx.media_root,
+                    &folder_name,
+                    post_processing::SPECIALS_FOLDER,
+                    &f.file_name,
+                )
+            } else if status.writes() {
                 dest_for(ctx.media_root, &folder_name, &season_folder, &f.file_name)
             } else {
                 String::new()
@@ -498,6 +539,7 @@ mod tests {
             quality_label: source::classify_release_sync(name, None).label(),
             selected: true,
             episode_count: 1,
+            special: false,
             source_episode: None,
         }
     }
@@ -535,6 +577,7 @@ mod tests {
         };
         ExistingTag {
             quality_label: classification.label(),
+            release_title: String::new(),
             state: state.into(),
             manual_override: pinned,
             classification,
@@ -739,6 +782,47 @@ mod tests {
         assert_eq!(v.counts.duplicate, 1);
         assert_eq!(v.counts.writes(), 2);
         assert!(v.files[0].dest.is_empty(), "nothing written for a stranger");
+    }
+
+    #[test]
+    fn a_special_and_an_episode_may_share_a_file_name() {
+        // The taken-names set is keyed by destination folder: a
+        // `Specials/` file and a `Season 01/` file with the same name
+        // both write, and only a second file bound for the same
+        // folder is a duplicate.
+        let owned = HashSet::new();
+        let disk = HashSet::new();
+        let ctx = ProjectionContext {
+            media_root: "/media",
+            owned_folders: &owned,
+            disk_folders: &disk,
+            title_pref: "english",
+            series_folder_format: naming::DEFAULT_SERIES_FOLDER_FORMAT,
+            season_folder_format: naming::DEFAULT_SEASON_FOLDER_FORMAT,
+        };
+        let episode = file("[G] Show - 01 [BD 1080p].mkv", Some(1));
+        let mut special = file("[G] Show - 01 [BD 1080p].mkv", Some(1));
+        special.special = true;
+        special.rel_path = "Show/Specials/[G] Show - 01 [BD 1080p].mkv".into();
+        let mut second_special = special.clone();
+        second_special.rel_path = "Show/Extras/[G] Show - 01 [BD 1080p].mkv".into();
+        let g = group(
+            vec![episode, special, second_special],
+            vec![entry(1, "Show", "Show")],
+            Some(0),
+        );
+        let v = project_group(&g, &ctx);
+        let statuses: Vec<FileStatus> = v.files.iter().map(|f| f.status).collect();
+        assert_eq!(
+            statuses,
+            vec![
+                FileStatus::Import,
+                FileStatus::Special,
+                FileStatus::DuplicateName,
+            ]
+        );
+        assert_eq!(v.counts.duplicate, 1);
+        assert_eq!(v.counts.writes(), 2);
     }
 
     #[test]

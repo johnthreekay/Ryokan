@@ -722,6 +722,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None, // submit→false, seed=true
                 misgrab_auto_remove: None,
+                auto_redownload_failed: None,
+                import_extra_files: None,
+                extra_file_extensions: String::new(),
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
                 recycle_bin_path: "/submit/recycle/".to_string(), // seed=/seed/recycle; trailing slash trimmed
@@ -787,10 +790,13 @@ mod non_htmx_path {
                 preferred_resolution: "2160".to_string(),        // seed=720
                 cutoff_source: "bluray".to_string(),             // seed=dvd
                 cutoff_resolution: "1080".to_string(),           // seed=480
-                finished_series_quality: "bd_only".to_string(),  // seed=same
-                prefer_subs: "1".to_string(),                    // seed=false → submit→true
-                upgrade_search_enabled: Some(String::new()),     // seed=false → submit→true
-                seadex_enabled: None,                            // seed=true → submit→false
+                proper_policy: "prefer_and_upgrade".to_string(),
+                custom_format_cutoff_score: String::new(),
+                custom_format_upgrade_increment: String::new(),
+                finished_series_quality: "bd_only".to_string(), // seed=same
+                prefer_subs: "1".to_string(),                   // seed=false → submit→true
+                upgrade_search_enabled: Some(String::new()),    // seed=false → submit→true
+                seadex_enabled: None,                           // seed=true → submit→false
                 default_custom_query_tokens: Some("submit-tokens".to_string()), // seed=seed-tokens
             }),
         )
@@ -947,6 +953,9 @@ mod non_htmx_path {
             search_on_monitoring_change: None,
             manual_search_auto_add: None,
             misgrab_auto_remove: checked.then(String::new),
+            auto_redownload_failed: checked.then(String::new),
+            import_extra_files: None,
+            extra_file_extensions: String::new(),
             grab_preview_mode: None,
             auto_grab_on_add: None,
             recycle_bin_path: String::new(),
@@ -994,6 +1003,9 @@ mod non_htmx_path {
             search_on_monitoring_change: None,
             manual_search_auto_add: None,
             misgrab_auto_remove: None,
+            auto_redownload_failed: None,
+            import_extra_files: None,
+            extra_file_extensions: String::new(),
             grab_preview_mode: None,
             auto_grab_on_add: None,
             recycle_bin_path: String::new(),
@@ -1038,6 +1050,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                auto_redownload_failed: None,
+                import_extra_files: None,
+                extra_file_extensions: String::new(),
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
                 recycle_bin_path: String::new(),
@@ -1084,6 +1099,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                auto_redownload_failed: None,
+                import_extra_files: None,
+                extra_file_extensions: String::new(),
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
                 recycle_bin_path: String::new(),
@@ -1133,6 +1151,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                auto_redownload_failed: None,
+                import_extra_files: None,
+                extra_file_extensions: String::new(),
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
                 recycle_bin_path: String::new(),
@@ -1192,6 +1213,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                auto_redownload_failed: None,
+                import_extra_files: None,
+                extra_file_extensions: String::new(),
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
                 recycle_bin_path: String::new(),
@@ -1233,6 +1257,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                auto_redownload_failed: None,
+                import_extra_files: None,
+                extra_file_extensions: String::new(),
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
                 recycle_bin_path: String::new(),
@@ -1271,6 +1298,9 @@ mod non_htmx_path {
                 preferred_resolution: "1080".to_string(),
                 cutoff_source: "bluray".to_string(),
                 cutoff_resolution: "1080".to_string(),
+                proper_policy: "prefer_and_upgrade".to_string(),
+                custom_format_cutoff_score: String::new(),
+                custom_format_upgrade_increment: String::new(),
                 finished_series_quality: "garbage".to_string(),
                 prefer_subs: "1".to_string(),
                 upgrade_search_enabled: None,
@@ -1658,6 +1688,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                auto_redownload_failed: None,
+                import_extra_files: None,
+                extra_file_extensions: String::new(),
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
                 recycle_bin_path: String::new(),
@@ -1682,6 +1715,9 @@ mod non_htmx_path {
                 preferred_resolution: "2160".to_string(),
                 cutoff_source: "bluray".to_string(),
                 cutoff_resolution: "1080".to_string(),
+                proper_policy: "prefer_and_upgrade".to_string(),
+                custom_format_cutoff_score: String::new(),
+                custom_format_upgrade_increment: String::new(),
                 finished_series_quality: "prefer_bd".to_string(),
                 prefer_subs: "1".to_string(),
                 upgrade_search_enabled: None,
@@ -1724,6 +1760,9 @@ mod non_htmx_path {
                 search_on_monitoring_change: None,
                 manual_search_auto_add: None,
                 misgrab_auto_remove: None,
+                auto_redownload_failed: None,
+                import_extra_files: None,
+                extra_file_extensions: String::new(),
                 grab_preview_mode: None,
                 auto_grab_on_add: None,
                 recycle_bin_path: String::new(),
@@ -1782,6 +1821,9 @@ mod naming_templates {
             search_on_monitoring_change: None,
             manual_search_auto_add: None,
             misgrab_auto_remove: None,
+            auto_redownload_failed: None,
+            import_extra_files: None,
+            extra_file_extensions: String::new(),
             grab_preview_mode: None,
             auto_grab_on_add: None,
             recycle_bin_path: String::new(),
@@ -1962,5 +2004,75 @@ mod naming_templates {
                 .contains("Windows limits paths to 260"),
             "{out}"
         );
+    }
+}
+
+/// The "Sync exclusions" list under External Accounts renders only
+/// when it has a use: an account is linked (empty state included), or
+/// a series is on it (an exclusion recorded before the account was
+/// unlinked still needs its "Allow again").
+mod sync_exclusions_list {
+    use super::super::*;
+    use crate::models::external_accounts::{LinkRequest, PROVIDER_ANILIST, link};
+    use crate::models::sync_exclusions;
+    use crate::test_support::{build_test_app_state, in_memory_pool};
+
+    async fn render_integrations(db: &sqlx::SqlitePool) -> String {
+        let state = build_test_app_state(db.clone(), None);
+        build_settings_template(
+            &state,
+            Some("integrations".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .render()
+        .expect("settings page renders")
+    }
+
+    #[tokio::test]
+    async fn hidden_with_no_account_and_no_entries() {
+        let db = in_memory_pool().await;
+        let html = render_integrations(&db).await;
+        assert!(!html.contains("Sync exclusions"));
+    }
+
+    #[tokio::test]
+    async fn entries_show_without_an_account() {
+        let db = in_memory_pool().await;
+        sync_exclusions::add(&db, 1535, None, "Death Note")
+            .await
+            .expect("add exclusion");
+        let html = render_integrations(&db).await;
+        assert!(html.contains("Sync exclusions"));
+        assert!(html.contains("Death Note"));
+        assert!(html.contains("Allow again"));
+        assert!(!html.contains("Nothing yet"));
+    }
+
+    #[tokio::test]
+    async fn linked_account_shows_the_empty_state() {
+        let db = in_memory_pool().await;
+        link(
+            &db,
+            LinkRequest {
+                provider: PROVIDER_ANILIST.to_string(),
+                provider_user_id: "42".to_string(),
+                username: "tester".to_string(),
+                access_token: "token".to_string(),
+                refresh_token: String::new(),
+                access_token_expires_at: None,
+                score_format: "POINT_10".to_string(),
+            },
+        )
+        .await
+        .expect("link account");
+        let html = render_integrations(&db).await;
+        assert!(html.contains("Sync exclusions"));
+        assert!(html.contains("Nothing yet"));
+        assert!(!html.contains("Allow again"));
     }
 }

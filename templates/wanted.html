@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %} - Wanted{% endblock %}
+
+{% block content %}
+<div id="wanted-page">
+<div class="page-header wanted-page-header">
+    <h2>Wanted</h2>
+    <div class="wanted-actions">
+        <button type="button" class="btn btn-secondary" data-wanted-search="selected">Search selected</button>
+        <button type="button" class="btn btn-primary" data-wanted-search="all">Search all</button>
+    </div>
+</div>
+
+<div class="wanted-toolbar">
+    {# Same HTMX shape as the calendar's range tabs: each tab fetches
+       the list partial for its tab and swaps it into #wanted-list;
+       the bare href is the no-JS fallback. #}
+    <div class="wanted-tabs" role="tablist" aria-label="Wanted">
+        <a href="/wanted?tab=missing"
+           hx-get="/wanted?tab=missing"
+           hx-target="#wanted-list"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="wanted-tab {% if tab == "missing" %}active{% endif %}"
+           role="tab"
+           data-tab="missing"
+           aria-selected="{% if tab == "missing" %}true{% else %}false{% endif %}">Missing</a>
+        <a href="/wanted?tab=cutoff"
+           hx-get="/wanted?tab=cutoff"
+           hx-target="#wanted-list"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="wanted-tab {% if tab == "cutoff" %}active{% endif %}"
+           role="tab"
+           data-tab="cutoff"
+           aria-selected="{% if tab == "cutoff" %}true{% else %}false{% endif %}">Quality cutoff unmet</a>
+    </div>
+    <label class="checkbox-row wanted-select-all-row">
+        <input type="checkbox" id="wanted-select-all">
+        <span>Select all</span>
+    </label>
+</div>
+
+<div id="wanted-list">
+{% include "partials/wanted/list.html" %}
+</div>
+</div>
+
+{# Interactive search modal: the series page's #isearch-modal shape,
+   fed by the same endpoints with ?from=wanted so the Grab buttons
+   come back carrying data attributes for wanted.js instead of the
+   series page's inline handlers. The "Search for" dropdown is the
+   server-rendered menu from /wanted/search-menu: batch releases, the
+   whole wanted set in one search (no batches), or one episode. #}
+<div class="modal-backdrop" id="wanted-isearch-modal" style="display:none">
+    <div class="modal modal-ep" role="dialog" aria-modal="true" aria-labelledby="wanted-isearch-title">
+        <div class="modal-header">
+            <div class="wanted-isearch-heading">
+                <h3 id="wanted-isearch-title">Interactive search</h3>
+                <div class="wanted-isearch-pick">
+                    <span>Search for</span>
+                    {# GET /wanted/search-menu swaps the dropdown in here on open. #}
+                    <div id="wanted-isearch-pick"></div>
+                </div>
+            </div>
+            <button class="btn-icon" type="button" data-wanted-isearch-close aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="modal-body is-modal-scroll" id="wanted-isearch-body"></div>
+    </div>
+</div>
+
+<script>
+// Same flag the series page sets: a batch grab from the modal opens
+// the file picker unless grab_preview_mode is `never`.
+window.GRAB_PREVIEW_MODE = {% if grab_preview_mode == "never" %}"never"{% else %}"batches_only"{% endif %};
+</script>
+
+{% include "partials/grab_picker_modal.html" %}
+{% endblock %}
+
+{% block page_js %}<script src="/static/js/grab_picker.js?v={{ crate::asset_version() }}" defer></script>
+<script src="/static/js/wanted.js?v={{ crate::asset_version() }}" defer></script>{% endblock %}

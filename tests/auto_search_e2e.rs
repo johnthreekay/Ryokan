@@ -1560,7 +1560,7 @@ async fn misgrab_sweep_re_searches_a_single_episode_and_grabs_the_next_candidate
     assert_eq!(
         wait_for_log_like(
             &state.db,
-            "Re-search after misgrab '[Wrong] Research Show%grabbed 1 release(s)"
+            "Re-search after misgrab for '[Wrong] Research Show%grabbed 1 release(s)"
         )
         .await,
         1
@@ -1645,7 +1645,7 @@ async fn misgrab_sweep_re_searches_the_whole_series_for_a_batch_grab() {
     assert_eq!(
         wait_for_log_like(
             &state.db,
-            "Re-search after misgrab '[Wrong] Research Show - 01-12%grabbed % release(s)"
+            "Re-search after misgrab for '[Wrong] Research Show - 01-12%grabbed % release(s)"
         )
         .await,
         1

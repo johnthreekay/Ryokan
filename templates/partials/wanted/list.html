@@ -1,0 +1,55 @@
+{# Wanted list partial. Returned on its own for the tab swap
+   (HX-Request without hx-boost) and embedded by wanted.html. #}
+{% if rows.is_empty() %}
+<div class="wanted-empty">
+    {% if library_is_empty %}
+    <p>You don't have any series in your library yet.</p>
+    <p><a class="link-accent" href="/">Go to the library</a> to add some.</p>
+    {% else if tab == "cutoff" %}
+    <p>Nothing is below the cutoff.</p>
+    <p class="form-hint">Every file on disk meets the quality cutoff, or its series does not allow upgrades.</p>
+    {% else %}
+    <p>Nothing is missing.</p>
+    <p class="form-hint">Every monitored episode that has aired is on disk or downloading.</p>
+    {% endif %}
+</div>
+{% else %}
+<ul class="wanted-rows" data-tab="{{ tab }}">
+    {% for row in rows %}
+    <li class="wanted-row" data-series-id="{{ row.series_id }}">
+        <label class="wanted-row-select">
+            <input type="checkbox" class="wanted-select" value="{{ row.series_id }}" aria-label="Select {{ row.title }}">
+        </label>
+        <a class="wanted-row-link" href="/series/{{ row.anilist_id }}">
+            {% if !row.cover_url.is_empty() %}
+            <img class="wanted-row-cover" src="{{ row.cover_url }}" alt="" loading="lazy">
+            {% else %}
+            <div class="wanted-row-cover wanted-row-cover-placeholder" aria-hidden="true"></div>
+            {% endif %}
+            <div class="wanted-row-meta">
+                <div class="wanted-row-title">{{ row.title }}</div>
+                <div class="wanted-row-slots">
+                    {# A long-running series can want hundreds of episodes;
+                       past the first row or two the chips carry no
+                       information, so the rest collapses into a count
+                       (the row's total sits beside the buttons). #}
+                    {% for slot in row.slots %}
+                    {% if loop.index0 < crate::handlers::wanted::SLOT_CHIPS_SHOWN %}
+                    <span class="tag wanted-slot"{% if !slot.quality.is_empty() %} title="On disk: {{ slot.quality }}"{% endif %}>{{ slot.label }}{% if !slot.quality.is_empty() %} · {{ slot.quality }}{% endif %}</span>
+                    {% endif %}
+                    {% endfor %}
+                    {% if row.slots.len() > crate::handlers::wanted::SLOT_CHIPS_SHOWN %}
+                    <span class="tag wanted-slot wanted-slot-more">+{{ row.slots.len() - crate::handlers::wanted::SLOT_CHIPS_SHOWN }} more</span>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+        <div class="wanted-row-actions">
+            <span class="form-hint">{{ row.count() }} {% if tab == "cutoff" %}below cutoff{% else %}missing{% endif %}</span>
+            <button type="button" class="btn btn-secondary btn-sm" data-wanted-search-one="{{ row.series_id }}" data-wanted-title="{{ row.title }}" title="Grab the best release for every listed episode">Auto search</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-wanted-isearch="{{ row.anilist_id }}" data-series-id="{{ row.series_id }}" data-wanted-title="{{ row.title }}" title="Pick a release yourself">Interactive</button>
+        </div>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}

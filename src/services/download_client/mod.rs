@@ -430,6 +430,20 @@ pub enum DownloadItemState {
     /// Paused/stopped after completion — treat as complete for
     /// post-processing purposes.
     PausedComplete,
+    /// The client reports a problem it may recover from on its own or
+    /// with the user's help, and the item is not moving: qBittorrent's
+    /// `missingFiles` (an unmounted download path), a Transmission
+    /// local error, Deluge's `Error`, an rtorrent item stopped with a
+    /// message. Sonarr's `DownloadItemStatus::Warning`. Post-processing
+    /// waits on it (neither complete nor errored), so a dropped mount
+    /// never turns into a blocklisted grab whose data is deleted.
+    Warning,
+    /// The client's own failed-download verdict (SABnzbd `Failed`,
+    /// qBittorrent `error`): the grab fails, the release is
+    /// blocklisted, the item is removed with its data, and a
+    /// replacement is searched for. Sonarr's `DownloadItemStatus::
+    /// Failed`; a client state Sonarr does not fail belongs in
+    /// [`Self::Warning`].
     Errored,
 }
 
@@ -951,6 +965,7 @@ mod tests {
                 DownloadItemState::CheckingSeed => "checking-seed",
                 DownloadItemState::Paused => "paused",
                 DownloadItemState::PausedComplete => "paused-complete",
+                DownloadItemState::Warning => "warning",
                 DownloadItemState::Errored => "errored",
             }
         }
@@ -966,6 +981,7 @@ mod tests {
             CheckingSeed,
             Paused,
             PausedComplete,
+            Warning,
             Errored,
         ];
         list.into_iter().map(|v| (v, _slug(v))).collect()

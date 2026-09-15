@@ -1284,6 +1284,7 @@ async fn client_removal_columns_exist_with_defaults() {
     let db = fresh_migrated_pool().await;
     for (table, col) in [
         ("download_clients", "remove_completed"),
+        ("download_clients", "remove_failed"),
         ("grabbed_torrents", "client_removed_at"),
         ("grabbed_torrents", "import_mode"),
     ] {
@@ -1302,6 +1303,16 @@ async fn client_removal_columns_exist_with_defaults() {
     .await
     .unwrap();
     assert_eq!(default_on, "1", "removal is on by default for a new client");
+    let failed_default_on: String = sqlx::query_scalar(
+        "SELECT dflt_value FROM pragma_table_info('download_clients') WHERE name = 'remove_failed'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        failed_default_on, "1",
+        "failed-download removal is on by default"
+    );
     crate::models::migrations::migrate(&db)
         .await
         .expect("second migrate is idempotent");

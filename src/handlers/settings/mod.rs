@@ -162,6 +162,9 @@ struct SettingsTemplate {
     /// plaintext tokens exist only in memory during outbound API
     /// calls, never in a rendered page.
     external_account: Option<ExternalAccountView>,
+    /// Series kept off the watch-list sync (Settings → Integrations
+    /// lists them with an "Allow again" button).
+    sync_exclusions: Vec<crate::models::sync_exclusions::SyncExclusion>,
     /// Mirrors `config.title_language` so `base.html`'s pre-paint FOUC
     /// guard can bake the user's preference into the rendered page.
     /// Without this, opening Settings (or any other page) from a fresh
@@ -398,6 +401,12 @@ pub struct SettingsForm {
     manual_search_auto_add: Option<String>,
     #[serde(default)]
     misgrab_auto_remove: Option<String>,
+    #[serde(default)]
+    auto_redownload_failed: Option<String>,
+    #[serde(default)]
+    import_extra_files: Option<String>,
+    #[serde(default)]
+    extra_file_extensions: String,
     /// Recycle bin (#123). Settings → General.
     #[serde(default)]
     recycle_bin_path: String,
@@ -537,6 +546,7 @@ pub(crate) struct IntegrationsFormPartial {
     pub message: Option<String>,
     pub error: Option<String>,
     pub external_account: Option<ExternalAccountView>,
+    pub sync_exclusions: Vec<crate::models::sync_exclusions::SyncExclusion>,
 }
 
 /// Issue #129 completion — Quality tab subform. Companion to
@@ -551,6 +561,16 @@ pub struct QualityForm {
     cutoff_resolution: String,
     finished_series_quality: String,
     prefer_subs: String,
+    /// Sonarr's "Propers and Repacks" select; see
+    /// `source::ProperPolicy`.
+    #[serde(default)]
+    proper_policy: String,
+    /// "Upgrade until Custom Format score" and its minimum increment.
+    /// Blank keeps the stored value; a non-integer is a form error.
+    #[serde(default)]
+    custom_format_cutoff_score: String,
+    #[serde(default)]
+    custom_format_upgrade_increment: String,
     /// Checkboxes — unchecked omits the field; `#[serde(default)]`
     /// makes serde_urlencoded map the absence to `None`.
     #[serde(default)]
@@ -603,6 +623,12 @@ pub struct GeneralForm {
     manual_search_auto_add: Option<String>,
     #[serde(default)]
     misgrab_auto_remove: Option<String>,
+    #[serde(default)]
+    auto_redownload_failed: Option<String>,
+    #[serde(default)]
+    import_extra_files: Option<String>,
+    #[serde(default)]
+    extra_file_extensions: String,
     /// Grabbing section: the interactive file picker (#83) and the two
     /// switches that used to live on System → Debug.
     #[serde(default)]
@@ -858,6 +884,26 @@ fn validate_source(value: &str, default: &str) -> String {
     }
 }
 
+/// The stored form of the subtitle extension list: lowercase, no
+/// dots, deduplicated; blank falls back to the default list.
+fn normalize_extra_file_extensions(value: &str) -> String {
+    let list = crate::services::post_processing::extras::parse_extensions(value);
+    if list.is_empty() {
+        crate::services::post_processing::extras::DEFAULT_EXTRA_FILE_EXTENSIONS.to_string()
+    } else {
+        list.join(",")
+    }
+}
+
+/// Blank keeps `current`; anything else has to parse as an integer.
+fn parse_optional_int(value: &str, current: i32) -> Result<i32, ()> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(current);
+    }
+    trimmed.parse::<i32>().map_err(|_| ())
+}
+
 /// Validate a form-submitted cutoff-source string. Like `validate_source`
 /// but also passes through the BluRay sub-tier markers "bluray_remux" and
 /// "bluray_bdmv" so settings can store BD Remux / BD RAW as distinct
@@ -996,6 +1042,9 @@ async fn build_settings_template(
         error: err,
         version: env!("CARGO_PKG_VERSION"),
         external_account,
+        sync_exclusions: crate::models::sync_exclusions::list(&state.db)
+            .await
+            .unwrap_or_default(),
         title_language,
         indexers: indexers_res.unwrap_or_default(),
         indexer_catalog: crate::services::indexer_catalog::SEEDED,
@@ -1065,6 +1114,30 @@ pub async fn settings_submit(
                 .as_ref()
                 .map(|c| c.misgrab_auto_remove)
                 .unwrap_or(true)
+        },
+        auto_redownload_failed: if form.tab.as_deref() == Some("general") {
+            form.auto_redownload_failed.is_some()
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.auto_redownload_failed)
+                .unwrap_or(true)
+        },
+        import_extra_files: if form.tab.as_deref() == Some("general") {
+            form.import_extra_files.is_some()
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.import_extra_files)
+                .unwrap_or(false)
+        },
+        extra_file_extensions: if form.tab.as_deref() == Some("general") {
+            normalize_extra_file_extensions(&form.extra_file_extensions)
+        } else {
+            existing_cfg
+                .as_ref()
+                .map(|c| c.extra_file_extensions.clone())
+                .unwrap_or_else(|| config::Config::default().extra_file_extensions)
         },
         active_client: match form.active_client.trim() {
             "deluge" => "deluge".to_string(),
@@ -1351,6 +1424,20 @@ pub async fn settings_submit(
                 .map(|c| c.upgrade_search_enabled)
                 .unwrap_or(false)
         },
+        // Owned by the dedicated Quality subform handler; carried
+        // forward here like the other Quality knobs.
+        proper_policy: existing_cfg
+            .as_ref()
+            .map(|c| c.proper_policy.clone())
+            .unwrap_or_else(|| "prefer_and_upgrade".to_string()),
+        custom_format_cutoff_score: existing_cfg
+            .as_ref()
+            .map(|c| c.custom_format_cutoff_score)
+            .unwrap_or(0),
+        custom_format_upgrade_increment: existing_cfg
+            .as_ref()
+            .map(|c| c.custom_format_upgrade_increment)
+            .unwrap_or(1),
         // Carried forward from the existing row — edited via the
         // dedicated Custom Formats tab's minimum-score form, not here.
         custom_format_minimum_score: existing_cfg
@@ -1538,6 +1625,9 @@ pub async fn settings_submit(
             error: Some(format!("Failed to save: {}", e)),
             version: env!("CARGO_PKG_VERSION"),
             external_account,
+            sync_exclusions: crate::models::sync_exclusions::list(&state.db)
+                .await
+                .unwrap_or_default(),
             title_language,
             indexers,
             indexer_catalog: crate::services::indexer_catalog::SEEDED,
@@ -1668,6 +1758,9 @@ pub async fn settings_submit(
         error: None,
         version: env!("CARGO_PKG_VERSION"),
         external_account,
+        sync_exclusions: crate::models::sync_exclusions::list(&state.db)
+            .await
+            .unwrap_or_default(),
         title_language,
         indexers,
         indexer_catalog: crate::services::indexer_catalog::SEEDED,
@@ -1730,6 +1823,9 @@ pub async fn settings_general_submit(
         search_on_monitoring_change: form.search_on_monitoring_change.is_some(),
         manual_search_auto_add: form.manual_search_auto_add.is_some(),
         misgrab_auto_remove: form.misgrab_auto_remove.is_some(),
+        auto_redownload_failed: form.auto_redownload_failed.is_some(),
+        import_extra_files: form.import_extra_files.is_some(),
+        extra_file_extensions: normalize_extra_file_extensions(&form.extra_file_extensions),
         grab_preview_mode: resolve_grab_preview_mode(
             form.grab_preview_mode.as_deref(),
             Some("general"),
@@ -2076,6 +2172,27 @@ pub async fn settings_quality_submit(
         }
     };
 
+    let custom_format_cutoff_score = match parse_optional_int(
+        &form.custom_format_cutoff_score,
+        existing_cfg.custom_format_cutoff_score,
+    ) {
+        Ok(v) => v,
+        Err(_) => {
+            let err = "Upgrade Until Custom Format Score must be a whole number.".to_string();
+            return quality_response(&state, None, None, Some(err), is_htmx).await;
+        }
+    };
+    let custom_format_upgrade_increment = match parse_optional_int(
+        &form.custom_format_upgrade_increment,
+        existing_cfg.custom_format_upgrade_increment,
+    ) {
+        Ok(v) if v >= 1 => v,
+        _ => {
+            let err = "Minimum Custom Format Score Increment must be a whole number of 1 or more."
+                .to_string();
+            return quality_response(&state, None, None, Some(err), is_htmx).await;
+        }
+    };
     let cfg = config::Config {
         preferred_groups: form.preferred_groups.trim().to_string(),
         blocked_groups: form.blocked_groups.trim().to_string(),
@@ -2083,6 +2200,15 @@ pub async fn settings_quality_submit(
         preferred_resolution: validate_resolution(&form.preferred_resolution, "1080"),
         cutoff_source: validate_cutoff_source(&form.cutoff_source, "bluray"),
         cutoff_resolution: validate_resolution(&form.cutoff_resolution, "1080"),
+        proper_policy: if form.proper_policy.trim().is_empty() {
+            existing_cfg.proper_policy.clone()
+        } else {
+            crate::services::source::ProperPolicy::from_str(&form.proper_policy)
+                .as_str()
+                .to_string()
+        },
+        custom_format_cutoff_score,
+        custom_format_upgrade_increment,
         finished_series_quality: match form.finished_series_quality.as_str() {
             "same" | "prefer_bd" | "bd_only" => form.finished_series_quality,
             _ => "prefer_bd".to_string(),
@@ -2385,6 +2511,9 @@ async fn integrations_response(
                 message,
                 error,
                 external_account,
+                sync_exclusions: crate::models::sync_exclusions::list(&state.db)
+                    .await
+                    .unwrap_or_default(),
             }
             .render()
             .unwrap_or_default(),
@@ -2658,3 +2787,30 @@ pub async fn jellyfin_refresh(State(state): State<AppState>) -> Response {
 
 #[cfg(test)]
 mod tests;
+
+/// `POST /settings/sync-exclusions/{id}/delete`: let the watch-list
+/// sync add a removed series again.
+#[utoipa::path(
+    post,
+    path = "/settings/sync-exclusions/{id}/delete",
+    tag = "Settings",
+    summary = "Delete a watch-list sync exclusion",
+    description = "Removes the exclusion so the next AniList / MyAnimeList sync may add the series again. Renders the Integrations tab (the region partial for an HTMX request).",
+    params(("id" = i64, Path, description = "Exclusion id")),
+    responses((status = 200, description = "The Integrations tab, re-rendered")),
+)]
+pub async fn sync_exclusion_delete(
+    State(state): State<AppState>,
+    HxRequest(is_htmx): HxRequest,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Response {
+    let (message, error) = match crate::models::sync_exclusions::delete(&state.db, id).await {
+        Ok(true) => (
+            Some("Exclusion removed. The next sync may add the series again.".to_string()),
+            None,
+        ),
+        Ok(false) => (None, Some("That exclusion no longer exists.".to_string())),
+        Err(e) => (None, Some(format!("Could not remove the exclusion: {e}"))),
+    };
+    integrations_response(&state, None, message, error, is_htmx).await
+}
