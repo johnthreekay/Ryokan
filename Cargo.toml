@@ -358,7 +358,7 @@ insta = { version = "1", features = ["json"] }
 # rstest: parameterized tests via #[case] attributes, flattening the
 # existing one-fn-per-case pattern in the classification pipeline
 # into tabular data. Equivalent to C#'s [TestCase].
-rstest = "0.26"
+rstest = "0.27"
 # proptest: property-based testing. Generates randomized inputs against
 # invariant assertions. Used for fuzzing pure-function invariants like
 # scoring's sum-of-deltas property and the source classifier's
