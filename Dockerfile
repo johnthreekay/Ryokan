@@ -41,25 +41,20 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 RUN mkdir -p /data
 
-ENV DATABASE_URL=sqlite:///data/ryokan.db?mode=rwc
+# Ryokan's own state (SQLite database, encryption key, artwork and
+# anibridge caches, default backup folder) lives under this one
+# directory (#259). Set it to e.g. /config and mount a volume there to
+# free /data for a shared media / downloads mount; the entrypoint
+# creates and chowns whichever directory this names. The per-path
+# variables (DATABASE_URL, RYOKAN_KEY_FILE_PATH, RYOKAN_MEDIA_CACHE_DIR,
+# RYOKAN_ANIBRIDGE_CACHE_DIR) still override single paths, but the
+# image no longer sets them: an image-level value would pin that path
+# to /data no matter what RYOKAN_DATA_DIR says. The derived defaults
+# are the paths those variables used to name, so existing installs
+# resolve to the same files.
+ENV RYOKAN_DATA_DIR=/data
 ENV LISTEN_ADDR=0.0.0.0:8978
 ENV RUST_LOG=ryokan=info
-# Persist the on-disk artwork blob cache alongside the SQLite database so
-# image_blobs rows keep matching real files across container restarts.
-ENV RYOKAN_MEDIA_CACHE_DIR=/data/cache/artwork
-# Encryption-key file lives next to the SQLite DB on the persistent
-# /data volume. The default `data/.ryokan-key` is CWD-relative
-# (matching `cargo run`'s working tree), but this image's WORKDIR is
-# /app and the entrypoint chowns /data not /app/data — so without
-# this override the ryokan user can't write the key file at boot
-# and `services::crypto` panics with `Permission denied (os error 13)`.
-ENV RYOKAN_KEY_FILE_PATH=/data/.ryokan-key
-# Anibridge mappings cache — same CWD-relative footgun as the key
-# file. Without this override the ~9MB mappings blob silently
-# fails to persist on every fetch (write to /app/data/... 13s),
-# meaning every container restart re-downloads from the upstream
-# GitHub-hosted JSON instead of using the conditional-GET cache.
-ENV RYOKAN_ANIBRIDGE_CACHE_DIR=/data/cache/anibridge
 # Default UID/GID for the ryokan user. Override via -e PUID=... / PGID=...
 # to match the ownership of host-mounted media and download directories.
 ENV PUID=1000

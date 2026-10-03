@@ -7,6 +7,11 @@ services:
     volumes:
       # Database, artwork cache, and saved config. Leave as-is unless you
       # want to pin Ryokan's state to a specific host path.
+      #
+      # If /data is already your shared downloads/media mount (the usual
+      # hardlink-friendly *arr layout), keep Ryokan's state elsewhere:
+      # mount it at e.g. /config instead and set RYOKAN_DATA_DIR=/config
+      # in the environment block below. Only that folder is chowned.
       - ryokan-data:/data
 
       # --- Optional: post-processing (move/rename completed downloads) ---
@@ -36,6 +41,10 @@ services:
       # distributions.
       - PUID=1000
       - PGID=1000
+
+      # Ryokan's own data folder (database, encryption key, caches,
+      # backups). Must match the volume mount above. Defaults to /data.
+      # - RYOKAN_DATA_DIR=/config
 
       # Log filter. Use `ryokan=debug` for verbose output while
       # troubleshooting, `ryokan=info` for normal operation.

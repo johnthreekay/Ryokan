@@ -13,6 +13,7 @@ pub mod mal;
 pub mod media;
 pub mod nyaa;
 pub mod oauth_state;
+pub mod paths;
 pub mod sanitize;
 pub mod scoring;
 

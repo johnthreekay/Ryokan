@@ -30,31 +30,27 @@ pub const REFRESH_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const CACHE_TTL: Duration = REFRESH_INTERVAL;
 
 /// Returns the absolute path of the on-disk mappings cache. Lives
-/// under `data/cache/anibridge/mappings.json` by default, which
-/// stays consistent with the artwork cache layout. `std::path::absolute`
-/// normalizes relative paths so the runtime CWD can't change which
-/// file the cache refers to between runs.
+/// under `<data dir>/cache/anibridge/mappings.json` by default
+/// (`services::paths`, #259), next to the artwork cache.
+/// `std::path::absolute` normalizes relative paths so the runtime CWD
+/// can't change which file the cache refers to between runs.
 ///
-/// `RYOKAN_ANIBRIDGE_CACHE_DIR` overrides the parent directory.
-/// Docker sets it to `/data/cache/anibridge` so the cache lands on
-/// the persistent volume rather than `/app/data/cache/anibridge`,
-/// which is root-owned and unwritable by the runtime ryokan user
-/// (the same CWD-relative footgun that bit `services::crypto`'s
-/// key-file path on first boot — see `RYOKAN_KEY_FILE_PATH`).
-/// Without the override, every container restart re-downloads the
-/// ~9MB mappings blob because the disk cache write silently fails
-/// with `Permission denied (os error 13)` and falls through to a
+/// `RYOKAN_ANIBRIDGE_CACHE_DIR` overrides the parent directory. If the
+/// directory is unwritable (the pre-#259 Docker image resolved the
+/// CWD-relative default to a root-owned `/app/data/`), every restart
+/// re-downloads the ~9MB mappings blob because the disk cache write
+/// fails with `Permission denied (os error 13)` and falls through to a
 /// fresh fetch.
 #[cfg(test)]
 pub(crate) static ENV_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
     std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 fn cache_file_path() -> PathBuf {
-    let base = std::env::var("RYOKAN_ANIBRIDGE_CACHE_DIR")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .map(|d| PathBuf::from(d).join("mappings.json"))
-        .unwrap_or_else(|| PathBuf::from("data/cache/anibridge/mappings.json"));
+    let base = crate::services::paths::override_or_data_path(
+        "RYOKAN_ANIBRIDGE_CACHE_DIR",
+        "cache/anibridge",
+    )
+    .join("mappings.json");
     std::path::absolute(&base).unwrap_or(base)
 }
 

@@ -89,12 +89,19 @@ pub(super) async fn copy_artwork(
     }
 
     let src = std::path::PathBuf::from(&entry.local_path);
+    // A data dir moved since the blob was cached (#259) leaves the row
+    // pointing at the old root; the same file name under the current
+    // root is the same blob.
+    let relocated = crate::services::artwork::relocated_blob_path(&entry.local_path);
     let owned_dests: Vec<std::path::PathBuf> = dests.iter().map(|p| p.to_path_buf()).collect();
     let src_display = src.display().to_string();
     let copy_result = tokio::task::spawn_blocking(move || -> CopyOutcome {
         let bytes = match std::fs::read(&src) {
             Ok(b) => b,
-            Err(e) => return CopyOutcome::SourceReadFailed(e),
+            Err(e) => match relocated.and_then(|p| std::fs::read(p).ok()) {
+                Some(b) => b,
+                None => return CopyOutcome::SourceReadFailed(e),
+            },
         };
         // First dest gets the real write; subsequent dests are
         // hardlinked to it when possible so a multi-dest fan-out

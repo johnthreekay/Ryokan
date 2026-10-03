@@ -236,7 +236,12 @@ pub async fn cleanup_orphans(
             // Hourly task in an async path — match the rest of the
             // codebase's std::fs → tokio::fs migration so we don't
             // block the runtime executor on the unlink syscall.
-            let _ = tokio::fs::remove_file(&local_path).await;
+            if tokio::fs::remove_file(&local_path).await.is_err()
+                && let Some(moved) = crate::services::artwork::relocated_blob_path(&local_path)
+            {
+                // Row written before the data dir moved (#259).
+                let _ = tokio::fs::remove_file(moved).await;
+            }
         }
     }
 

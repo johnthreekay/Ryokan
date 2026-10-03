@@ -51,10 +51,11 @@ fn blob_filename(blob_hash: &str, content_type: &str, source_url: &str) -> Strin
     format!("{}.{}", blob_hash, extension_for(content_type, source_url))
 }
 
+/// Artwork blob cache root: `RYOKAN_MEDIA_CACHE_DIR`, else
+/// `<data dir>/cache/artwork` (`services::paths`, #259).
 pub fn media_cache_dir() -> PathBuf {
-    let base = std::env::var("RYOKAN_MEDIA_CACHE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("data/cache/artwork"));
+    let base =
+        crate::services::paths::override_or_data_path("RYOKAN_MEDIA_CACHE_DIR", "cache/artwork");
     // Always store absolute paths. Older builds wrote the relative
     // default ("data/cache/artwork/blobs/<hash>.jpg") straight into
     // image_blobs.local_path; those rows then break whenever the
@@ -63,6 +64,22 @@ pub fn media_cache_dir() -> PathBuf {
     // means every new write records an absolute path regardless of
     // how the env is configured.
     std::path::absolute(&base).unwrap_or(base)
+}
+
+/// The same blob under the current cache root, for a stored path that
+/// no longer resolves. `image_blobs.local_path` is absolute, so moving
+/// the data directory (#259: `/data` to `/config`) or restoring a
+/// backup onto another layout leaves rows pointing at the old place
+/// until `cache_image` fetches the image again. Blob file names are
+/// content-addressed, so the file of that name under the current root
+/// is the same image. `None` when the stored path already is that file.
+pub fn relocated_blob_path(stored: &str) -> Option<PathBuf> {
+    relocate_into(stored, &media_cache_dir())
+}
+
+fn relocate_into(stored: &str, cache_dir: &Path) -> Option<PathBuf> {
+    let candidate = cache_dir.join("blobs").join(Path::new(stored).file_name()?);
+    (candidate != Path::new(stored)).then_some(candidate)
 }
 
 pub fn local_url(cache_key: &str, last_write: i64) -> String {
@@ -324,13 +341,43 @@ pub async fn load_bytes(db: &SqlitePool, cache_key: &str) -> Option<(Vec<u8>, St
     // Use tokio::fs::read so the artwork serving path doesn't block a
     // runtime worker — Seerr does a lot of artwork lookups during
     // discovery scans and the sync read would stack up behind itself.
-    let bytes = tokio::fs::read(Path::new(&entry.local_path)).await.ok()?;
+    let bytes = match tokio::fs::read(Path::new(&entry.local_path)).await {
+        Ok(bytes) => bytes,
+        Err(_) => tokio::fs::read(relocated_blob_path(&entry.local_path)?)
+            .await
+            .ok()?,
+    };
     Some((bytes, entry.content_type))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── relocated_blob_path ──────────────────────────────────────
+
+    #[test]
+    fn relocate_into_maps_a_moved_blob_onto_the_current_root() {
+        assert_eq!(
+            relocate_into(
+                "/data/cache/artwork/blobs/abc.jpg",
+                Path::new("/config/cache/artwork")
+            ),
+            Some(PathBuf::from("/config/cache/artwork/blobs/abc.jpg"))
+        );
+    }
+
+    #[test]
+    fn relocate_into_is_none_when_nothing_moved() {
+        assert_eq!(
+            relocate_into(
+                "/data/cache/artwork/blobs/abc.jpg",
+                Path::new("/data/cache/artwork")
+            ),
+            None
+        );
+        assert_eq!(relocate_into("", Path::new("/data/cache/artwork")), None);
+    }
 
     // ─── sanitize_key ─────────────────────────────────────────────
 
