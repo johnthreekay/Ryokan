@@ -346,11 +346,10 @@ fn unix_now() -> i64 {
 /// by users preparing a DB dump for a bug report so they don't leak
 /// live credentials.
 ///
-/// Defaults to operating on `data/ryokan.db` → `data/ryokan-sanitized.db`,
-/// matching the repo's gitignored `data/` convention. Respects
-/// `DATABASE_URL` only if it points at a plain file path (no HTTP /
-/// remote SQLite variants) — bugged-DB sharing only makes sense for
-/// the local file case.
+/// Operates on the live database (`services::paths::live_db_path`:
+/// `DATABASE_URL` when it is a plain file path, else
+/// `<data dir>/ryokan.db`) and writes `ryokan-sanitized.db` to the CWD.
+/// Bugged-DB sharing only makes sense for the local file case.
 async fn run_sanitize_cli() {
     let live = resolve_live_db_path();
     // Output lands in the CWD, not next to the live DB. If a user
@@ -377,7 +376,7 @@ async fn run_sanitize_cli() {
 }
 
 fn resolve_live_db_path() -> std::path::PathBuf {
-    services::backup::live_db_path()
+    services::paths::live_db_path()
 }
 
 #[tokio::main]
@@ -410,13 +409,14 @@ async fn main() {
         tracing::info!(min_db_log_level = level.as_str(), "DB log floor set");
     }
 
-    // Database setup.
-    // For local `cargo run`, default to a project-local ./data directory. Docker can
-    // still override this with DATABASE_URL=sqlite:///data/ryokan.db?mode=rwc.
-    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        let _ = std::fs::create_dir_all("data");
-        "sqlite://data/ryokan.db?mode=rwc".to_string()
-    });
+    // Database setup. `DATABASE_URL` wins when set; otherwise the
+    // database is `<data dir>/ryokan.db` (#259), where the data dir is
+    // `RYOKAN_DATA_DIR` (the Docker image sets `/data`) or the
+    // project-local `./data` under `cargo run`.
+    let database_url = services::paths::database_url();
+    if database_url.is_none() {
+        let _ = std::fs::create_dir_all(services::paths::data_dir());
+    }
 
     // WAL mode lets readers run concurrently with a writer, which matters a
     // lot here: every supervised background task (grep `supervise(&` for the
@@ -475,14 +475,21 @@ async fn main() {
         tracing::info!("Cleared stranded backup work dir {}", dir.display());
     }
 
-    let connect_opts = SqliteConnectOptions::from_str(&database_url)
-        .expect("Invalid DATABASE_URL")
-        .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(SqliteSynchronous::Normal)
-        .busy_timeout(Duration::from_secs(5))
-        .pragma("cache_size", "-65536") // ~64MB page cache (negative = KB)
-        .pragma("temp_store", "MEMORY")
-        .pragma("mmap_size", "268435456"); // 256MB memory-mapped region
+    // The default path goes in through `filename` rather than a
+    // formatted URL: sqlx percent-decodes a URL's path, so a data dir
+    // containing `%` would open the wrong file.
+    let connect_opts = match &database_url {
+        Some(url) => SqliteConnectOptions::from_str(url).expect("Invalid DATABASE_URL"),
+        None => SqliteConnectOptions::new()
+            .filename(services::paths::default_db_path())
+            .create_if_missing(true),
+    }
+    .journal_mode(SqliteJournalMode::Wal)
+    .synchronous(SqliteSynchronous::Normal)
+    .busy_timeout(Duration::from_secs(5))
+    .pragma("cache_size", "-65536") // ~64MB page cache (negative = KB)
+    .pragma("temp_store", "MEMORY")
+    .pragma("mmap_size", "268435456"); // 256MB memory-mapped region
 
     let db = SqlitePoolOptions::new()
         .max_connections(16)
@@ -548,35 +555,53 @@ async fn main() {
     }
 
     // Password-recovery boot path (#22). When RYOKAN_RESET_AUTH=1 or
-    // --reset-auth is passed AND a `data/.reset-auth` sentinel file exists,
-    // wipe users + sessions before the router mounts. `has_users()` then
-    // returns false and `/setup` re-renders, letting the locked-out user
-    // re-create the admin account.
+    // --reset-auth is passed AND a `.reset-auth` sentinel file sits next
+    // to the database (`<data dir>/.reset-auth`, so `/data/.reset-auth`
+    // in Docker), wipe users + sessions before the router mounts.
+    // `has_users()` then returns false and `/setup` re-renders, letting
+    // the locked-out user re-create the admin account.
     //
     // The sentinel file is the footgun guard: without it, a stuck-on
-    // env var in a compose file would wipe auth on every boot. Users
-    // touch the sentinel for a one-shot recovery, then remove it after
-    // logging back in. Config (Jellyfin / qBit / media_root) is NOT
-    // touched — only the admin account needs to be reset.
+    // env var in a compose file would wipe auth on every boot. It is
+    // consumed by a successful wipe, so the reset is one-shot even if
+    // the env var stays set. Config (Jellyfin / qBit / media_root) is
+    // NOT touched — only the admin account needs to be reset.
+    //
+    // Before #259 the sentinel was CWD-relative `data/.reset-auth`,
+    // which the Docker image (WORKDIR /app) resolved to
+    // `/app/data/.reset-auth`, not the data volume the docs pointed at.
     let reset_auth_requested = std::env::var("RYOKAN_RESET_AUTH")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
         || std::env::args().any(|a| a == "--reset-auth");
     if reset_auth_requested {
-        let sentinel = std::path::Path::new("data/.reset-auth");
+        let sentinel = services::paths::reset_auth_sentinel();
         if sentinel.exists() {
             tracing::warn!(
-                "RYOKAN_RESET_AUTH is set and data/.reset-auth sentinel present; \
-                 wiping users and sessions. Remove the sentinel and unset the \
-                 env var after logging back in."
+                "RYOKAN_RESET_AUTH is set and {} is present; wiping users and sessions.",
+                sentinel.display()
             );
-            if let Err(e) = models::user::reset_all(&db).await {
-                tracing::error!("reset_all failed: {e}");
+            match models::user::reset_all(&db).await {
+                Ok(()) => match std::fs::remove_file(&sentinel) {
+                    Ok(()) => tracing::warn!(
+                        "Auth reset; removed {}. Create a new admin account at /setup, \
+                         then unset RYOKAN_RESET_AUTH.",
+                        sentinel.display()
+                    ),
+                    Err(e) => tracing::error!(
+                        "Auth reset, but {} could not be removed ({e}). Delete it by hand: \
+                         while it exists, every restart with RYOKAN_RESET_AUTH set wipes \
+                         the admin account again.",
+                        sentinel.display()
+                    ),
+                },
+                Err(e) => tracing::error!("reset_all failed: {e}"),
             }
         } else {
             tracing::warn!(
-                "RYOKAN_RESET_AUTH is set but data/.reset-auth sentinel is missing; \
-                 refusing to reset auth. See /forgot-password for the recovery recipe."
+                "RYOKAN_RESET_AUTH is set but {} is missing; refusing to reset auth. \
+                 See /forgot-password for the recovery recipe.",
+                sentinel.display()
             );
         }
     }

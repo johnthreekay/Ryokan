@@ -82,7 +82,7 @@ To find the right values: run `id -u` and `id -g` on the host as the user who ow
 This is the [linuxserver.io convention](https://docs.linuxserver.io/general/understanding-puid-and-pgid/), shared with the rest of the *arr stack. Setting them right means files Ryokan writes match the rest of your media's ownership.
 
 !!! warning "User-mounted paths are NOT chowned"
-    The container chowns `/data` to the supplied PUID/PGID, but does not chown `/downloads` or `/media/...`. Chowning a 10TB media library would stall startup for hours and could clobber ownership the rest of your *arr stack relies on. Pick PUID/PGID that already match your media's owner instead.
+    The container chowns its data folder (`/data`, or whatever `RYOKAN_DATA_DIR` names) to the supplied PUID/PGID, but does not chown `/downloads` or `/media/...`. Chowning a 10TB media library would stall startup for hours and could clobber ownership the rest of your *arr stack relies on. Pick PUID/PGID that already match your media's owner instead.
 
 ## First-run setup
 
@@ -109,4 +109,4 @@ The named volume preserves your data. Migrations run automatically on next boot 
 
 ---
 
-*Last updated: 2026-05-07.*
+*Last updated: 2026-10-03.*

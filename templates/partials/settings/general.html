@@ -172,7 +172,7 @@
             </div>
             <div class="form-group">
                 <label for="backup_directory">Backup folder</label>
-                <input type="text" name="backup_directory" id="backup_directory" value="{{ config.backup_directory }}" placeholder="/data/backups">
+                <input type="text" name="backup_directory" id="backup_directory" value="{{ config.backup_directory }}" placeholder="{{ crate::services::backup::default_backup_dir_display() }}">
                 <span class="form-hint">Path inside Ryokan's container. Empty keeps backups next to the database.</span>
             </div>
             <div class="form-group">

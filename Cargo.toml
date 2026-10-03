@@ -1,6 +1,6 @@
 [package]
 name = "ryokan"
-version = "2.0.1"
+version = "2.1.2"
 edition = "2024"
 authors = ["John K"]
 license = "GPL-3.0-or-later"
@@ -271,8 +271,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # API documentation
-utoipa = { version = "5.5", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "9", features = ["axum"] }
+utoipa = { version = "6.0", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "10", features = ["axum"] }
 
 # Misc
 chrono = { version = "0.4", features = ["serde"] }
@@ -358,7 +358,7 @@ insta = { version = "1", features = ["json"] }
 # rstest: parameterized tests via #[case] attributes, flattening the
 # existing one-fn-per-case pattern in the classification pipeline
 # into tabular data. Equivalent to C#'s [TestCase].
-rstest = "0.26"
+rstest = "0.27"
 # proptest: property-based testing. Generates randomized inputs against
 # invariant assertions. Used for fuzzing pure-function invariants like
 # scoring's sum-of-deltas property and the source classifier's

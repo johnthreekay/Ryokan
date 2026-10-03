@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::models::config::Config;
-use crate::services::{artwork, crypto, sanitize};
+use crate::services::{artwork, crypto, paths, sanitize};
 
 #[cfg(test)]
 mod tests;
@@ -66,6 +66,17 @@ pub const MAX_UPLOAD_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 pub const SANITIZED_LOG_ROWS: i64 = 1000;
 const DB_MAGIC: &[u8] = b"SQLite format 3\0";
 
+/// The backup folder used when the setting is empty, as an absolute
+/// path for the Settings field's placeholder (`/data/backups` in the
+/// default image, `/config/backups` with `RYOKAN_DATA_DIR=/config`).
+pub fn default_backup_dir_display() -> String {
+    let dir = paths::db_dir().join("backups");
+    std::path::absolute(&dir)
+        .unwrap_or(dir)
+        .display()
+        .to_string()
+}
+
 /// Where the pieces of an install live. Built once from the
 /// environment at boot; tests construct one over a temp dir.
 #[derive(Clone, Debug)]
@@ -80,15 +91,9 @@ pub struct BackupPaths {
 
 impl BackupPaths {
     pub fn from_env() -> Self {
-        let db_path = live_db_path();
-        let data_dir = db_path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("data"));
         Self {
-            data_dir,
-            db_path,
+            data_dir: paths::db_dir(),
+            db_path: paths::live_db_path(),
             key_path: crypto::key_file_path(),
             artwork_dir: artwork::media_cache_dir(),
         }
@@ -107,20 +112,6 @@ impl BackupPaths {
             PathBuf::from(configured)
         }
     }
-}
-
-/// The live database path: `DATABASE_URL` when it is a plain
-/// `sqlite://<path>` URL (query string stripped), else the repo-local
-/// default. Shared with the `--sanitize-db-for-debug` CLI.
-pub fn live_db_path() -> PathBuf {
-    if let Ok(url) = std::env::var("DATABASE_URL") {
-        let without_scheme = url.strip_prefix("sqlite://").unwrap_or(&url);
-        let path_part = without_scheme.split('?').next().unwrap_or(without_scheme);
-        if !path_part.is_empty() {
-            return PathBuf::from(path_part);
-        }
-    }
-    PathBuf::from("data/ryokan.db")
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]

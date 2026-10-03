@@ -38,6 +38,9 @@ brew install cmake
 
 The mold linker setting only applies to Linux, so macOS builds use Apple's linker and need nothing else.
 
+!!! note "macOS builds are untested"
+    Ryokan's automated builds and tests run on Linux only, so a native macOS build may work but nothing checks it. On a Mac, including Apple Silicon, the supported way to run Ryokan is the Docker image. Docker Desktop, OrbStack, and Colima run its arm64 build natively, without emulation.
+
 Then, on any of them:
 
 ```sh
@@ -53,6 +56,74 @@ cargo run                # http://localhost:8978; creates data/ryokan.db on firs
 ```
 
 The first build takes a while. Rebuilds after that are quick.
+
+## Run it as a service
+
+Build a release binary with `cargo build --release`. A service needs two folders:
+
+- **The install folder, as the working directory.** Ryokan loads its stylesheets and scripts from the `static` folder in the directory it starts in. Started anywhere else, pages load without styling. Either run it from the repository checkout, or copy `target/release/ryokan` and the `static` folder side by side, for example to `/opt/ryokan/ryokan` and `/opt/ryokan/static`.
+- **The data folder**, for the database, the encryption key, the caches, and backups. By default it is `data` inside the working directory. Set `RYOKAN_DATA_DIR` to keep it apart from the install, and create it owned by the user Ryokan runs as:
+
+```sh
+sudo useradd --system --home-dir /var/lib/ryokan --shell /usr/sbin/nologin ryokan
+sudo install -d -o ryokan -g ryokan /var/lib/ryokan
+```
+
+Any init system works, since all it needs is a working directory and one environment variable. The examples below are for Linux. On macOS, use the Docker image instead.
+
+systemd, as `/etc/systemd/system/ryokan.service`:
+
+```ini
+[Unit]
+Description=Ryokan
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ryokan
+Group=ryokan
+WorkingDirectory=/opt/ryokan
+Environment=RYOKAN_DATA_DIR=/var/lib/ryokan
+Environment=RUST_LOG=ryokan=info
+ExecStart=/opt/ryokan/ryokan
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+OpenRC, as `/etc/init.d/ryokan`:
+
+```sh
+#!/sbin/openrc-run
+description="Ryokan"
+command="/opt/ryokan/ryokan"
+command_user="ryokan:ryokan"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+directory="/opt/ryokan"
+export RYOKAN_DATA_DIR=/var/lib/ryokan
+export RUST_LOG=ryokan=info
+
+depend() {
+    need net
+}
+```
+
+runit, as an executable `/etc/sv/ryokan/run`:
+
+```sh
+#!/bin/sh
+exec 2>&1
+cd /opt/ryokan || exit 1
+export RYOKAN_DATA_DIR=/var/lib/ryokan
+export RUST_LOG=ryokan=info
+exec chpst -u ryokan:ryokan ./ryokan
+```
+
+`RUST_LOG=ryokan=info` keeps the console log at the level the Docker image uses. Without it, Ryokan logs every request at debug level. This OpenRC example discards console output, and System → Logs keeps Ryokan's log either way.
+
+To move an existing install's data, stop Ryokan and copy everything from the old `data` folder into the new one, including the hidden `.ryokan-key` file. Then set `RYOKAN_DATA_DIR` and start it. Without the copy, Ryokan starts with an empty library. Without the key file, linked AniList and MyAnimeList accounts have to be linked again.
 
 ## Tests and lints
 
@@ -70,4 +141,4 @@ cargo clippy --workspace --all-targets --features test-support -- -D warnings   
 
 ---
 
-*Last updated: 2026-08-29.*
+*Last updated: 2026-10-03.*

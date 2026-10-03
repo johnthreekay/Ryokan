@@ -25,12 +25,13 @@
 //!      (44 characters padded or 43 unpadded; both accepted). The
 //!      Docker / Kubernetes path: secrets belong in the orchestrator,
 //!      mounted as an env var at container start.
-//!   2. **`data/.ryokan-key` file** — raw 32 bytes, mode `0600`. The
+//!   2. **`<data dir>/.ryokan-key` file** — raw 32 bytes, mode `0600`
+//!      (`RYOKAN_KEY_FILE_PATH` overrides the path). The
 //!      bare-metal install path: `cargo run` auto-generates one on
 //!      first boot and every subsequent boot reads it back. `data/`
 //!      is gitignored so the key can't accidentally get committed.
 //!   3. **Auto-generated on first run** — via `rand::rng()`. Written
-//!      to `data/.ryokan-key` with mode `0600` (Unix only — on other
+//!      to the key-file path with mode `0600` (Unix only — on other
 //!      platforms the file is created with default permissions and a
 //!      `warn` is logged).
 //!
@@ -76,17 +77,14 @@ use rand::Rng;
 /// Nonce length for ChaCha20-Poly1305: 96 bits = 12 bytes.
 const NONCE_LEN: usize = 12;
 
-/// Default location of the auto-generated / user-provided key file
-/// when the `RYOKAN_ENCRYPTION_KEY` env var isn't set. Relative to
-/// the process CWD because `data/ryokan.db` is also CWD-relative on
-/// the local-dev `cargo run` path. Override with `RYOKAN_KEY_FILE_PATH`
-/// when CWD doesn't match the data volume — the Docker image sets
-/// `WORKDIR /app` and chowns `/data`, so `data/` would resolve to
-/// `/app/data/` (root-owned, ryokan user can't write) and key
-/// initialization would panic at boot. Setting the env var to
-/// `/data/.ryokan-key` makes the key co-locate with the SQLite DB
-/// at `/data/ryokan.db`.
-const KEY_FILE_PATH_DEFAULT: &str = "data/.ryokan-key";
+/// Key-file name inside the data directory (`services::paths`) when
+/// the `RYOKAN_ENCRYPTION_KEY` env var isn't set. `RYOKAN_KEY_FILE_PATH`
+/// overrides the whole path. Before #259 the default was CWD-relative
+/// `data/.ryokan-key`, which the Docker image (WORKDIR /app) resolved
+/// to an unwritable `/app/data/`, so the image had to pin the override;
+/// the image now sets `RYOKAN_DATA_DIR=/data` and the key lands next to
+/// the database on its own.
+const KEY_FILE_NAME: &str = ".ryokan-key";
 
 /// Process-lifetime AEAD key. Initialized lazily on first call to
 /// [`encrypt`] or [`decrypt`]. Panicking inside the initializer is
@@ -106,27 +104,17 @@ fn load_or_generate_key() -> Result<[u8; 32], String> {
                 .map_err(|e| format!("RYOKAN_ENCRYPTION_KEY: {e}"));
         }
     }
-    load_or_generate_key_file(Path::new(&key_file_path_from_env()))
+    load_or_generate_key_file(&key_file_path())
 }
 
-/// Resolve the key-file path, honoring `RYOKAN_KEY_FILE_PATH` env
-/// override and falling back to `KEY_FILE_PATH_DEFAULT`. Empty / unset
-/// env var returns the default. Read on every key-init attempt
-/// (LazyLock fires once per process) rather than cached, mirroring
-/// the rest of the env-var-driven config in `services::anilist`.
-fn key_file_path_from_env() -> String {
-    std::env::var("RYOKAN_KEY_FILE_PATH")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| KEY_FILE_PATH_DEFAULT.to_string())
-}
-
-/// The effective key-file path (env override or default). Backup
-/// (#126) includes this file in the archive and restore writes it back.
-/// Not the source of truth when `RYOKAN_ENCRYPTION_KEY` is set; that
-/// key wins at load time regardless of the file.
+/// The effective key-file path: `RYOKAN_KEY_FILE_PATH` when set, else
+/// `<data dir>/.ryokan-key`. Read on every key-init attempt (LazyLock
+/// fires once per process) rather than cached. Backup (#126) includes
+/// this file in the archive and restore writes it back. Not the source
+/// of truth when `RYOKAN_ENCRYPTION_KEY` is set; that key wins at load
+/// time regardless of the file.
 pub fn key_file_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(key_file_path_from_env())
+    crate::services::paths::override_or_data_path("RYOKAN_KEY_FILE_PATH", KEY_FILE_NAME)
 }
 
 fn decode_key_from_base64(s: &str) -> Result<[u8; 32], String> {
