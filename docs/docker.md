@@ -15,7 +15,7 @@ Most users only need `PUID`, `PGID`, and `TZ`. The rest are for fine-tuning.
 | `RYOKAN_TRUSTED_PROXY` | unset (off) | Trust `X-Forwarded-For` and `X-Real-IP` for client IP. Off by default. Flip on only behind a reverse proxy that overwrites these headers on ingress; otherwise an attacker can spoof a fresh IP per attempt and bypass the per-IP login throttle. |
 | `RYOKAN_COOKIE_SECURE` | unset (off) | Force the `Secure` flag onto the login cookie. Usually unnecessary: with `RYOKAN_TRUSTED_PROXY=1`, Ryokan sets the flag on its own whenever the proxy reports HTTPS. Set this only for an HTTPS proxy that doesn't send `X-Forwarded-Proto`. Leave it off for plain HTTP or you won't be able to stay logged in. |
 | `RYOKAN_DATA_DIR` | `/data` (image) | The folder for Ryokan's own files: the database, the encryption key, the artwork and anibridge caches, and the default `backups/` folder. Change it when `/data` is already your shared media or downloads mount. See [Moving Ryokan's data folder](#moving-ryokans-data-folder). |
-| `RYOKAN_RESET_AUTH` | unset | Set to `1` *and* create a `.reset-auth` file in the data folder to wipe users and sessions on next boot. Both required so a stuck-on env var can't silently wipe auth on every boot. See [Reset auth](#reset-auth). |
+| `RYOKAN_RESET_AUTH` | unset | Set to `1` *and* create a `.reset-auth` file next to `ryokan.db` to wipe users and sessions on next boot. Both required so a stuck-on env var can't silently wipe auth on every boot. See [Reset auth](#reset-auth). |
 | `RYOKAN_DB_LOG_LEVEL` | `info` | Write-side floor for the DB-backed logs table (separate from `RUST_LOG`). One of `trace`, `debug`, `info`, `warn`, `error`. Read-side filtering on the System → Logs page is independent. |
 | `RYOKAN_ENCRYPTION_KEY` | unset (file fallback) | Base64-encoded 32-byte AEAD key for encrypting OAuth tokens. Loading priority: env var, then key file, then auto-generated on first run. **Key rotation isn't supported**; changing it invalidates all stored OAuth tokens and you'll need to re-link external accounts. |
 | `DATABASE_URL` | unset (`<data folder>/ryokan.db`) | SQLite connection string. Overrides the database location only. Most installs leave it unset. |
@@ -48,7 +48,7 @@ environment:
   - RYOKAN_DATA_DIR=/config
 ```
 
-On start, the container takes ownership of the folder `RYOKAN_DATA_DIR` names and nothing else. Your shared `/data` mount keeps its owner.
+On start, the container takes ownership of the folder `RYOKAN_DATA_DIR` names and nothing else. Your shared `/data` mount keeps its owner. Setting `RYOKAN_DATA_DIR` is what moves the state. Pointing only the single-path variables (`DATABASE_URL` and the rest) at another folder still leaves `/data` as the folder the container takes ownership of, and the container log warns about it on every start.
 
 To move an existing install:
 
@@ -56,6 +56,7 @@ To move an existing install:
 2. Copy everything from the old data volume into the new one, including the hidden `.ryokan-key` file. Without that file, linked AniList and MyAnimeList accounts have to be linked again.
 3. Remove `DATABASE_URL`, `RYOKAN_KEY_FILE_PATH`, `RYOKAN_MEDIA_CACHE_DIR`, and `RYOKAN_ANIBRIDGE_CACHE_DIR` from your compose file if you set them. Each one pins its own path and would keep it on the old volume.
 4. Set `RYOKAN_DATA_DIR`, update the volume line, and start Ryokan.
+5. If Settings → General → Backup folder is set to a path under the old data folder, such as `/data/backups`, clear it. Backups then go to `backups` in the new data folder.
 
 Cover art keeps working from the moved cache. A backup made in System → Backup restores into the new layout too.
 
@@ -108,7 +109,7 @@ The artifact is kept for 14 days after the run.
 If you forget your admin password and have no other recovery path, you can wipe the users and sessions tables and create a new admin account on next boot. Two steps are required so a stuck-on env var can't silently wipe auth on every restart:
 
 1. Add `RYOKAN_RESET_AUTH=1` to your compose file's environment block.
-2. Create the sentinel file in the data folder: `touch /path/to/your/data-volume/.reset-auth` on the host, or `docker exec ryokan touch /data/.reset-auth` (use your `RYOKAN_DATA_DIR` in place of `/data` if you changed it).
+2. Create the sentinel file next to `ryokan.db`, which is in the data folder unless you set `DATABASE_URL`: `touch /path/to/your/data-volume/.reset-auth` on the host, or `docker exec ryokan touch /data/.reset-auth` (use your `RYOKAN_DATA_DIR` in place of `/data` if you changed it).
 
 Restart the container. On boot, Ryokan deletes both tables, removes the sentinel, and `/setup` opens for a fresh admin account. Remove `RYOKAN_RESET_AUTH` from your compose file afterwards.
 

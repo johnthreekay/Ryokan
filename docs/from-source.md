@@ -84,6 +84,7 @@ User=ryokan
 Group=ryokan
 WorkingDirectory=/opt/ryokan
 Environment=RYOKAN_DATA_DIR=/var/lib/ryokan
+Environment=RUST_LOG=ryokan=info
 ExecStart=/opt/ryokan/ryokan
 Restart=on-failure
 
@@ -102,6 +103,7 @@ command_background=true
 pidfile="/run/${RC_SVCNAME}.pid"
 directory="/opt/ryokan"
 export RYOKAN_DATA_DIR=/var/lib/ryokan
+export RUST_LOG=ryokan=info
 
 depend() {
     need net
@@ -115,8 +117,11 @@ runit, as an executable `/etc/sv/ryokan/run`:
 exec 2>&1
 cd /opt/ryokan || exit 1
 export RYOKAN_DATA_DIR=/var/lib/ryokan
+export RUST_LOG=ryokan=info
 exec chpst -u ryokan:ryokan ./ryokan
 ```
+
+`RUST_LOG=ryokan=info` keeps the console log at the level the Docker image uses. Without it, Ryokan logs every request at debug level. This OpenRC example discards console output, and System → Logs keeps Ryokan's log either way.
 
 To move an existing install's data, stop Ryokan and copy everything from the old `data` folder into the new one, including the hidden `.ryokan-key` file. Then set `RYOKAN_DATA_DIR` and start it. Without the copy, Ryokan starts with an empty library. Without the key file, linked AniList and MyAnimeList accounts have to be linked again.
 
