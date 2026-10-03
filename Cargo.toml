@@ -272,7 +272,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # API documentation
 utoipa = { version = "6.0", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "9", features = ["axum"] }
+utoipa-swagger-ui = { version = "10", features = ["axum"] }
 
 # Misc
 chrono = { version = "0.4", features = ["serde"] }
