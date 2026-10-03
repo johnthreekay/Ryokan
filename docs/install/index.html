@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.62">
+      <meta name="generator" content="zensical-0.0.67">
     
     
       
@@ -34,12 +34,12 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ce62732f.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ae390e2.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.812a03bb.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.96d1a7e4.min.css">
       
       
 
@@ -378,18 +378,19 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_1">
-            <span class="md-nav__icon md-icon"></span>
-            
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_1">
+              <span class="md-nav__icon md-icon"></span>
+              
   
   Getting started
 
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
               
                 
+                  
   
   
   
@@ -413,10 +414,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -440,10 +441,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -467,10 +468,11 @@
     </li>
   
 
+                
               
-            
-          </ul>
-        </nav>
+            </ul>
+          </nav>
+        
       
     </li>
   
@@ -521,18 +523,19 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_2">
-            <span class="md-nav__icon md-icon"></span>
-            
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+            <label class="md-nav__title" for="__nav_2">
+              <span class="md-nav__icon md-icon"></span>
+              
   
   Installation
 
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
               
                 
+                  
   
   
     
@@ -669,10 +672,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -696,10 +699,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -723,10 +726,11 @@
     </li>
   
 
+                
               
-            
-          </ul>
-        </nav>
+            </ul>
+          </nav>
+        
       
     </li>
   
@@ -772,18 +776,19 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
-            <span class="md-nav__icon md-icon"></span>
-            
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_3">
+              <span class="md-nav__icon md-icon"></span>
+              
   
   Guides
 
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
               
                 
+                  
   
   
   
@@ -807,10 +812,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -834,10 +839,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -861,10 +866,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -888,10 +893,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -915,10 +920,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -942,10 +947,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -969,10 +974,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -996,10 +1001,11 @@
     </li>
   
 
+                
               
-            
-          </ul>
-        </nav>
+            </ul>
+          </nav>
+        
       
     </li>
   
@@ -1177,6 +1183,7 @@
               <article class="md-content__inner md-typeset">
                 
                   
+
   
   
 
@@ -1244,7 +1251,7 @@
 <p>This is the <a href="https://docs.linuxserver.io/general/understanding-puid-and-pgid/">linuxserver.io convention</a>, shared with the rest of the *arr stack. Setting them right means files Ryokan writes match the rest of your media's ownership.</p>
 <div class="admonition warning">
 <p class="admonition-title">User-mounted paths are NOT chowned</p>
-<p>The container chowns <code>/data</code> to the supplied PUID/PGID, but does not chown <code>/downloads</code> or <code>/media/...</code>. Chowning a 10TB media library would stall startup for hours and could clobber ownership the rest of your *arr stack relies on. Pick PUID/PGID that already match your media's owner instead.</p>
+<p>The container chowns its data folder (<code>/data</code>, or whatever <code>RYOKAN_DATA_DIR</code> names) to the supplied PUID/PGID, but does not chown <code>/downloads</code> or <code>/media/...</code>. Chowning a 10TB media library would stall startup for hours and could clobber ownership the rest of your *arr stack relies on. Pick PUID/PGID that already match your media's owner instead.</p>
 </div>
 <h2 id="first-run-setup">First-run setup<a class="headerlink" href="#first-run-setup" title="Anchor link">&para;</a></h2>
 <p>The first time Ryokan boots, navigating to <code>/</code> redirects to <code>/setup</code>. Create an admin account there. Once an account exists, <code>/setup</code> redirects to <code>/login</code> and won't accept further submissions.</p>
@@ -1263,7 +1270,7 @@
 <li><strong><a href="../from-source/">Build from source</a></strong>: if you're contributing to Ryokan or running pre-release commits instead of the Docker image.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-05-07.</em></p>
+<p><em>Last updated: 2026-10-03.</em></p>
 
 
 
@@ -1313,7 +1320,7 @@
 </footer>
       
     </div>
-    <div class="md-dialog" data-md-component="dialog">
+    <div class="md-dialog" data-md-component="dialog" role="status" aria-atomic="true">
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
@@ -1325,10 +1332,10 @@
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.8dcc8e9c.min.js"></script>
+      <script src="../assets/javascripts/bundle.67a597eb.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

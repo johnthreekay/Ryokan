@@ -4,37 +4,13 @@
         <loc>https://johnthreekay.github.io/Ryokan/docs/</loc>
       </url>
       <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/quick-start/</loc>
-      </url>
-      <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/stack-builder/</loc>
-      </url>
-      <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/install/</loc>
-      </url>
-      <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/docker/</loc>
-      </url>
-      <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/from-source/</loc>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/calendar/</loc>
       </url>
       <url>
         <loc>https://johnthreekay.github.io/Ryokan/docs/configuration/</loc>
       </url>
       <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/system/</loc>
-      </url>
-      <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/scoring/</loc>
-      </url>
-      <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/calendar/</loc>
-      </url>
-      <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/wanted/</loc>
-      </url>
-      <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/manual-import/</loc>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/docker/</loc>
       </url>
       <url>
         <loc>https://johnthreekay.github.io/Ryokan/docs/download-clients/</loc>
@@ -43,9 +19,33 @@
         <loc>https://johnthreekay.github.io/Ryokan/docs/external-accounts/</loc>
       </url>
       <url>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/faq/</loc>
+      </url>
+      <url>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/from-source/</loc>
+      </url>
+      <url>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/install/</loc>
+      </url>
+      <url>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/manual-import/</loc>
+      </url>
+      <url>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/quick-start/</loc>
+      </url>
+      <url>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/scoring/</loc>
+      </url>
+      <url>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/stack-builder/</loc>
+      </url>
+      <url>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/system/</loc>
+      </url>
+      <url>
         <loc>https://johnthreekay.github.io/Ryokan/docs/troubleshooting/</loc>
       </url>
       <url>
-        <loc>https://johnthreekay.github.io/Ryokan/docs/faq/</loc>
+        <loc>https://johnthreekay.github.io/Ryokan/docs/wanted/</loc>
       </url>
 </urlset>
