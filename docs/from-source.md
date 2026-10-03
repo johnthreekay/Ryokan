@@ -38,6 +38,9 @@ brew install cmake
 
 The mold linker setting only applies to Linux, so macOS builds use Apple's linker and need nothing else.
 
+!!! note "macOS builds are untested"
+    Ryokan's automated builds and tests run on Linux only, so a native macOS build may work but nothing checks it. On a Mac, including Apple Silicon, the supported way to run Ryokan is the Docker image. Docker Desktop, OrbStack, and Colima run its arm64 build natively, without emulation.
+
 Then, on any of them:
 
 ```sh
@@ -66,7 +69,7 @@ sudo useradd --system --home-dir /var/lib/ryokan --shell /usr/sbin/nologin ryoka
 sudo install -d -o ryokan -g ryokan /var/lib/ryokan
 ```
 
-Any init system works, since all it needs is a working directory and one environment variable.
+Any init system works, since all it needs is a working directory and one environment variable. The examples below are for Linux. On macOS, use the Docker image instead.
 
 systemd, as `/etc/systemd/system/ryokan.service`:
 
