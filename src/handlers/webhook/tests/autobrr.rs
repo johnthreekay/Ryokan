@@ -239,8 +239,13 @@ async fn an_info_hash_that_is_not_a_hash_returns_400() {
     assert!(body.contains("info_hash"), "body: {body}");
 }
 
-/// Accepts every add; nothing else is called on the push path.
-struct AcceptingClient;
+/// Accepts every add and counts them; nothing else is called on the
+/// push path. `usenet` makes it report the Usenet protocol.
+#[derive(Default)]
+struct AcceptingClient {
+    adds: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    usenet: bool,
+}
 
 #[async_trait::async_trait]
 impl crate::services::download_client::DownloadClient for AcceptingClient {
@@ -252,7 +257,11 @@ impl crate::services::download_client::DownloadClient for AcceptingClient {
         _u: &str,
         _h: &str,
     ) -> Result<crate::services::download_client::AddOutcome, String> {
+        self.adds.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(crate::services::download_client::AddOutcome::Added)
+    }
+    fn protocol(&self) -> &'static str {
+        if self.usenet { "usenet" } else { "torrent" }
     }
     async fn add_torrent_with_file_filter(
         &self,
@@ -315,7 +324,10 @@ async fn a_push_without_a_hash_records_the_torrents_own() {
     seed_autobrr_enabled(&db, KEY).await;
     seed_indexer(&db, "Nyaa").await;
     seed_series(&db).await;
-    let state = build_test_app_state(db.clone(), Some(std::sync::Arc::new(AcceptingClient)));
+    let state = build_test_app_state(
+        db.clone(),
+        Some(std::sync::Arc::new(AcceptingClient::default())),
+    );
     rebuild_indexer_cache(&state).await;
     let app = autobrr_webhook_router(state);
 
@@ -340,7 +352,10 @@ async fn a_magnet_push_without_a_hash_takes_the_magnets() {
     seed_autobrr_enabled(&db, KEY).await;
     seed_indexer(&db, "Nyaa").await;
     seed_series(&db).await;
-    let state = build_test_app_state(db.clone(), Some(std::sync::Arc::new(AcceptingClient)));
+    let state = build_test_app_state(
+        db.clone(),
+        Some(std::sync::Arc::new(AcceptingClient::default())),
+    );
     rebuild_indexer_cache(&state).await;
     let app = autobrr_webhook_router(state);
     let body = r#"{"torrent_name": "Test Show - 02", "magnet_uri": "magnet:?xt=urn:btih:C12FE1C06BBA254A9DC9F519B335AA7C1367A88A", "indexer": "Nyaa"}"#;
@@ -382,7 +397,10 @@ async fn an_unknown_indexer_grabs_through_the_default_client() {
     seed_autobrr_enabled(&db, KEY).await;
     seed_indexer(&db, "Prowlarr AnimeBytes").await;
     seed_series(&db).await;
-    let state = build_test_app_state(db.clone(), Some(std::sync::Arc::new(AcceptingClient)));
+    let state = build_test_app_state(
+        db.clone(),
+        Some(std::sync::Arc::new(AcceptingClient::default())),
+    );
     rebuild_indexer_cache(&state).await;
     let app = autobrr_webhook_router(state);
 
@@ -399,6 +417,114 @@ async fn an_unknown_indexer_grabs_through_the_default_client() {
     assert_eq!(indexer_id, None);
     assert_eq!(client_id, Some(1), "the default torrent client");
     assert!(!seed_rules, "no indexer, no seed rules");
+}
+
+#[tokio::test]
+async fn an_unknown_indexer_push_goes_to_the_torrent_client_only_as_a_torrent() {
+    // With no indexer row there is no protocol to go on. A Usenet push's
+    // `torrent_url` is an NZB, which the torrent client used to be
+    // handed (and the grab recorded with no hash). It is skipped; a
+    // .torrent behind the same kind of push is still grabbed.
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let info = b"d6:lengthi1e4:name5:a.mkv12:piece lengthi16384e6:pieces0:e";
+    let mut torrent = b"d4:info".to_vec();
+    torrent.extend_from_slice(info);
+    torrent.push(b'e');
+    let indexer = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/getnzb/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("<?xml version=\"1.0\"?><nzb/>"))
+        .mount(&indexer)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/t/2.torrent"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(torrent))
+        .mount(&indexer)
+        .await;
+
+    let db = in_memory_pool().await;
+    seed_autobrr_enabled(&db, KEY).await;
+    seed_series(&db).await;
+    let client = AcceptingClient::default();
+    let adds = client.adds.clone();
+    let state = build_test_app_state(db.clone(), Some(std::sync::Arc::new(client)));
+    let app = autobrr_webhook_router(state);
+
+    let nzb = serde_json::json!({
+        "torrent_name": "Test Show - 05 [1080p]",
+        "torrent_url": format!("{}/getnzb/1", indexer.uri()),
+        "indexer": "drunkenslug",
+    })
+    .to_string();
+    let (status, body) = post_payload(app.clone(), &nzb).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"status\":\"skipped\""), "body: {body}");
+    assert_eq!(adds.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM grabbed_torrents")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(rows, 0);
+
+    let torrent = serde_json::json!({
+        "torrent_name": "Test Show - 06 [1080p]",
+        "torrent_url": format!("{}/t/2.torrent", indexer.uri()),
+        "indexer": "animebytes",
+    })
+    .to_string();
+    let (status, body) = post_payload(app, &torrent).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("grabbed"), "body: {body}");
+    assert_eq!(adds.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn an_unknown_indexer_push_on_a_usenet_only_install_is_skipped() {
+    // No torrent client to take it: skipped (200) rather than a 503
+    // autobrr retries forever, and the NZB is never fetched.
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let indexer = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&indexer)
+        .await;
+
+    let db = in_memory_pool().await;
+    seed_autobrr_enabled(&db, KEY).await;
+    seed_series(&db).await;
+    let state = build_test_app_state(db.clone(), None);
+    let sab = AcceptingClient {
+        usenet: true,
+        ..Default::default()
+    };
+    let adds = sab.adds.clone();
+    {
+        let mut clients: std::collections::HashMap<
+            i64,
+            std::sync::Arc<dyn crate::services::download_client::DownloadClient>,
+        > = std::collections::HashMap::new();
+        clients.insert(1, std::sync::Arc::new(sab));
+        *state.download_clients.write().await = std::sync::Arc::new(crate::DownloadClientPool {
+            clients,
+            default_torrent_id: None,
+            default_usenet_id: Some(1),
+        });
+    }
+    let app = autobrr_webhook_router(state);
+
+    let body = serde_json::json!({
+        "torrent_name": "Test Show - 07 [1080p]",
+        "torrent_url": format!("{}/getnzb/2", indexer.uri()),
+        "indexer": "drunkenslug",
+    })
+    .to_string();
+    let (status, body) = post_payload(app, &body).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"status\":\"skipped\""), "body: {body}");
+    assert_eq!(adds.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -420,8 +546,8 @@ async fn a_nyaa_push_follows_the_built_in_nyaa_client() {
             i64,
             std::sync::Arc<dyn crate::services::download_client::DownloadClient>,
         > = std::collections::HashMap::new();
-        clients.insert(1, std::sync::Arc::new(AcceptingClient));
-        clients.insert(2, std::sync::Arc::new(AcceptingClient));
+        clients.insert(1, std::sync::Arc::new(AcceptingClient::default()));
+        clients.insert(2, std::sync::Arc::new(AcceptingClient::default()));
         *state.download_clients.write().await = std::sync::Arc::new(crate::DownloadClientPool {
             clients,
             default_torrent_id: Some(1),
