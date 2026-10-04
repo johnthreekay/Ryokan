@@ -301,8 +301,13 @@ fn the_username_bucket_is_a_fixed_size_whatever_the_username() {
     );
 }
 
+/// One login POST. `LOGIN_FAILURES` is process-wide and plain
+/// `cargo test` runs these in one process, so each test logs in as its
+/// own username from its own addresses: a shared username let one
+/// test's failures throttle the next.
 async fn login(
     state: crate::AppState,
+    username: &str,
     peer: &str,
     device: Option<&str>,
     password: &str,
@@ -319,7 +324,7 @@ async fn login(
         axum::extract::ConnectInfo(peer.parse().unwrap()),
         headers,
         axum::Form(crate::handlers::auth::LoginForm {
-            username: "lockout-admin".into(),
+            username: username.into(),
             password: password.into(),
         }),
     )
@@ -328,8 +333,9 @@ async fn login(
 
 #[tokio::test]
 async fn someone_elses_failed_logins_do_not_lock_out_a_known_device() {
+    let user = "lockout-admin";
     let db = crate::test_support::in_memory_pool().await;
-    let user_id = crate::models::user::create_user(&db, "lockout-admin", "correct-horse-1")
+    let user_id = crate::models::user::create_user(&db, user, "correct-horse-1")
         .await
         .unwrap();
     let device = crate::models::login_device::create(&db, user_id)
@@ -339,10 +345,17 @@ async fn someone_elses_failed_logins_do_not_lock_out_a_known_device() {
 
     // Someone else fails as the admin until the username is throttled.
     for _ in 0..=LOGIN_MAX_FAILURES {
-        login(state.clone(), "203.0.113.7:5000", None, "wrong").await;
+        login(state.clone(), user, "203.0.113.7:5000", None, "wrong").await;
     }
     // A browser that never logged in is refused even with the password...
-    let stranger = login(state.clone(), "198.51.100.9:5000", None, "correct-horse-1").await;
+    let stranger = login(
+        state.clone(),
+        user,
+        "198.51.100.9:5000",
+        None,
+        "correct-horse-1",
+    )
+    .await;
     assert_eq!(
         stranger.status(),
         axum::http::StatusCode::OK,
@@ -351,6 +364,7 @@ async fn someone_elses_failed_logins_do_not_lock_out_a_known_device() {
     // ...the admin's own browser is not.
     let admin = login(
         state.clone(),
+        user,
         "198.51.100.9:5000",
         Some(&device),
         "correct-horse-1",
@@ -361,12 +375,13 @@ async fn someone_elses_failed_logins_do_not_lock_out_a_known_device() {
 
 #[tokio::test]
 async fn a_first_login_from_a_browser_sets_the_device_cookie() {
+    let user = "first-login-admin";
     let db = crate::test_support::in_memory_pool().await;
-    crate::models::user::create_user(&db, "lockout-admin", "correct-horse-1")
+    crate::models::user::create_user(&db, user, "correct-horse-1")
         .await
         .unwrap();
     let state = crate::test_support::build_test_app_state(db, None);
-    let response = login(state, "198.51.100.10:5000", None, "correct-horse-1").await;
+    let response = login(state, user, "198.51.100.10:5000", None, "correct-horse-1").await;
     assert_eq!(response.status(), axum::http::StatusCode::SEE_OTHER);
     let cookies: Vec<String> = response
         .headers()
