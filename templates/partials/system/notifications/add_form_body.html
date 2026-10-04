@@ -48,7 +48,7 @@
             <div class="form-group">
                 <label for="notif-add-webhook-secret">HMAC secret <span class="form-hint">(optional)</span></label>
                 <input id="notif-add-webhook-secret" type="password" name="webhook_secret" autocomplete="new-password">
-                <span class="form-hint">Adds an <code>X-Ryokan-Signature</code> header the receiver can verify, GitHub style.</span>
+                <span class="form-hint">Adds <code>X-Ryokan-Signature</code> (the body, GitHub style) and <code>X-Ryokan-Signature-V2</code> (<code>t=</code> plus the timestamp and body, so a receiver that checks the time can refuse a replayed delivery).</span>
             </div>
             <div class="form-group">
                 <label for="notif-add-webhook-headers">Custom headers <span class="form-hint">(optional)</span></label>

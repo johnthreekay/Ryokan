@@ -141,7 +141,7 @@ where
 pub fn validate_headers(headers: &[(String, String)]) -> Result<(), String> {
     for (k, v) in headers {
         let lower = k.to_ascii_lowercase();
-        if lower == "content-type" || lower == "x-ryokan-signature" {
+        if lower == "content-type" || lower.starts_with("x-ryokan-signature") {
             return Err(format!(
                 "header {k:?} is reserved by Ryokan and can't be overridden \
                  (Content-Type and X-Ryokan-Signature are load-bearing)"
@@ -320,6 +320,22 @@ fn build_request(
             HeaderName::from_static("x-ryokan-signature"),
             HeaderValue::from_str(&value).expect("sha256= hex is valid header value"),
         );
+        // The body-only signature doesn't cover `X-Ryokan-Timestamp`, so
+        // a captured delivery could be replayed forever with a fresh
+        // timestamp. V2 signs `<timestamp>.<body>` (Stripe's shape); a
+        // receiver checking it and rejecting stale timestamps is
+        // replay-proof. The original header stays for existing receivers.
+        let mut signed = timestamp.to_string().into_bytes();
+        signed.push(b'.');
+        signed.extend_from_slice(&body);
+        let v2 = format!(
+            "t={timestamp},sha256={}",
+            hmac_sha256_hex(secret.as_bytes(), &signed)
+        );
+        headers.insert(
+            HeaderName::from_static("x-ryokan-signature-v2"),
+            HeaderValue::from_str(&v2).expect("t=,sha256= is a valid header value"),
+        );
     }
 
     // Custom headers added last via `insert` so they can override
@@ -339,7 +355,7 @@ fn build_request(
     // bypassed validation still won't crash the send.
     for (k, v) in &config.headers {
         let lower = k.to_ascii_lowercase();
-        if lower == "content-type" || lower == "x-ryokan-signature" {
+        if lower == "content-type" || lower.starts_with("x-ryokan-signature") {
             tracing::warn!(
                 "webhook: ignoring user override of reserved header {k:?} \
                  (Content-Type and X-Ryokan-Signature are load-bearing for the wire contract)"
@@ -482,6 +498,36 @@ mod tests {
         let null_form: WebhookConfig =
             serde_json::from_str(r#"{"url":"https://example.com/x","headers":null}"#).unwrap();
         assert!(null_form.headers.is_empty());
+    }
+
+    #[test]
+    fn the_v2_signature_covers_the_timestamp() {
+        // The body-only signature let a captured delivery be replayed
+        // with any timestamp. V2 is over `<timestamp>.<body>`.
+        let event = NotificationEvent::IndexerDown {
+            indexer_name: "idx".into(),
+            reason: "down".into(),
+        };
+        let config = WebhookConfig {
+            url: "https://hooks.example/in".into(),
+            secret: Some("s3cret".into()),
+            headers: Vec::new(),
+        };
+        let (body, headers) = build_request(&event, &config).unwrap();
+        let ts = headers["x-ryokan-timestamp"].to_str().unwrap();
+        let v2 = headers["x-ryokan-signature-v2"].to_str().unwrap();
+        let mut signed = format!("{ts}.").into_bytes();
+        signed.extend_from_slice(&body);
+        assert_eq!(
+            v2,
+            format!("t={ts},sha256={}", hmac_sha256_hex(b"s3cret", &signed))
+        );
+        // The original header is unchanged for existing receivers.
+        assert_eq!(
+            headers["x-ryokan-signature"].to_str().unwrap(),
+            format!("sha256={}", hmac_sha256_hex(b"s3cret", &body))
+        );
+        assert!(validate_headers(&[("X-Ryokan-Signature-V2".into(), "x".into())]).is_err());
     }
 
     #[test]
