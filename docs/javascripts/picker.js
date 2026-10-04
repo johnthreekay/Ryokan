@@ -117,6 +117,14 @@
       requests: radio('requests'),
       vpn: radio('vpn'),
       proxy: radio('proxy'),
+      host_check: get('host_check').checked,
+      // Host-name characters only, space-separated: the value lands in
+      // a double-quoted YAML string.
+      allowed_hosts: get('allowed_hosts')
+        .value.replace(/[^A-Za-z0-9.*,\- ]/g, ' ')
+        .split(/[\s,]+/)
+        .filter(Boolean)
+        .join(' '),
       puid: get('puid').value || '1000',
       pgid: get('pgid').value || '1000',
       tz: get('tz').value || 'UTC',
@@ -256,6 +264,18 @@
     const dependsList = deps.length
       ? `    depends_on:\n${deps.map((k) => `      - ${k}`).join('\n')}\n`
       : '';
+    // Opt-in DNS-rebinding defense (docs/docker.md#host-check). A proxy
+    // passes the public domain through as the Host, so it has to be
+    // listed.
+    let hardening = '';
+    if (cfg.host_check) {
+      hardening += '\n      RYOKAN_HOST_CHECK: "1"';
+      if (cfg.allowed_hosts) {
+        hardening += `\n      RYOKAN_ALLOWED_HOSTS: "${cfg.allowed_hosts}"`;
+      } else if (cfg.proxy !== 'none') {
+        hardening += '\n      # Add the domain your proxy serves Ryokan on:\n      # RYOKAN_ALLOWED_HOSTS: "ryokan.example.com"';
+      }
+    }
     return `  ryokan:
     image: ghcr.io/johnthreekay/ryokan:latest
     container_name: ryokan
@@ -270,7 +290,7 @@
       PUID: "${cfg.puid}"
       PGID: "${cfg.pgid}"
       TZ: "${cfg.tz}"
-      RUST_LOG: ryokan=info
+      RUST_LOG: ryokan=info${hardening}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8978/login"]
       interval: 30s
@@ -804,6 +824,11 @@ services:
         lines.push(`Drop your real domain into the ${cfg.proxy} config (see comments in the compose).`);
         lines.push("Set RYOKAN_TRUSTED_PROXY=1 in Ryokan's env once HTTPS is working; the login cookie");
         lines.push("turns Secure on its own from the proxy's X-Forwarded-Proto header.");
+      }
+      if (cfg.host_check && !cfg.allowed_hosts) {
+        lines.push('');
+        lines.push("Host check is on: add your proxy's domain to RYOKAN_ALLOWED_HOSTS, or every page");
+        lines.push('opened through the proxy gets a "421" error.');
       }
     }
 

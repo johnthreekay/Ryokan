@@ -54,6 +54,13 @@ This is opinionated. Sane defaults beat a config matrix. If you need something t
 </fieldset>
 
 <fieldset>
+  <legend>Hardening</legend>
+  <p class="hint">The host check makes Ryokan's web UI answer only to the names you open it by, so a page on another site can't point its own name at Ryokan and use it (DNS rebinding). Off by default. IP addresses, <code>localhost</code> and the machine's hostname always work; list any other name, such as <code>ryokan.lan</code> or your reverse proxy's domain. Seerr, autobrr and calendar apps aren't affected. See <a href="docker.md#host-check">Host check</a>.</p>
+  <label><input type="checkbox" name="host_check"> Host check</label>
+  <label>Names you open Ryokan by <input type="text" name="allowed_hosts" value="" placeholder="e.g. ryokan.lan ryokan.example.com"></label>
+</fieldset>
+
+<fieldset>
   <legend>User / group</legend>
   <p class="hint">Run <code>id -u</code> / <code>id -g</code> on the host to find these. Match the user that owns your media library so post-processed files land with the right ownership.</p>
   <label>PUID <input type="number" name="puid" value="1000" min="0"></label>
@@ -93,4 +100,4 @@ After the stack is up, log into Ryokan at `http://localhost:8978` and paste thes
 
 ---
 
-*Last updated: 2026-08-29.*
+*Last updated: 2026-10-04.*
