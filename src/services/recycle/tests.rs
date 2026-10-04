@@ -661,3 +661,37 @@ async fn restore_refuses_paths_outside_the_media_root() {
     ));
     assert!(video.is_file());
 }
+
+#[tokio::test]
+async fn restore_refuses_a_manifest_naming_files_outside_the_entry() {
+    // The manifest is a file in the bin; only `original_path` used to be
+    // checked, so a planted `files` entry moved anything into the library.
+    let db = test_support::in_memory_pool().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let (_season, video) = seed_series(tmp.path());
+    let bin = tmp.path().join("recycle");
+    let bin_s = bin.to_str().unwrap();
+    let RecycleOutcome::Recycled { entry_id } =
+        recycle(&db, bin_s, RecycleKind::Episode, Some(1), "Show", &video)
+            .await
+            .unwrap()
+    else {
+        panic!("expected Recycled");
+    };
+    let outside = tmp.path().join("outside.txt");
+    std::fs::write(&outside, b"not the bin's").unwrap();
+    let entry = find_entry(bin_s, &entry_id).await.unwrap().unwrap();
+    let manifest_path = entry.dir.join("manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
+    for bad in ["../../../outside.txt", "/etc/hostname"] {
+        manifest["files"] = serde_json::json!([bad]);
+        std::fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        let media_root = tmp.path().join("media");
+        let err = restore(bin_s, &entry_id, media_root.to_str().unwrap())
+            .await
+            .unwrap_err();
+        assert!(err.contains("not a file name"), "{bad}: {err}");
+    }
+    assert!(outside.is_file(), "nothing was moved");
+}

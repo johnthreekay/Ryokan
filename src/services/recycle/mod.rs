@@ -534,6 +534,15 @@ pub async fn find_entry(bin_path: &str, entry_id: &str) -> Result<Option<Recycle
     Ok(entries.into_iter().find(|e| e.entry_id == entry_id))
 }
 
+/// One normal path component: no separator, no `..`, not absolute.
+fn is_plain_name(name: &str) -> bool {
+    let mut parts = Path::new(name).components();
+    matches!(
+        (parts.next(), parts.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    ) && !name.contains(['/', '\\'])
+}
+
 /// Put an entry back exactly where it came from and drop the entry.
 /// `media_root` is the library root the manifest path must sit under;
 /// delete guards its paths with a canonicalize + `starts_with` check and
@@ -576,6 +585,16 @@ fn restore_blocking(entry: &RecycleEntry, media_root: &str) -> Result<RestoreOut
     if !path_under_root(&original, media_root) {
         return Ok(RestoreOutcome::OutsideMediaRoot);
     }
+    // Every listed name is a plain file name inside the entry. The
+    // manifest is a file in the bin (a shared volume, a restored backup),
+    // and a `..` or absolute name joined below moved anything on disk
+    // into the library: only `original_path` was checked.
+    if let Some(bad) = entry.manifest.files.iter().find(|f| !is_plain_name(f)) {
+        return Err(format!(
+            "manifest lists '{bad}', which is not a file name inside the entry"
+        ));
+    }
+
     let targets: Vec<(PathBuf, PathBuf)> = match entry.manifest.kind {
         RecycleKind::Episode => {
             let Some(parent) = original.parent() else {
