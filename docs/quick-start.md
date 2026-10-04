@@ -344,7 +344,7 @@ Ryokan is now on port 8978, Jellyfin on 8096, your download client on its defaul
 
 ## 2. First login to Ryokan
 
-Open <http://localhost:8978> in a browser. You'll be redirected to a setup page. Pick a username and a password of 8 to 72 characters, type it twice, and submit. That account is your admin account; Ryokan is single-user, so this is the only one you'll create.
+Open <http://localhost:8978> in a browser. You'll be redirected to a setup page. Pick a username and a password of at least 8 characters, type it twice, and submit. A password can be up to 72 characters long. Accented letters, Japanese characters and emoji count as two to four each toward that limit. That account is your admin account; Ryokan is single-user, so this is the only one you'll create.
 
 Ryokan then asks where to put finished episodes. Set **Media Root Path** to `/media/anime`. That's the path inside Ryokan's container; it maps to `/srv/media/anime` on your host, the same folder Jellyfin reads from. Leave the file operation mode on Hardlink and the Jellyfin fields empty for now (step 5 connects it), and click **Save and continue**. Saving turns on post-processing, which renames each finished download and places it in that folder. **Skip for now** leaves post-processing off, and Settings → General has the same settings for later.
 

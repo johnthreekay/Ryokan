@@ -8,7 +8,7 @@ Changes apply on save; no restart needed.
 
 Third-party services Ryokan talks to.
 
-Saved passwords and keys for other services (download clients, indexers, Jellyfin, a Discord webhook URL, webhook header values) are never shown again once saved. The field stays empty and reads **[set; leave blank to keep]**. Leave it blank to keep the saved value, type a new one to replace it, or press **Clear** to remove it. A saved webhook header shows its name with `********` in place of the value. If you change a service's address (its host or port), type the password or key again. Ryokan doesn't send a saved secret to a new address, on Save or on Test.
+Saved passwords and keys for other services (download clients, indexers, Jellyfin, a Discord webhook URL, webhook header values) are never shown again once saved. The field stays empty and reads **[set; leave blank to keep]**. Leave it blank to keep the saved value, type a new one to replace it, or press **Clear** to remove it. A saved webhook header shows its name with `********` in place of the value. If you change where a service's address points, such as its host or port, or switch between http and https, type the password or key again. Ryokan doesn't send a saved secret to a new address, on Save or on Test.
 
 - **AniList / MyAnimeList accounts**: OAuth-linked for watch-list sync. When linked, anime you mark "watching" (or "planning", "completed", etc.) on AniList or MAL get auto-added to your Ryokan library on the next sync tick. Setup walkthrough: [External accounts](external-accounts.md).
 - **Sync interval (minutes)**: how often the watch-list sync runs. Default 30 minutes; minimum 15, maximum 10080 (7 days). The form won't let you type anything below 15. If a value somehow ends up outside that range, it falls back to 30.
@@ -126,4 +126,4 @@ The **Force MAL / Kitsu fallback** switches live on the **System** page rather t
 
 ---
 
-*Last updated: 2026-08-29.*
+*Last updated: 2026-10-04.*
