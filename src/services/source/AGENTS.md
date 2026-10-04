@@ -26,7 +26,7 @@ The `group_source_map` table owns its own `CREATE TABLE` next to its model modul
 
 ## CF `ReleaseGroupSpecification` is title-only, not source-inferring
 
-The bundled `S-Tier BD groups` CF in `static/default_custom_formats.json` lists ~19 groups regex-matched against the scraped `[Group]` prefix. Several of those groups (MTBB, smol, Vodes, Okay-Subs, Arid, LYS1TH3A, sam, MiniMTBB, MegaMTBB) are intentionally **absent** from `SEED_DEFAULTS` in `models/group_source_map.rs` because TRaSH lists them in both BD and WEB tiers.
+The bundled `S-Tier BD groups` CF in `static/default_custom_formats.json` lists 18 groups regex-matched against the scraped `[Group]` prefix. Several of those groups (MTBB, smol, Vodes, Okay-Subs, Arid, LYS1TH3A, sam) are intentionally **absent** from `SEED_DEFAULTS` in `models/group_source_map.rs` because TRaSH lists them in both its BD and WEB tiers, so the group alone doesn't say the source; MegaMTBB is absent because TRaSH doesn't list it. MiniMTBB is deliberately not in the S-Tier: a good group, but a mini-encode one rather than one aiming for the highest quality (TRaSH puts it in its low-quality list, which is harsher than Ryokan wants), so its releases score on their own traits (BluRay source, 10-bit, audio) with neither the group bonus nor a penalty.
 
 Not a contradiction: the CF applies a score bonus to the group identity, while `group_source_map` applies a BD-vs-WEB prior to source classification. **An S-Tier CF match does not imply BluRay** — source classification still comes from filename / ffprobe / temporal / dir layers.
 

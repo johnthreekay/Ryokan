@@ -105,7 +105,7 @@ pub const SEED_DEFAULTS: &[(&str, Source, f32, &str)] = &[
     ("DemiHuman", Source::BluRay, 0.95, "TRaSH BD tier 01"),
     ("Flugel", Source::BluRay, 0.95, "TRaSH BD tier 01"),
     ("Moxie", Source::BluRay, 0.95, "TRaSH BD tier 01"),
-    ("NAN0", Source::BluRay, 0.95, "TRaSH BD tier 01"),
+    ("NAN0", Source::BluRay, 0.95, "TRaSH BD tier 03"),
     // ── TRaSH BD Tier 02 ──────────────────────────────────────────────────
     ("Aergia", Source::BluRay, 0.95, "TRaSH BD tier 02"),
     ("FateSucks", Source::BluRay, 0.95, "TRaSH BD tier 02"),
@@ -118,7 +118,7 @@ pub const SEED_DEFAULTS: &[(&str, Source, f32, &str)] = &[
     ("Lulu", Source::BluRay, 0.95, "TRaSH BD tier 02"),
     ("Meakes", Source::BluRay, 0.95, "TRaSH BD tier 02"),
     ("Orphan", Source::BluRay, 0.95, "TRaSH BD tier 02"),
-    ("PMR", Source::BluRay, 0.95, "TRaSH BD tier 02"),
+    ("PMR", Source::BluRay, 0.95, "TRaSH BD tier 03"),
     ("WAP", Source::BluRay, 0.95, "TRaSH BD tier 02"),
     ("YURI", Source::BluRay, 0.95, "TRaSH BD tier 02"),
     // ── TRaSH BD Tier 03 ──────────────────────────────────────────────────

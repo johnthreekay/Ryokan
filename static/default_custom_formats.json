@@ -24,7 +24,7 @@
         "negate": false,
         "required": false,
         "fields": [
-          { "name": "value", "value": "^(MTBB|MiniMTBB|MegaMTBB|Okay-Subs|hchcsen|sam|NAN0|Headpatter|smol|Vodes|CRUCiBLE|YURASUKA|YURI|Beatrice-Raws|Kaleido-subs|PMR|Arid|LYS1TH3A|SubsMix)$" }
+          { "name": "value", "value": "^(MTBB|MegaMTBB|Okay-Subs|hchcsen|sam|NAN0|Headpatter|smol|Vodes|CRUCiBLE|YURASUKA|YURI|Beatrice-Raws|Kaleido-subs|PMR|Arid|LYS1TH3A|SubsMix)$" }
         ]
       }
     ]
