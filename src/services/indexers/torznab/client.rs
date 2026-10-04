@@ -121,7 +121,7 @@ impl TorznabIndexer {
     /// Short-circuits at the top with the active per-id cooldown
     /// from `super::super::cooldown` if a prior 429 stamped one;
     /// the cooldown's lifecycle is documented there.
-    async fn fetch(&self, url: &str) -> Result<String, String> {
+    async fn fetch(&self, url: &str, cap: usize) -> Result<String, String> {
         if let Some(remaining) = super::super::cooldown::remaining(self.id) {
             return Err(format!(
                 "Indexer rate-limited (cooldown {}s remaining)",
@@ -146,7 +146,8 @@ impl TorznabIndexer {
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse::<u64>().ok());
             super::super::cooldown::record_429(self.id, retry);
-            let body_excerpt = resp.text().await.unwrap_or_default();
+            // Only an excerpt is shown, so only an excerpt is read.
+            let body_excerpt = read_excerpt(resp).await;
             return Err(format!(
                 "Indexer rate-limited (429); retry_after={:?}s; body: {}",
                 retry,
@@ -158,21 +159,21 @@ impl TorznabIndexer {
             // torznab layer sees the request. Surface the status
             // so the caller's error message tells the operator
             // whether the indexer URL is reachable at all.
-            let body = crate::services::rss::feed::read_capped_body(resp)
-                .await
-                .unwrap_or_default();
+            let body = read_excerpt(resp).await;
             return Err(format!(
                 "Indexer returned HTTP {}: {}",
                 status,
                 truncate_body(&body)
             ));
         }
-        // PR 112 review #A — share the same 10 MB body cap with
-        // the RSS path. Prowlarr is local-trust but a misconfigured
+        // PR 112 review #A: Prowlarr is local-trust but a misconfigured
         // upstream indexer behind it can still return the full
         // historical archive on `t=tvsearch&q=`; the cap turns OOM
         // into a clean Err the caller logs + skips.
-        crate::services::rss::feed::read_capped_body(resp).await
+        let body = crate::services::http_body::read_capped(resp, cap)
+            .await
+            .map_err(|e| format!("indexer {e}"))?;
+        Ok(String::from_utf8_lossy(&body).into_owned())
     }
 
     /// Apply pre-score filtering to a release set. Currently:
@@ -213,8 +214,10 @@ impl Indexer for TorznabIndexer {
 
     async fn caps(&self) -> Result<IndexerCaps, String> {
         let url = self.build_url("caps", &[]);
-        let body = self.fetch(&url).await?;
-        parse_caps_response(&body)
+        let body = self.fetch(&url, CAPS_BODY_CAP).await?;
+        tokio::task::spawn_blocking(move || parse_caps_response(&body))
+            .await
+            .map_err(|e| format!("indexer caps parse failed: {e}"))?
     }
 
     async fn search(&self, query: &SearchQuery) -> Result<Vec<Release>, String> {
@@ -258,8 +261,14 @@ impl Indexer for TorznabIndexer {
         }
 
         let url = self.build_url("tvsearch", &params);
-        let body = self.fetch(&url).await?;
-        let parsed = parse_search_response(&body, self.id, self.priority, &self.name)?;
+        let body = self.fetch(&url, SEARCH_BODY_CAP).await?;
+        // A full page is ~15 ms of parsing in a release build: off the
+        // runtime, like every other job past a few milliseconds.
+        let (id, priority, name) = (self.id, self.priority, self.name.clone());
+        let parsed =
+            tokio::task::spawn_blocking(move || parse_search_response(&body, id, priority, &name))
+                .await
+                .map_err(|e| format!("indexer response parse failed: {e}"))??;
         let releases = match parsed {
             Ok(rs) => rs,
             Err(e) => return Err(format_torznab_error(&e)),
@@ -293,6 +302,35 @@ fn format_torznab_error(err: &TorznabError) -> String {
         "Indexer error code {} ({}): {}",
         err.code, category, err.description
     )
+}
+
+/// Largest search response read. Far above a real page (1,000 items
+/// is ~650 KB), far below a memory problem on a small host.
+const SEARCH_BODY_CAP: usize = 10 * 1024 * 1024;
+
+/// Largest caps response read. Prowlarr's is a few KB; Jackett's
+/// aggregate with every tracker's own categories stays well under 1 MB.
+const CAPS_BODY_CAP: usize = 2 * 1024 * 1024;
+
+/// An error or 429 body is shown as a 240-character excerpt; nothing
+/// past this is read.
+const ERROR_BODY_CAP: usize = 16 * 1024;
+
+/// The first [`ERROR_BODY_CAP`] bytes of an error body, for the
+/// excerpt. Stops reading there rather than failing, so a long proxy
+/// error page still shows its start.
+async fn read_excerpt(mut resp: reqwest::Response) -> String {
+    let mut body = Vec::new();
+    while body.len() < ERROR_BODY_CAP {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                let room = ERROR_BODY_CAP - body.len();
+                body.extend_from_slice(&chunk[..chunk.len().min(room)]);
+            }
+            _ => break,
+        }
+    }
+    String::from_utf8_lossy(&body).into_owned()
 }
 
 fn truncate_body(s: &str) -> String {

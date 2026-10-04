@@ -16,7 +16,8 @@ pub(crate) async fn read_capped(
     while let Some(chunk) = resp
         .chunk()
         .await
-        .map_err(|e| format!("response body read failed: {e}"))?
+        // Without the URL: an indexer's carries its API key.
+        .map_err(|e| format!("response body read failed: {}", e.without_url()))?
     {
         if body.len() + chunk.len() > cap {
             return Err(too_large());

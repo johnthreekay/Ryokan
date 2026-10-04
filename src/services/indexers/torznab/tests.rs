@@ -472,3 +472,82 @@ fn parse_repeating_attr_works_for_newznab_namespace() {
     let values = parse_repeating_attr(block, "files");
     assert_eq!(values, vec!["42".to_string(), "43".to_string()]);
 }
+
+// ── Bounds and linear parsing ─────────────────────────────────────
+
+fn item(title: &str) -> String {
+    format!(
+        r#"<item><title>{title}</title><guid>g</guid><link>https://ix/1</link><enclosure url="https://ix/dl/1?a=b" length="5"/><torznab:attr name="seeders" value="3"/></item>"#
+    )
+}
+
+#[test]
+fn a_page_is_read_up_to_the_item_cap() {
+    let xml = format!(
+        "<rss><channel>{}</channel></rss>",
+        item("[G] Show - 01").repeat(1001)
+    );
+    let releases = parse_search_response(&xml, 1, 25, "ix").unwrap().unwrap();
+    assert_eq!(releases.len(), super::parser::MAX_ITEMS);
+}
+
+#[test]
+fn an_item_whose_title_is_over_the_cap_is_dropped() {
+    let long = "1".repeat(crate::services::media::MAX_RELEASE_TITLE_BYTES + 1);
+    let xml = format!(
+        "<rss><channel>{}{}</channel></rss>",
+        item(&long),
+        item("[G] Show - 01")
+    );
+    let releases = parse_search_response(&xml, 1, 25, "ix").unwrap().unwrap();
+    assert_eq!(releases.len(), 1);
+    assert_eq!(releases[0].title, "[G] Show - 01");
+}
+
+#[test]
+fn tag_names_must_end_where_the_tag_name_ends() {
+    // `<items>` is no item and `<titles>` no title; names compare
+    // without case.
+    let xml = r#"<rss><channel><items><title>nope</title></items><ITEM><Titles>no</Titles><TITLE>[G] Show - 02</TITLE><link>https://ix/2</link></ITEM></channel></rss>"#;
+    let releases = parse_search_response(xml, 1, 25, "ix").unwrap().unwrap();
+    assert_eq!(releases.len(), 1);
+    assert_eq!(releases[0].title, "[G] Show - 02");
+}
+
+#[test]
+fn attribute_names_never_match_inside_another_name() {
+    // `x-url` is not `url`; the pair scan reads `url` itself.
+    let xml = r#"<rss><channel><item><title>[G] Show - 03</title><enclosure x-url="https://bad/" URL="https://ix/dl/3" length="7"/><torznab:attr data-name="seeders" name="seeders" value="9"/></item></channel></rss>"#;
+    let releases = parse_search_response(xml, 1, 25, "ix").unwrap().unwrap();
+    assert_eq!(releases[0].link, "https://ix/dl/3");
+    assert_eq!(releases[0].size_bytes, 7);
+    assert_eq!(releases[0].seeders, 9);
+}
+
+#[test]
+fn an_unclosed_category_neither_swallows_nor_stalls_the_rest() {
+    // `<category ...>(.*?)</category>` kept an unclosed tag's search
+    // alive to the end of the input on every later match: quadratic,
+    // 12 seconds for 218 KB in a release build. Each tag's body now
+    // ends at the next open tag.
+    let caps = format!(
+        "<caps><categories>{}<category id=\"5000\" name=\"TV\"><subcat id=\"5070\" name=\"Anime\"/></category></categories></caps>",
+        "<category id=\"1\" name=\"open\"><category id=\"2\" name=\"c\"/>".repeat(4000)
+    );
+    let started = std::time::Instant::now();
+    let parsed = parse_caps_response(&caps).unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(parsed.categories.len(), 8001);
+    let tv = parsed.categories.last().unwrap();
+    assert_eq!((tv.id, tv.subcategories.len()), (5000, 1));
+    assert!(
+        parsed.categories[..8000]
+            .iter()
+            .all(|c| c.subcategories.is_empty()),
+        "an unclosed tag never claims a later tag's subcats"
+    );
+}

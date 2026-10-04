@@ -67,19 +67,26 @@ pub fn parse_search_response(
     }
 
     let mut releases = Vec::new();
-    for caps in RE_ITEM.captures_iter(xml) {
-        let block = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+    for block in item_blocks(xml).take(MAX_ITEMS) {
         let release = parse_item_block(block, indexer_id, indexer_priority, indexer_name);
         // Skip items with no usable identity. A torznab response
         // shouldn't emit empty items, but be defensive — a single
-        // mangled item shouldn't shut out the rest of the page.
-        if release.title.is_empty() {
+        // mangled item shouldn't shut out the rest of the page. A
+        // title past the release-title cap is no real release either.
+        if release.title.is_empty()
+            || release.title.len() > crate::services::media::MAX_RELEASE_TITLE_BYTES
+        {
             continue;
         }
         releases.push(release);
     }
     Ok(Ok(releases))
 }
+
+/// Most items read from one search response. Prowlarr pages at 100
+/// and Jackett's aggregate rarely passes a few hundred; past this the
+/// rest of the page is ignored rather than scored.
+pub(crate) const MAX_ITEMS: usize = 1000;
 
 fn parse_item_block(
     block: &str,
@@ -103,7 +110,8 @@ fn parse_item_block(
     // caller doesn't have to remember the exact casing each indexer
     // uses (Prowlarr/Jackett are consistent, but private trackers
     // sometimes diverge).
-    let attrs = parse_torznab_attrs(block);
+    let all_attrs = torznab_attr_pairs(block);
+    let attrs = first_values(&all_attrs);
     let attr = |key: &str| attrs.get(&key.to_ascii_lowercase()).cloned();
 
     let size_bytes = attr("size")
@@ -136,7 +144,11 @@ fn parse_item_block(
     // The single-value `parse_categories` only returns the first
     // observed value, which would silently break the title-parse
     // fallback the doc comment promises.
-    let categories = extract_all_categories(block);
+    let categories = all_attrs
+        .iter()
+        .filter(|(name, _)| name == "category")
+        .filter_map(|(_, value)| value.parse::<i32>().ok())
+        .collect();
     let download_volume_factor = attr("downloadvolumefactor").and_then(|s| s.parse::<f32>().ok());
     let upload_volume_factor = attr("uploadvolumefactor").and_then(|s| s.parse::<f32>().ok());
 
@@ -194,81 +206,61 @@ struct EnclosureAttrs {
 }
 
 fn parse_enclosure(block: &str) -> EnclosureAttrs {
-    // `[^>]*?` (lazy) — NOT `[^/>]*` — because attribute values
-    // contain `/` (URLs!). Excluding `/` killed the match the
-    // moment the regex hit the protocol slashes. The lazy match
-    // stops at the first `>`, which catches both `/>` self-closing
-    // and `>` open-tag forms; the trailing `/` (if any) is part
-    // of the captured attrs but harmless to attribute extraction.
-    static RE_ENCLOSURE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r#"(?is)<enclosure\b([^>]*?)>"#).expect("compiles"));
-    let Some(caps) = RE_ENCLOSURE.captures(block) else {
+    let Some(tag) = next_open_tag(block, &["enclosure"], 0) else {
         return EnclosureAttrs::default();
     };
-    let attrs = caps.get(1).map(|m| m.as_str()).unwrap_or("");
     EnclosureAttrs {
-        url: extract_xml_attr(attrs, "url"),
-        length: extract_xml_attr(attrs, "length")
+        url: extract_xml_attr(tag.attrs, "url"),
+        length: extract_xml_attr(tag.attrs, "length")
             .parse::<u64>()
             .unwrap_or(0),
     }
 }
 
-fn parse_torznab_attrs(block: &str) -> HashMap<String, String> {
-    static RE_ATTR: LazyLock<Regex> = LazyLock::new(|| {
-        // Matches both `<torznab:attr name="X" value="Y"/>` and
-        // self-closing variants without the trailing `/`. The
-        // `(?is)` flag handles multiline values; lazy quantifier
-        // on value stops at the first quote.
-        //
-        // Newznab uses `<newznab:attr>` instead — accept both.
-        // Captures: 1=name, 2=value.
-        Regex::new(
-            r#"(?is)<(?:torznab|newznab):attr\b[^>]*\bname\s*=\s*"([^"]*)"[^>]*\bvalue\s*=\s*"([^"]*)""#,
-        )
-        .expect("torznab attr pattern compiles")
-    });
-    let mut out = HashMap::new();
-    for caps in RE_ATTR.captures_iter(block) {
-        let name = decode_xml(caps.get(1).map(|m| m.as_str()).unwrap_or("")).to_ascii_lowercase();
-        let value = decode_xml(caps.get(2).map(|m| m.as_str()).unwrap_or(""));
-        // For multi-valued attrs (esp. `category`), keep the FIRST
-        // observed value here; full list goes through
-        // [`parse_categories`] which scans for repeats.
-        out.entry(name).or_insert(value);
+/// Every `<torznab:attr name="X" value="Y"/>` (or `newznab:attr`) in
+/// an item, in document order, names lowercased and both sides
+/// decoded.
+fn torznab_attr_pairs(block: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(tag) = next_open_tag(block, &["torznab:attr", "newznab:attr"], from) {
+        from = tag.end;
+        let name = extract_xml_attr(tag.attrs, "name").to_ascii_lowercase();
+        if !name.is_empty() {
+            out.push((name, extract_xml_attr(tag.attrs, "value")));
+        }
     }
     out
 }
 
-/// Variant of [`parse_torznab_attrs`] that captures EVERY value
-/// of a repeating attr. Used for `category` extraction since a
-/// release can carry multiple cat ids and the single-value map
-/// drops repeats.
+/// The first value of each attribute. A repeating attribute
+/// (`category`) is read from the full list instead.
+fn first_values(pairs: &[(String, String)]) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for (name, value) in pairs {
+        out.entry(name.clone()).or_insert_with(|| value.clone());
+    }
+    out
+}
+
+/// Every value of a repeating attr in `block` (`category` is the one
+/// that repeats). Names outside `[A-Za-z0-9_-]` match nothing.
 pub fn parse_repeating_attr(block: &str, name: &str) -> Vec<String> {
-    static RE_ATTR_TPL: &str =
-        r#"(?is)<(?:torznab|newznab):attr\b[^>]*\bname\s*=\s*"{NAME}"[^>]*\bvalue\s*=\s*"([^"]*)""#;
-    // Sanitize `name` — it's a caller-supplied tag we're embedding
-    // in a regex literal. Only alphanumerics + `-_` are valid
-    // torznab attr names, so anything else is rejected to keep
-    // the regex contract clean.
     if !name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Vec::new();
     }
-    let pattern = RE_ATTR_TPL.replace("{NAME}", name);
-    let Ok(re) = Regex::new(&pattern) else {
-        return Vec::new();
-    };
-    re.captures_iter(block)
-        .filter_map(|caps| caps.get(1).map(|m| decode_xml(m.as_str())))
+    torznab_attr_pairs(block)
+        .into_iter()
+        .filter(|(n, _)| n.eq_ignore_ascii_case(name))
+        .map(|(_, v)| v)
         .collect()
 }
 
 /// Extract every category id reported on an item, including
-/// repeats. Combines [`parse_repeating_attr`] with the already-
-/// parsed primary category so the result is the union.
+/// repeats.
 pub fn extract_all_categories(block: &str) -> Vec<i32> {
     parse_repeating_attr(block, "category")
         .into_iter()
@@ -288,9 +280,15 @@ pub fn parse_caps_response(xml: &str) -> Result<IndexerCaps, String> {
         ));
     }
 
-    let limits_block = extract_tag_block(xml, "limits");
-    let max_limit = extract_xml_attr(&limits_block, "max").parse::<u32>().ok();
-    let default_limit = extract_xml_attr(&limits_block, "default")
+    static RE_LIMITS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?is)<limits\b([^>]*)>").expect("compiles"));
+    let limits_block = RE_LIMITS
+        .captures(xml)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str())
+        .unwrap_or("");
+    let max_limit = extract_xml_attr(limits_block, "max").parse::<u32>().ok();
+    let default_limit = extract_xml_attr(limits_block, "default")
         .parse::<u32>()
         .ok();
 
@@ -302,18 +300,17 @@ pub fn parse_caps_response(xml: &str) -> Result<IndexerCaps, String> {
     })
 }
 
+/// Each `<category>` with its `<subcat>`s. Open tags are found first;
+/// a paired tag's body is the text up to its `</category>`, looked for
+/// only before the next open tag, so the scan is linear. The single
+/// `<category ...>(.*?)</category>` pattern this replaces kept an
+/// unclosed tag's search alive to the end of the input on every match
+/// after it: a 218 KB caps body took 15 seconds on a runtime worker.
 fn parse_caps_categories(xml: &str) -> Vec<CategoryCap> {
-    static RE_CATEGORY: LazyLock<Regex> = LazyLock::new(|| {
-        // Two shapes to match:
-        //   - `<category attrs>body</category>` (with subcats)
-        //   - `<category attrs/>` (self-closing, no subcats)
-        // The alternation captures attrs in either form; body is
-        // captured only in the paired form (Option<&str> in Rust).
-        // Lazy `[^>]*?` keeps URLs-with-slashes safe.
-        // Captures: 1=attrs, 2=body (Some when paired, None when
-        // self-closing).
-        Regex::new(r#"(?is)<category\b([^>]*?)(?:/\s*>|>(.*?)</category>)"#)
-            .expect("category pattern compiles")
+    static RE_CATEGORY_OPEN: LazyLock<Regex> = LazyLock::new(|| {
+        // Lazy `[^>]*?` keeps URLs-with-slashes safe. Captures:
+        // 1=attrs, 2=`/` for a self-closing tag.
+        Regex::new(r#"(?is)<category\b([^>]*?)(/?)\s*>"#).expect("category pattern compiles")
     });
     static RE_SUBCAT: LazyLock<Regex> = LazyLock::new(|| {
         // Lazy `[^>]*?` for the same reason as enclosure: attribute
@@ -321,15 +318,37 @@ fn parse_caps_categories(xml: &str) -> Vec<CategoryCap> {
         // captured trailing `/` is safe.
         Regex::new(r#"(?is)<subcat\b([^>]*?)>"#).expect("subcat pattern compiles")
     });
+    struct Open<'a> {
+        start: usize,
+        end: usize,
+        attrs: &'a str,
+        self_closing: bool,
+    }
+    let opens: Vec<Open> = RE_CATEGORY_OPEN
+        .captures_iter(xml)
+        .filter_map(|caps| {
+            let whole = caps.get(0)?;
+            Some(Open {
+                start: whole.start(),
+                end: whole.end(),
+                attrs: caps.get(1).map_or("", |m| m.as_str()),
+                self_closing: caps.get(2).is_some_and(|m| !m.as_str().is_empty()),
+            })
+        })
+        .collect();
     let mut out = Vec::new();
-    for caps in RE_CATEGORY.captures_iter(xml) {
-        let attrs = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-        let body = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-        let id = match extract_xml_attr(attrs, "id").parse::<i32>() {
-            Ok(n) => n,
-            Err(_) => continue,
+    for (i, open) in opens.iter().enumerate() {
+        let Ok(id) = extract_xml_attr(open.attrs, "id").parse::<i32>() else {
+            continue;
         };
-        let name = decode_xml(&extract_xml_attr(attrs, "name"));
+        let body = if open.self_closing {
+            ""
+        } else {
+            let window_end = opens.get(i + 1).map_or(xml.len(), |next| next.start);
+            let window = &xml[open.end..window_end];
+            next_close_tag(window, "category", 0).map_or(window, |at| &window[..at])
+        };
+        let name = decode_xml(&extract_xml_attr(open.attrs, "name"));
         let subcategories = RE_SUBCAT
             .captures_iter(body)
             .filter_map(|sc| {
@@ -386,82 +405,128 @@ fn parse_caps_search_modes(xml: &str) -> Vec<SearchModeCap> {
 
 // ── Shared XML helpers (parallel to services::rss::feed) ─────────
 
-static RE_ITEM: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<item\b[^>]*>(.*?)</item>").expect("item pattern compiles"));
+// ── Tag scanner ──────────────────────────────────────────────────
+//
+// The item path finds tags by hand: jump from `<` to `<` (a memchr
+// scan) and compare the name without ASCII case. regex-lite has no
+// literal prefilter, so `<item\b[^>]*>(.*?)</item>` plus a compiled
+// pattern per tag, enclosure and attribute ran the full matcher over
+// every byte several times: a 1,000-item page took ~190 ms in the
+// test profile, on a runtime worker.
 
-fn extract_tag(block: &str, tag: &str) -> String {
-    // Pattern compilation is per-call here (vs the RSS feed's
-    // pre-compiled HashMap) because the torznab tag set is
-    // larger and the per-search call rate is lower; the regex
-    // engine's own cache handles the perf gap. If profiling
-    // shows this hot, lift the LazyLock pattern.
-    let pattern = format!(
-        r"(?is)<{tag}\b[^>]*>(.*?)</{tag}>",
-        tag = regex_escape_tag(tag)
-    );
-    let Ok(re) = Regex::new(&pattern) else {
-        return String::new();
-    };
-    re.captures(block)
-        .and_then(|caps| caps.get(1))
-        .map(|m| strip_cdata(m.as_str()))
-        .unwrap_or_default()
+/// An open tag: the attribute text between the name and `>`, and the
+/// offset just past `>`.
+struct OpenTag<'a> {
+    attrs: &'a str,
+    end: usize,
 }
 
-/// Same as `extract_tag` but returns the inner XML (un-stripped)
-/// so nested elements remain parseable. Used for `<limits>` /
-/// `<categories>` blocks where we need to scan the contained
-/// element list.
-fn extract_tag_block(xml: &str, tag: &str) -> String {
-    let pattern = format!(
-        r"(?is)<{tag}\b[^>]*/>|<{tag}\b[^>]*>(.*?)</{tag}>",
-        tag = regex_escape_tag(tag)
-    );
-    let Ok(re) = Regex::new(&pattern) else {
-        return String::new();
-    };
-    let Some(caps) = re.captures(xml) else {
-        return String::new();
-    };
-    // For self-closing `<limits />`, the inner block is empty but
-    // the attrs still matter; return the full match so the caller
-    // can `extract_xml_attr` over the open-tag.
-    let full = caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string();
-    let inner = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-    if inner.is_empty() {
-        full
-    } else {
-        // For tag-pair form, return both the open-tag and the
-        // body so attribute extraction works regardless of which
-        // shape the indexer emitted.
-        full
+/// The next `<name ...>` at or after `from` for any of `names`
+/// (ASCII, compared without case; the name must be followed by `>`,
+/// `/` or whitespace, so `<item>` never matches `<items>`).
+fn next_open_tag<'a>(hay: &'a str, names: &[&str], from: usize) -> Option<OpenTag<'a>> {
+    let bytes = hay.as_bytes();
+    let mut at = from;
+    while let Some(offset) = hay.get(at..)?.find('<') {
+        let start = at + offset;
+        for name in names {
+            let name_end = start + 1 + name.len();
+            if bytes
+                .get(start + 1..name_end)
+                .is_some_and(|n| n.eq_ignore_ascii_case(name.as_bytes()))
+                && bytes
+                    .get(name_end)
+                    .is_some_and(|&b| b == b'>' || b == b'/' || b.is_ascii_whitespace())
+            {
+                let close = name_end + hay[name_end..].find('>')?;
+                return Some(OpenTag {
+                    attrs: &hay[name_end..close],
+                    end: close + 1,
+                });
+            }
+        }
+        at = start + 1;
     }
+    None
 }
 
-fn regex_escape_tag(tag: &str) -> String {
-    // Sanitize: only allow alphanumeric, colon (for namespaces),
-    // hyphen, underscore. Anything else gets stripped — protects
-    // against caller-injected regex meta. In practice every
-    // torznab tag is `[a-z]+(?::[a-z]+)?` shaped.
-    tag.chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == ':' || *c == '-' || *c == '_')
-        .collect()
+/// Offset of the next `</name` at or after `from` (followed by `>` or
+/// whitespace), without ASCII case.
+fn next_close_tag(hay: &str, name: &str, from: usize) -> Option<usize> {
+    let bytes = hay.as_bytes();
+    let mut at = from;
+    while let Some(offset) = hay.get(at..)?.find("</") {
+        let start = at + offset;
+        let name_end = start + 2 + name.len();
+        if bytes
+            .get(start + 2..name_end)
+            .is_some_and(|n| n.eq_ignore_ascii_case(name.as_bytes()))
+            && bytes
+                .get(name_end)
+                .is_some_and(|&b| b == b'>' || b.is_ascii_whitespace())
+        {
+            return Some(start);
+        }
+        at = start + 2;
+    }
+    None
 }
 
-/// Pull a quoted attribute value from a tag's attribute list.
-/// `attrs` is the slice between `<tag` and `>` (or `/>`).
-fn extract_xml_attr(attrs: &str, name: &str) -> String {
-    let pattern = format!(
-        r#"(?is)\b{name}\s*=\s*"([^"]*)""#,
-        name = regex_escape_tag(name)
-    );
-    let Ok(re) = Regex::new(&pattern) else {
+/// The body of every `<item>...</item>`, in order. An item with no
+/// closing tag ends the list.
+fn item_blocks(xml: &str) -> impl Iterator<Item = &str> {
+    let mut from = 0;
+    std::iter::from_fn(move || {
+        let open = next_open_tag(xml, &["item"], from)?;
+        let close = next_close_tag(xml, "item", open.end)?;
+        from = close;
+        Some(&xml[open.end..close])
+    })
+}
+
+/// The text of the first `<tag>...</tag>` in `block`, CDATA stripped.
+/// A self-closing or unclosed tag reads as empty.
+fn extract_tag(block: &str, tag: &str) -> String {
+    let Some(open) = next_open_tag(block, &[tag], 0) else {
         return String::new();
     };
-    re.captures(attrs)
-        .and_then(|caps| caps.get(1))
-        .map(|m| decode_xml(m.as_str()))
+    if open.attrs.ends_with('/') {
+        return String::new();
+    }
+    next_close_tag(block, tag, open.end)
+        .map(|close| strip_cdata(&block[open.end..close]))
         .unwrap_or_default()
+}
+
+/// Pull a double-quoted attribute value from a tag's attribute list
+/// (`attrs` is the text between the tag name and `>`). Names compare
+/// without case, and each `name="value"` pair is read in turn, so a
+/// name can't match inside another (`foo-name="..."`) or inside a
+/// value.
+fn extract_xml_attr(attrs: &str, name: &str) -> String {
+    let mut rest = attrs;
+    loop {
+        let Some(eq) = rest.find('=') else {
+            return String::new();
+        };
+        let key = rest[..eq]
+            .trim_end()
+            .rsplit(|c: char| c.is_ascii_whitespace())
+            .next()
+            .unwrap_or("");
+        let after = rest[eq + 1..].trim_start();
+        let Some(quoted) = after.strip_prefix('"') else {
+            rest = after;
+            continue;
+        };
+        let Some(close) = quoted.find('"') else {
+            return String::new();
+        };
+        if key.eq_ignore_ascii_case(name) {
+            return decode_xml(&quoted[..close]);
+        }
+        rest = &quoted[close + 1..];
+    }
 }
 
 fn strip_cdata(value: &str) -> String {
