@@ -55,9 +55,9 @@ This is opinionated. Sane defaults beat a config matrix. If you need something t
 
 <fieldset>
   <legend>Hardening</legend>
-  <p class="hint">The host check makes Ryokan's web UI answer only to the names you open it by, so a page on another site can't point its own name at Ryokan and use it (DNS rebinding). Off by default. IP addresses, <code>localhost</code> and the machine's hostname always work; list any other name, such as <code>ryokan.lan</code> or your reverse proxy's domain. Seerr, autobrr and calendar apps aren't affected. See <a href="docker.md#host-check">Host check</a>.</p>
+  <p class="hint">The host check makes Ryokan's web UI answer only to the names you open it by, so a page on another site can't point its own name at Ryokan and use it (DNS rebinding). Off by default. IP addresses and <code>localhost</code> always work. List every name you open Ryokan by, such as your server's name (<code>nas</code>), <code>ryokan.lan</code> or your reverse proxy's domain. Inside Docker, Ryokan doesn't know your server's name unless you list it. Seerr, autobrr and calendar apps aren't affected. See <a href="docker.md#host-check">Host check</a>.</p>
   <label><input type="checkbox" name="host_check"> Host check</label>
-  <label>Names you open Ryokan by <input type="text" name="allowed_hosts" value="" placeholder="e.g. ryokan.lan ryokan.example.com"></label>
+  <label>Names you open Ryokan by <input type="text" name="allowed_hosts" value="" placeholder="e.g. nas ryokan.lan ryokan.example.com"></label>
 </fieldset>
 
 <fieldset>

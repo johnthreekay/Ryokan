@@ -401,6 +401,10 @@
         hardening += `\n      RYOKAN_ALLOWED_HOSTS: "${cfg.allowed_hosts}"`;
       } else if (cfg.proxy !== 'none') {
         hardening += '\n      # Add the domain your proxy serves Ryokan on:\n      # RYOKAN_ALLOWED_HOSTS: "ryokan.example.com"';
+      } else {
+        // The container's hostname is a random ID, not the server's, so
+        // http://nas:8978 is refused until "nas" is listed.
+        hardening += "\n      # Add your server's name if you open Ryokan by it (IP addresses\n      # and localhost always work):\n      # RYOKAN_ALLOWED_HOSTS: \"nas\"";
       }
     }
     return `  ryokan:
