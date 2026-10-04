@@ -839,15 +839,26 @@ pub async fn grab_confirm(
     // the Downloads-page blocked list drops the stale entry. No-op
     // when there's no new grab id (dedup hit, missing series
     // context) — we don't want to clear the blocklist without a
-    // fresh row to point at.
+    // fresh row to point at. Both are scoped to this series: another
+    // series' misgrab row for the hash keeps blocking it there.
     if form.unblock
         && let Some(new_id) = new_grab_id
     {
-        let _ = crate::models::grabbed_torrents::unblock_by_hash(&state.db, &row.info_hash, new_id)
-            .await;
+        let _ = crate::models::grabbed_torrents::unblock_by_hash(
+            &state.db,
+            &row.info_hash,
+            new_id,
+            row.series_id,
+        )
+        .await;
         // Misgrab guardrails: a release the user chose to unblock is
         // theirs to keep; verification must not flag it again.
-        let _ = crate::models::grabbed_torrents::whitelist_by_hash(&state.db, &row.info_hash).await;
+        let _ = crate::models::grabbed_torrents::whitelist_by_hash(
+            &state.db,
+            &row.info_hash,
+            row.series_id,
+        )
+        .await;
     }
 
     // Drop the pending row — the user has committed, so the sweep
@@ -1710,9 +1721,14 @@ mod tests {
             .await
             .unwrap();
 
-        let affected = crate::models::grabbed_torrents::unblock_by_hash(&db, VALID_HASH, 99999)
-            .await
-            .unwrap();
+        let affected = crate::models::grabbed_torrents::unblock_by_hash(
+            &db,
+            VALID_HASH,
+            99999,
+            Some(series_id),
+        )
+        .await
+        .unwrap();
         assert_eq!(affected, 1);
 
         let (state, replaced_by): (String, Option<i64>) =
