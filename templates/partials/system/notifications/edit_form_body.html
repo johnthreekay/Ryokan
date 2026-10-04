@@ -43,9 +43,12 @@
         <div data-notif-field-group="webhook"{% if row.kind != "webhook" %} style="display:none"{% endif %}>
             <div class="form-group">
                 <label for="notif-edit-webhook-url-{{ row.id }}">URL</label>
-                <input id="notif-edit-webhook-url-{{ row.id }}" type="url" name="webhook_url"
-                       value="{% if let Some(url) = row.webhook_url.as_ref() %}{{ url }}{% endif %}"
-                       placeholder="https://example.com/hook">
+                {# Write-only, like the Discord URL: its path or query
+                   often carries the token. Blank keeps the saved one. #}
+                <input id="notif-edit-webhook-url-{{ row.id }}" type="password" name="webhook_url"
+                       autocomplete="new-password"
+                       placeholder="{% if row.webhook_has_url %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% else %}https://example.com/hook{% endif %}">
+                <span class="form-hint">{% if let Some(origin) = row.webhook_origin.as_ref() %}Saved for {{ origin }}. {% endif %}A saved URL is never shown again, since its path or query often carries a token. Leave the field blank to keep it.</span>
             </div>
             <div class="form-group">
                 <label for="notif-edit-webhook-secret-{{ row.id }}">HMAC secret <span class="form-hint">(optional)</span></label>

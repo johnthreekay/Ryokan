@@ -42,8 +42,8 @@
         <div data-notif-field-group="webhook">
             <div class="form-group">
                 <label for="notif-add-webhook-url">URL</label>
-                <input id="notif-add-webhook-url" type="url" name="webhook_url" placeholder="https://example.com/hook">
-                <span class="form-hint">Any receiver that accepts a JSON POST, such as ntfy, Apprise, or n8n.</span>
+                <input id="notif-add-webhook-url" type="password" name="webhook_url" autocomplete="new-password" placeholder="https://example.com/hook">
+                <span class="form-hint">Any receiver that accepts a JSON POST, such as ntfy, Apprise, or n8n. Its path or query often carries a token, so a saved URL is never shown again.</span>
             </div>
             <div class="form-group">
                 <label for="notif-add-webhook-secret">HMAC secret <span class="form-hint">(optional)</span></label>

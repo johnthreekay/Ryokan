@@ -12,9 +12,11 @@
 //!
 //! ## Sensitive-field handling
 //!
-//! Discord webhook URLs and webhook HMAC secrets are tokens. Render
+//! Discord webhook URLs, generic webhook URLs (their path or query
+//! often carries the token) and webhook HMAC secrets are tokens. Render
 //! masked (`<input type="password">`); never echo back the stored
-//! value in the page response. On save:
+//! value in the page response (the webhook card shows the URL's origin
+//! only). On save:
 //! - Empty submitted value → preserve the stored value (so a user
 //!   editing the provider name doesn't accidentally clear the
 //!   secret).
@@ -69,10 +71,14 @@ pub struct ProviderView {
     pub name: String,
     pub kind: String,
     pub enabled: bool,
-    /// Webhook-only — the configured URL. Always rendered (URLs are
-    /// not secret on the webhook surface; the HMAC secret is the
-    /// secret). `None` for non-webhook rows.
-    pub webhook_url: Option<String>,
+    /// Webhook-only: the saved URL's origin (`https://hooks.lan`), for
+    /// the card. The rest of the URL never reaches the page, since its
+    /// path or query often carries the token (Home Assistant's
+    /// `/api/webhook/<id>`, ntfy topics, Gotify's `?token=`): the field
+    /// is write-only, like the Discord URL. `None` for non-webhook rows.
+    pub webhook_origin: Option<String>,
+    /// Webhook-only: whether a URL is saved.
+    pub webhook_has_url: bool,
     /// Webhook-only — has-secret flag. Renders a "[set]" placeholder
     /// next to the masked input so the user knows a value exists
     /// without seeing it.
@@ -81,13 +87,6 @@ pub struct ProviderView {
     /// shape (`"Header-Name: value"` per line) so the edit form
     /// round-trips cleanly. Empty when no headers are configured.
     pub webhook_headers_text: String,
-    /// Discord-only — the configured webhook URL. The URL itself is
-    /// the secret (token in the path); the edit form pre-fills a
-    /// `type=password` input with this value and exposes Show / Copy
-    /// buttons (same pattern as the Jellyfin / Sonarr / Radarr API
-    /// key fields). Empty when no URL is configured. The card view
-    /// renders "[set]" / "(not configured)" without echoing the value;
-    /// the secret only surfaces inside the edit modal.
     /// Whether a Discord webhook URL is saved. The URL itself (its
     /// path carries the token) never reaches the page.
     pub discord_has_url: bool,
@@ -145,7 +144,8 @@ pub async fn load_provider_views(db: &sqlx::SqlitePool) -> Vec<ProviderView> {
     .unwrap_or_default();
     rows.into_iter()
         .map(|r| {
-            let mut webhook_url = None;
+            let mut webhook_origin = None;
+            let mut webhook_has_url = false;
             let mut webhook_has_secret = false;
             let mut webhook_headers_text = String::new();
             let mut discord_has_url = false;
@@ -153,7 +153,11 @@ pub async fn load_provider_views(db: &sqlx::SqlitePool) -> Vec<ProviderView> {
                 "webhook" => {
                     if let Ok(cfg) = serde_json::from_str::<webhook::WebhookConfig>(&r.config_json)
                     {
-                        webhook_url = Some(cfg.url);
+                        webhook_has_url = !cfg.url.is_empty();
+                        webhook_origin = reqwest::Url::parse(&cfg.url)
+                            .ok()
+                            .filter(|u| u.has_host())
+                            .map(|u| u.origin().ascii_serialization());
                         webhook_has_secret = cfg.secret.as_deref().is_some_and(|s| !s.is_empty());
                         // Names only: a value (an `Authorization` token) is
                         // masked, and the mask keeps it on save.
@@ -177,7 +181,8 @@ pub async fn load_provider_views(db: &sqlx::SqlitePool) -> Vec<ProviderView> {
                 name: r.name,
                 kind: r.kind,
                 enabled: r.enabled,
-                webhook_url,
+                webhook_origin,
+                webhook_has_url,
                 webhook_has_secret,
                 webhook_headers_text,
                 discord_has_url,
@@ -449,19 +454,24 @@ pub async fn notifications_delete(
 
 /// Build the webhook `config_json` blob from the form. Handles the
 /// empty-means-no-change + `__CLEAR__`-means-wipe sentinel for the
-/// secret field, validates the URL via `webhook::validate_url`, and
-/// validates custom headers via `webhook::validate_headers`. Returns
-/// the serialized JSON string ready for DB persistence.
+/// secret field, keeps the saved URL for a blank (write-only) URL
+/// field, validates the URL via `webhook::validate_url`, and validates
+/// custom headers via `webhook::validate_headers`. Returns the
+/// serialized JSON string ready for DB persistence.
 fn build_webhook_config(
     form: &UpsertForm,
     existing: Option<&store::ProviderRow>,
 ) -> Result<String, String> {
-    let url = form.webhook_url.trim();
+    let stored =
+        existing.and_then(|r| serde_json::from_str::<webhook::WebhookConfig>(&r.config_json).ok());
+    let url = match form.webhook_url.trim() {
+        "" => stored.as_ref().map(|c| c.url.clone()).unwrap_or_default(),
+        typed => typed.to_string(),
+    };
+    let url = url.as_str();
     webhook::validate_url(url)?;
 
     // Headers: parse, put the saved value back for a masked one, validate.
-    let stored =
-        existing.and_then(|r| serde_json::from_str::<webhook::WebhookConfig>(&r.config_json).ok());
     let saved = stored
         .clone()
         .filter(|c| crate::handlers::secret_field::same_destination(&c.url, url));
@@ -838,12 +848,13 @@ mod tests {
             "INSERT INTO notification_providers (id, name, kind, enabled, config_json) VALUES \
              (1, 'hook', 'webhook', 1, ?), (2, 'disc', 'discord', 1, ?)",
         )
-        .bind(webhook_row("https://hooks.lan/x").config_json)
+        .bind(webhook_row("https://hooks.lan/api/webhook/hook-token-456").config_json)
         .bind(r#"{"webhook_url":"https://discord.com/api/webhooks/1/disc-secret-000"}"#)
         .execute(&db)
         .await
         .unwrap();
-        let state = crate::test_support::build_test_app_state(db, None);
+        let secrets = ["hdr-secret-789", "disc-secret-000", "hook-token-456"];
+        let state = crate::test_support::build_test_app_state(db.clone(), None);
         for id in [1, 2] {
             let resp = notifications_edit_form(
                 axum::extract::State(state.clone()),
@@ -854,11 +865,39 @@ mod tests {
                 .await
                 .unwrap();
             let page = String::from_utf8(bytes.to_vec()).unwrap();
-            assert!(
-                !page.contains("hdr-secret-789") && !page.contains("disc-secret-000"),
-                "{page}"
-            );
+            assert!(!secrets.iter().any(|s| page.contains(s)), "{page}");
         }
+        // The cards name the webhook's host and nothing after it.
+        let cards = NotificationSectionPartial {
+            notification_providers: load_provider_views(&db).await,
+            notification_event_toggles: Vec::new(),
+        }
+        .render()
+        .unwrap();
+        assert!(cards.contains("https://hooks.lan"), "{cards}");
+        assert!(!secrets.iter().any(|s| cards.contains(s)), "{cards}");
+    }
+
+    #[test]
+    fn a_blank_webhook_url_keeps_the_saved_one() {
+        // The URL is write-only, so the edit form posts it blank.
+        let existing = webhook_row("https://hooks.lan/api/webhook/hook-token-456");
+        let masked = format!("Authorization: {HEADER_VALUE_MASK}");
+        let json = build_webhook_config(&webhook_form("", &masked), Some(&existing)).unwrap();
+        let cfg: webhook::WebhookConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg.url, "https://hooks.lan/api/webhook/hook-token-456");
+        assert_eq!(
+            cfg.headers,
+            vec![(
+                "Authorization".to_string(),
+                "Bearer hdr-secret-789".to_string()
+            )],
+            "the kept URL is the same destination"
+        );
+        assert!(
+            build_webhook_config(&webhook_form("", ""), None).is_err(),
+            "a new provider needs a URL"
+        );
     }
 
     #[test]
