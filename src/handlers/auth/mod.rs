@@ -359,14 +359,6 @@ fn get_session_token(req: &Request<Body>) -> Option<String> {
     None
 }
 
-/// Whether the session cookie should carry `Secure` for this request.
-/// Mirrors Sonarr's cookie auth, which marks the cookie `Secure` only when
-/// the request itself came over HTTPS: Ryokan never terminates TLS, so
-/// "came over HTTPS" means a trusted reverse proxy said so via
-/// `X-Forwarded-Proto: https`. Without `RYOKAN_TRUSTED_PROXY` the header
-/// is ignored (any client could send it, and a `Secure` cookie handed out
-/// over plain HTTP is never sent back, which locks the user out).
-/// `RYOKAN_COOKIE_SECURE` forces it on for proxies that omit the header.
 /// The value of cookie `name` in the request's `Cookie` header.
 fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     let header = headers.get(header::COOKIE)?.to_str().ok()?;
@@ -417,6 +409,14 @@ async fn new_device_cookie(
     }
 }
 
+/// Whether the session cookie should carry `Secure` for this request.
+/// Mirrors Sonarr's cookie auth, which marks the cookie `Secure` only when
+/// the request itself came over HTTPS: Ryokan never terminates TLS, so
+/// "came over HTTPS" means a trusted reverse proxy said so via
+/// `X-Forwarded-Proto: https`. Without `RYOKAN_TRUSTED_PROXY` the header
+/// is ignored (any client could send it, and a `Secure` cookie handed out
+/// over plain HTTP is never sent back, which locks the user out).
+/// `RYOKAN_COOKIE_SECURE` forces it on for proxies that omit the header.
 fn cookie_secure_for(headers: &HeaderMap) -> bool {
     cookie_secure_for_with(headers, *COOKIE_SECURE, *TRUST_PROXY_HEADERS)
 }
