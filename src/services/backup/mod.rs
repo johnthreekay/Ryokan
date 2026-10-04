@@ -941,8 +941,12 @@ fn check_database_file(path: &Path) -> Result<(), RestoreError> {
 /// Integrity-check the staged database and drop its sessions so a
 /// leaked backup can never hand out live logins on restore.
 async fn prepare_staged_database(path: &Path, sanitized: bool) -> Result<(), RestoreError> {
-    let url = format!("sqlite://{}?mode=rw", path.display());
-    let pool = SqlitePool::connect(&url)
+    // `filename` rather than a formatted URL: sqlx percent-decodes a
+    // URL's path, so a data dir holding `%` or `?` opened the wrong file.
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(false);
+    let pool = SqlitePool::connect_with(options)
         .await
         .map_err(|e| RestoreError::Invalid(format!("ryokan.db could not be opened ({e})")))?;
     let verdict: String = sqlx::query_scalar("PRAGMA integrity_check")
@@ -967,19 +971,26 @@ async fn prepare_staged_database(path: &Path, sanitized: bool) -> Result<(), Res
             "ryokan.db has no config table, so it is not a Ryokan database".to_string(),
         ));
     }
-    // Ryokan's schema has no views or triggers. A crafted database used
-    // one to survive the restore: `sessions` as a view over a hidden
-    // table with an INSTEAD OF trigger turned the purge below into a
-    // no-op and kept a planted login valid even past RYOKAN_RESET_AUTH.
-    let foreign_objects: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type IN ('view', 'trigger')")
-            .fetch_one(&pool)
-            .await
-            .unwrap_or(1);
+    // Ryokan's schema is plain tables and their indexes. A crafted
+    // database used anything else to survive the restore: `sessions` as
+    // a view over a hidden table with an INSTEAD OF trigger turned the
+    // purge below into a no-op and kept a planted login valid even past
+    // RYOKAN_RESET_AUTH. The stored type is read case-insensitively when
+    // the schema loads (`Trigger` is a trigger), and a virtual table and
+    // its shadow tables are stored as `table`, so both the label and
+    // what each table really is (`pragma_table_list`) are checked.
+    let foreign_objects: i64 = sqlx::query_scalar(
+        "SELECT (SELECT COUNT(*) FROM sqlite_master WHERE lower(type) NOT IN ('table', 'index')) \
+              + (SELECT COUNT(*) FROM pragma_table_list WHERE schema = 'main' AND type != 'table')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(1);
     if foreign_objects > 0 {
         pool.close().await;
         return Err(RestoreError::Invalid(
-            "ryokan.db holds views or triggers, which a Ryokan database never has".to_string(),
+            "ryokan.db holds views, triggers or virtual tables, which a Ryokan database never has"
+                .to_string(),
         ));
     }
     if sanitized && let Err(e) = crate::services::sanitize::clear_placeholders(&pool).await {
@@ -988,9 +999,29 @@ async fn prepare_staged_database(path: &Path, sanitized: bool) -> Result<(), Res
             "could not clear the sanitized backup's placeholders ({e})"
         )));
     }
-    // Ignore a missing table: a very old backup predates sessions.
-    let _ = sqlx::query("DELETE FROM sessions").execute(&pool).await;
+    // Check the result, not just the statement: a table holding a
+    // foreign key into `sessions` made the delete fail, and that failure
+    // was ignored. A very old backup predates the table.
+    let purge = sanitize::delete_unless_table_missing(&pool, "DELETE FROM sessions").await;
+    let left: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM sessions")
+        .fetch_one(&pool)
+        .await
+    {
+        Ok(n) => n,
+        Err(e) if sanitize::is_missing_table(&e) => 0,
+        Err(_) => 1,
+    };
     pool.close().await;
+    if let Err(e) = purge {
+        return Err(RestoreError::Invalid(format!(
+            "ryokan.db's sessions could not be cleared ({e})"
+        )));
+    }
+    if left > 0 {
+        return Err(RestoreError::Invalid(
+            "ryokan.db's sessions could not be cleared".to_string(),
+        ));
+    }
     Ok(())
 }
 

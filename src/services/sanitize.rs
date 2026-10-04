@@ -438,21 +438,32 @@ pub fn is_placeholder(value: &str) -> bool {
 /// Table and column names come from the archive, so they are quoted as
 /// identifiers, never spliced raw.
 pub(crate) async fn clear_placeholders(pool: &SqlitePool) -> Result<(), String> {
-    // Each of these tables may be missing from an old backup.
-    let _ = sqlx::query("DELETE FROM api_keys WHERE key LIKE '[REDACTED%'")
-        .execute(pool)
-        .await;
-    let _ = sqlx::query("DELETE FROM users WHERE password_hash LIKE '[REDACTED%'")
-        .execute(pool)
-        .await;
-    let _ = sqlx::query("DELETE FROM external_accounts WHERE access_token_encrypted = ?")
+    // Sessions go first. `sessions.user_id` references `users` with no
+    // ON DELETE action, and backups sanitized before every snapshot
+    // dropped its sessions still hold `[REDACTED-session-N]` rows: the
+    // users delete failed on the foreign key, the error was ignored,
+    // and the loop below emptied the hash, leaving a login page that no
+    // password opens. Each table may be missing from an old backup, but
+    // any other failure stops the restore.
+    delete_unless_table_missing(pool, "DELETE FROM sessions").await?;
+    delete_unless_table_missing(pool, "DELETE FROM api_keys WHERE key LIKE '[REDACTED%'").await?;
+    delete_unless_table_missing(
+        pool,
+        "DELETE FROM users WHERE password_hash LIKE '[REDACTED%'",
+    )
+    .await?;
+    if let Err(e) = sqlx::query("DELETE FROM external_accounts WHERE access_token_encrypted = ?")
         .bind(SANITIZED_SENTINEL)
         .execute(pool)
-        .await;
-    let _ = sqlx::query("DELETE FROM sessions").execute(pool).await;
+        .await
+        && !is_missing_table(&e)
+    {
+        return Err(format!("delete sanitized linked accounts: {e}"));
+    }
 
+    // `lower(type)`: SQLite reads the stored type case-insensitively.
     let tables: Vec<String> = sqlx::query_scalar(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        "SELECT name FROM sqlite_master WHERE lower(type) = 'table' AND name NOT LIKE 'sqlite_%'",
     )
     .fetch_all(pool)
     .await
@@ -474,6 +485,25 @@ pub(crate) async fn clear_placeholders(pool: &SqlitePool) -> Result<(), String> 
         }
     }
     Ok(())
+}
+
+/// Run a `DELETE`, treating a table the database doesn't have as
+/// nothing to delete. Any other error (a foreign key that blocks the
+/// delete, a damaged table) is returned: a purge that silently did
+/// nothing is how a restored database kept a login it shouldn't have.
+pub(crate) async fn delete_unless_table_missing(
+    pool: &SqlitePool,
+    sql: &'static str,
+) -> Result<(), String> {
+    match sqlx::query(sql).execute(pool).await {
+        Err(e) if !is_missing_table(&e) => Err(format!("{sql}: {e}")),
+        _ => Ok(()),
+    }
+}
+
+pub(crate) fn is_missing_table(e: &sqlx::Error) -> bool {
+    e.as_database_error()
+        .is_some_and(|d| d.message().starts_with("no such table"))
 }
 
 /// `name` as a quoted SQL identifier.
@@ -552,6 +582,59 @@ mod tests {
             "first load is /setup"
         );
         assert!(is_placeholder("[REDACTED-key-3]") && !is_placeholder("real-key"));
+    }
+
+    #[tokio::test]
+    async fn clear_placeholders_removes_users_that_still_have_redacted_sessions() {
+        // Backups sanitized before every snapshot dropped its sessions
+        // carry the admin's session as `[REDACTED-session-N]`. Its
+        // foreign key blocked the users delete, and the user stayed with
+        // an emptied hash: a login page no password opens.
+        let pool = crate::test_support::in_memory_pool().await;
+        sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', '[REDACTED]')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO sessions (token, user_id) VALUES ('[REDACTED-session-1]', 1), \
+             ('[REDACTED-session-2]', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        clear_placeholders(&pool).await.expect("clear");
+
+        let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!((users, sessions), (0, 0), "first load is /setup");
+    }
+
+    #[tokio::test]
+    async fn clear_placeholders_reports_a_delete_that_fails() {
+        // A table holding a foreign key into `sessions` blocks the purge.
+        // The error used to be ignored, so the restore went ahead with
+        // the session still valid.
+        let pool = crate::test_support::in_memory_pool().await;
+        sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', 'h')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for sql in [
+            "INSERT INTO sessions (token, user_id) VALUES ('planted', 1)",
+            "CREATE TABLE anchor (token TEXT REFERENCES sessions(token))",
+            "INSERT INTO anchor VALUES ('planted')",
+        ] {
+            sqlx::query(sql).execute(&pool).await.unwrap();
+        }
+        let err = clear_placeholders(&pool).await.unwrap_err();
+        assert!(err.contains("FOREIGN KEY"), "{err}");
     }
 
     fn tmpdir() -> std::path::PathBuf {

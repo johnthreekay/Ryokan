@@ -618,9 +618,114 @@ async fn stage_restore_refuses_links_bad_keys_and_foreign_schema_objects() {
     write_archive(&with_view, &manifest, &crafted, None, None).unwrap();
     invalid(
         stage_restore(&db, &paths, &backup_dir, &with_view).await,
-        "views or triggers",
+        "views, triggers",
     );
 
+    // 4. The same purge-survivors, each in a shape the label check above
+    //    missed: a trigger stored as `Trigger` (SQLite loads the type
+    //    case-insensitively, so it fires), a virtual table (stored as
+    //    `table`), and a plain table whose foreign key into `sessions`
+    //    made the ignored `DELETE FROM sessions` fail.
+    sqlx::query("INSERT INTO users (username, password_hash) VALUES ('u', 'h')")
+        .execute(&db)
+        .await
+        .unwrap();
+    let crafts: [(&str, &[&'static str], &str); 3] = [
+        (
+            "trigger-case",
+            &[
+                "PRAGMA writable_schema = ON",
+                "CREATE TRIGGER keep BEFORE DELETE ON sessions BEGIN SELECT 1; END",
+                "UPDATE sqlite_master SET type = 'Trigger' WHERE type = 'trigger'",
+            ],
+            "views, triggers",
+        ),
+        (
+            "virtual",
+            &["CREATE VIRTUAL TABLE planted USING fts5(token)"],
+            "virtual tables",
+        ),
+        (
+            "fk-anchor",
+            &[
+                "INSERT INTO sessions (token, user_id) VALUES ('planted', 1)",
+                "CREATE TABLE anchor (token TEXT REFERENCES sessions(token))",
+                "INSERT INTO anchor VALUES ('planted')",
+            ],
+            "sessions could not be cleared",
+        ),
+    ];
+    for (tag, statements, needle) in crafts {
+        let crafted = paths.data_dir.join(format!("{tag}.db"));
+        vacuum_into(&db, &crafted).await.unwrap();
+        {
+            // One connection: `writable_schema` is per connection.
+            let copy = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect(&format!("sqlite://{}?mode=rw", crafted.display()))
+                .await
+                .unwrap();
+            for sql in statements {
+                sqlx::query(*sql)
+                    .execute(&copy)
+                    .await
+                    .unwrap_or_else(|e| panic!("{tag}: {sql}: {e}"));
+            }
+            copy.close().await;
+        }
+        let archive = paths.data_dir.join(format!("{tag}.tar.gz"));
+        write_archive(&archive, &manifest, &crafted, None, None).unwrap();
+        invalid(
+            stage_restore(&db, &paths, &backup_dir, &archive).await,
+            needle,
+        );
+    }
+
     assert!(!paths.pending_dir().exists(), "nothing was staged");
+    cleanup(&paths);
+}
+
+#[tokio::test]
+async fn a_sanitized_backup_with_redacted_sessions_restores_to_first_run_setup() {
+    // Sanitized backups made before every snapshot dropped its sessions
+    // hold the admin's session as `[REDACTED-session-N]`. Restoring one
+    // left the admin with an emptied hash instead of sending the first
+    // page load to /setup.
+    let paths = temp_paths("sanitized-sessions");
+    let db = pool_at(&paths).await;
+    sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', 'h')")
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO sessions (token, user_id) VALUES ('live-session', 1)")
+        .execute(&db)
+        .await
+        .unwrap();
+    let snapshot = paths.data_dir.join("snap.db");
+    vacuum_into(&db, &snapshot).await.unwrap();
+    let scrubbed = paths.data_dir.join("scrubbed.db");
+    sanitize::run_sanitize(&snapshot, &scrubbed).await.unwrap();
+    let manifest = BackupManifest {
+        ryokan_version: env!("CARGO_PKG_VERSION").to_string(),
+        backup_timestamp: 1,
+        max_migration_id: 0,
+        includes_artwork: false,
+        includes_key: false,
+        sanitized: true,
+        hostname: None,
+        db_size_bytes: 0,
+        artwork_size_bytes: 0,
+    };
+    let archive = paths.data_dir.join("old-sanitized.tar.gz");
+    write_archive(&archive, &manifest, &scrubbed, None, None).unwrap();
+    let backup_dir = paths.data_dir.join("backups");
+
+    stage_restore(&db, &paths, &backup_dir, &archive)
+        .await
+        .expect("stage");
+    let staged = open_file_db(&paths.pending_dir().join("ryokan.db")).await;
+    assert_eq!(count(&staged, "SELECT COUNT(*) FROM users").await, 0);
+    assert_eq!(count(&staged, "SELECT COUNT(*) FROM sessions").await, 0);
+    staged.close().await;
     cleanup(&paths);
 }
