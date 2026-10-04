@@ -66,6 +66,11 @@ pub(super) struct ShimIds {
 /// listed series by TVDB id, and the TMDB id reported here before named
 /// another show (or none), so the scan declined the request that had
 /// added the series.
+///
+/// The season is reported as mapped, 0 included. Season 0 is TVDB's
+/// Specials, which Seerr ignores; clamped to 1, an OVA or minis entry
+/// read as season 1 of its parent show, and one with every file on disk
+/// marked that season Available in Seerr.
 pub(super) async fn shim_ids(
     stored: Option<(i64, i32)>,
     anilist_id: i64,
@@ -79,7 +84,7 @@ pub(super) async fn shim_ids(
     };
     ShimIds {
         tvdb_id,
-        tvdb_season: tvdb_season.max(1),
+        tvdb_season: tvdb_season.max(0),
         tmdb_id: anibridge::resolve_tmdb_id(anilist_id, mal_id).await,
     }
 }
@@ -134,10 +139,11 @@ pub(super) async fn lookup_by_external_id(
         .map(|d| d.cover_url.clone())
         .unwrap_or_default();
 
-    // Build a seasons array — one season per anibridge entry.
+    // Build a seasons array — one season per anibridge entry. Season 0
+    // is the show's Specials and is listed as such, as Sonarr does.
     let mut seasons = Vec::new();
     for (season_num, _ids) in &season_entries {
-        let sn = if *season_num == 0 { 1 } else { *season_num };
+        let sn = *season_num;
         if seasons.iter().any(|s: &SonarrSeason| s.season_number == sn) {
             continue;
         }
@@ -154,7 +160,8 @@ pub(super) async fn lookup_by_external_id(
         });
     }
 
-    let season_count = seasons.len() as i32;
+    // Sonarr's season count leaves Specials out.
+    let season_count = seasons.iter().filter(|s| s.season_number > 0).count() as i32;
     let year = show_detail
         .as_ref()
         .and_then(|d| d.season_year)
@@ -351,7 +358,7 @@ pub(super) async fn build_sonarr_series_from_search(
         quality_profile_id: 1,
         root_folder_path: cfg.media_root.clone(),
         statistics: SonarrStatistics {
-            season_count: 1,
+            season_count: i32::from(ids.tvdb_season > 0),
             episode_file_count: on_disk,
             episode_count: total_eps,
             total_episode_count: total_eps,
@@ -445,7 +452,7 @@ pub(super) async fn build_sonarr_series_from_tracked(
         quality_profile_id: 1,
         root_folder_path: cfg.media_root.clone(),
         statistics: SonarrStatistics {
-            season_count: 1,
+            season_count: i32::from(ids.tvdb_season > 0),
             episode_file_count: on_disk,
             episode_count: total_eps,
             total_episode_count: total_eps,

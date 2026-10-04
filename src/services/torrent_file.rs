@@ -130,7 +130,11 @@ pub async fn fetch_torrent_info_hash(url: &str) -> Option<String> {
     let body = super::http_body::read_capped(resp, TORRENT_BODY_CAP)
         .await
         .ok()?;
-    torrent_info_hash(&body)
+    // A bencode walk and a SHA-1 over up to the cap: off the runtime.
+    tokio::task::spawn_blocking(move || torrent_info_hash(&body))
+        .await
+        .ok()
+        .flatten()
 }
 
 #[cfg(test)]

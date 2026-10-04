@@ -119,7 +119,9 @@ pub async fn restore_misgrab(
     if !removed {
         // Flagged and still in the client: the whitelist alone puts it
         // back on the import path.
-        if let Err(e) = grabbed_torrents::whitelist_by_hash(db, &row.hash).await {
+        if let Err(e) =
+            grabbed_torrents::whitelist_by_hash(db, &row.hash, Some(row.series_id)).await
+        {
             return respond(
                 is_htmx,
                 false,
@@ -203,7 +205,7 @@ pub async fn restore_misgrab(
     {
         Ok(Some(new_id)) => new_id,
         Ok(None) => {
-            let _ = grabbed_torrents::whitelist_by_hash(db, &row.hash).await;
+            let _ = grabbed_torrents::whitelist_by_hash(db, &row.hash, Some(row.series_id)).await;
             return respond(
                 is_htmx,
                 true,
@@ -231,7 +233,7 @@ pub async fn restore_misgrab(
     })
     .unwrap_or_default();
     let _ = grabbed_torrents::stamp_verification(db, new_id, "whitelisted", &detail).await;
-    if let Err(e) = grabbed_torrents::whitelist_by_hash(db, &row.hash).await {
+    if let Err(e) = grabbed_torrents::whitelist_by_hash(db, &row.hash, Some(row.series_id)).await {
         logger::warn(
             db,
             LogCategory::Grab,
@@ -243,7 +245,7 @@ pub async fn restore_misgrab(
         )
         .await;
     }
-    let _ = grabbed_torrents::unblock_by_hash(db, &row.hash, new_id).await;
+    let _ = grabbed_torrents::unblock_by_hash(db, &row.hash, new_id, Some(row.series_id)).await;
     let _ = grabbed_torrents::set_download_client(db, new_id, row.download_client_id).await;
     let _ = grabbed_torrents::set_indexer_attribution(
         db,

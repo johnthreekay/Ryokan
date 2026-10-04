@@ -3118,6 +3118,52 @@ mod tests {
     }
 
     #[test]
+    fn a_tail_that_is_a_related_title_is_not_an_alias() {
+        // Brotherhood's romaji ends in the 2003 series' English title,
+        // and only a head run of segments used to be checked.
+        let mut d = detail(
+            5114,
+            "Hagane no Renkinjutsushi: FULLMETAL ALCHEMIST",
+            "Fullmetal Alchemist: Brotherhood",
+            "鋼の錬金術師 FULLMETAL ALCHEMIST",
+        );
+        d.relations = vec![related_anime(
+            "ALTERNATIVE",
+            "Hagane no Renkinjutsushi",
+            "Fullmetal Alchemist",
+        )];
+        let extended = collect_extended_aliases(&d);
+        for other in ["Fullmetal Alchemist", "Hagane no Renkinjutsushi"] {
+            assert!(
+                !extended.iter().any(|a| a.eq_ignore_ascii_case(other)),
+                "{other} names the 2003 series: {extended:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_title_this_series_shares_with_a_related_entry_stays_an_alias() {
+        // A remake carries its original's title, here as its English
+        // title and as the tail of its romaji. The related-title filter
+        // only ever drops extended aliases, so the series still answers
+        // to it.
+        let mut d = detail(
+            9001,
+            "Fruits Basket (2019): Fruits Basket",
+            "Fruits Basket",
+            "",
+        );
+        d.relations = vec![related_anime("ALTERNATIVE", "Fruits Basket", "")];
+        let all: Vec<String> = collect_aliases(&d)
+            .into_iter()
+            .chain(collect_extended_aliases(&d))
+            .collect();
+        for own in ["Fruits Basket", "Fruits Basket (2019): Fruits Basket"] {
+            assert!(all.iter().any(|a| a == own), "{own}: {all:?}");
+        }
+    }
+
+    #[test]
     fn display_title_prefers_english_when_present() {
         // Pin the English-first preference (line 1669). The
         // `replace -> "" / "xyzzy"` mutations are caught by asserting

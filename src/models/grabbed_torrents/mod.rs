@@ -1056,10 +1056,14 @@ pub async fn is_blocklisted_for(
     Ok(existing.is_some())
 }
 
-/// Flip every `state='failed'` row for this hash to `state='replaced'`
-/// with a back-pointer to the new grab id. Called by the inline-unblock
-/// path in `handlers::grab::grab_confirm` after `record_grab` writes
-/// the fresh pending row.
+/// Flip every `state='failed'` row that blocks this hash for
+/// `series_id` (see [`is_blocklisted_for`]) to `state='replaced'` with
+/// a back-pointer to the new grab id. Called by the inline-unblock path
+/// in `handlers::grab::grab_confirm` and by the Misgrabs tab's Restore,
+/// after `record_grab` writes the fresh pending row. Another series'
+/// misgrab row stays: it says the release is not *that* series, which
+/// a grab for this one doesn't change, and clearing it let that
+/// series' automatic searches grab the release again.
 ///
 /// Using `replaced` (rather than `removed`) preserves the hash→id
 /// audit trail: the Downloads page's blocklist view filters on
@@ -1069,6 +1073,7 @@ pub async fn unblock_by_hash(
     db: &SqlitePool,
     hash: &str,
     replaced_by: i64,
+    series_id: Option<i64>,
 ) -> Result<u64, sqlx::Error> {
     if hash.is_empty() {
         return Ok(0);
@@ -1076,10 +1081,12 @@ pub async fn unblock_by_hash(
     let result = sqlx::query(
         "UPDATE grabbed_torrents \
          SET state = 'replaced', replaced_by_grab_id = ? \
-         WHERE hash = ? AND state = 'failed'",
+         WHERE hash = ? AND state = 'failed' \
+           AND (COALESCE(failure_reason, '') != 'misgrab' OR series_id = ?)",
     )
     .bind(replaced_by)
     .bind(hash)
+    .bind(series_id)
     .execute(db)
     .await?;
     Ok(result.rows_affected())
@@ -1341,17 +1348,17 @@ pub async fn remove(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-/// Return every (id, hash) pair currently associated with `series_id`,
-/// regardless of state. Used by the "remove series" handler so we can
-/// stop seeding and tell qBittorrent to drop the data when the user
-/// removes a series from the library — without this, qBit keeps holding
-/// torrent state for a series Ryokan has already forgotten about.
 /// Whether deleting `hash` (series `series_id`'s grab `grab_id`) from
 /// the client would take another series' download with it: another
-/// series has a grab with that hash (this series' grab was cancelled
-/// and the release re-grabbed there), or the grab is a batch that also
-/// routes files to another series. A lookup error counts as "in use",
-/// so in doubt the data stays.
+/// series has a live grab with that hash (this series' grab was
+/// cancelled and the release re-grabbed there), or the grab is a batch
+/// that also routes files to another series. A lookup error counts as
+/// "in use", so in doubt the data stays.
+///
+/// Live is `pending` / `imported`, the states the partial unique index
+/// on `hash` covers. A failed, removed or replaced row is a grab that
+/// is over (an old misgrab of this release for another series, say),
+/// and counting it left this series' own download in the client.
 pub async fn hash_in_use_elsewhere(
     db: &SqlitePool,
     hash: &str,
@@ -1360,7 +1367,8 @@ pub async fn hash_in_use_elsewhere(
 ) -> bool {
     sqlx::query_scalar::<_, i64>(
         "SELECT EXISTS(SELECT 1 FROM grabbed_torrents \
-                        WHERE hash = ? COLLATE NOCASE AND series_id != ?) \
+                        WHERE hash = ? COLLATE NOCASE AND series_id != ? \
+                          AND state IN ('pending', 'imported')) \
              OR EXISTS(SELECT 1 FROM grabbed_torrent_series \
                         WHERE grab_id = ? AND series_id != ?)",
     )
@@ -1373,6 +1381,11 @@ pub async fn hash_in_use_elsewhere(
     .map_or(true, |in_use| in_use != 0)
 }
 
+/// Return every (id, hash) pair currently associated with `series_id`,
+/// regardless of state. Used by the "remove series" handler so we can
+/// stop seeding and tell qBittorrent to drop the data when the user
+/// removes a series from the library — without this, qBit keeps holding
+/// torrent state for a series Ryokan has already forgotten about.
 pub async fn get_all_for_series(
     db: &SqlitePool,
     series_id: i64,
@@ -1606,16 +1619,24 @@ pub async fn is_whitelisted_hash(db: &SqlitePool, hash: &str) -> bool {
     .unwrap_or(false)
 }
 
-pub async fn whitelist_by_hash(db: &SqlitePool, hash: &str) -> Result<u64, sqlx::Error> {
+/// Whitelist every row for the hash: the user said the release is
+/// `series_id`'s. Another series' misgrab verdict is left as it is
+/// (see [`unblock_by_hash`]), so it stays on the Misgrabs tab.
+pub async fn whitelist_by_hash(
+    db: &SqlitePool,
+    hash: &str,
+    series_id: Option<i64>,
+) -> Result<u64, sqlx::Error> {
     if hash.is_empty() {
         return Ok(0);
     }
     let result = sqlx::query(
         "UPDATE grabbed_torrents \
          SET verification = 'whitelisted', reviewed_at = CURRENT_TIMESTAMP \
-         WHERE hash = ?",
+         WHERE hash = ? AND (COALESCE(verification, '') != 'misgrab' OR series_id = ?)",
     )
     .bind(hash)
+    .bind(series_id)
     .execute(db)
     .await?;
     Ok(result.rows_affected())

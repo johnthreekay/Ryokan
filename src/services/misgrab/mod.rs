@@ -626,7 +626,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        grabbed_torrents::whitelist_by_hash(&db, "feed")
+        grabbed_torrents::whitelist_by_hash(&db, "feed", Some(sid))
             .await
             .unwrap();
         let _ = old;

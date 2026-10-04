@@ -667,7 +667,10 @@ fn related_anime_titles(detail: &AnimeDetail) -> HashSet<String> {
 /// batch for the minis. A head can span several delimiters ("Frieren:
 /// Beyond Journey's End: Magic of ??" carries the parent's English
 /// title), so the longest such run goes. A head no related entry is
-/// titled ("Mushoku Tensei") stays.
+/// titled ("Mushoku Tensei") stays. A later segment that is a related
+/// entry's title goes too: "Hagane no Renkinjutsushi: FULLMETAL
+/// ALCHEMIST" is Brotherhood's romaji, and its tail is the English
+/// title of the 2003 series.
 ///
 /// Segments are used both as Nyaa search queries AND as matching aliases
 /// inside `matches_target`, which means an over-generic segment can
@@ -702,6 +705,9 @@ fn split_title_segments(title: &str, related_titles: &HashSet<String>) -> Vec<St
             continue;
         }
         if trimmed.eq_ignore_ascii_case(title.trim()) {
+            continue;
+        }
+        if related_titles.contains(&normalize_title(trimmed)) {
             continue;
         }
         // Require at least 2 whitespace-separated tokens. Single-word

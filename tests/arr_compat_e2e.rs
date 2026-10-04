@@ -116,12 +116,11 @@ async fn sonarr_add_series_creates_db_row_and_returns_payload() {
     anilist::reset_state_for_tests();
     anibridge::clear_cache_for_tests().await;
 
-    // Seed anibridge: TVDB 4242 season 0 → AL 88888. Season 0 is the
-    // unscoped catch-all; the handler's `requested_season` is None
-    // when no monitored season is in the body.
+    // Seed anibridge: TVDB 4242 season 1 → AL 88888, the season the
+    // request below monitors.
     anibridge::seed_external_mappings_for_tests(
-        &[(4242, 0, Some(88888), None)],
-        &[(4242, 0, Some(88888), None)],
+        &[(4242, 1, Some(88888), None)],
+        &[(4242, 1, Some(88888), None)],
     )
     .await;
 
@@ -224,8 +223,8 @@ async fn sonarr_add_series_pins_monitor_mode_to_none_when_seerr_unmonitors() {
     anilist::reset_state_for_tests();
     anibridge::clear_cache_for_tests().await;
     anibridge::seed_external_mappings_for_tests(
-        &[(5555, 0, Some(77777), None)],
-        &[(5555, 0, Some(77777), None)],
+        &[(5555, 1, Some(77777), None)],
+        &[(5555, 1, Some(77777), None)],
     )
     .await;
 
@@ -488,6 +487,170 @@ async fn a_show_the_mappings_lack_keeps_the_tvdb_id_seerr_added_it_under() {
     let found = get_json(app, "/api/v3/series?tvdbId=818181", SONARR_KEY).await;
     assert_eq!(found.as_array().unwrap().len(), 1, "{found}");
     assert_eq!(found[0]["seasons"][0]["seasonNumber"], 3);
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
+async fn a_specials_entry_is_season_zero_of_its_show() {
+    // TVDB files OVAs and minis under season 0, Specials, which Seerr
+    // ignores. Clamped to 1, such an entry read as season 1 of its
+    // parent show, and an OVA with its files on disk marked that season
+    // Available. Season 0 is not an unscoped catch-all either: a
+    // request for a season the mappings lack used to add the OVA.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+    anibridge::seed_external_mappings_for_tests(
+        &[(4242, 1, Some(61001), None), (4242, 0, Some(61002), None)],
+        &[],
+    )
+    .await;
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("Media(id"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(media_detail_response(61001, "The Show")),
+        )
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    series::upsert(
+        &db,
+        series::SeriesCore {
+            anilist_id: 61002,
+            mal_id: None,
+            title: "The Show OVA",
+            title_romaji: "The Show OVA",
+            title_english: "The Show OVA",
+            title_native: "",
+            cover_url: "",
+            format: "OVA",
+            status: "FINISHED",
+            episodes: Some(2),
+            season_year: Some(2024),
+            end_year: None,
+        },
+    )
+    .await
+    .unwrap();
+    let app = sonarr_router_with_series(build_test_app_state(db, None));
+
+    let listed = get_json(app.clone(), "/api/v3/series", SONARR_KEY).await;
+    assert_eq!(listed[0]["tvdbId"], 4242);
+    assert_eq!(listed[0]["seasons"][0]["seasonNumber"], 0, "{listed}");
+    assert_eq!(listed[0]["statistics"]["seasonCount"], 0);
+
+    let found = get_json(
+        app.clone(),
+        "/api/v3/series/lookup?term=tvdb:4242",
+        SONARR_KEY,
+    )
+    .await;
+    let seasons: Vec<i64> = found[0]["seasons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["seasonNumber"].as_i64().unwrap())
+        .collect();
+    assert_eq!(seasons, vec![0, 1], "{found}");
+    assert_eq!(found[0]["statistics"]["seasonCount"], 1);
+
+    // Season 3 isn't mapped: no Specials stand-in, so with no title to
+    // search by the add is refused.
+    let (status, _) = post_json(
+        app,
+        "/api/v3/series",
+        SONARR_KEY,
+        json!({
+            "tvdbId": 4242,
+            "title": "",
+            "seasons": [{"seasonNumber": 3, "monitored": true}],
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
+async fn a_later_request_never_moves_a_series_to_another_season() {
+    // Season 1 is added under (4242, 1). Seerr then asks for season 2,
+    // which the mappings don't know yet: the title search lands on the
+    // season 1 row, and storing the request's ids there moved it to
+    // season 2 for good, out of the season 1 request's sight.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+    anibridge::seed_external_mappings_for_tests(&[(4242, 1, Some(62001), None)], &[]).await;
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("SEARCH_MATCH"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": { "Page": { "media": [{
+                "id": 62001,
+                "idMal": null,
+                "title": { "romaji": "The Show", "english": "The Show", "native": "" },
+                "coverImage": { "large": "https://example/cover.jpg" },
+                "format": "TV",
+                "status": "FINISHED",
+                "episodes": 12,
+                "seasonYear": 2024,
+                "averageScore": 80,
+            }] } }
+        })))
+        .mount(&mock)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("Media(id"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(media_detail_response(62001, "The Show")),
+        )
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    let app = sonarr_router_with_series(build_test_app_state(db, None));
+    for season in [1, 2] {
+        let (status, body) = post_json(
+            app.clone(),
+            "/api/v3/series",
+            SONARR_KEY,
+            json!({
+                "tvdbId": 4242,
+                "title": "The Show",
+                "seasons": [{"seasonNumber": season, "monitored": true}],
+                "monitored": true,
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "season {season}: {body}");
+    }
+    let listed = get_json(app, "/api/v3/series", SONARR_KEY).await;
+    assert_eq!(listed.as_array().unwrap().len(), 1, "{listed}");
+    assert_eq!(listed[0]["tvdbId"], 4242);
+    assert_eq!(listed[0]["seasons"][0]["seasonNumber"], 1, "{listed}");
 
     unsafe {
         std::env::remove_var("RYOKAN_ANILIST_API_BASE");

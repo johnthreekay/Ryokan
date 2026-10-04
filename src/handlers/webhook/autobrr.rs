@@ -129,6 +129,27 @@ fn is_builtin_nyaa(indexer: &str) -> bool {
     name.eq_ignore_ascii_case("nyaa") || name.eq_ignore_ascii_case("nyaa.si")
 }
 
+/// A push whose indexer matches no Ryokan indexer and that can't be
+/// shown to be a torrent. It may be a Usenet release, which only an
+/// indexer row can route to a Usenet client, so it is skipped (200, so
+/// autobrr doesn't retry) with a log line saying how to route it.
+async fn skip_not_a_torrent(
+    state: &AppState,
+    safe_indexer: &str,
+    safe_release: &str,
+) -> (StatusCode, Json<AutobrrResponse>) {
+    logger::warn(
+        &state.db,
+        LogCategory::Grab,
+        &format!(
+            "autobrr: skipping {safe_release}. '{safe_indexer}' matches no indexer in Ryokan and the push is not a torrent Ryokan could read. Give the Ryokan indexer the name autobrr uses ('{safe_indexer}') so its pushes go to that indexer's download client."
+        ),
+        safe_indexer,
+    )
+    .await;
+    skipped("the indexer matches no indexer in Ryokan and the release is not a torrent")
+}
+
 /// API-key auth using the same constant-time-compare shape as
 /// the arr-shim middleware. Returns `Ok(())` when authorized,
 /// `Err(response)` to short-circuit the handler.
@@ -188,7 +209,7 @@ async fn check_api_key(
     path = "/api/webhook/autobrr",
     tag = "Webhook",
     summary = "autobrr push webhook",
-    description = "Receives a release push from autobrr's Webhook action and dispatches it to the active download client. API key required via X-Api-Key header or ?apikey= query param. The release is matched against tracked series via title-token overlap; unmatched releases are skipped (200 with status=skipped) so autobrr doesn't retry. Per-indexer seed rules from the matching `indexers` row apply automatically.",
+    description = "Receives a release push from autobrr's Webhook action and dispatches it to the active download client. API key required via X-Api-Key header or ?apikey= query param. The release is matched against tracked series via title-token overlap; unmatched releases are skipped (200 with status=skipped) so autobrr doesn't retry. Per-indexer seed rules from the matching `indexers` row apply automatically. A push whose indexer matches no configured indexer goes to the default torrent client when it is a torrent and is skipped otherwise.",
     request_body = AutobrrPayload,
     responses(
         (status = 200, description = "Push handled (grabbed, deduped, or skipped)", body = AutobrrResponse),
@@ -307,7 +328,11 @@ pub async fn webhook_autobrr(
     // user ("Prowlarr Nyaa"), so a push often matches nothing. It is
     // grabbed anyway, the way Sonarr's push API takes any release:
     // "nyaa" follows the built-in Nyaa's client setting, anything else
-    // goes to the default torrent client with no seed rules.
+    // goes to the default torrent client with no seed rules, once it is
+    // known to be a torrent (a hash, a magnet, or a body that reads as
+    // a .torrent). With no indexer row there is no protocol to go on,
+    // and a Usenet push's `torrent_url` is an NZB the torrent client
+    // would be handed and never download.
     //
     // Reads the cached `Vec<Arc<dyn Indexer>>` rather than
     // hitting the DB so a high-rate autobrr push doesn't
@@ -322,6 +347,8 @@ pub async fn webhook_autobrr(
     };
     let safe_indexer = sanitize_for_log_capped(&payload.indexer, 256);
     let as_builtin_nyaa = indexer_id.is_none() && is_builtin_nyaa(&payload.indexer);
+    let unmatched = indexer_id.is_none() && !as_builtin_nyaa;
+    let magnet = download_url.starts_with("magnet:");
 
     // Match the release to a tracked series. autobrr filters are
     // configured per series (or per group of series), so a push
@@ -357,6 +384,12 @@ pub async fn webhook_autobrr(
     };
     let (client, dispatch_client_id) = match resolved {
         Some(t) => t,
+        // Unmatched and hashless with no torrent client: most likely a
+        // Usenet push on a Usenet-only install, and a 503 would have
+        // autobrr retry it forever.
+        None if unmatched && info_hash_lc.is_empty() && !magnet => {
+            return skip_not_a_torrent(&state, &safe_indexer, &safe_release).await;
+        }
         None => {
             logger::error(
                 &state.db,
@@ -376,13 +409,19 @@ pub async fn webhook_autobrr(
     // than by name (a single-file torrent named after its file never
     // matched, and the grab was marked removed while downloading).
     // Torrent clients only: fetching an NZB can count against an
-    // indexer's daily grab limit.
+    // indexer's daily grab limit. An unmatched push always lands here
+    // (its client is the torrent default), and the fetch is how it is
+    // told apart from a Usenet one: one that doesn't read as a
+    // .torrent is skipped rather than handed to the torrent client.
     let derived_hash = info_hash_lc.is_empty() && client.protocol() == "torrent";
     if derived_hash {
         match crate::services::torrent_file::fetch_torrent_info_hash(payload.torrent_url.trim())
             .await
         {
             Some(hash) => info_hash_lc = hash,
+            None if unmatched && !magnet => {
+                return skip_not_a_torrent(&state, &safe_indexer, &safe_release).await;
+            }
             None => {
                 logger::warn(
                     &state.db,

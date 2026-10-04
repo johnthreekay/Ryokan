@@ -499,19 +499,25 @@ pub async fn all_tvdb_ids(
 }
 
 /// Record the TVDB show and season a series was added under through the
-/// Sonarr shim, so the shim reports the id Seerr knows it by.
-pub async fn set_tvdb_ids(
+/// Sonarr shim, so the shim reports the id Seerr knows it by. Only the
+/// first pair sticks: a later request is never allowed to move a series
+/// to another show or season, which would hide it from the request that
+/// added it.
+pub async fn set_tvdb_ids_if_unset(
     db: &SqlitePool,
     id: i64,
     tvdb_id: i64,
     season: i32,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE series SET tvdb_id = ?, tvdb_season = ? WHERE id = ?")
-        .bind(tvdb_id)
-        .bind(season)
-        .bind(id)
-        .execute(db)
-        .await?;
+    sqlx::query(
+        "UPDATE series SET tvdb_id = ?, tvdb_season = ? \
+         WHERE id = ? AND COALESCE(tvdb_id, 0) <= 0",
+    )
+    .bind(tvdb_id)
+    .bind(season)
+    .bind(id)
+    .execute(db)
+    .await?;
     Ok(())
 }
 

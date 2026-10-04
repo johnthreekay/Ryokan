@@ -229,6 +229,10 @@ pub async fn add_series(
     // Used purely for the "Added via Seerr: <title>" log line so a regrab
     // doesn't claim to have "added" anything.
     let mut newly_added = 0_usize;
+    // A row the title search below landed on that was already in the
+    // library: the search is a guess, so it never gets this request's
+    // TVDB ids.
+    let mut found_by_title: Option<i64> = None;
 
     if all_exist {
         for row in existing_siblings.iter().flatten() {
@@ -404,7 +408,7 @@ pub async fn add_series(
         } else {
             &detail.title_romaji
         };
-        let (id, _created) = series::upsert(
+        let (id, created) = series::upsert(
             &state.db,
             series::SeriesCore {
                 anilist_id: detail.id,
@@ -423,6 +427,9 @@ pub async fn add_series(
         )
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if !created {
+            found_by_title = Some(id);
+        }
 
         let s = series::get_by_id(&state.db, id)
             .await
@@ -445,9 +452,12 @@ pub async fn add_series(
     // Remember the TVDB show Seerr knows these series by, so the shim
     // reports it even for a show the mappings don't have (the title
     // search above). The season is the one requested, else the
-    // mappings' season for the entry, else 1.
+    // mappings' season for the entry (0 for Specials), else 1. A pair
+    // already stored is kept (`set_tvdb_ids_if_unset`): a season 2
+    // request the mappings don't know yet could otherwise title-search
+    // its way onto the season 1 row and move it to season 2 for good.
     if tvdb_id > 0 {
-        for s in &processed {
+        for s in processed.iter().filter(|s| Some(s.id) != found_by_title) {
             let season = match requested_season {
                 Some(season) => season,
                 None => anibridge::resolve_tvdb(s.anilist_id, s.mal_id)
@@ -456,7 +466,7 @@ pub async fn add_series(
                     .map(|(_, season)| season)
                     .unwrap_or(1),
             };
-            let _ = series::set_tvdb_ids(&state.db, s.id, tvdb_id, season.max(1)).await;
+            let _ = series::set_tvdb_ids_if_unset(&state.db, s.id, tvdb_id, season).await;
         }
     }
 
@@ -526,7 +536,8 @@ pub async fn add_series(
                 state.clone(),
                 s.id,
                 std::time::Duration::from_secs(2),
-            );
+            )
+            .await;
         }
     }
 
@@ -607,7 +618,8 @@ pub async fn execute_command(
             state.clone(),
             series_id,
             std::time::Duration::ZERO,
-        );
+        )
+        .await;
     }
 
     Json(serde_json::json!({

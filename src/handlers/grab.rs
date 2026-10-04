@@ -392,10 +392,25 @@ pub async fn grab_preview(
             return Err((StatusCode::INTERNAL_SERVER_ERROR, e));
         }
     };
-    if matches!(outcome, AddOutcome::Added) {
-        pending_grabs::set_we_added(&state.db, &preview_id)
+    let we_added = matches!(outcome, AddOutcome::Added);
+    let row_kept = pending_grabs::finish_add(&state.db, &preview_id, we_added)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    if !row_kept {
+        // The walkaway sweep dropped the row while the add ran (it can
+        // outlast the heartbeat TTL), so nothing would ever resume or
+        // cancel the paused torrent. Take back what this add created,
+        // unless another preview has picked the hash up since.
+        let taken_over = pending_grabs::get_by_hash(&state.db, &info_hash)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+            .map_or(true, |row| row.is_some());
+        if we_added && !taken_over {
+            let _ = client.delete(&info_hash, true).await;
+        }
+        return Err((
+            StatusCode::GATEWAY_TIMEOUT,
+            "The download client took too long to add the release. Try again.".to_string(),
+        ));
     }
 
     // Spawn the metadata-wait + file-list-persist. qBit already
@@ -824,15 +839,26 @@ pub async fn grab_confirm(
     // the Downloads-page blocked list drops the stale entry. No-op
     // when there's no new grab id (dedup hit, missing series
     // context) — we don't want to clear the blocklist without a
-    // fresh row to point at.
+    // fresh row to point at. Both are scoped to this series: another
+    // series' misgrab row for the hash keeps blocking it there.
     if form.unblock
         && let Some(new_id) = new_grab_id
     {
-        let _ = crate::models::grabbed_torrents::unblock_by_hash(&state.db, &row.info_hash, new_id)
-            .await;
+        let _ = crate::models::grabbed_torrents::unblock_by_hash(
+            &state.db,
+            &row.info_hash,
+            new_id,
+            row.series_id,
+        )
+        .await;
         // Misgrab guardrails: a release the user chose to unblock is
         // theirs to keep; verification must not flag it again.
-        let _ = crate::models::grabbed_torrents::whitelist_by_hash(&state.db, &row.info_hash).await;
+        let _ = crate::models::grabbed_torrents::whitelist_by_hash(
+            &state.db,
+            &row.info_hash,
+            row.series_id,
+        )
+        .await;
     }
 
     // Drop the pending row — the user has committed, so the sweep
@@ -1314,6 +1340,118 @@ mod tests {
         );
     }
 
+    /// An add as slow as rTorrent's metadata wait: the walkaway sweep
+    /// drops the reserved row while it runs (simulated by deleting it
+    /// from inside the add). Records the hashes it is asked to delete.
+    struct SweptDuringAddClient {
+        db: sqlx::SqlitePool,
+        deletes: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl DownloadClient for SweptDuringAddClient {
+        async fn test(&self) -> Result<String, String> {
+            Ok("ok".into())
+        }
+        async fn add_torrent(&self, _url: &str, _hash: &str) -> Result<AddOutcome, String> {
+            sqlx::query("DELETE FROM pending_grabs")
+                .execute(&self.db)
+                .await
+                .unwrap();
+            Ok(AddOutcome::Added)
+        }
+        async fn add_torrent_with_file_filter(
+            &self,
+            _url: &str,
+            _hash: &str,
+            _pick: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
+        ) -> Result<SelectiveOutcome, String> {
+            Ok(SelectiveOutcome::FullDownload)
+        }
+        async fn list_scoped(&self) -> Result<Vec<DownloadItem>, String> {
+            Ok(vec![])
+        }
+        async fn get_files(&self, _hash: &str) -> Result<Vec<DownloadFile>, String> {
+            Ok(vec![])
+        }
+        async fn pause(&self, _hash: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn resume(&self, _hash: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn delete(&self, hash: &str, _delete_files: bool) -> Result<(), String> {
+            self.deletes.lock().unwrap().push(hash.to_string());
+            Ok(())
+        }
+        async fn set_file_wanted(
+            &self,
+            _hash: &str,
+            _files: &[usize],
+            _wanted: bool,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+        fn sonarr_impl_name(&self) -> &'static str {
+            "rTorrent"
+        }
+    }
+
+    #[tokio::test]
+    async fn a_preview_swept_during_a_slow_add_takes_its_torrent_back() {
+        // The torrent used to stay paused in the client with no preview
+        // row to resume or cancel it.
+        let db = in_memory_pool().await;
+        let client = std::sync::Arc::new(SweptDuringAddClient {
+            db: db.clone(),
+            deletes: std::sync::Mutex::new(Vec::new()),
+        });
+        let state = build_test_app_state(db.clone(), Some(client.clone()));
+        let res = grab_preview(
+            State(state),
+            Json(GrabPreviewForm {
+                url: format!("magnet:?xt=urn:btih:{VALID_HASH}"),
+                info_hash: VALID_HASH.into(),
+                series_id: None,
+                release_metadata: serde_json::Value::Null,
+                indexer_id: None,
+            }),
+        )
+        .await;
+        assert!(
+            matches!(res, Err((StatusCode::GATEWAY_TIMEOUT, _))),
+            "got {res:?}"
+        );
+        assert_eq!(
+            *client.deletes.lock().unwrap(),
+            vec![VALID_HASH.to_string()]
+        );
+        assert_eq!(pending_grabs::count(&db).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn the_add_refreshes_the_preview_heartbeat() {
+        // The reserve stamps the heartbeat before the add; the add's
+        // answer stamps it again so a slow add doesn't read as a
+        // walkaway on the sweep's next tick.
+        let db = in_memory_pool().await;
+        assert!(
+            pending_grabs::reserve(&db, "pid", VALID_HASH, "rTorrent", None, None, "{}", None)
+                .await
+                .unwrap()
+        );
+        sqlx::query("UPDATE pending_grabs SET heartbeat_at = heartbeat_at - 3600")
+            .execute(&db)
+            .await
+            .unwrap();
+        assert_eq!(pending_grabs::list_expired(&db).await.unwrap().len(), 1);
+        assert!(pending_grabs::finish_add(&db, "pid", true).await.unwrap());
+        assert!(pending_grabs::list_expired(&db).await.unwrap().is_empty());
+        let row = pending_grabs::get(&db, "pid").await.unwrap().unwrap();
+        assert!(row.we_added_torrent);
+        assert!(!pending_grabs::finish_add(&db, "gone", true).await.unwrap());
+    }
+
     #[tokio::test]
     async fn extract_release_title_handles_missing_and_present_shapes() {
         // Defensive: modal posts release_metadata with title; a
@@ -1583,9 +1721,14 @@ mod tests {
             .await
             .unwrap();
 
-        let affected = crate::models::grabbed_torrents::unblock_by_hash(&db, VALID_HASH, 99999)
-            .await
-            .unwrap();
+        let affected = crate::models::grabbed_torrents::unblock_by_hash(
+            &db,
+            VALID_HASH,
+            99999,
+            Some(series_id),
+        )
+        .await
+        .unwrap();
         assert_eq!(affected, 1);
 
         let (state, replaced_by): (String, Option<i64>) =
