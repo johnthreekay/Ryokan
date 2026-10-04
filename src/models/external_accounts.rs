@@ -160,16 +160,6 @@ pub async fn get_current(db: &SqlitePool) -> Result<Option<ExternalAccount>, Str
     row.map(ExternalAccountRaw::into_plaintext).transpose()
 }
 
-/// Link a new external account. Rejects when any account is already
-/// linked (one-at-a-time invariant, decision #10) — callers must
-/// `unlink` first to switch providers.
-///
-/// Re-link of the same provider is detected by `provider_user_id`
-/// matching an existing row with the same provider; tokens +
-/// score_format + username are updated in place instead of inserting
-/// a duplicate, per decision #8. The returned id is the existing
-/// row's, so callers can treat `link` as idempotent against the same
-/// provider user.
 /// The linked account's id, provider and username, without touching
 /// its tokens: what unlinking needs when the tokens no longer decrypt.
 pub async fn current_row(db: &SqlitePool) -> Result<Option<(i64, String, String)>, String> {
@@ -181,6 +171,16 @@ pub async fn current_row(db: &SqlitePool) -> Result<Option<(i64, String, String)
     .map_err(|e| format!("external_accounts query failed: {e}"))
 }
 
+/// Link a new external account. Rejects when any account is already
+/// linked (one-at-a-time invariant, decision #10) — callers must
+/// `unlink` first to switch providers.
+///
+/// Re-link of the same provider is detected by `provider_user_id`
+/// matching an existing row with the same provider; tokens +
+/// score_format + username are updated in place instead of inserting
+/// a duplicate, per decision #8. The returned id is the existing
+/// row's, so callers can treat `link` as idempotent against the same
+/// provider user.
 pub async fn link(db: &SqlitePool, req: LinkRequest) -> Result<i64, String> {
     let now = current_unix_ts();
 
