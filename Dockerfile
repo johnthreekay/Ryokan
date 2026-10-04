@@ -9,9 +9,11 @@ FROM rust:1-trixie@sha256:5d05167b28cef0fa3a6c781cd77949386848191f3382e82cf53bd1
 WORKDIR /app
 
 # Cache dependency builds: copy manifests first, build deps, then copy source.
-COPY Cargo.toml Cargo.lock* ./
+# `--locked`: build exactly what Cargo.lock names (its checksums
+# included), and fail rather than resolve anything newer.
+COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo 'fn main() {}' > src/main.rs
-RUN cargo build --release
+RUN cargo build --release --locked
 
 # Now copy the real source and build.
 # static/ is needed at compile time: src/handlers/settings.rs uses
@@ -20,7 +22,7 @@ RUN cargo build --release
 COPY src/ src/
 COPY templates/ templates/
 COPY static/ static/
-RUN touch src/main.rs && cargo build --release
+RUN touch src/main.rs && cargo build --release --locked
 
 # ffprobe stage. Source classification shells out to `ffprobe`
 # (services::source_ffprobe), and Debian's ffmpeg package would add
