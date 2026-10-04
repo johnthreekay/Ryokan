@@ -2999,6 +2999,124 @@ mod tests {
         }
     }
 
+    fn related_anime(
+        relation: &str,
+        romaji: &str,
+        english: &str,
+    ) -> crate::services::anilist::RelatedEntry {
+        crate::services::anilist::RelatedEntry {
+            id: 1,
+            id_mal: None,
+            title_romaji: romaji.into(),
+            title_english: english.into(),
+            title_native: String::new(),
+            cover_url: String::new(),
+            format: "TV".into(),
+            status: "FINISHED".into(),
+            status_display: String::new(),
+            episodes: None,
+            relation_type: relation.into(),
+            season_year: None,
+            media_type: "ANIME".into(),
+        }
+    }
+
+    /// AniList 170068 as the demo cached it.
+    fn frieren_minis() -> AnimeDetail {
+        let mut d = detail(
+            170068,
+            "Sousou no Frieren: ●● no Mahou",
+            "",
+            "葬送のフリーレン ～●●の魔法～",
+        );
+        d.format = "ONA".into();
+        d.synonyms = vec![
+            "Sousou no Frieren Mini Anime".into(),
+            "Frieren: Beyond Journey’s End Mini Anime".into(),
+            "Sousou no Frieren Marumaru no Mahou".into(),
+            "Frieren: Beyond Journey's End: Magic of ??".into(),
+        ];
+        d.relations = vec![
+            related_anime(
+                "PARENT",
+                "Sousou no Frieren",
+                "Frieren: Beyond Journey’s End",
+            ),
+            related_anime("SEQUEL", "Sousou no Frieren: ●● no Mahou Part 2", ""),
+        ];
+        d
+    }
+
+    #[test]
+    fn extended_aliases_skip_a_head_that_is_a_related_title() {
+        let extended = collect_extended_aliases(&frieren_minis());
+        for parent in ["Sousou no Frieren", "Beyond Journey's End", "Frieren"] {
+            assert!(
+                !extended.iter().any(|a| a.eq_ignore_ascii_case(parent)),
+                "{parent} names the parent series: {extended:?}"
+            );
+        }
+        // The minis' own subtitle survives.
+        assert!(extended.iter().any(|a| a == "●● no Mahou"), "{extended:?}");
+    }
+
+    #[test]
+    fn the_parent_batch_matches_no_alias_of_the_minis_verbatim() {
+        // The grab that went wrong: the extended pass matched this on
+        // "Sousou no Frieren", its trailing words.
+        let release = normalize_title(
+            "[Tenrai-Sensei] Frieren: Beyond Journey's End (Season 1+OVAs) [BD][1080p][HEVC 10bit x265][Dual Audio] Sousou no Frieren",
+        );
+        let detail = frieren_minis();
+        let aliases: Vec<String> = collect_aliases(&detail)
+            .into_iter()
+            .chain(collect_extended_aliases(&detail))
+            .collect();
+        for alias in &aliases {
+            let normalized = normalize_title(alias);
+            assert!(
+                normalized.is_empty() || !release.contains(&normalized),
+                "{alias} matches the parent's batch"
+            );
+        }
+    }
+
+    #[test]
+    fn a_synonym_that_is_a_related_title_is_not_an_alias() {
+        let mut d = frieren_minis();
+        d.synonyms.push("Frieren: Beyond Journey's End".into());
+        let extended = collect_extended_aliases(&d);
+        assert!(
+            !extended
+                .iter()
+                .any(|a| normalize_title(a) == "frieren beyond journey s end"),
+            "{extended:?}"
+        );
+    }
+
+    #[test]
+    fn a_head_no_related_entry_is_titled_stays() {
+        let mut d = detail(
+            108465,
+            "Mushoku Tensei: Isekai Ittara Honki Dasu",
+            "Mushoku Tensei: Jobless Reincarnation",
+            "",
+        );
+        d.relations = vec![
+            related_anime(
+                "SEQUEL",
+                "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2",
+                "",
+            ),
+            related_anime("SEQUEL", "Mushoku Tensei II: Isekai Ittara Honki Dasu", ""),
+        ];
+        let extended = collect_extended_aliases(&d);
+        assert!(
+            extended.iter().any(|a| a == "Mushoku Tensei"),
+            "{extended:?}"
+        );
+    }
+
     #[test]
     fn display_title_prefers_english_when_present() {
         // Pin the English-first preference (line 1669). The
