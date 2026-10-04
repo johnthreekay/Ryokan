@@ -1827,3 +1827,80 @@ async fn alternate_title_drives_the_queries_and_counts_as_exact() {
 
     unset_nyaa_base();
 }
+
+// ─── Ids that collide across numberings ──────────────────────────
+//
+// The search entry points read an id as a library (internal) id
+// first and only then as an AniList id. A library whose first row is
+// another show makes AniList id 1 (Cowboy Bebop) collide with it, so
+// a caller that passes an AniList id searches the other show's titles.
+
+/// "Decoy Show" at internal id 1, then "Research Show" with AniList id
+/// 1 (internal id 2), every episode monitored. Returns Research Show's
+/// library id.
+async fn seed_research_show_behind_a_decoy(state: &AppState) -> i64 {
+    let decoy = seed_series_with_cache(state, 9100, "Decoy Show").await;
+    assert_eq!(decoy, 1, "the decoy holds internal id 1");
+    let series_id = seed_series_with_cache(state, 1, "Research Show").await;
+    sqlx::query("UPDATE series SET episodes = 12, monitor_mode = 'all' WHERE id = ?")
+        .bind(series_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let series_row = ryokan::models::series::get_by_id(&state.db, series_id)
+        .await
+        .unwrap()
+        .unwrap();
+    ryokan::services::monitoring::ensure_series_monitoring_rows(&state.db, &series_row)
+        .await
+        .unwrap();
+    series_id
+}
+
+#[tokio::test]
+async fn misgrab_re_search_searches_the_series_its_anilist_id_collides_with_no_more() {
+    let _gate = ENV_LOCK.lock().await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(research_results_page()))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    // One episode takes the episode search, a batch the series search.
+    for (title, episodes, is_batch) in [
+        (
+            "[Wrong] Research Show - 03 (1080p) [WEB].mkv",
+            &[3][..],
+            false,
+        ),
+        (
+            "[Wrong] Research Show - 01-12 (1080p) [WEB]",
+            &[1, 2, 3][..],
+            true,
+        ),
+    ] {
+        let state = build_state().await;
+        let series_id = seed_research_show_behind_a_decoy(&state).await;
+        seed_unhandled_misgrab(&state, series_id, WRONG_HASH, title, episodes, is_batch).await;
+        let client = install_recording_default_torrent_client(&state).await;
+
+        let summary = ryokan::services::misgrab::sweep_once(&state)
+            .await
+            .expect("sweep runs");
+        assert_eq!(summary.remediated, 1, "{summary:?}");
+
+        // Searching the decoy's titles finds nothing on this page.
+        let calls = wait_for_add_calls(&client, 1).await;
+        assert_eq!(
+            calls.len(),
+            1,
+            "batch={is_batch}: Research Show is searched\n{}",
+            dump_logs(&state.db).await
+        );
+        assert!(calls[0].1.starts_with("cccccccc"), "{calls:?}");
+    }
+
+    unset_nyaa_base();
+}

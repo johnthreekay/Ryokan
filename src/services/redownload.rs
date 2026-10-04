@@ -168,8 +168,11 @@ pub async fn search_replacement(state: &AppState, grab: &GrabbedTorrent, why: &s
     else {
         return;
     };
-    let anilist_id = series_row.anilist_id;
-    let series_id = grab.series_id;
+    // The library id, never the AniList id: both search entry points
+    // read an id as an internal one first, so an AniList id searched
+    // whichever series had that internal id (Cowboy Bebop is AniList
+    // 1) and bound what it found to this series as a fresh misgrab.
+    let series_id = series_row.id;
     let single_episode = if !grab.is_batch && grab.episode_numbers.len() == 1 {
         Some(grab.episode_numbers[0])
     } else {
@@ -188,13 +191,13 @@ pub async fn search_replacement(state: &AppState, grab: &GrabbedTorrent, why: &s
                     Ok(Some(cached)) => auto_search::SearchTarget::for_episode(&cached.detail, ep),
                     _ => auto_search::SearchTarget::Episode(ep),
                 };
-                run_auto_search_targets(&state, anilist_id, vec![target], false, Some(series_id))
+                run_auto_search_targets(&state, series_id, vec![target], false, Some(series_id))
                     .await
                     .map(|r| r.grabbed.len())
             }
             None => auto_search_series(
                 axum::extract::State(state.clone()),
-                axum::extract::Path(anilist_id),
+                axum::extract::Path(series_id),
                 axum::extract::Query(AutoSearchQuery::default()),
             )
             .await
