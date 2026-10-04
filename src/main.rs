@@ -1508,6 +1508,10 @@ async fn main() {
                 .service(static_service),
         )
         .layer(compression)
+        .layer(axum::middleware::from_fn_with_state(
+            handlers::security_headers::SecurityHeaders::from_env(),
+            handlers::security_headers::apply,
+        ))
         .with_state(state.clone());
 
     let addr = std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:8978".to_string());

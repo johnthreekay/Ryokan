@@ -40,9 +40,14 @@
 //! Server-side: the calendar reader joins against the local
 //! `episode_airings` table, kept fresh by the 12h `airing_refresh`
 //! supervised task — no per-request AL fetch, no in-process cache.
-//! HTTP-side: `Cache-Control: public, max-age=600` + an `ETag`
+//! HTTP-side: `Cache-Control: private, max-age=600` + an `ETag`
 //! hashed over each event's `(series_id, episode, airing_at)`
 //! tuple, so calendar clients honor conditional GETs for free.
+//! `private`, not `public`: the feed is authorized by the key in its
+//! URL, so a shared cache (a caching proxy) must not keep a copy. The
+//! 304 carries the same value, since a 304's headers replace the
+//! client's stored ones and the site-wide `no-store` default would
+//! otherwise land there.
 
 use askama::Template;
 use axum::{
@@ -57,6 +62,9 @@ use serde::{Deserialize, Serialize};
 use crate::AppState;
 use crate::models::config;
 use crate::services::calendar::{self, DEFAULT_FORWARD_DAYS, UpcomingEpisode};
+
+/// The iCal feed's `Cache-Control`, on both the 200 and the 304.
+const ICAL_CACHE_CONTROL: &str = "private, max-age=600";
 
 const NOW_PLUS_7_DAYS_THRESHOLD: i64 = 7 * 86400;
 
@@ -528,7 +536,14 @@ pub async fn ical_feed(
         && let Ok(s) = if_none_match.to_str()
         && s == etag.as_str()
     {
-        return (StatusCode::NOT_MODIFIED, [(header::ETAG, etag.as_str())]).into_response();
+        return (
+            StatusCode::NOT_MODIFIED,
+            [
+                (header::ETAG, etag.as_str()),
+                (header::CACHE_CONTROL, ICAL_CACHE_CONTROL),
+            ],
+        )
+            .into_response();
     }
 
     let mut response_headers = vec![
@@ -536,7 +551,7 @@ pub async fn ical_feed(
             header::CONTENT_TYPE,
             "text/calendar; charset=utf-8".to_string(),
         ),
-        (header::CACHE_CONTROL, "public, max-age=600".to_string()),
+        (header::CACHE_CONTROL, ICAL_CACHE_CONTROL.to_string()),
         (header::ETAG, etag),
     ];
     // `Content-Disposition` so a direct browser hit downloads as
