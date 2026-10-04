@@ -756,3 +756,43 @@ async fn snapshots_and_staged_files_are_owner_only() {
     assert_eq!(mode(&pending.join(".ryokan-key")), 0o600);
     cleanup(&paths);
 }
+
+#[tokio::test]
+async fn work_databases_open_under_a_data_dir_with_url_characters() {
+    // A formatted `sqlite://` URL cut the path at `?` and decoded `%41`
+    // to `A`, so the snapshot could not be opened and every backup failed.
+    let paths = temp_paths("url?chars%41");
+    let db = SqlitePool::connect_with(
+        sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&paths.db_path)
+            .create_if_missing(true),
+    )
+    .await
+    .expect("open file db");
+    crate::models::migrate(&db).await.expect("migrate");
+    for i in 0..(SANITIZED_LOG_ROWS + 5) {
+        sqlx::query("INSERT INTO logs (level, category, message) VALUES ('info', 'system', ?)")
+            .bind(format!("row {i}"))
+            .execute(&db)
+            .await
+            .unwrap();
+    }
+
+    let out = paths.data_dir.join("out.tar.gz");
+    create_backup(&db, &paths, BackupOptions::default(), &out)
+        .await
+        .expect("backup");
+    assert!(read_archive(&out).contains_key("ryokan.db"));
+
+    // The sanitized path's log trim, on its own.
+    let copy = paths.data_dir.join("copy.db");
+    vacuum_into(&db, &copy).await.unwrap();
+    trim_logs(&copy).await.expect("trim");
+    let trimmed = open_work_db(&copy).await.unwrap();
+    assert_eq!(
+        count(&trimmed, "SELECT COUNT(*) FROM logs").await,
+        SANITIZED_LOG_ROWS
+    );
+    trimmed.close().await;
+    cleanup(&paths);
+}

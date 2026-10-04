@@ -473,8 +473,6 @@ async fn build_backup(
     Ok(manifest)
 }
 
-/// Keep only the newest [`SANITIZED_LOG_ROWS`] log rows in a scrubbed
-/// copy, then compact it.
 /// Create `path` readable by its owner only (0600 on Unix). A full backup
 /// holds the encryption key and every credential, and the backup folder
 /// is user-configurable (a NAS share, a folder other containers mount),
@@ -492,15 +490,24 @@ fn create_private(path: &Path) -> std::io::Result<fs::File> {
     options.open(path)
 }
 
+/// A one-connection pool on a database file this module made, read-write
+/// and never created. Opened through `filename`, not a formatted
+/// `sqlite://` URL: sqlx cuts a URL at `?` and percent-decodes its path,
+/// so a data dir holding either opened the wrong file and every backup
+/// failed (#259 fixed the same thing for the main pool).
+async fn open_work_db(path: &Path) -> Result<SqlitePool, sqlx::Error> {
+    sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(path))
+        .await
+}
+
 /// Delete the snapshot's session rows. Each is a working admin cookie for
 /// up to 7 days to anyone who can read the archive, and restore deletes
 /// them anyway. `secure_delete` zeroes the freed rows, so the tokens
 /// don't linger in free pages either.
 async fn drop_sessions(db_path: &Path) -> Result<(), String> {
-    let url = format!("sqlite://{}?mode=rw", db_path.display());
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
+    let pool = open_work_db(db_path)
         .await
         .map_err(|e| format!("open snapshot: {e}"))?;
     sqlx::query("PRAGMA secure_delete = ON")
@@ -513,9 +520,10 @@ async fn drop_sessions(db_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Keep only the newest [`SANITIZED_LOG_ROWS`] log rows in a scrubbed
+/// copy, then compact it.
 async fn trim_logs(db_path: &Path) -> Result<(), String> {
-    let url = format!("sqlite://{}?mode=rw", db_path.display());
-    let pool = SqlitePool::connect(&url)
+    let pool = open_work_db(db_path)
         .await
         .map_err(|e| format!("open sanitized copy: {e}"))?;
     sqlx::query("DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT ?)")
