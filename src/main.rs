@@ -475,6 +475,10 @@ async fn main() {
         tracing::info!("Cleared stranded backup work dir {}", dir.display());
     }
 
+    // 0600 before SQLite opens it (it would create the file, and its WAL,
+    // with the umask's mode).
+    services::paths::make_db_private(&services::paths::live_db_path());
+
     // The default path goes in through `filename` rather than a
     // formatted URL: sqlx percent-decodes a URL's path, so a data dir
     // containing `%` would open the wrong file.

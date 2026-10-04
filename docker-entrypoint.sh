@@ -126,5 +126,8 @@ fi
 # archive, another container sharing the volume) had its target, say
 # /etc/passwd, chowned to ryokan by this root process on a PUID change.
 find "$DATA_DIR" \! -user ryokan -exec chown -h ryokan:ryokan {} + 2>/dev/null || true
+# Only Ryokan's user may enter its data directory: it holds the database
+# (credentials, session hashes), the encryption key and backups.
+chmod 700 "$DATA_DIR"
 
 exec gosu ryokan "$@"

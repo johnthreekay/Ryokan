@@ -2957,6 +2957,27 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .ok();
     }
 
+    // Sessions are stored as the SHA-256 of the cookie value since
+    // `sessions_hashed_v1`; rows written before hold raw tokens that no
+    // longer match anything. Clear them once: everyone signs in again.
+    {
+        use crate::models::group_source_map::{
+            ensure_schema_migrations_table, mark_migration_applied, migration_already_applied,
+        };
+        const ID: &str = "sessions_hashed_v1";
+        ensure_schema_migrations_table(db).await.ok();
+        if !migration_already_applied(db, ID).await.unwrap_or(false)
+            && let Ok(mut tx) = db.begin().await
+            && sqlx::query("DELETE FROM sessions")
+                .execute(&mut *tx)
+                .await
+                .is_ok()
+        {
+            let _ = mark_migration_applied(&mut tx, ID).await;
+            let _ = tx.commit().await;
+        }
+    }
+
     // The TVDB show (and season) Seerr asked for when it added a series
     // through the Sonarr shim. The shim reports it as `tvdbId`, the id
     // Seerr's Sonarr scan resolves every series by; NULL falls back to
