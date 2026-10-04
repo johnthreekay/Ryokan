@@ -606,8 +606,8 @@ fn parse_rfc2822_to_unix(s: &str) -> i64 {
             && (sign == '+' || sign == '-')
             && tz.len() >= 5
         {
-            let hh: i64 = tz[1..3].parse().unwrap_or(0);
-            let mm: i64 = tz[3..5].parse().unwrap_or(0);
+            let hh: i64 = tz.get(1..3).and_then(|v| v.parse().ok()).unwrap_or(0);
+            let mm: i64 = tz.get(3..5).and_then(|v| v.parse().ok()).unwrap_or(0);
             let offset = (hh * 3600 + mm * 60) * if sign == '+' { -1 } else { 1 };
             return unix + offset;
         }

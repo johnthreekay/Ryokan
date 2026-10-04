@@ -1039,11 +1039,9 @@ async fn fetch_from_jikan(mal_id: i64) -> Result<HashMap<i32, EpisodeInfo>, Stri
 
         for (idx, ep) in body.data.iter().enumerate() {
             let aired = ep.aired.as_deref().unwrap_or("").to_string();
-            let aired_short = if aired.len() >= 10 {
-                aired[..10].to_string()
-            } else {
-                aired
-            };
+            // `get`, not `[..10]`: a byte 10 inside a multi-byte character
+            // (provider data) used to panic the episode fetch.
+            let aired_short = aired.get(..10).unwrap_or(&aired).to_string();
 
             let number = ep.episode_id.unwrap_or((page - 1) * 100 + idx as i32 + 1);
             let title = ep.title.clone().unwrap_or_default();

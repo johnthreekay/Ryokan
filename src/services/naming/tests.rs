@@ -643,3 +643,22 @@ fn absolute_token_ignores_a_non_positive_number() {
         "Sousou no Frieren - S01E07 - Like a Fairy Tale.mkv"
     );
 }
+
+#[test]
+fn a_pad_wider_than_any_number_needs_is_refused_not_a_panic() {
+    // `format!("{n:0pad$}")` panics past 65535; a stored template like
+    // this (a restored backup) panicked every import.
+    let template = format!(
+        "{{series.title}} - S{{season.number:{}}}E{{episode.number:00}}{{ext}}",
+        "0".repeat(65_536)
+    );
+    let err = validate(TemplateKind::EpisodeFile, &template).unwrap_err();
+    assert!(err.contains("most supported"), "{err}");
+    assert!(
+        validate(
+            TemplateKind::EpisodeFile,
+            "{series.title} - S{season.number:00}E{episode.number:0000}{ext}"
+        )
+        .is_ok()
+    );
+}

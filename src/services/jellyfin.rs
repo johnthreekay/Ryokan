@@ -158,8 +158,11 @@ impl JellyfinClient {
 
 fn truncate(s: &str) -> String {
     let trimmed = s.trim();
-    if trimmed.len() > 180 {
-        format!("{}...", &trimmed[..180])
+    // Cut at a character, not a byte: byte 180 inside a multi-byte
+    // character (a Japanese path in a Jellyfin error) panicked
+    // post-processing's library refresh.
+    if let Some((cut, _)) = trimmed.char_indices().nth(180) {
+        format!("{}...", &trimmed[..cut])
     } else if trimmed.is_empty() {
         "empty response".to_string()
     } else {
@@ -232,6 +235,15 @@ fn is_local_address(lower: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn truncate_cuts_at_a_character_not_a_byte() {
+        // 179 ASCII bytes then a 3-byte character straddling byte 180.
+        let body = format!("{}日本語のパス", "x".repeat(179));
+        let out = truncate(&body);
+        assert!(out.ends_with("..."), "{out}");
+        assert!(out.chars().count() <= 183);
+    }
 
     // ── truncate ─────────────────────────────────────────────────────
 
