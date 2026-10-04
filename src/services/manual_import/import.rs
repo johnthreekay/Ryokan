@@ -309,6 +309,7 @@ pub async fn run_import(
             title_pref: &cfg.title_language,
             series_folder_format: &cfg.series_folder_format,
             season_folder_format: &cfg.season_folder_format,
+            episode_file_format: &cfg.episode_file_format,
         };
         sess.groups
             .iter()
@@ -345,6 +346,7 @@ pub async fn run_import(
             title_pref: &cfg.title_language,
             series_folder_format: &cfg.series_folder_format,
             season_folder_format: &cfg.season_folder_format,
+            episode_file_format: &cfg.episode_file_format,
         };
         let view = preview::project_group(group, &ctx);
         let mut gr = GroupReport {
@@ -575,7 +577,14 @@ pub async fn run_import(
                 }
             }
 
-            let dest = season_dir.join(&file.file_name);
+            // The preview's name for it (`import_file_name`): a renumbered
+            // file is renamed so later disk checks read the right episode.
+            let dest = season_dir.join(preview::import_file_name(
+                file,
+                &naming::SeriesNames::from_series(&row),
+                &cfg.title_language,
+                &cfg.episode_file_format,
+            ));
             // Backstop for the preview's "Already on disk": a stranger
             // at the destination is never overwritten (do_file_op
             // would unlink it outside the recycle bin). The same-inode
@@ -969,6 +978,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_renumbered_file_lands_under_a_name_for_its_new_episode() {
+        // Part 2's `- 13` is its episode 1. Kept as `- 13`, every later
+        // disk check (upgrade, replace, Delete file) read it as 13.
+        let f = fixture("hardlink", false).await;
+        let mut abs = candidate(&f.src, "Show/[G] Show - 13 [WEB 1080p].mkv", Some(1));
+        abs.source_episode = Some(13);
+        let id = ready_session(
+            &f.state,
+            &f.src,
+            ImportMode::Hardlink,
+            vec![group(vec![abs], entry(100, "Show"))],
+        );
+        let report = run_import(f.state.clone(), id, OPTS).await.unwrap();
+        assert_eq!(report.files_written, 1, "{report:?}");
+        let row = series::get_by_anilist_id(&f.state.db, 100)
+            .await
+            .unwrap()
+            .expect("series created");
+        let on_disk = media::scan_series_folder(&f.media.to_string_lossy(), &row.folder_name).await;
+        assert_eq!(on_disk.len(), 1, "{on_disk:?}");
+        assert_eq!(on_disk[0].episode_number, 1, "{}", on_disk[0].filename);
+        assert!(
+            !on_disk[0].filename.contains("- 13"),
+            "{}",
+            on_disk[0].filename
+        );
+    }
+
+    #[tokio::test]
     async fn imports_new_series_by_hardlink_and_tags_episodes() {
         let f = fixture("hardlink", false).await;
         let files = vec![
@@ -1053,6 +1091,7 @@ mod tests {
             title_pref: "english",
             series_folder_format: naming::DEFAULT_SERIES_FOLDER_FORMAT,
             season_folder_format: naming::DEFAULT_SEASON_FOLDER_FORMAT,
+            episode_file_format: naming::DEFAULT_EPISODE_FILE_FORMAT,
         };
         let view = preview::project_group(&g, &ctx);
         assert_eq!(view.kind, GroupKind::Merge);

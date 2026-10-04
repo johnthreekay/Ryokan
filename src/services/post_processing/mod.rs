@@ -882,23 +882,12 @@ fn episode_name_context_with_tag(
             t.release_group.clone(),
         ),
         _ => {
-            let c = source::classify_release_sync(source_name, None);
-            let resolution = match c.resolution {
-                crate::services::source::Resolution::Unknown => String::new(),
-                r => r.as_str().to_string(),
-            };
+            let (resolution, source_label, name_group) = quality_from_name(source_name);
             let group = tag
                 .map(|t| t.release_group.clone())
                 .filter(|g| !g.is_empty())
-                .or_else(|| {
-                    crate::services::source_filename::classify_filename(source_name).release_group
-                })
-                .unwrap_or_default();
-            (
-                resolution,
-                naming::quality_source_label(c.source.as_str(), c.is_remux, c.web_kind.as_str()),
-                group,
-            )
+                .unwrap_or(name_group);
+            (resolution, source_label, group)
         }
     };
     let group = if group.is_empty() {
@@ -921,6 +910,25 @@ fn episode_name_context_with_tag(
         release_group: group,
         ext: ext.to_string(),
     }
+}
+
+/// The naming tokens a file name alone gives: resolution, source label
+/// and release group, each empty when the name doesn't say. What an
+/// import names a file by when no tag row knows better.
+pub(crate) fn quality_from_name(source_name: &str) -> (String, String, String) {
+    let c = source::classify_release_sync(source_name, None);
+    let resolution = match c.resolution {
+        crate::services::source::Resolution::Unknown => String::new(),
+        r => r.as_str().to_string(),
+    };
+    let group = crate::services::source_filename::classify_filename(source_name)
+        .release_group
+        .unwrap_or_default();
+    (
+        resolution,
+        naming::quality_source_label(c.source.as_str(), c.is_remux, c.web_kind.as_str()),
+        group,
+    )
 }
 
 struct SeriesImportCtx {
