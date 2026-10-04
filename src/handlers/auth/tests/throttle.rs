@@ -374,6 +374,28 @@ async fn someone_elses_failed_logins_do_not_lock_out_a_known_device() {
 }
 
 #[tokio::test]
+async fn a_throttled_username_logs_once_per_window_whatever_the_client() {
+    // The damping was keyed on the client address, so a username
+    // throttled by attempts from many addresses logged a row for each.
+    let user = "damped-admin";
+    let db = crate::test_support::in_memory_pool().await;
+    crate::models::user::create_user(&db, user, "correct-horse-1")
+        .await
+        .unwrap();
+    let state = crate::test_support::build_test_app_state(db.clone(), None);
+    for i in 0..LOGIN_MAX_FAILURES + 3 {
+        let peer = format!("198.51.100.{}:5000", 30 + i);
+        login(state.clone(), user, &peer, None, "wrong").await;
+    }
+    let rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM logs WHERE message LIKE 'Login rate-limited%'")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(rows, 1);
+}
+
+#[tokio::test]
 async fn a_first_login_from_a_browser_sets_the_device_cookie() {
     let user = "first-login-admin";
     let db = crate::test_support::in_memory_pool().await;

@@ -1006,9 +1006,22 @@ pub async fn login_submit(
         user::verify_user(&state.db, &form.username, &form.password).await
     };
 
-    // One log row per client per minute: a throttled client can keep
-    // sending, and each line is a database row.
-    if rate_limited && !logger::first_in_window(&format!("login-throttled:{ip}"), LOGIN_WINDOW) {
+    // One log row per tripped bucket per minute: a throttled client can
+    // keep sending, and each line is a database row. Keyed on the
+    // buckets (fixed size) rather than the client, so a username under
+    // attack from many addresses is one line, not one per address.
+    let tripped: Vec<&str> = buckets
+        .iter()
+        .zip(&tiers)
+        .filter(|(_, tier)| **tier != LoginCheck::Allow)
+        .map(|(key, _)| key.as_str())
+        .collect();
+    if rate_limited
+        && !logger::first_in_window(
+            &format!("login-throttled:{}", tripped.join(",")),
+            LOGIN_WINDOW,
+        )
+    {
         let template = LoginTemplate {
             error: Some("Too many failed attempts. Please wait a minute and try again.".into()),
         };
@@ -1022,7 +1035,7 @@ pub async fn login_submit(
                 "Login rate-limited ({}): {} from {}",
                 if hard_throttled { "hard" } else { "soft" },
                 safe_username,
-                ip
+                sanitize_for_log(&ip)
             ),
             "",
         )
