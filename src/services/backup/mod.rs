@@ -28,7 +28,7 @@
 
 use std::fmt;
 use std::fs;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -339,15 +339,21 @@ fn dir_size(dir: &Path) -> u64 {
 /// `VACUUM INTO <path>`: a consistent, WAL-free snapshot of the live
 /// database. The path is spliced as an escaped literal: SQLite reads a
 /// bound parameter here as an empty string and quietly runs a plain
-/// `VACUUM` instead, producing no file at all. The path is one this
-/// module built under the data dir, never user input.
+/// `VACUUM` instead, writing nothing. The path is one this module built
+/// under the data dir, never user input.
+///
+/// The file is created empty and owner-only first (`VACUUM INTO` accepts
+/// an empty file): SQLite would create it with the umask's mode, 0644
+/// on most systems, for a copy of every credential the live database
+/// holds, and the archive's tar header carries that mode into a restore.
 pub(crate) async fn vacuum_into(db: &SqlitePool, path: &Path) -> Result<(), String> {
+    create_private(path).map_err(|e| format!("create {}: {e}", path.display()))?;
     let literal = path.to_string_lossy().replace('\'', "''");
     sqlx::query(sqlx::AssertSqlSafe(format!("VACUUM INTO '{literal}'")))
         .execute(db)
         .await
         .map_err(|e| format!("VACUUM INTO failed: {e}"))?;
-    if !path.is_file() {
+    if !fs::metadata(path).is_ok_and(|m| m.len() > 0) {
         return Err(format!(
             "VACUUM INTO reported success but wrote nothing at {}",
             path.display()
@@ -467,8 +473,6 @@ async fn build_backup(
     Ok(manifest)
 }
 
-/// Keep only the newest [`SANITIZED_LOG_ROWS`] log rows in a scrubbed
-/// copy, then compact it.
 /// Create `path` readable by its owner only (0600 on Unix). A full backup
 /// holds the encryption key and every credential, and the backup folder
 /// is user-configurable (a NAS share, a folder other containers mount),
@@ -486,15 +490,24 @@ fn create_private(path: &Path) -> std::io::Result<fs::File> {
     options.open(path)
 }
 
+/// A one-connection pool on a database file this module made, read-write
+/// and never created. Opened through `filename`, not a formatted
+/// `sqlite://` URL: sqlx cuts a URL at `?` and percent-decodes its path,
+/// so a data dir holding either opened the wrong file and every backup
+/// failed (#259 fixed the same thing for the main pool).
+async fn open_work_db(path: &Path) -> Result<SqlitePool, sqlx::Error> {
+    sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(path))
+        .await
+}
+
 /// Delete the snapshot's session rows. Each is a working admin cookie for
 /// up to 7 days to anyone who can read the archive, and restore deletes
 /// them anyway. `secure_delete` zeroes the freed rows, so the tokens
 /// don't linger in free pages either.
 async fn drop_sessions(db_path: &Path) -> Result<(), String> {
-    let url = format!("sqlite://{}?mode=rw", db_path.display());
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
+    let pool = open_work_db(db_path)
         .await
         .map_err(|e| format!("open snapshot: {e}"))?;
     sqlx::query("PRAGMA secure_delete = ON")
@@ -507,9 +520,10 @@ async fn drop_sessions(db_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Keep only the newest [`SANITIZED_LOG_ROWS`] log rows in a scrubbed
+/// copy, then compact it.
 async fn trim_logs(db_path: &Path) -> Result<(), String> {
-    let url = format!("sqlite://{}?mode=rw", db_path.display());
-    let pool = SqlitePool::connect(&url)
+    let pool = open_work_db(db_path)
         .await
         .map_err(|e| format!("open sanitized copy: {e}"))?;
     sqlx::query("DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT ?)")
@@ -805,19 +819,23 @@ async fn stage_into(
     })
 }
 
-/// Unpack `archive` into `into`, accepting only the entries a Ryokan
-/// backup contains. `unpack_in` refuses anything that would land
-/// outside `into`.
 /// Most entries a restore unpacks (artwork blobs are most of them).
 const RESTORE_MAX_ENTRIES: usize = 500_000;
 /// Most bytes a restore unpacks: well past any real database plus
 /// artwork, short of filling a disk on a gzip bomb.
 const RESTORE_MAX_TOTAL_BYTES: u64 = 64 << 30;
+/// Most decompressed bytes a restore reads: the data cap plus room for
+/// every entry's header and padding. Counted under the tar reader, so
+/// the PAX and long-name records it consumes on its own count too.
+const RESTORE_MAX_READ_BYTES: u64 = RESTORE_MAX_TOTAL_BYTES + (1 << 30);
 
+/// Unpack `archive` into `into`, accepting only the entries a Ryokan
+/// backup contains. `unpack_in` refuses anything that would land
+/// outside `into`.
 fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
     let file =
         fs::File::open(archive).map_err(|e| RestoreError::Other(format!("open upload: {e}")))?;
-    let decoder = GzDecoder::new(BufReader::new(file));
+    let decoder = GzDecoder::new(BufReader::new(file)).take(RESTORE_MAX_READ_BYTES);
     let mut tar = tar::Archive::new(decoder);
     let entries = tar
         .entries()
@@ -840,7 +858,10 @@ fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
         }
         // Size and count caps, so a crafted archive can't fill the
         // filesystem the live database shares before any check runs.
-        let size = entry.header().size().unwrap_or(u64::MAX);
+        // `entry.size()`, not the header's: a PAX `size` record replaces
+        // the ustar field, so an entry whose header said 0 unpacked
+        // whatever length its PAX record named, past both caps.
+        let size = entry.size();
         count += 1;
         total = total.saturating_add(size);
         if count > RESTORE_MAX_ENTRIES || total > RESTORE_MAX_TOTAL_BYTES {
@@ -913,6 +934,17 @@ fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
             "the archive's encryption key is not 32 bytes".to_string(),
         ));
     }
+    // Owner-only, whatever mode the archive's headers gave them
+    // (`unpack_in` applies it, and backups made before the snapshot was
+    // created 0600 say 0644): both wait here until the next restart.
+    #[cfg(unix)]
+    for name in ["ryokan.db", ".ryokan-key"] {
+        use std::os::unix::fs::PermissionsExt;
+        let path = into.join(name);
+        if path.is_file() {
+            let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        }
+    }
     Ok(())
 }
 
@@ -927,7 +959,6 @@ fn check_database_file(path: &Path) -> Result<(), RestoreError> {
     let mut head = [0u8; 16];
     let mut file = fs::File::open(path)
         .map_err(|_| RestoreError::Invalid("ryokan.db is missing".to_string()))?;
-    use std::io::Read;
     file.read_exact(&mut head)
         .map_err(|_| RestoreError::Invalid("ryokan.db is not a SQLite database".to_string()))?;
     if head != DB_MAGIC {

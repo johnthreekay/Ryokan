@@ -594,6 +594,18 @@ fn restore_blocking(entry: &RecycleEntry, media_root: &str) -> Result<RestoreOut
             "manifest lists '{bad}', which is not a file name inside the entry"
         ));
     }
+    // Nor a link: `recycle` refuses one, so a link in an entry was
+    // planted there, and the cross-filesystem copy followed it and put
+    // its target (any file Ryokan can read) into the library.
+    if let Some(link) =
+        entry.manifest.files.iter().find(|f| {
+            fs::symlink_metadata(entry.dir.join(f)).is_ok_and(|m| m.file_type().is_symlink())
+        })
+    {
+        return Err(format!(
+            "'{link}' in the entry is a symbolic link, which the recycle bin never stores"
+        ));
+    }
 
     let targets: Vec<(PathBuf, PathBuf)> = match entry.manifest.kind {
         RecycleKind::Episode => {

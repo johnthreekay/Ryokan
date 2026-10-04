@@ -560,12 +560,20 @@ mod tests {
 
     #[test]
     fn an_absurd_reset_header_does_not_panic() {
+        // Writes the process-global snapshot, so it holds the lock and
+        // clears the snapshot again before asserting: a reset an hour
+        // out left behind made the next throttle sleep that hour. The
+        // remaining count sits above the headroom threshold so even the
+        // instant it is recorded no other test's throttle waits on it.
+        let _g = COOLDOWN_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        reset_state_for_tests();
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert("x-ratelimit-limit", "90".parse().unwrap());
-        headers.insert("x-ratelimit-remaining", "0".parse().unwrap());
+        headers.insert("x-ratelimit-remaining", "60".parse().unwrap());
         headers.insert("x-ratelimit-reset", u64::MAX.to_string().parse().unwrap());
         record_rate_limit_headers(&headers);
         let reset = RATE_LIMIT_STATE.lock().unwrap().and_then(|s| s.reset_at);
+        reset_state_for_tests();
         let reset = reset.expect("a clamped reset is still recorded");
         assert!(reset <= Instant::now() + Duration::from_secs(3601));
     }
@@ -691,10 +699,9 @@ mod tests {
     /// just takes the wrong branch and a sweep eats more 429s.
     ///
     /// Touches process-global state, so this test serializes itself
-    /// behind `COOLDOWN_TEST_LOCK` to avoid cross-test pollution
-    /// with any future global-state-touching test that adopts the
-    /// same lock. Other tests in this file are pure (compute_* /
-    /// decide_wait) and don't touch these globals.
+    /// behind `COOLDOWN_TEST_LOCK` to avoid cross-test pollution. Every
+    /// test here that touches these globals takes the same lock; the
+    /// rest are pure (compute_* / decide_wait).
     #[test]
     fn set_cooldown_clears_rate_limit_state() {
         let _g = COOLDOWN_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -733,23 +740,38 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn concurrent_callers_are_spaced_not_fired_together() {
+    #[test]
+    fn concurrent_callers_are_spaced_not_fired_together() {
         // A request went out 1 s ago, so both callers have to wait. They
         // used to read that same stamp, sleep the same ~1 s and fire
         // together. With no rate-limit headers the spacing is 60 / 30 = 2 s.
+        //
+        // The throttle reads the process-global snapshot, so this runs
+        // under the lock from a cleared one (a leftover `remaining = 0`
+        // with a reset an hour out made it sleep the hour). A plain test
+        // driving its own runtime, so the lock is never held across an
+        // `.await`.
+        let _g = COOLDOWN_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        reset_state_for_tests();
         *LAST_AL_REQUEST.lock().unwrap() = Some(Instant::now() - Duration::from_secs(1));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
         let start = Instant::now();
-        let (a, b) = tokio::join!(
-            async {
-                throttle_before_anilist_request().await;
-                start.elapsed()
-            },
-            async {
-                throttle_before_anilist_request().await;
-                start.elapsed()
-            },
-        );
+        let (a, b) = runtime.block_on(async {
+            tokio::join!(
+                async {
+                    throttle_before_anilist_request().await;
+                    start.elapsed()
+                },
+                async {
+                    throttle_before_anilist_request().await;
+                    start.elapsed()
+                },
+            )
+        });
+        *LAST_AL_REQUEST.lock().unwrap() = None;
         let gap = a.max(b) - a.min(b);
         assert!(
             gap >= Duration::from_millis(1900),

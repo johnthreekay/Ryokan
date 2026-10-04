@@ -729,3 +729,175 @@ async fn a_sanitized_backup_with_redacted_sessions_restores_to_first_run_setup()
     staged.close().await;
     cleanup(&paths);
 }
+
+/// A PAX `x` record giving the next entry's `size`. The length prefix
+/// counts its own digits.
+fn pax_size_record(size: u64) -> Vec<u8> {
+    let body = format!(" size={size}\n");
+    let mut len = body.len() + 1;
+    loop {
+        let record = format!("{len}{body}");
+        if record.len() == len {
+            return record.into_bytes();
+        }
+        len = record.len();
+    }
+}
+
+/// An archive of one regular file `name` whose ustar header says 0 bytes
+/// while a PAX record says `pax_size`, followed by `data`.
+fn archive_with_pax_size(out: &Path, name: &str, pax_size: u64, data: &[u8]) {
+    let file = fs::File::create(out).unwrap();
+    let mut tar = tar::Builder::new(GzEncoder::new(file, Compression::default()));
+    let record = pax_size_record(pax_size);
+    let mut pax = tar::Header::new_ustar();
+    pax.set_entry_type(tar::EntryType::XHeader);
+    pax.set_path(format!("PaxHeaders/{name}")).unwrap();
+    pax.set_size(record.len() as u64);
+    pax.set_mode(0o644);
+    pax.set_cksum();
+    tar.append(&pax, record.as_slice()).unwrap();
+    let mut header = tar::Header::new_ustar();
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_path(name).unwrap();
+    header.set_size(0);
+    header.set_mode(0o644);
+    header.set_cksum();
+    // `append` writes whatever the reader yields, whatever the header says.
+    tar.append(&header, data).unwrap();
+    tar.into_inner().unwrap().finish().unwrap();
+}
+
+#[test]
+fn extraction_caps_read_the_pax_size_not_the_header() {
+    let paths = temp_paths("pax-size");
+    let into = paths.data_dir.join("into");
+    fs::create_dir_all(&into).unwrap();
+    let invalid = |r: Result<(), RestoreError>, needle: &str| match r {
+        Err(RestoreError::Invalid(msg)) => assert!(msg.contains(needle), "{msg}"),
+        Err(other) => panic!("expected Invalid({needle}), got {other}"),
+        Ok(()) => panic!("expected Invalid({needle}), got an extracted archive"),
+    };
+
+    // A 2 MiB manifest behind a ustar size of 0 passed the 1 MiB cap and
+    // was unpacked whole.
+    let mut manifest = b"{}".to_vec();
+    manifest.resize(2 << 20, b' ');
+    let big_manifest = paths.data_dir.join("big-manifest.tar.gz");
+    archive_with_pax_size(
+        &big_manifest,
+        "manifest.json",
+        manifest.len() as u64,
+        &manifest,
+    );
+    invalid(
+        extract_archive(&big_manifest, &into),
+        "'manifest.json' is larger than a Ryokan backup's",
+    );
+    assert!(!into.join("manifest.json").exists(), "nothing was unpacked");
+
+    // The total cap reads the same size, before any data is read.
+    let huge = paths.data_dir.join("huge.tar.gz");
+    archive_with_pax_size(&huge, "artwork/blob.jpg", RESTORE_MAX_TOTAL_BYTES + 1, b"");
+    invalid(
+        extract_archive(&huge, &into),
+        "larger than any Ryokan backup",
+    );
+    cleanup(&paths);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn snapshots_and_staged_files_are_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    let paths = temp_paths("modes");
+    let db = pool_at(&paths).await;
+    let backup_dir = paths.data_dir.join("backups");
+
+    // The snapshot, and so the archive's header for it.
+    let snapshot = paths.data_dir.join("snap.db");
+    vacuum_into(&db, &snapshot).await.unwrap();
+    assert_eq!(mode(&snapshot), 0o600);
+    let out = paths.data_dir.join("out.tar.gz");
+    create_backup(&db, &paths, BackupOptions::default(), &out)
+        .await
+        .unwrap();
+    let file = fs::File::open(&out).unwrap();
+    let mut tar = tar::Archive::new(GzDecoder::new(BufReader::new(file)));
+    let db_mode = tar
+        .entries()
+        .unwrap()
+        .map(|e| e.unwrap())
+        .find(|e| e.path().unwrap().as_ref() == Path::new("ryokan.db"))
+        .map(|e| e.header().mode().unwrap() & 0o777);
+    assert_eq!(db_mode, Some(0o600));
+
+    // An archive whose headers say 0644 (one made before the snapshot
+    // was created owner-only) still stages owner-only.
+    let manifest = BackupManifest {
+        ryokan_version: env!("CARGO_PKG_VERSION").to_string(),
+        backup_timestamp: 1,
+        max_migration_id: 0,
+        includes_artwork: false,
+        includes_key: true,
+        sanitized: false,
+        hostname: None,
+        db_size_bytes: 0,
+        artwork_size_bytes: 0,
+    };
+    let key = paths.data_dir.join("legacy.key");
+    fs::write(&key, [7u8; 32]).unwrap();
+    for file in [&snapshot, &key] {
+        fs::set_permissions(file, fs::Permissions::from_mode(0o644)).unwrap();
+    }
+    let legacy = paths.data_dir.join("legacy.tar.gz");
+    write_archive(&legacy, &manifest, &snapshot, Some(&key), None).unwrap();
+    stage_restore(&db, &paths, &backup_dir, &legacy)
+        .await
+        .expect("stage");
+    let pending = paths.pending_dir();
+    assert_eq!(mode(&pending.join("ryokan.db")), 0o600);
+    assert_eq!(mode(&pending.join(".ryokan-key")), 0o600);
+    cleanup(&paths);
+}
+
+#[tokio::test]
+async fn work_databases_open_under_a_data_dir_with_url_characters() {
+    // A formatted `sqlite://` URL cut the path at `?` and decoded `%41`
+    // to `A`, so the snapshot could not be opened and every backup failed.
+    let paths = temp_paths("url?chars%41");
+    let db = SqlitePool::connect_with(
+        sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&paths.db_path)
+            .create_if_missing(true),
+    )
+    .await
+    .expect("open file db");
+    crate::models::migrate(&db).await.expect("migrate");
+    for i in 0..(SANITIZED_LOG_ROWS + 5) {
+        sqlx::query("INSERT INTO logs (level, category, message) VALUES ('info', 'system', ?)")
+            .bind(format!("row {i}"))
+            .execute(&db)
+            .await
+            .unwrap();
+    }
+
+    let out = paths.data_dir.join("out.tar.gz");
+    create_backup(&db, &paths, BackupOptions::default(), &out)
+        .await
+        .expect("backup");
+    assert!(read_archive(&out).contains_key("ryokan.db"));
+
+    // The sanitized path's log trim, on its own.
+    let copy = paths.data_dir.join("copy.db");
+    vacuum_into(&db, &copy).await.unwrap();
+    trim_logs(&copy).await.expect("trim");
+    let trimmed = open_work_db(&copy).await.unwrap();
+    assert_eq!(
+        count(&trimmed, "SELECT COUNT(*) FROM logs").await,
+        SANITIZED_LOG_ROWS
+    );
+    trimmed.close().await;
+    cleanup(&paths);
+}

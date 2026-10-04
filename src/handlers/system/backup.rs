@@ -554,7 +554,14 @@ pub async fn api_restore_upload(State(state): State<AppState>, body: Body) -> Re
 }
 
 async fn write_body_to_file(body: Body, path: &Path) -> Result<(), String> {
-    let mut file = tokio::fs::File::create(path)
+    // Owner-only from the first byte: a full archive holds the key and
+    // every stored credential. `create_new` so the mode always applies.
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options
+        .open(path)
         .await
         .map_err(|e| format!("create {}: {e}", path.display()))?;
     let mut stream = body.into_data_stream();
@@ -672,6 +679,12 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(std::fs::read(&full).unwrap(), b"gzip bytes");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&full).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "an upload can hold the key; owner only");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

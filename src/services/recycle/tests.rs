@@ -695,3 +695,44 @@ async fn restore_refuses_a_manifest_naming_files_outside_the_entry() {
     }
     assert!(outside.is_file(), "nothing was moved");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn restore_refuses_a_link_planted_in_the_entry() {
+    // A cross-filesystem restore copies with `fs::copy`, which follows a
+    // link: a recycled file swapped for a link to the key put the key's
+    // bytes into the library.
+    let db = test_support::in_memory_pool().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let (_season, video) = seed_series(tmp.path());
+    let bin = tmp.path().join("recycle");
+    let bin_s = bin.to_str().unwrap();
+    let RecycleOutcome::Recycled { entry_id } =
+        recycle(&db, bin_s, RecycleKind::Episode, Some(1), "Show", &video)
+            .await
+            .unwrap()
+    else {
+        panic!("expected Recycled");
+    };
+    let secret = tmp.path().join(".ryokan-key");
+    std::fs::write(&secret, b"not for the library").unwrap();
+    let entry = find_entry(bin_s, &entry_id).await.unwrap().unwrap();
+    let recycled = entry.dir.join(video.file_name().unwrap());
+    std::fs::remove_file(&recycled).unwrap();
+    std::os::unix::fs::symlink(&secret, &recycled).unwrap();
+
+    let media_root = tmp.path().join("media");
+    let err = restore(bin_s, &entry_id, media_root.to_str().unwrap())
+        .await
+        .unwrap_err();
+    assert!(err.contains("symbolic link"), "{err}");
+    assert!(!video.exists(), "nothing was put back");
+    assert!(
+        std::fs::symlink_metadata(&recycled)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "the entry is left as it was"
+    );
+    assert!(secret.is_file());
+}
