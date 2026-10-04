@@ -1272,6 +1272,7 @@ function clearExtLinkAttempt() {
     if (!_extLinkAttempt) return;
     window.removeEventListener('message', _extLinkAttempt.handler);
     if (_extLinkAttempt.timer) clearTimeout(_extLinkAttempt.timer);
+    if (_extLinkAttempt.hello) clearInterval(_extLinkAttempt.hello);
     _extLinkAttempt = null;
 }
 
@@ -1313,7 +1314,24 @@ function startExternalAccountLink(provider) {
     // popup navigates only to URLs we control (`/start` → AL/MAL
     // authorize → our gh-pages broker), so the standard tabnabbing
     // protections noopener provides aren't load-bearing here.
-    window.open(`/settings/oauth/${provider}/start`, '_blank');
+    const popup = window.open(`/settings/oauth/${provider}/start`, '_blank');
+
+    // The broker hands the token only to an origin that introduced
+    // itself and that the user then confirms on the broker page (any
+    // page can open the authorize URL in a popup, so `window.opener`
+    // alone proves nothing). Say hello until the hand-off lands or the
+    // attempt ends; addressed to the broker's origin, the message is
+    // dropped while the popup is still on Ryokan's /start or the
+    // provider's consent screen.
+    if (popup) {
+        _extLinkAttempt.hello = setInterval(() => {
+            if (popup.closed) {
+                clearInterval(_extLinkAttempt && _extLinkAttempt.hello);
+                return;
+            }
+            popup.postMessage({ type: 'ryokan-oauth-hello', provider }, EXT_BROKER_ORIGIN);
+        }, 500);
+    }
     openExternalAccountPasteModal(provider);
 }
 
