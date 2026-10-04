@@ -222,9 +222,12 @@ fn decode_value_with_depth(p: &mut Parser, depth: usize) -> Result<XmlValue, Str
     let inner_tag = p.peek_open();
     let v = match inner_tag {
         Some("string") => {
-            p.expect_open("string")?;
-            let s = p.read_text_until("</string>")?;
-            XmlValue::String(xml_text_unescape(s))
+            if p.open_tag_or_empty("string")? {
+                XmlValue::String(String::new())
+            } else {
+                let s = p.read_text_until("</string>")?;
+                XmlValue::String(xml_text_unescape(s))
+            }
         }
         Some("i4") | Some("int") => {
             let tag = inner_tag.unwrap();
@@ -252,12 +255,17 @@ fn decode_value_with_depth(p: &mut Parser, depth: usize) -> Result<XmlValue, Str
         }
         Some("array") => {
             p.expect_open("array")?;
-            p.expect_open("data")?;
             let mut items = Vec::new();
-            while p.peek_open() == Some("value") {
-                items.push(decode_value_with_depth(p, depth + 1)?);
+            // rtorrent 0.16 answers an empty list (`d.multicall2` with no
+            // torrents, a fresh install) with `<data/>`; requiring
+            // `<data>` made the Downloads page call the client
+            // unreachable until it held a torrent.
+            if !p.open_tag_or_empty("data")? {
+                while p.peek_open() == Some("value") {
+                    items.push(decode_value_with_depth(p, depth + 1)?);
+                }
+                p.expect_close("data")?;
             }
-            p.expect_close("data")?;
             p.expect_close("array")?;
             XmlValue::Array(items)
         }
@@ -326,9 +334,9 @@ impl<'a> Parser<'a> {
         let end = rest.find('>')?;
         let tag_inner = &rest[1..end];
         // Attributes not expected; take the tag name up to the first
-        // whitespace.
+        // whitespace or the `/` of a self-closing `<string/>`.
         let name_end = tag_inner
-            .find(|c: char| c.is_whitespace())
+            .find(|c: char| c.is_whitespace() || c == '/')
             .unwrap_or(tag_inner.len());
         Some(&tag_inner[..name_end])
     }
@@ -349,6 +357,27 @@ impl<'a> Parser<'a> {
 
     fn expect_open(&mut self, tag: &str) -> Result<(), String> {
         self.consume_open_tag(tag)
+    }
+
+    /// `<tag>`, or the empty element `<tag/>` / `<tag />`. True for
+    /// the self-closing form, which has no closing tag to expect.
+    fn open_tag_or_empty(&mut self, tag: &str) -> Result<bool, String> {
+        self.skip_ws();
+        let rest = &self.buf[self.pos..];
+        for (form, empty) in [
+            (format!("<{tag}>"), false),
+            (format!("<{tag}/>"), true),
+            (format!("<{tag} />"), true),
+        ] {
+            if rest.starts_with(&form) {
+                self.pos += form.len();
+                return Ok(empty);
+            }
+        }
+        Err(format!(
+            "XML parse: expected <{tag}> at position {}",
+            self.pos
+        ))
     }
 
     fn expect_close(&mut self, tag: &str) -> Result<(), String> {
@@ -399,6 +428,35 @@ mod tests {
     //! `decode_response` would seed from this corpus.
     use super::*;
     use rstest::rstest;
+
+    // ── Empty elements ────────────────────────────────────────────────
+
+    #[test]
+    fn an_empty_list_is_the_self_closing_data_element() {
+        // rtorrent 0.16's answer to d.multicall2 with no torrents,
+        // captured from a live instance.
+        let xml = r#"<?xml version="1.0"?><methodResponse><params><param><value><array><data/></array></value></param></params></methodResponse>"#;
+        assert_eq!(
+            decode_response(xml).unwrap().into_array().map(|a| a.len()),
+            Some(0)
+        );
+        let spaced = r#"<methodResponse><params><param><value><array><data /></array></value></param></params></methodResponse>"#;
+        assert_eq!(
+            decode_response(spaced)
+                .unwrap()
+                .into_array()
+                .map(|a| a.len()),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn an_empty_string_may_be_self_closing() {
+        let xml = r#"<methodResponse><params><param><value><array><data><value><string/></value><value><string>x</string></value></data></array></value></param></params></methodResponse>"#;
+        let items = decode_response(xml).unwrap().into_array().unwrap();
+        assert_eq!(items[0].as_string(), Some(""));
+        assert_eq!(items[1].as_string(), Some("x"));
+    }
     // ── XML escape / unescape ─────────────────────────────────────────
     //
     // The escape and unescape paths must round-trip every legal XML

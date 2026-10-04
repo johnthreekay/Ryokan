@@ -132,6 +132,7 @@ A new state that Sonarr does not fail belongs in `Warning`; the errored branch d
 - `d.base_path` is empty on closed/stopped torrents and after rtorrent restart; fall back to `d.directory + "/" + d.name` when empty.
 - During metadata fetch, `base_path` ends in `.meta` (also the signal metadata hasn't arrived); post-metadata it rewrites to actual content name. Poll `!base_path.ends_with(".meta")` at 500ms cadence, **60s budget** (longer than other clients — cold DHT legitimately takes longer).
 - Wire tags: rtorrent returns `<i8>` for sizes / rates / most counters; the decoder accepts both `<i4>` and `<i8>`.
+- Empty values come self-closed: rtorrent 0.16 answers a list call on an empty client with `<array><data/></array>`, and `<string/>` is legal too. `Parser::open_tag_or_empty` takes both forms; requiring `<data>` made every client with no torrents read as unreachable on the Downloads page.
 - **No per-torrent seed limits.** See the seed-rules table above; do not reintroduce a `d.ratio.*.set` call, none exists in `command_download.cc`.
 
 ## SAB quirks (`sabnzbd/mod.rs`)
