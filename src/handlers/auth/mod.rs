@@ -400,44 +400,64 @@ pub(crate) fn clear_session_cookie_with_secure(secure: bool) -> String {
 /// Extract the host portion (without scheme or port) from an Origin or
 /// Referer header value. Returns None if the value is not a well-formed
 /// absolute URL we can reason about.
+#[cfg(test)]
 pub(crate) fn url_host(value: &str) -> Option<String> {
-    // Strip scheme.
-    let after_scheme = value.split_once("://").map(|(_, rest)| rest)?;
-    // Host ends at the first `/`, `?`, `#`, or end of string.
-    let host_end = after_scheme
+    url_authority(value).map(|(host, _)| host)
+}
+
+/// A host and its port, as compared by the CSRF check.
+type Authority = (String, Option<u16>);
+
+/// Host and port of an `Origin` / `Referer` value. The port is the URL's
+/// own, else the scheme's default (80 / 443), so `https://x` and
+/// `https://x:443` compare equal.
+pub(crate) fn url_authority(value: &str) -> Option<Authority> {
+    let (scheme, after_scheme) = value.split_once("://")?;
+    let end = after_scheme
         .find(['/', '?', '#'])
         .unwrap_or(after_scheme.len());
-    let host_with_port = &after_scheme[..host_end];
-    if host_with_port.is_empty() {
+    let authority = &after_scheme[..end];
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    let (host, port) = split_authority(authority)?;
+    let default_port = match scheme.to_ascii_lowercase().as_str() {
+        "http" => Some(80),
+        "https" => Some(443),
+        _ => None,
+    };
+    Some((host, port.or(default_port)))
+}
+
+/// `host[:port]` as a lowercased host (an IPv6 literal keeps its
+/// brackets) and the port, if any. Splitting at the first `:` used to
+/// turn every IPv6 literal into `[`.
+pub(crate) fn split_authority(authority: &str) -> Option<Authority> {
+    let authority = authority.trim();
+    if authority.is_empty() {
         return None;
     }
-    // Strip port so we compare against the Host header cleanly — Host may or
-    // may not include a port depending on the client, and we want to match
-    // either way. An attacker can't spoof Host from a cross-origin browser
-    // anyway, so we're comparing hosts for equality as a sanity check.
-    let host_only = host_with_port
-        .split_once(':')
-        .map(|(h, _)| h)
-        .unwrap_or(host_with_port);
-    Some(host_only.to_ascii_lowercase())
+    if let Some(rest) = authority.strip_prefix('[') {
+        let (inner, after) = rest.split_once(']')?;
+        let port = match after {
+            "" => None,
+            _ => Some(after.strip_prefix(':')?.parse().ok()?),
+        };
+        return Some((format!("[{}]", inner.to_ascii_lowercase()), port));
+    }
+    match authority.split_once(':') {
+        Some((host, port)) if !host.is_empty() => {
+            Some((host.to_ascii_lowercase(), Some(port.parse().ok()?)))
+        }
+        Some(_) => None,
+        None => Some((authority.to_ascii_lowercase(), None)),
+    }
 }
 
-pub(crate) fn host_of(req: &Request<Body>) -> Option<String> {
+pub(crate) fn host_of(req: &Request<Body>) -> Option<Authority> {
     let raw = req.headers().get(header::HOST)?.to_str().ok()?;
-    let host_only = raw.split_once(':').map(|(h, _)| h).unwrap_or(raw);
-    Some(host_only.to_ascii_lowercase())
+    split_authority(raw)
 }
 
-/// Build the set of hosts that are acceptable matches for an Origin or
-/// Referer check. Always includes the `Host` header. When `trust` is
-/// set (driven by `RYOKAN_TRUSTED_PROXY` in production, or an
-/// explicit flag in tests), also includes every entry in
-/// `X-Forwarded-Host` so a reverse proxy that rewrites the upstream Host
-/// header doesn't break every form POST — the browser sees the
-/// externally-visible host and sends it in Origin, while the backend sees
-/// the rewritten upstream name in Host, so without this check the two
-/// never match and every POST is rejected as "origin host mismatch".
-pub(crate) fn allowed_host_matches_with_trust(req: &Request<Body>, trust: bool) -> Vec<String> {
+pub(crate) fn allowed_host_matches_with_trust(req: &Request<Body>, trust: bool) -> Vec<Authority> {
     let mut hosts = Vec::new();
     if let Some(h) = host_of(req) {
         hosts.push(h);
@@ -448,16 +468,32 @@ pub(crate) fn allowed_host_matches_with_trust(req: &Request<Body>, trust: bool) 
             .get("x-forwarded-host")
             .and_then(|v| v.to_str().ok())
     {
-        for part in raw.split(',') {
-            let part = part.trim();
-            if part.is_empty() {
-                continue;
-            }
-            let host_only = part.split_once(':').map(|(h, _)| h).unwrap_or(part);
-            hosts.push(host_only.to_ascii_lowercase());
-        }
+        // Proxies disagree on whether this carries their own listen port,
+        // so a forwarded host is compared without one, as before.
+        hosts.extend(
+            raw.split(',')
+                .filter_map(split_authority)
+                .map(|(host, _)| (host, None)),
+        );
     }
     hosts
+}
+
+/// Whether the browser's `origin` is one of the hosts this request was
+/// addressed to. When the Host header names a port, the origin's port
+/// has to match it: comparing hosts alone let any other app on the same
+/// machine (`http://192.168.1.10:8080`) submit forms to Ryokan on :8978,
+/// and `SameSite` ignores ports, so the session cookie went along. A
+/// Host header without a port (a reverse proxy that forwards `$host`)
+/// says nothing about the port, so only the host is compared there.
+fn origin_matches(origin: &Authority, hosts: &[Authority]) -> bool {
+    hosts.iter().any(|(host, port)| {
+        host == &origin.0
+            && match (port, origin.1) {
+                (Some(port), Some(origin_port)) => *port == origin_port,
+                _ => true,
+            }
+    })
 }
 
 /// Verify that a state-changing request came from the same origin this
@@ -495,8 +531,8 @@ pub(crate) fn verify_same_origin_with_trust(
         if origin == "null" {
             return Err("null origin");
         }
-        return match url_host(origin) {
-            Some(h) if hosts.contains(&h) => Ok(()),
+        return match url_authority(origin) {
+            Some(h) if origin_matches(&h, &hosts) => Ok(()),
             Some(_) => Err("origin host mismatch"),
             None => Err("malformed Origin header"),
         };
@@ -510,8 +546,8 @@ pub(crate) fn verify_same_origin_with_trust(
         .get(header::REFERER)
         .and_then(|v| v.to_str().ok())
     {
-        return match url_host(referer) {
-            Some(h) if hosts.contains(&h) => Ok(()),
+        return match url_authority(referer) {
+            Some(h) if origin_matches(&h, &hosts) => Ok(()),
             Some(_) => Err("referer host mismatch"),
             None => Err("malformed Referer header"),
         };

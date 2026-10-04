@@ -220,3 +220,47 @@ fn xfh_multiple_hosts_all_recognized_under_trust() {
         .unwrap();
     assert!(verify_same_origin_with_trust(&req, true).is_ok());
 }
+
+// ─── Ports and IPv6 ────────────────────────────────────────────────
+
+#[test]
+fn another_port_on_the_same_host_is_rejected() {
+    // A sibling app at :8080 posting to Ryokan at :8978. SameSite
+    // ignores ports, so the cookie goes along; only the Origin check
+    // can tell them apart.
+    let req = post_request("192.168.1.10:8978", Some("http://192.168.1.10:8080"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_err());
+    let req = post_request(
+        "192.168.1.10:8978",
+        None,
+        Some("http://192.168.1.10:8080/page"),
+    );
+    assert!(verify_same_origin_with_trust(&req, false).is_err());
+}
+
+#[test]
+fn a_default_port_matches_an_origin_that_omits_it() {
+    let req = post_request("ryokan.local:443", Some("https://ryokan.local"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+    let req = post_request("ryokan.local:80", Some("http://ryokan.local"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+}
+
+#[test]
+fn a_host_header_without_a_port_compares_hosts_only() {
+    // A reverse proxy forwarding `$host` drops the public port.
+    let req = post_request("ryokan.example", Some("https://ryokan.example:8443"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+}
+
+#[test]
+fn ipv6_hosts_are_told_apart() {
+    assert_eq!(url_host("http://[::1]:8978/x").as_deref(), Some("[::1]"));
+    let req = post_request("[::1]:8978", Some("http://[::1]:8978"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+    let req = post_request("[::1]:8978", Some("http://[::2]:8978"), None);
+    assert!(
+        verify_same_origin_with_trust(&req, false).is_err(),
+        "every IPv6 host used to compare as \"[\""
+    );
+}
