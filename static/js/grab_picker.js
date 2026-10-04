@@ -42,9 +42,14 @@
     function $(id) { return document.getElementById(id); }
 
     function escHtml(s) {
-        const d = document.createElement('div');
-        d.textContent = s == null ? '' : s;
-        return d.innerHTML;
+        // Escapes quotes as well, for attribute values (see series_helpers.js).
+        if (s == null) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     function formatBytes(bytes) {

@@ -48,9 +48,16 @@ var SD = new Proxy({}, {
 // `series_*.js` file that renders user-controlled strings into
 // innerHTML — release titles, group names, file paths, etc.
 function escHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = String(s);
-    return d.innerHTML;
+    // Quotes too: these strings land in attributes (`title="..."`), and
+    // the old textContent -> innerHTML round trip left `"` alone, so a
+    // release title could close the attribute and add a handler.
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // Per-file size renderer for grab-history rows + episode-detail "Size"

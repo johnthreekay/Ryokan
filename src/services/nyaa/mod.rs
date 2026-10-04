@@ -203,6 +203,11 @@ pub struct SearchResult {
 }
 
 impl SearchResult {
+    /// `link` for an `href`; see [`crate::services::html::safe_href`].
+    pub fn safe_link(&self) -> &str {
+        crate::services::html::safe_href(&self.link)
+    }
+
     /// `upload_date` trimmed to just the date portion ("YYYY-MM-DD").
     /// Nyaa publishes timestamps as `YYYY-MM-DD HH:MM` UTC; the search
     /// page renders only the date in the cell with the full UTC
