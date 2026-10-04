@@ -244,6 +244,18 @@ if (!window.__ryokanSettingsTriggerListeners) {
     // `ryokan-indexer-test-result` via HX-Trigger from /api/indexers/test.
     // Used by both the modal-footer Test button (Add and Edit) and the
     // per-card Test button on the configured-indexer cards.
+    // Write-only secret fields (`handlers::secret_field`): blank keeps
+    // the saved value, so Clear posts the sentinel the server reads as
+    // "empty it" and shows that it will.
+    document.body.addEventListener('click', function (ev) {
+        const btn = ev.target.closest('[data-clear-secret]');
+        if (!btn) return;
+        const input = document.getElementById(btn.getAttribute('data-clear-secret'));
+        if (!input) return;
+        input.value = '__CLEAR__';
+        input.type = 'text';
+        input.placeholder = '[will be cleared on save]';
+    });
     document.body.addEventListener('ryokan-indexer-test-result', function (ev) {
         const detail = ev.detail || {};
         window.ryokanToast({

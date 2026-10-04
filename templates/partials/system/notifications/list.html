@@ -48,7 +48,7 @@
                         </div>
                         {% endif %}
                     {% else if p.kind == "discord" %}
-                        {% if p.discord_webhook_url.is_some() %}
+                        {% if p.discord_has_url %}
                         <div class="notif-card-meta-row">
                             <dt>Webhook</dt>
                             <dd><code>[set]</code></dd>

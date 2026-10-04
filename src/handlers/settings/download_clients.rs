@@ -459,12 +459,32 @@ pub async fn settings_download_clients_upsert(
         );
     }
 
+    // The password field is write-only (`handlers::secret_field`).
+    let stored = match form.id {
+        Some(id) => get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    let password = match crate::handlers::secret_field::resolve(
+        &form.password,
+        stored
+            .as_ref()
+            .map(|r| (r.password.as_str(), r.url.as_str())),
+        url,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            return crate::handlers::responses::htmx_aware_redirect(
+                is_htmx,
+                &format!("/settings?tab=downloads&err={}", urlencoding::encode(&e)),
+            );
+        }
+    };
     let payload = DownloadClientForm {
         name,
         kind: form.kind.as_str(),
         url,
         username: form.username.trim(),
-        password: &form.password,
+        password: &password,
         label: form.label.trim(),
         download_path: form.download_path.as_str(),
         enabled: form.enabled.is_some(),
@@ -706,6 +726,10 @@ pub async fn settings_download_clients_set_default(
 /// are silently ignored.
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct DownloadClientTestForm {
+    /// The saved row the Edit form is testing, so a blank (write-only)
+    /// password can stand for the stored one.
+    #[serde(default)]
+    pub id: Option<i64>,
     #[serde(default)]
     pub kind: String,
     #[serde(default)]
@@ -735,39 +759,54 @@ pub struct DownloadClientTestForm {
         (status = 200, description = "Result rendered as an HTML fragment (success or failure)"),
     ),
 )]
-pub async fn settings_download_clients_test(Form(form): Form<DownloadClientTestForm>) -> Response {
+pub async fn settings_download_clients_test(
+    State(state): State<AppState>,
+    Form(form): Form<DownloadClientTestForm>,
+) -> Response {
     let url = form.url.trim();
     if url.is_empty() {
         return test_result_response(false, "URL required");
     }
+    let stored = match form.id {
+        Some(id) => get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    let password = match crate::handlers::secret_field::resolve(
+        &form.password,
+        stored
+            .as_ref()
+            .map(|r| (r.password.as_str(), r.url.as_str())),
+        url,
+    ) {
+        Ok(p) => p,
+        Err(e) => return test_result_response(false, &e),
+    };
     let client: std::sync::Arc<dyn DownloadClient> = match form.kind.as_str() {
         KIND_QBITTORRENT => std::sync::Arc::new(qbittorrent::QbitClient::new(
             url,
             form.username.trim(),
-            &form.password,
+            &password,
             form.label.trim(),
         )),
-        KIND_DELUGE => std::sync::Arc::new(deluge::DelugeClient::new(
-            url,
-            &form.password,
-            form.label.trim(),
-        )),
+        KIND_DELUGE => {
+            std::sync::Arc::new(deluge::DelugeClient::new(url, &password, form.label.trim()))
+        }
         KIND_TRANSMISSION => std::sync::Arc::new(transmission::TransmissionClient::new(
             url,
             form.username.trim(),
-            &form.password,
+            &password,
             form.label.trim(),
         )),
         KIND_RTORRENT => std::sync::Arc::new(rtorrent::RtorrentClient::new(
             url,
             form.username.trim(),
-            &form.password,
+            &password,
             form.label.trim(),
         )),
         KIND_SABNZBD => std::sync::Arc::new(sabnzbd::SabClient::new(
             url,
             form.username.trim(),
-            &form.password,
+            &password,
             form.label.trim(),
         )),
         other => {
@@ -1307,5 +1346,129 @@ mod tests {
         assert_eq!(default_row.id, b);
         let a_row = get_by_id(&state.db, a).await.unwrap().unwrap();
         assert!(!a_row.is_default);
+    }
+}
+
+#[cfg(test)]
+mod write_only_secret_tests {
+    //! The saved password never reaches the page, and a blank field
+    //! stands for it only while the URL keeps its host
+    //! (`handlers::secret_field`).
+    use super::*;
+    use crate::handlers::secret_field::{CLEAR, KEEP_PLACEHOLDER};
+    use crate::test_support::{build_test_app_state, in_memory_pool};
+
+    async fn body(resp: Response) -> String {
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    fn upsert(id: i64, url: &str, password: &str) -> DownloadClientUpsertForm {
+        DownloadClientUpsertForm {
+            id: Some(id),
+            name: "qbit".into(),
+            kind: "qbittorrent".into(),
+            url: url.into(),
+            username: "u".into(),
+            password: password.into(),
+            label: "anime".into(),
+            download_path: String::new(),
+            enabled: Some("on".into()),
+            is_default: Some("on".into()),
+            remove_completed: None,
+            remove_failed: None,
+        }
+    }
+
+    async fn seeded() -> (sqlx::SqlitePool, AppState, i64) {
+        let db = in_memory_pool().await;
+        let state = build_test_app_state(db.clone(), None);
+        let id = insert(
+            &db,
+            DownloadClientForm {
+                name: "qbit",
+                kind: "qbittorrent",
+                url: "http://qbit:8080",
+                username: "u",
+                password: "dc-secret-123",
+                label: "anime",
+                download_path: "",
+                enabled: true,
+                is_default: true,
+            },
+        )
+        .await
+        .unwrap();
+        (db, state, id)
+    }
+
+    #[tokio::test]
+    async fn the_edit_form_never_carries_the_saved_password() {
+        let (_db, state, id) = seeded().await;
+        let page = body(settings_download_clients_edit_form(State(state), Path(id)).await).await;
+        assert!(!page.contains("dc-secret-123"), "{page}");
+        assert!(page.contains(KEEP_PLACEHOLDER));
+    }
+
+    #[tokio::test]
+    async fn blank_keeps_the_password_only_for_the_same_host() {
+        let (db, state, id) = seeded().await;
+        let password = |db: sqlx::SqlitePool| async move {
+            get_by_id(&db, id).await.unwrap().unwrap().password
+        };
+        settings_download_clients_upsert(
+            State(state.clone()),
+            HxRequest(false),
+            Form(upsert(id, "http://qbit:8080/", "")),
+        )
+        .await;
+        assert_eq!(password(db.clone()).await, "dc-secret-123");
+
+        // A new host with a blank password is refused whole.
+        settings_download_clients_upsert(
+            State(state.clone()),
+            HxRequest(false),
+            Form(upsert(id, "http://evil.example:8080", "")),
+        )
+        .await;
+        let row = get_by_id(&db, id).await.unwrap().unwrap();
+        assert_eq!(
+            (row.url.as_str(), row.password.as_str()),
+            ("http://qbit:8080/", "dc-secret-123")
+        );
+
+        settings_download_clients_upsert(
+            State(state),
+            HxRequest(false),
+            Form(upsert(id, "http://qbit:8080", CLEAR)),
+        )
+        .await;
+        assert_eq!(password(db).await, "");
+    }
+
+    #[tokio::test]
+    async fn test_never_sends_the_saved_password_to_a_new_host() {
+        let (_db, state, id) = seeded().await;
+        let resp = settings_download_clients_test(
+            State(state),
+            Form(DownloadClientTestForm {
+                id: Some(id),
+                kind: "qbittorrent".into(),
+                url: "http://evil.example:8080".into(),
+                username: "u".into(),
+                password: String::new(),
+                label: String::new(),
+            }),
+        )
+        .await;
+        let trigger = resp
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(trigger.contains("address changed"), "{trigger}");
     }
 }

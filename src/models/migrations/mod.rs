@@ -2443,6 +2443,31 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         }
     }
 
+    // The legacy single-slot client passwords were copied into
+    // `download_clients` by the seed above and nothing reads them since;
+    // they lingered as plaintext copies the Integrations page echoed back
+    // in hidden inputs. Blank them once, and only after the seed ran.
+    {
+        use crate::models::group_source_map::{mark_migration_applied, migration_already_applied};
+        const ID: &str = "legacy_client_passwords_cleared_v1";
+        if migration_already_applied(db, "multi_client_seed_default_v1")
+            .await
+            .unwrap_or(false)
+            && !migration_already_applied(db, ID).await.unwrap_or(false)
+            && let Ok(mut tx) = db.begin().await
+            && sqlx::query(
+                "UPDATE config SET qbit_pass = '', deluge_password = '', \
+                 transmission_password = '', rtorrent_password = ''",
+            )
+            .execute(&mut *tx)
+            .await
+            .is_ok()
+        {
+            let _ = mark_migration_applied(&mut tx, ID).await;
+            let _ = tx.commit().await;
+        }
+    }
+
     // Multi-RSS — user-configured RSS feeds (Option A). Custom
     // feeds beyond Nyaa-direct: per-uploader Nyaa filters, SubsPlease's
     // direct per-quality feeds, indexer-of-the-week aggregators, etc.

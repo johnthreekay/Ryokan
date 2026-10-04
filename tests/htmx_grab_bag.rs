@@ -135,10 +135,14 @@ async fn jellyfin_test_returns_red_message_on_unreachable_url() {
     // nothing listens, the connect fails fast. Asserts the failure
     // path renders an HTML fragment (not JSON), still 200, with the
     // red color class hint that the partial uses.
-    let resp = jellyfin_test(Form(JellyfinTestForm {
-        jellyfin_url: "http://127.0.0.1:1".to_string(),
-        jellyfin_api_key: "bogus".to_string(),
-    }))
+    let state = build_test_app_state(in_memory_pool().await, None);
+    let resp = jellyfin_test(
+        State(state),
+        Form(JellyfinTestForm {
+            jellyfin_url: "http://127.0.0.1:1".to_string(),
+            jellyfin_api_key: "bogus".to_string(),
+        }),
+    )
     .await;
 
     assert_eq!(
@@ -183,13 +187,18 @@ async fn download_clients_test_fires_failure_trigger_on_empty_url() {
     // event the page-level JS converts into a toast. The body is
     // empty and the result rides on the `HX-Trigger` header as a
     // JSON payload — `{"ryokan-dc-test-result": {"ok": ..., "message": "..."}}`.
-    let resp = settings_download_clients_test(Form(DownloadClientTestForm {
-        kind: "qbittorrent".to_string(),
-        url: "  ".to_string(),
-        username: String::new(),
-        password: String::new(),
-        label: String::new(),
-    }))
+    let state = build_test_app_state(in_memory_pool().await, None);
+    let resp = settings_download_clients_test(
+        State(state),
+        Form(DownloadClientTestForm {
+            id: None,
+            kind: "qbittorrent".to_string(),
+            url: "  ".to_string(),
+            username: String::new(),
+            password: String::new(),
+            label: String::new(),
+        }),
+    )
     .await;
 
     assert_eq!(resp.status(), StatusCode::OK);
@@ -215,13 +224,18 @@ async fn download_clients_test_fires_failure_trigger_on_empty_url() {
 
 #[tokio::test]
 async fn download_clients_test_fires_failure_trigger_on_unknown_kind() {
-    let resp = settings_download_clients_test(Form(DownloadClientTestForm {
-        kind: "telnet-rmn".to_string(),
-        url: "http://127.0.0.1:1".to_string(),
-        username: String::new(),
-        password: String::new(),
-        label: String::new(),
-    }))
+    let state = build_test_app_state(in_memory_pool().await, None);
+    let resp = settings_download_clients_test(
+        State(state),
+        Form(DownloadClientTestForm {
+            id: None,
+            kind: "telnet-rmn".to_string(),
+            url: "http://127.0.0.1:1".to_string(),
+            username: String::new(),
+            password: String::new(),
+            label: String::new(),
+        }),
+    )
     .await;
 
     assert_eq!(resp.status(), StatusCode::OK);

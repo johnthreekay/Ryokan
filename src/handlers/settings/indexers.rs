@@ -446,7 +446,25 @@ pub async fn settings_indexers_upsert(
     let priority = parse_priority(&form.priority);
     let min_seeders = parse_optional_i32(&form.min_seeders, 1).max(0);
     let request_timeout_secs = parse_optional_secs(&form.request_timeout_secs);
-    let api_key = form.api_key.trim();
+    // The API key field is write-only (`handlers::secret_field`).
+    let stored = match form.id {
+        Some(id) => crate::models::indexers::get_by_id(&state.db, id)
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    };
+    let api_key = match crate::handlers::secret_field::resolve(
+        form.api_key.trim(),
+        stored
+            .as_ref()
+            .map(|r| (r.api_key.as_str(), r.url.as_str())),
+        url,
+    ) {
+        Ok(key) => key,
+        Err(e) => return error_redirect(is_htmx, &urlencoding::encode(&e)),
+    };
+    let api_key = api_key.as_str();
     let download_client_id = parse_optional_i64(&form.download_client_id);
 
     // Protocol guard — torznab indexers route torrent magnets /
@@ -869,29 +887,41 @@ pub async fn settings_indexers_test_stateless(
         return indexer_test_trigger(false, &format!("Invalid URL syntax: {url}"));
     }
 
-    // Prefer the cached client when an id is provided AND it resolves
-    // to a row in the IndexerCache — keeps the warm reqwest client +
-    // cooldown state intact for the Edit case. Fall back to building
-    // a transient indexer from form fields for the Add case (no id
-    // yet) or when the id missed the cache (saved-but-disabled).
-    let indexer: std::sync::Arc<dyn crate::services::indexers::Indexer> = if let Some(id) = form.id
-    {
+    // The API key field is write-only: blank stands for the saved key
+    // while the URL keeps its host (`handlers::secret_field`).
+    let stored = match form.id {
+        Some(id) => crate::models::indexers::get_by_id(&state.db, id)
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    };
+    let api_key = match crate::handlers::secret_field::resolve(
+        form.api_key.trim(),
+        stored
+            .as_ref()
+            .map(|r| (r.api_key.as_str(), r.url.as_str())),
+        url,
+    ) {
+        Ok(key) => key,
+        Err(e) => return indexer_test_trigger(false, &e),
+    };
+    // The cached client (warm reqwest client, cooldown state) only when
+    // the form still names exactly what is saved; an edited URL or key
+    // is tested as typed, which the cached client would have ignored.
+    let unchanged = stored
+        .as_ref()
+        .is_some_and(|r| r.url == url && r.api_key == api_key && r.kind == kind);
+    let cached = if unchanged {
         let snapshot = state.indexers.read().await.clone();
-        if let Some(cached) = snapshot.iter().find(|i| i.id() == id).cloned() {
-            cached
-        } else {
-            match build_transient_indexer(0, kind, url, form.api_key.trim()) {
-                Ok(c) => c,
-                Err(e) => {
-                    return indexer_test_trigger(
-                        false,
-                        &format!("Failed to build indexer client: {e}"),
-                    );
-                }
-            }
-        }
+        form.id
+            .and_then(|id| snapshot.iter().find(|i| i.id() == id).cloned())
     } else {
-        match build_transient_indexer(0, kind, url, form.api_key.trim()) {
+        None
+    };
+    let indexer: std::sync::Arc<dyn crate::services::indexers::Indexer> = match cached {
+        Some(cached) => cached,
+        None => match build_transient_indexer(0, kind, url, &api_key) {
             Ok(c) => c,
             Err(e) => {
                 return indexer_test_trigger(
@@ -899,7 +929,7 @@ pub async fn settings_indexers_test_stateless(
                     &format!("Failed to build indexer client: {e}"),
                 );
             }
-        }
+        },
     };
 
     match crate::services::indexers::fetch_indexer_rss(&*indexer).await {
@@ -1740,5 +1770,118 @@ mod tests {
                 "usenet clients are not offered for a torrent-only source"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod write_only_secret_tests {
+    //! Same rules as the download client password
+    //! (`handlers::secret_field`).
+    use super::*;
+    use crate::handlers::secret_field::KEEP_PLACEHOLDER;
+    use crate::models::indexers::{IndexerForm, get_by_id, insert};
+    use crate::test_support::{build_test_app_state, in_memory_pool};
+
+    async fn seeded() -> (sqlx::SqlitePool, AppState, i64) {
+        let db = in_memory_pool().await;
+        let state = build_test_app_state(db.clone(), None);
+        let id = insert(
+            &db,
+            IndexerForm {
+                name: "ix",
+                kind: "torznab",
+                url: "https://prowlarr.local/1/api",
+                api_key: "ix-secret-456",
+                priority: 25,
+                enabled: true,
+                is_private_tracker: false,
+                seed_ratio: None,
+                seed_time_minutes: None,
+                min_seeders: 1,
+                request_timeout_secs: None,
+                download_client_id: None,
+                rss_enabled: false,
+                categories: "",
+            },
+        )
+        .await
+        .unwrap();
+        (db, state, id)
+    }
+
+    fn upsert(id: i64, url: &str, api_key: &str) -> IndexerUpsertForm {
+        IndexerUpsertForm {
+            id: Some(id),
+            name: "ix".into(),
+            kind: "torznab".into(),
+            url: url.into(),
+            api_key: api_key.into(),
+            priority: Some("25".into()),
+            enabled: Some("on".into()),
+            is_private_tracker: None,
+            seed_ratio: None,
+            seed_time_minutes: None,
+            min_seeders: Some("1".into()),
+            request_timeout_secs: None,
+            download_client_id: None,
+            rss_enabled: None,
+            categories: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn the_edit_form_never_carries_the_saved_key() {
+        let (_db, state, id) = seeded().await;
+        let resp = settings_indexers_edit_form(State(state), Path(id)).await;
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let page = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(!page.contains("ix-secret-456"), "{page}");
+        assert!(page.contains(KEEP_PLACEHOLDER));
+    }
+
+    #[tokio::test]
+    async fn blank_keeps_the_key_only_for_the_same_host() {
+        let (db, state, id) = seeded().await;
+        settings_indexers_upsert(
+            State(state.clone()),
+            HxRequest(false),
+            Form(upsert(id, "https://prowlarr.local/2/api", "")),
+        )
+        .await;
+        assert_eq!(
+            get_by_id(&db, id).await.unwrap().unwrap().api_key,
+            "ix-secret-456"
+        );
+        settings_indexers_upsert(
+            State(state.clone()),
+            HxRequest(false),
+            Form(upsert(id, "https://evil.example/1/api", "")),
+        )
+        .await;
+        let row = get_by_id(&db, id).await.unwrap().unwrap();
+        assert_eq!(
+            (row.url.as_str(), row.api_key.as_str()),
+            ("https://prowlarr.local/2/api", "ix-secret-456")
+        );
+
+        let resp = settings_indexers_test_stateless(
+            State(state),
+            Form(IndexerStatelessTestForm {
+                kind: "torznab".into(),
+                url: "https://evil.example/1/api".into(),
+                api_key: String::new(),
+                id: Some(id),
+            }),
+        )
+        .await;
+        let trigger = resp
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(trigger.contains("address changed"), "{trigger}");
     }
 }

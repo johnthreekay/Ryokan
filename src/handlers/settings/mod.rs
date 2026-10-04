@@ -350,13 +350,10 @@ pub struct SettingsForm {
     active_client: String,
     qbit_url: String,
     qbit_user: String,
-    qbit_pass: String,
     qbit_category: String,
     qbit_download_path: String,
     #[serde(default)]
     deluge_url: String,
-    #[serde(default)]
-    deluge_password: String,
     #[serde(default)]
     deluge_label: String,
     #[serde(default)]
@@ -366,8 +363,6 @@ pub struct SettingsForm {
     #[serde(default)]
     transmission_user: String,
     #[serde(default)]
-    transmission_password: String,
-    #[serde(default)]
     transmission_label: String,
     #[serde(default)]
     transmission_download_path: String,
@@ -375,8 +370,6 @@ pub struct SettingsForm {
     rtorrent_url: String,
     #[serde(default)]
     rtorrent_user: String,
-    #[serde(default)]
-    rtorrent_password: String,
     #[serde(default)]
     rtorrent_label: String,
     #[serde(default)]
@@ -486,15 +479,11 @@ pub struct IntegrationsForm {
     #[serde(default)]
     qbit_user: String,
     #[serde(default)]
-    qbit_pass: String,
-    #[serde(default)]
     qbit_category: String,
     #[serde(default)]
     qbit_download_path: String,
     #[serde(default)]
     deluge_url: String,
-    #[serde(default)]
-    deluge_password: String,
     #[serde(default)]
     deluge_label: String,
     #[serde(default)]
@@ -504,8 +493,6 @@ pub struct IntegrationsForm {
     #[serde(default)]
     transmission_user: String,
     #[serde(default)]
-    transmission_password: String,
-    #[serde(default)]
     transmission_label: String,
     #[serde(default)]
     transmission_download_path: String,
@@ -513,8 +500,6 @@ pub struct IntegrationsForm {
     rtorrent_url: String,
     #[serde(default)]
     rtorrent_user: String,
-    #[serde(default)]
-    rtorrent_password: String,
     #[serde(default)]
     rtorrent_label: String,
     #[serde(default)]
@@ -1125,6 +1110,30 @@ pub async fn settings_submit(
     // `auto_grab_on_add` / `allow_non_english` below.
     let existing_cfg = config::get_config(&state.db).await.ok().flatten();
 
+    // The Jellyfin key is write-only here too (`handlers::secret_field`).
+    let bulk_jellyfin_key = match crate::handlers::secret_field::resolve(
+        form.jellyfin_api_key.trim(),
+        existing_cfg
+            .as_ref()
+            .map(|c| (c.jellyfin_api_key.as_str(), c.jellyfin_url.as_str())),
+        form.jellyfin_url.trim(),
+    ) {
+        Ok(key) => key,
+        Err(e) => {
+            let template = build_settings_template(
+                &state,
+                form.tab.clone(),
+                None,
+                None,
+                Some(format!("Jellyfin: {e}")),
+                None,
+                None,
+            )
+            .await;
+            return Html(template.render().unwrap_or_default());
+        }
+    };
+
     let current_force_mal_fallback = existing_cfg
         .as_ref()
         .map(|cfg| cfg.force_mal_fallback)
@@ -1181,7 +1190,10 @@ pub async fn settings_submit(
         },
         qbit_url: form.qbit_url.trim().to_string(),
         qbit_user: form.qbit_user.trim().to_string(),
-        qbit_pass: form.qbit_pass,
+        qbit_pass: existing_cfg
+            .as_ref()
+            .map(|c| c.qbit_pass.clone())
+            .unwrap_or_default(),
         qbit_category: form.qbit_category.trim().to_string(),
         qbit_download_path: form
             .qbit_download_path
@@ -1189,7 +1201,10 @@ pub async fn settings_submit(
             .trim_end_matches('/')
             .to_string(),
         deluge_url: form.deluge_url.trim().trim_end_matches('/').to_string(),
-        deluge_password: form.deluge_password,
+        deluge_password: existing_cfg
+            .as_ref()
+            .map(|c| c.deluge_password.clone())
+            .unwrap_or_default(),
         deluge_label: sanitize_label(&form.deluge_label),
         deluge_download_path: form
             .deluge_download_path
@@ -1202,7 +1217,10 @@ pub async fn settings_submit(
             .trim_end_matches('/')
             .to_string(),
         transmission_user: form.transmission_user.trim().to_string(),
-        transmission_password: form.transmission_password,
+        transmission_password: existing_cfg
+            .as_ref()
+            .map(|c| c.transmission_password.clone())
+            .unwrap_or_default(),
         transmission_label: sanitize_label(&form.transmission_label),
         transmission_download_path: form
             .transmission_download_path
@@ -1211,7 +1229,10 @@ pub async fn settings_submit(
             .to_string(),
         rtorrent_url: form.rtorrent_url.trim().trim_end_matches('/').to_string(),
         rtorrent_user: form.rtorrent_user.trim().to_string(),
-        rtorrent_password: form.rtorrent_password,
+        rtorrent_password: existing_cfg
+            .as_ref()
+            .map(|c| c.rtorrent_password.clone())
+            .unwrap_or_default(),
         rtorrent_label: sanitize_label(&form.rtorrent_label),
         rtorrent_download_path: form
             .rtorrent_download_path
@@ -1219,7 +1240,7 @@ pub async fn settings_submit(
             .trim_end_matches('/')
             .to_string(),
         jellyfin_url: form.jellyfin_url.trim().trim_end_matches('/').to_string(),
-        jellyfin_api_key: form.jellyfin_api_key.trim().to_string(),
+        jellyfin_api_key: bulk_jellyfin_key,
         // Quality-tab fields (preferred_groups, blocked_groups,
         // preferred_*/cutoff_*, finished_series_quality, prefer_subs)
         // are now owned by the dedicated `/settings/quality` subform
@@ -2374,6 +2395,29 @@ pub async fn settings_integrations_submit(
         return integrations_response(&state, None, None, Some(err), is_htmx).await;
     }
 
+    // The legacy single-slot client passwords are no longer posted
+    // (nothing reads them since the `download_clients` table); keep
+    // whatever is stored. The Jellyfin key is write-only.
+    let jellyfin_api_key = match crate::handlers::secret_field::resolve(
+        form.jellyfin_api_key.trim(),
+        Some((
+            existing_cfg.jellyfin_api_key.as_str(),
+            existing_cfg.jellyfin_url.as_str(),
+        )),
+        form.jellyfin_url.trim(),
+    ) {
+        Ok(key) => key,
+        Err(e) => {
+            return integrations_response(
+                &state,
+                None,
+                None,
+                Some(format!("Jellyfin: {e}")),
+                is_htmx,
+            )
+            .await;
+        }
+    };
     let cfg = config::Config {
         active_client: match form.active_client.trim() {
             "deluge" => "deluge".to_string(),
@@ -2383,7 +2427,7 @@ pub async fn settings_integrations_submit(
         },
         qbit_url: form.qbit_url.trim().to_string(),
         qbit_user: form.qbit_user.trim().to_string(),
-        qbit_pass: form.qbit_pass,
+        qbit_pass: existing_cfg.qbit_pass.clone(),
         qbit_category: form.qbit_category.trim().to_string(),
         qbit_download_path: form
             .qbit_download_path
@@ -2391,7 +2435,7 @@ pub async fn settings_integrations_submit(
             .trim_end_matches('/')
             .to_string(),
         deluge_url: form.deluge_url.trim().trim_end_matches('/').to_string(),
-        deluge_password: form.deluge_password,
+        deluge_password: existing_cfg.deluge_password.clone(),
         deluge_label: sanitize_label(&form.deluge_label),
         deluge_download_path: form
             .deluge_download_path
@@ -2404,7 +2448,7 @@ pub async fn settings_integrations_submit(
             .trim_end_matches('/')
             .to_string(),
         transmission_user: form.transmission_user.trim().to_string(),
-        transmission_password: form.transmission_password,
+        transmission_password: existing_cfg.transmission_password.clone(),
         transmission_label: sanitize_label(&form.transmission_label),
         transmission_download_path: form
             .transmission_download_path
@@ -2413,7 +2457,7 @@ pub async fn settings_integrations_submit(
             .to_string(),
         rtorrent_url: form.rtorrent_url.trim().trim_end_matches('/').to_string(),
         rtorrent_user: form.rtorrent_user.trim().to_string(),
-        rtorrent_password: form.rtorrent_password,
+        rtorrent_password: existing_cfg.rtorrent_password.clone(),
         rtorrent_label: sanitize_label(&form.rtorrent_label),
         rtorrent_download_path: form
             .rtorrent_download_path
@@ -2421,7 +2465,7 @@ pub async fn settings_integrations_submit(
             .trim_end_matches('/')
             .to_string(),
         jellyfin_url: form.jellyfin_url.trim().trim_end_matches('/').to_string(),
-        jellyfin_api_key: form.jellyfin_api_key.trim().to_string(),
+        jellyfin_api_key,
         sonarr_enabled: form.sonarr_enabled.is_some(),
         sonarr_api_key: form.sonarr_api_key.unwrap_or_default().trim().to_string(),
         radarr_enabled: form.radarr_enabled.is_some(),
@@ -2700,8 +2744,24 @@ pub async fn settings_groups_delete(
         (status = 200, description = "Result rendered as an HTML fragment (success or failure)"),
     ),
 )]
-pub async fn jellyfin_test(Form(form): Form<JellyfinTestForm>) -> Response {
-    let client = JellyfinClient::new(form.jellyfin_url.trim(), &form.jellyfin_api_key);
+pub async fn jellyfin_test(
+    State(state): State<AppState>,
+    Form(form): Form<JellyfinTestForm>,
+) -> Response {
+    // The key field is write-only: blank stands for the saved key while
+    // the URL keeps its host (`handlers::secret_field`).
+    let saved = config::get_config(&state.db).await.ok().flatten();
+    let api_key = match crate::handlers::secret_field::resolve(
+        form.jellyfin_api_key.trim(),
+        saved
+            .as_ref()
+            .map(|c| (c.jellyfin_api_key.as_str(), c.jellyfin_url.as_str())),
+        form.jellyfin_url.trim(),
+    ) {
+        Ok(key) => key,
+        Err(message) => return ConnectionTestResultPartial { ok: false, message }.into_html_ok(),
+    };
+    let client = JellyfinClient::new(form.jellyfin_url.trim(), &api_key);
 
     let result = match client.test_connection().await {
         Ok(info) => ConnectionTestResultPartial {

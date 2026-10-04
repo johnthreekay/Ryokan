@@ -8,6 +8,8 @@ Changes apply on save; no restart needed.
 
 Third-party services Ryokan talks to.
 
+Saved passwords and keys for other services (download clients, indexers, Jellyfin, a Discord webhook URL, webhook header values) are never shown again once saved. The field stays empty and reads **[set; leave blank to keep]**. Leave it blank to keep the saved value, type a new one to replace it, or press **Clear** to remove it. A saved webhook header shows its name with `********` in place of the value. If you change a service's address (its host or port), type the password or key again. Ryokan doesn't send a saved secret to a new address, on Save or on Test.
+
 - **AniList / MyAnimeList accounts**: OAuth-linked for watch-list sync. When linked, anime you mark "watching" (or "planning", "completed", etc.) on AniList or MAL get auto-added to your Ryokan library on the next sync tick. Setup walkthrough: [External accounts](external-accounts.md).
 - **Sync interval (minutes)**: how often the watch-list sync runs. Default 30 minutes; minimum 15, maximum 10080 (7 days). The form won't let you type anything below 15. If a value somehow ends up outside that range, it falls back to 30.
 - **Jellyfin**: server URL and API key. Lets Ryokan trigger a Jellyfin library refresh after each import and validate that imported files actually landed on disk. URL is `http://jellyfin:8096` when Ryokan and Jellyfin share a Docker compose; if they're on different hosts or in separate composes, use your host's LAN IP and the host-mapped port.

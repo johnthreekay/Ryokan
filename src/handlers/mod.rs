@@ -9,6 +9,7 @@ pub mod oauth;
 pub mod progress;
 pub mod responses;
 pub mod search;
+pub(crate) mod secret_field;
 pub mod security_headers;
 pub mod settings;
 pub mod system;

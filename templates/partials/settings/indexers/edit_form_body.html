@@ -34,7 +34,14 @@
 
         <div class="form-group">
             <label for="indexer-edit-key-{{ row.id }}">API Key</label>
-            <input id="indexer-edit-key-{{ row.id }}" type="text" name="api_key" autocomplete="off" value="{{ row.api_key }}">
+            {# Write-only (`handlers::secret_field`), like the download
+               client password. #}
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <input id="indexer-edit-key-{{ row.id }}" type="password" name="api_key" autocomplete="new-password" placeholder="{% if !row.api_key.is_empty() %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% endif %}" style="flex:1">
+                {% if !row.api_key.is_empty() %}
+                <button type="button" class="btn btn-secondary" data-clear-secret="indexer-edit-key-{{ row.id }}" style="white-space:nowrap">Clear</button>
+                {% endif %}
+            </div>
             {# Kind-aware hint text. Server-rendered to match the
                row's current kind so opening Edit on a newznab row
                doesn't flash the torznab default before

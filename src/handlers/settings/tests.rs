@@ -852,21 +852,17 @@ mod non_htmx_path {
                 active_client: "transmission".to_string(), // seed=deluge
                 qbit_url: "http://qbit.submit:9090".to_string(), // seed=...:8080
                 qbit_user: "qbit-submit-user".to_string(),
-                qbit_pass: "qbit-submit-pass".to_string(),
                 qbit_category: "qbit-submit-cat".to_string(),
                 qbit_download_path: "/submit/qbit".to_string(),
                 deluge_url: "http://deluge.submit:8112".to_string(),
-                deluge_password: "deluge-submit-pass".to_string(),
                 deluge_label: "deluge-submit-label".to_string(),
                 deluge_download_path: "/submit/deluge".to_string(),
                 transmission_url: "http://trans.submit:9091".to_string(),
                 transmission_user: "trans-submit-user".to_string(),
-                transmission_password: "trans-submit-pass".to_string(),
                 transmission_label: "trans-submit-label".to_string(),
                 transmission_download_path: "/submit/trans".to_string(),
                 rtorrent_url: "http://rt.submit:8081".to_string(),
                 rtorrent_user: "rt-submit-user".to_string(),
-                rtorrent_password: "rt-submit-pass".to_string(),
                 rtorrent_label: "rt-submit-label".to_string(),
                 rtorrent_download_path: "/submit/rt".to_string(),
                 jellyfin_url: String::new(), // empty — skips connection-test
@@ -893,21 +889,21 @@ mod non_htmx_path {
         assert_eq!(saved.active_client, "transmission");
         assert_eq!(saved.qbit_url, "http://qbit.submit:9090");
         assert_eq!(saved.qbit_user, "qbit-submit-user");
-        assert_eq!(saved.qbit_pass, "qbit-submit-pass");
+        assert_eq!(saved.qbit_pass, "qbit-seed-pass", "never posted, kept");
         assert_eq!(saved.qbit_category, "qbit-submit-cat");
         assert_eq!(saved.qbit_download_path, "/submit/qbit");
         assert_eq!(saved.deluge_url, "http://deluge.submit:8112");
-        assert_eq!(saved.deluge_password, "deluge-submit-pass");
+        assert_eq!(saved.deluge_password, "deluge-seed-pass");
         assert_eq!(saved.deluge_label, "deluge-submit-label");
         assert_eq!(saved.deluge_download_path, "/submit/deluge");
         assert_eq!(saved.transmission_url, "http://trans.submit:9091");
         assert_eq!(saved.transmission_user, "trans-submit-user");
-        assert_eq!(saved.transmission_password, "trans-submit-pass");
+        assert_eq!(saved.transmission_password, "trans-seed-pass");
         assert_eq!(saved.transmission_label, "trans-submit-label");
         assert_eq!(saved.transmission_download_path, "/submit/trans");
         assert_eq!(saved.rtorrent_url, "http://rt.submit:8081");
         assert_eq!(saved.rtorrent_user, "rt-submit-user");
-        assert_eq!(saved.rtorrent_password, "rt-submit-pass");
+        assert_eq!(saved.rtorrent_password, "rt-seed-pass");
         assert_eq!(saved.rtorrent_label, "rt-submit-label");
         assert_eq!(saved.rtorrent_download_path, "/submit/rt");
         assert!(saved.jellyfin_url.is_empty());
@@ -1329,21 +1325,17 @@ mod non_htmx_path {
                 active_client: "garbage".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(),
@@ -1454,21 +1446,17 @@ mod non_htmx_path {
                 active_client: "deluge".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(),
@@ -1501,21 +1489,17 @@ mod non_htmx_path {
                 active_client: "rtorrent".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(),
@@ -1562,21 +1546,17 @@ mod non_htmx_path {
                 active_client: "qbittorrent".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: "http://127.0.0.1:1".to_string(), // would-fail address
@@ -1615,21 +1595,17 @@ mod non_htmx_path {
                 active_client: "qbittorrent".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(), // empty — gate must skip
@@ -2127,4 +2103,67 @@ async fn the_legacy_bulk_save_refuses_a_short_shim_key_too() {
     assert!(page.contains("at least"), "the refusal is shown");
     let saved = config::get_config(&db).await.unwrap().unwrap();
     assert_ne!(saved.sonarr_api_key, "seerr");
+}
+
+#[tokio::test]
+async fn the_legacy_client_passwords_are_cleared_once_after_the_seed() {
+    let db = crate::test_support::in_memory_pool().await;
+    let cfg = config::Config {
+        qbit_pass: "old-qbit".into(),
+        deluge_password: "old-deluge".into(),
+        ..Default::default()
+    };
+    config::save_config(&db, &cfg).await.unwrap();
+    sqlx::query("DELETE FROM schema_migrations WHERE id = 'legacy_client_passwords_cleared_v1'")
+        .execute(&db)
+        .await
+        .unwrap();
+    crate::models::migrate(&db).await.unwrap();
+    let saved = config::get_config(&db).await.unwrap().unwrap();
+    assert_eq!(
+        (saved.qbit_pass.as_str(), saved.deluge_password.as_str()),
+        ("", "")
+    );
+    // Once: a later value (a restore, a hand edit) is not touched again.
+    sqlx::query("UPDATE config SET qbit_pass = 'later'")
+        .execute(&db)
+        .await
+        .unwrap();
+    crate::models::migrate(&db).await.unwrap();
+    assert_eq!(
+        config::get_config(&db).await.unwrap().unwrap().qbit_pass,
+        "later"
+    );
+}
+
+#[tokio::test]
+async fn the_integrations_tab_never_carries_a_saved_credential() {
+    // The Jellyfin key and the legacy single-slot passwords (hidden
+    // inputs) used to be in the page for anything that could read it.
+    let db = crate::test_support::in_memory_pool().await;
+    let cfg = config::Config {
+        jellyfin_url: "http://jelly:8096".into(),
+        jellyfin_api_key: "jf-secret-321".into(),
+        qbit_pass: "legacy-secret-654".into(),
+        rtorrent_password: "legacy-secret-987".into(),
+        ..Default::default()
+    };
+    config::save_config(&db, &cfg).await.unwrap();
+    let state = crate::test_support::build_test_app_state(db, None);
+    let page = build_settings_template(
+        &state,
+        Some("integrations".into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .render()
+    .unwrap();
+    for secret in ["jf-secret-321", "legacy-secret-654", "legacy-secret-987"] {
+        assert!(!page.contains(secret), "{secret} reached the page");
+    }
+    assert!(page.contains(crate::handlers::secret_field::KEEP_PLACEHOLDER));
 }
