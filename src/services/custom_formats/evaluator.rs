@@ -21,18 +21,23 @@ use super::{CompiledCustomFormat, CompiledSpec, EvalContext, Source, SpecKind, W
 
 /// Raw per-spec match, pre-negate. Mirrors Sonarr's
 /// `IsSatisfiedByWithoutNegate`.
-fn evaluate_spec_kernel(spec: &CompiledSpec, ctx: &EvalContext) -> bool {
-    match &spec.kind {
+///
+/// `None` when the spec couldn't be evaluated (a regex hit fancy-regex's
+/// backtrack limit): neither a match nor a non-match.
+fn evaluate_spec_kernel(spec: &CompiledSpec, ctx: &EvalContext) -> Option<bool> {
+    Some(match &spec.kind {
         // fancy-regex returns `Result<bool, Error>` because backtracking
         // can hit a step limit on pathological inputs. On error (step
-        // limit exceeded, runtime failure) treat as non-match — a
+        // limit exceeded, runtime failure) the spec is unknown, which
+        // `evaluate_spec` reads as unmatched whatever its negate: a
         // Sonarr-compat CF should not be able to brick scoring for an
-        // entire search just because one spec timed out.
-        SpecKind::ReleaseTitle { regex } => regex.is_match(&ctx.result.title).unwrap_or(false),
+        // entire search just because one spec timed out, and a negated
+        // spec must not turn the timeout into a match.
+        SpecKind::ReleaseTitle { regex } => regex.is_match(&ctx.result.title).ok()?,
         // `SearchResult::group` is a bare String. Empty means the Nyaa
         // scraper didn't find a `[Group]` prefix; an empty-string regex
         // still matches it, which is consistent with Sonarr's behavior.
-        SpecKind::ReleaseGroup { regex } => regex.is_match(&ctx.result.group).unwrap_or(false),
+        SpecKind::ReleaseGroup { regex } => regex.is_match(&ctx.result.group).ok()?,
         SpecKind::Size {
             min_bytes,
             max_bytes,
@@ -76,15 +81,17 @@ fn evaluate_spec_kernel(spec: &CompiledSpec, ctx: &EvalContext) -> bool {
                     .seadex_hashes
                     .contains(&ctx.result.info_hash.to_ascii_lowercase())
         }
-    }
+    })
 }
 
 /// Per-spec match with Sonarr's `Negate` applied. This is the input to
 /// the group-by-type DidMatch rule in [`evaluate`] — never call the
 /// kernel directly from there.
 fn evaluate_spec(spec: &CompiledSpec, ctx: &EvalContext) -> bool {
-    let raw = evaluate_spec_kernel(spec, ctx);
-    if spec.negate { !raw } else { raw }
+    match evaluate_spec_kernel(spec, ctx) {
+        Some(raw) => raw != spec.negate,
+        None => false,
+    }
 }
 
 /// Does this CF match the candidate?
@@ -236,6 +243,35 @@ mod tests {
     use super::{evaluate, total_cf_score, total_cf_score_with_breakdown};
 
     // ── evaluate_spec_kernel / evaluate_spec ─────────────────────────────
+
+    #[test]
+    fn a_regex_that_errors_is_unmatched_even_when_negated() {
+        // A backtrack-limit error read as "no match", which a negated
+        // spec flipped into a match: the CF's score applied to a release
+        // nobody had checked.
+        let regex = fancy_regex::RegexBuilder::new(r"(?=a)(a|aa)*c")
+            .backtrack_limit(10)
+            .build()
+            .unwrap();
+        let hit = candidate("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "G", 0, "");
+        assert!(
+            regex.is_match(&hit.title).is_err(),
+            "the fixture must error"
+        );
+        let cf = CompiledCustomFormat {
+            id: 1,
+            name: "not c".into(),
+            score: 100,
+            specs: vec![super::super::CompiledSpec {
+                kind: super::super::SpecKind::ReleaseTitle { regex },
+                negate: true,
+                required: false,
+            }],
+        };
+        let hashes = HashSet::new();
+        let cls = classification(Source::Web, Resolution::R1080p);
+        assert!(!evaluate(&cf, &ctx(&hit, &cls, &hashes)));
+    }
 
     #[test]
     fn release_title_kernel_matches_case_insensitive() {
