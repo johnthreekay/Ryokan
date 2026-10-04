@@ -1,5 +1,10 @@
+# Base images are pinned by digest (multi-arch index, so amd64 and
+# arm64 alike); the tag only says what the digest is. Dependabot's
+# docker updates bump the digest. A tag alone is whatever the registry
+# serves at build time.
+
 # Build stage
-FROM rust:1-trixie AS builder
+FROM rust:1-trixie@sha256:5d05167b28cef0fa3a6c781cd77949386848191f3382e82cf53bd1277a47a98f AS builder
 
 WORKDIR /app
 
@@ -33,7 +38,7 @@ RUN touch src/main.rs && cargo build --release
 # that release tarball, after checking its .asc signature against
 # FFmpeg's release key (https://ffmpeg.org/download.html#releases).
 # A new importable extension needs its demuxer added to the list.
-FROM debian:trixie-slim AS ffprobe
+FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS ffprobe
 
 ARG FFMPEG_VERSION=9.0.2
 ARG FFMPEG_SHA256=8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
@@ -66,7 +71,7 @@ RUN ./configure \
     && ./ffprobe -hide_banner -version > /dev/null
 
 # Runtime stage
-FROM debian:trixie-slim
+FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 
 # ca-certificates: outbound HTTPS to AniList / Jikan / Kitsu / Nyaa.
 # curl:            used by the compose healthcheck.
