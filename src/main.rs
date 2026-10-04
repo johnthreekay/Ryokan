@@ -2066,8 +2066,13 @@ async fn main() {
                             }
                             _ => {}
                         }
+                        // Login devices unused for 400 days (`models::login_device`).
+                        if let Err(e) = models::login_device::cleanup(&cleanup_db).await {
+                            cleanup_errors.push(format!("login devices: {}", e));
+                            tracing::error!("Login device cleanup failed: {}", e);
+                        }
                         // Prune idle LOGIN_FAILURES entries. The per-request sweep
-                        // in `login_check` only touches keys actively being hit,
+                        // in `login_attempt` only touches keys actively being hit,
                         // so IPs / usernames that failed once and then went quiet
                         // would linger until the process restarts. Hourly global
                         // sweep keeps the map bounded.

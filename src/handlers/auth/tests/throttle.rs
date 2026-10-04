@@ -204,3 +204,128 @@ fn sweep_login_failures_preserves_partial_buckets() {
         "sweep should prune only the stale entry, keeping the fresh one"
     );
 }
+
+// ─── Reservation, bounded keys, device cookies ────────────────────
+
+#[test]
+fn login_attempt_counts_each_attempt_as_it_starts() {
+    // A burst of parallel logins used to pass the check before any
+    // failure was recorded (the record came after bcrypt). Each attempt
+    // now reserves its slot under the lock.
+    let key = "test:reserve:burst";
+    login_clear(key);
+    let tiers: Vec<LoginCheck> = (0..LOGIN_MAX_FAILURES + 2)
+        .map(|_| crate::handlers::auth::login_attempt(key))
+        .collect();
+    assert!(
+        tiers[..LOGIN_MAX_FAILURES]
+            .iter()
+            .all(|t| *t == LoginCheck::Allow)
+    );
+    assert_eq!(tiers[LOGIN_MAX_FAILURES], LoginCheck::SoftThrottled);
+    login_clear(key);
+}
+
+#[test]
+fn login_attempt_stops_growing_a_bucket_at_the_hard_cap() {
+    let key = "test:reserve:cap";
+    login_clear(key);
+    for _ in 0..LOGIN_HARD_CAP * 3 {
+        crate::handlers::auth::login_attempt(key);
+    }
+    assert_eq!(login_failure_count_for_test(key), LOGIN_HARD_CAP);
+    login_clear(key);
+}
+
+#[test]
+fn the_username_bucket_is_a_fixed_size_whatever_the_username() {
+    let long = "a".repeat(2 << 20);
+    let key = crate::handlers::auth::user_bucket_key(&long);
+    assert_eq!(key.len(), 2 + 64, "u: plus a SHA-256");
+    assert_eq!(
+        crate::handlers::auth::user_bucket_key(" Admin "),
+        crate::handlers::auth::user_bucket_key("admin"),
+        "trimmed and case-folded like the lookup"
+    );
+}
+
+async fn login(
+    state: crate::AppState,
+    peer: &str,
+    device: Option<&str>,
+    password: &str,
+) -> axum::response::Response {
+    let mut headers = axum::http::HeaderMap::new();
+    if let Some(token) = device {
+        headers.insert(
+            axum::http::header::COOKIE,
+            format!("ryokan_device={token}").parse().unwrap(),
+        );
+    }
+    crate::handlers::auth::login_submit(
+        axum::extract::State(state),
+        axum::extract::ConnectInfo(peer.parse().unwrap()),
+        headers,
+        axum::Form(crate::handlers::auth::LoginForm {
+            username: "lockout-admin".into(),
+            password: password.into(),
+        }),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn someone_elses_failed_logins_do_not_lock_out_a_known_device() {
+    let db = crate::test_support::in_memory_pool().await;
+    let user_id = crate::models::user::create_user(&db, "lockout-admin", "correct-horse-1")
+        .await
+        .unwrap();
+    let device = crate::models::login_device::create(&db, user_id)
+        .await
+        .unwrap();
+    let state = crate::test_support::build_test_app_state(db, None);
+
+    // Someone else fails as the admin until the username is throttled.
+    for _ in 0..=LOGIN_MAX_FAILURES {
+        login(state.clone(), "203.0.113.7:5000", None, "wrong").await;
+    }
+    // A browser that never logged in is refused even with the password...
+    let stranger = login(state.clone(), "198.51.100.9:5000", None, "correct-horse-1").await;
+    assert_eq!(
+        stranger.status(),
+        axum::http::StatusCode::OK,
+        "throttled page"
+    );
+    // ...the admin's own browser is not.
+    let admin = login(
+        state.clone(),
+        "198.51.100.9:5000",
+        Some(&device),
+        "correct-horse-1",
+    )
+    .await;
+    assert_eq!(admin.status(), axum::http::StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn a_first_login_from_a_browser_sets_the_device_cookie() {
+    let db = crate::test_support::in_memory_pool().await;
+    crate::models::user::create_user(&db, "lockout-admin", "correct-horse-1")
+        .await
+        .unwrap();
+    let state = crate::test_support::build_test_app_state(db, None);
+    let response = login(state, "198.51.100.10:5000", None, "correct-horse-1").await;
+    assert_eq!(response.status(), axum::http::StatusCode::SEE_OTHER);
+    let cookies: Vec<String> = response
+        .headers()
+        .get_all(axum::http::header::SET_COOKIE)
+        .iter()
+        .map(|v| v.to_str().unwrap().to_string())
+        .collect();
+    assert!(
+        cookies
+            .iter()
+            .any(|c| c.starts_with("ryokan_device=") && c.contains("HttpOnly")),
+        "{cookies:?}"
+    );
+}

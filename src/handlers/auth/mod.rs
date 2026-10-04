@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use crate::AppState;
 use crate::models::log::LogCategory;
-use crate::models::{config, session, user};
+use crate::models::{config, login_device, session, user};
 use crate::services::logger;
 
 // ---------- Login rate limiting ----------
@@ -60,6 +60,7 @@ pub(crate) enum LoginCheck {
 /// entries for `key` as a side effect, and drops the map entry entirely
 /// when its Vec empties out so rotated usernames / spoofed X-F-F values
 /// can't grow LOGIN_FAILURES unboundedly (one idle key per probe forever).
+#[cfg(test)]
 pub(crate) fn login_check(key: &str) -> LoginCheck {
     let mut guard = LOGIN_FAILURES.lock().unwrap();
     let cutoff = Instant::now() - LOGIN_WINDOW;
@@ -71,6 +72,30 @@ pub(crate) fn login_check(key: &str) -> LoginCheck {
     if empty {
         guard.remove(key);
     }
+    classify_login_count(count)
+}
+
+/// Count an attempt against `key` as it starts, and classify it, in one
+/// critical section. The handler used to check first and record the
+/// failure only after the ~50 ms bcrypt verify, so a burst of parallel
+/// requests all passed the check before any failure landed and each got
+/// a real verdict: hundreds of guesses a minute instead of five. A
+/// success calls [`login_clear`], so the reservation only sticks for
+/// failures. Past the hard cap the bucket stops growing.
+pub(crate) fn login_attempt(key: &str) -> LoginCheck {
+    let mut guard = LOGIN_FAILURES.lock().unwrap();
+    let cutoff = Instant::now() - LOGIN_WINDOW;
+    let entry = guard.entry(key.to_string()).or_default();
+    entry.retain(|t| *t > cutoff);
+    let count = entry.len();
+    if count < LOGIN_HARD_CAP {
+        entry.push(Instant::now());
+    }
+    classify_login_count(count)
+}
+
+/// The tier for a bucket that already holds `count` attempts.
+fn classify_login_count(count: usize) -> LoginCheck {
     if count >= LOGIN_HARD_CAP {
         LoginCheck::HardThrottled
     } else if count >= LOGIN_MAX_FAILURES {
@@ -95,6 +120,7 @@ pub fn sweep_login_failures() {
 }
 
 /// Record a failed login attempt against `key`.
+#[cfg(test)]
 pub(crate) fn login_record_failure(key: &str) {
     let mut guard = LOGIN_FAILURES.lock().unwrap();
     let entry = guard.entry(key.to_string()).or_default();
@@ -271,6 +297,56 @@ fn get_session_token(req: &Request<Body>) -> Option<String> {
 /// is ignored (any client could send it, and a `Secure` cookie handed out
 /// over plain HTTP is never sent back, which locks the user out).
 /// `RYOKAN_COOKIE_SECURE` forces it on for proxies that omit the header.
+/// The value of cookie `name` in the request's `Cookie` header.
+fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    let header = headers.get(header::COOKIE)?.to_str().ok()?;
+    header
+        .split(';')
+        .find_map(|pair| pair.trim().strip_prefix(name)?.strip_prefix('='))
+}
+
+/// The per-username throttle bucket. Hashed, so each username costs the
+/// map a fixed 66 bytes: the key used to be the whole submitted username
+/// (anything up to the 2 MB form limit), kept for up to an hour, which
+/// let unauthenticated requests grow the map by hundreds of MB.
+fn user_bucket_key(username: &str) -> String {
+    use sha2::Digest;
+    let normalized = username.trim().to_ascii_lowercase();
+    format!(
+        "u:{}",
+        hex::encode(sha2::Sha256::digest(normalized.as_bytes()))
+    )
+}
+
+/// Mint a device for `user_id` and return its `Set-Cookie` value, or
+/// `None` (logged) when the insert fails; the login itself still works.
+async fn new_device_cookie(
+    db: &sqlx::SqlitePool,
+    user_id: i64,
+    headers: &HeaderMap,
+) -> Option<String> {
+    match login_device::create(db, user_id).await {
+        Ok(token) => {
+            let secure = if cookie_secure_for(headers) {
+                "; Secure"
+            } else {
+                ""
+            };
+            Some(format!(
+                "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}",
+                login_device::COOKIE,
+                token,
+                login_device::MAX_AGE_DAYS * 86_400,
+                secure
+            ))
+        }
+        Err(e) => {
+            tracing::warn!("could not record the login device: {e}");
+            None
+        }
+    }
+}
+
 fn cookie_secure_for(headers: &HeaderMap) -> bool {
     cookie_secure_for_with(headers, *COOKIE_SECURE, *TRUST_PROXY_HEADERS)
 }
@@ -659,10 +735,14 @@ pub async fn setup_submit(
                 .await
                 .unwrap_or_default();
 
-            Response::builder()
+            let mut response = Response::builder()
                 .status(StatusCode::SEE_OTHER)
                 .header(header::LOCATION, "/")
-                .header(header::SET_COOKIE, set_session_cookie(&token, &headers))
+                .header(header::SET_COOKIE, set_session_cookie(&token, &headers));
+            if let Some(device) = new_device_cookie(&state.db, user_id, &headers).await {
+                response = response.header(header::SET_COOKIE, device);
+            }
+            response
                 .body(Body::empty())
                 .expect("setup-redirect response uses only static headers, should always build")
                 .into_response()
@@ -712,9 +792,23 @@ pub async fn login_submit(
     // Resolve the bucket keys up front so we always rate-limit, even when
     // the incoming form has an empty username.
     let ip = client_ip_from_request(&headers, Some(peer_addr));
-    let ip_key = format!("ip:{}", ip);
-    let user_key = format!("u:{}", form.username.trim().to_ascii_lowercase());
+    let ip_key = format!("ip:{}", ip.chars().take(64).collect::<String>());
+    let user_key = user_bucket_key(&form.username);
     let safe_username = sanitize_for_log(&form.username);
+
+    // A browser that has logged in before is throttled on its own
+    // bucket rather than the username's and the IP's, so someone else's
+    // failed attempts can't lock it out (`models::login_device`).
+    let known_device = match cookie_value(&headers, login_device::COOKIE) {
+        Some(token) if login_device::is_known(&state.db, token).await => {
+            Some(format!("d:{}", login_device::hash(token)))
+        }
+        _ => None,
+    };
+    let buckets: Vec<String> = match &known_device {
+        Some(device_key) => vec![device_key.clone()],
+        None => vec![user_key, ip_key],
+    };
 
     // Pre-check: figure out which throttle tier we're in.
     //
@@ -731,13 +825,12 @@ pub async fn login_submit(
     //   keep burning 50 ms of CPU per attempt forever. We still sleep a
     //   randomized ~30–80 ms before responding so the fast-return is not
     //   a crisp signal.
-    let user_tier = login_check(&user_key);
-    let ip_tier = login_check(&ip_key);
-    let hard_throttled =
-        user_tier == LoginCheck::HardThrottled || ip_tier == LoginCheck::HardThrottled;
-    let rate_limited = hard_throttled
-        || user_tier == LoginCheck::SoftThrottled
-        || ip_tier == LoginCheck::SoftThrottled;
+    //
+    // Every attempt is counted as it starts (`login_attempt`); a success
+    // clears its buckets below.
+    let tiers: Vec<LoginCheck> = buckets.iter().map(|key| login_attempt(key)).collect();
+    let hard_throttled = tiers.contains(&LoginCheck::HardThrottled);
+    let rate_limited = tiers.iter().any(|tier| *tier != LoginCheck::Allow);
 
     // Run verify_user only when we're under the hard cap. Under soft
     // throttling we still pay bcrypt to preserve the equalized-timing
@@ -781,8 +874,9 @@ pub async fn login_submit(
         Ok(Some(u)) => {
             // Successful login — clear the counters so an honest user who
             // mistyped a few times isn't punished for their own typos.
-            login_clear(&user_key);
-            login_clear(&ip_key);
+            for key in &buckets {
+                login_clear(key);
+            }
             logger::info(
                 &state.db,
                 LogCategory::Auth,
@@ -794,17 +888,21 @@ pub async fn login_submit(
                 .await
                 .unwrap_or_default();
 
-            Response::builder()
+            let mut response = Response::builder()
                 .status(StatusCode::SEE_OTHER)
                 .header(header::LOCATION, "/")
-                .header(header::SET_COOKIE, set_session_cookie(&token, &headers))
+                .header(header::SET_COOKIE, set_session_cookie(&token, &headers));
+            if known_device.is_none()
+                && let Some(device) = new_device_cookie(&state.db, u.id, &headers).await
+            {
+                response = response.header(header::SET_COOKIE, device);
+            }
+            response
                 .body(Body::empty())
                 .expect("login-redirect response uses only static headers, should always build")
                 .into_response()
         }
         _ => {
-            login_record_failure(&user_key);
-            login_record_failure(&ip_key);
             logger::warn(
                 &state.db,
                 LogCategory::Auth,
