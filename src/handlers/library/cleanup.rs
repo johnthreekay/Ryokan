@@ -174,6 +174,17 @@ pub async fn cleanup_series_files(
             report.torrents_removed += 1;
             continue;
         }
+        // Every hash the series ever had used to be deleted with its
+        // data, including one another series now downloads (a cancelled
+        // grab here, re-grabbed there) or a batch that also feeds a
+        // sibling. That download is the other series' to remove.
+        if grabbed_torrents::hash_in_use_elsewhere(&state.db, hash, series_id, grab_id).await {
+            tracing::info!(
+                grab_id,
+                "series delete: leaving torrent {hash} in the client, another series uses it"
+            );
+            continue;
+        }
         let Some(client) = state.resolve_grab_client(dc_id, hash).await else {
             report
                 .torrent_failures

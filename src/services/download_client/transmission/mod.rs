@@ -315,10 +315,12 @@ impl DownloadClient for TransmissionClient {
     }
 
     async fn add_torrent(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
         self.add_torrent_inner(url, info_hash, false).await
     }
 
     async fn add_torrent_paused(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
         // Same leaky abstraction qBit 5.x and Deluge have: a torrent
         // added with `paused=true` doesn't initiate peer handshakes,
         // so libtorrent's metadata-exchange extension never runs and
@@ -390,6 +392,7 @@ impl DownloadClient for TransmissionClient {
         info_hash: &str,
         pick: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
     ) -> Result<SelectiveOutcome, String> {
+        super::check_release_url(url)?;
         if info_hash.is_empty() {
             return Err("Transmission selective download requires a known info hash".into());
         }

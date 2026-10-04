@@ -229,3 +229,12 @@ async fn duplicate_add_also_sends_torrent_set_labels_to_adopt_existing_torrent()
         .await;
     client.add_torrent(MAGNET, HASH).await.expect("add");
 }
+
+#[tokio::test]
+async fn refuses_a_non_url_release_before_any_request() {
+    let (server, client) = super::fixture::new_fixture().await;
+    crate::services::download_client::test_helpers::assert_refuses_non_url_releases(
+        &client, &server,
+    )
+    .await;
+}

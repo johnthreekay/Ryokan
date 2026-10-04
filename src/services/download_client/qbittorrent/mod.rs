@@ -271,6 +271,7 @@ impl QbitClient {
         file_ids: &[usize],
         priority: i32,
     ) -> Result<(), String> {
+        super::check_info_hash(hash)?;
         if file_ids.is_empty() {
             return Ok(());
         }
@@ -328,12 +329,27 @@ impl QbitClient {
         }
     }
 
+    /// Whether qBittorrent holds `info_hash` (any category). A lookup
+    /// that fails reads as "no", leaving the add to answer for itself.
+    async fn has_torrent(&self, info_hash: &str) -> bool {
+        let hash_lc = info_hash.to_ascii_lowercase();
+        let lookup = format!("/api/v2/torrents/info?hashes={hash_lc}");
+        match self.do_get(&lookup).await {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<Vec<QbitRawTorrent>>()
+                .await
+                .is_ok_and(|raw| raw.iter().any(|t| t.hash.eq_ignore_ascii_case(&hash_lc))),
+            _ => false,
+        }
+    }
+
     /// Raw `/torrents/files?hash=X` fetch. qBit 5.x returns **404
     /// with `"Not Found"` body** for this endpoint while the torrent
     /// is still fetching metadata — not an empty JSON array. We
     /// translate 404 → `Ok(vec![])` so the wait loop's "empty →
     /// retry" arm drives the poll correctly.
     async fn get_torrent_files_raw(&self, hash: &str) -> Result<Vec<QbitRawFile>, String> {
+        super::check_info_hash(hash)?;
         let endpoint = format!("/api/v2/torrents/files?hash={}", hash);
         let resp = self.do_get(&endpoint).await?;
         if resp.status() == StatusCode::NOT_FOUND {
@@ -381,6 +397,18 @@ impl DownloadClient for QbitClient {
     }
 
     async fn add_torrent(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
+        if !info_hash.is_empty() {
+            super::check_info_hash(info_hash)?;
+            // qBittorrent 4.x answers `Ok.` to a duplicate add as well, so
+            // the add's own answer can't say whether this call created the
+            // torrent. The file picker took that `Ok.` to mean "ours" and
+            // its cancel deleted the torrent with its data, which could be
+            // another grab's download. Ask first.
+            if self.has_torrent(info_hash).await {
+                return Ok(AddOutcome::AlreadyPresent);
+            }
+        }
         let form = [("urls", url), ("category", &self.category)];
         let resp = self.do_post_form("/api/v2/torrents/add", &form).await?;
 
@@ -410,16 +438,8 @@ impl DownloadClient for QbitClient {
         // normally. Missing → the magnet really was rejected; surface
         // the error so auto-search backs off.
         if body.trim() == "Fails." {
-            if !info_hash.is_empty() {
-                let hash_lc = info_hash.to_ascii_lowercase();
-                let lookup = format!("/api/v2/torrents/info?hashes={hash_lc}");
-                if let Ok(resp) = self.do_get(&lookup).await
-                    && resp.status().is_success()
-                    && let Ok(raw) = resp.json::<Vec<QbitRawTorrent>>().await
-                    && raw.iter().any(|t| t.hash.eq_ignore_ascii_case(&hash_lc))
-                {
-                    return Ok(AddOutcome::AlreadyPresent);
-                }
+            if !info_hash.is_empty() && self.has_torrent(info_hash).await {
+                return Ok(AddOutcome::AlreadyPresent);
             }
             return Err(format!(
                 "qbit add rejected url={url}: qBit returned 'Fails.'"
@@ -458,6 +478,10 @@ impl DownloadClient for QbitClient {
     /// timeout, grab with defaults" — matching the plan doc's
     /// decision #1 two-button dialog.
     async fn add_torrent_paused(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
+        if !info_hash.is_empty() {
+            super::check_info_hash(info_hash)?;
+        }
         if info_hash.is_empty() {
             return Err("qBit paused add requires a pre-computed info hash".into());
         }
@@ -534,6 +558,7 @@ impl DownloadClient for QbitClient {
         info_hash: &str,
         pick: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
     ) -> Result<SelectiveOutcome, String> {
+        super::check_release_url(url)?;
         if info_hash.is_empty() {
             return Err("selective download requires a known info hash".into());
         }
@@ -644,6 +669,7 @@ impl DownloadClient for QbitClient {
     }
 
     async fn get_files(&self, info_hash: &str) -> Result<Vec<DownloadFile>, String> {
+        super::check_info_hash(info_hash)?;
         let raw = self.get_torrent_files_raw(info_hash).await?;
         Ok(raw
             .into_iter()
@@ -660,6 +686,10 @@ impl DownloadClient for QbitClient {
     /// the new name first and fall back to the old one so both
     /// generations work without a version probe.
     async fn pause(&self, info_hash: &str) -> Result<(), String> {
+        if info_hash.is_empty() {
+            return Ok(());
+        }
+        super::check_info_hash(info_hash)?;
         let form = [("hashes", info_hash)];
         let resp = self.do_post_form("/api/v2/torrents/stop", &form).await?;
         if resp.status().is_success() {
@@ -679,6 +709,10 @@ impl DownloadClient for QbitClient {
     /// qBit 5.x renamed `/torrents/resume` to `/torrents/start`.
     /// Same dual-path strategy as pause.
     async fn resume(&self, info_hash: &str) -> Result<(), String> {
+        if info_hash.is_empty() {
+            return Ok(());
+        }
+        super::check_info_hash(info_hash)?;
         let form = [("hashes", info_hash)];
         let resp = self.do_post_form("/api/v2/torrents/start", &form).await?;
         if resp.status().is_success() {
@@ -696,6 +730,10 @@ impl DownloadClient for QbitClient {
     }
 
     async fn delete(&self, info_hash: &str, delete_files: bool) -> Result<(), String> {
+        if info_hash.is_empty() {
+            return Ok(());
+        }
+        super::check_info_hash(info_hash)?;
         let delete_str = if delete_files { "true" } else { "false" };
         let form = [("hashes", info_hash), ("deleteFiles", delete_str)];
         let resp = self.do_post_form("/api/v2/torrents/delete", &form).await?;
@@ -742,6 +780,10 @@ impl DownloadClient for QbitClient {
     /// `inactiveSeedingTimeLimit` isn't in the trait; `-2` keeps the
     /// global inactivity limit.
     async fn set_seed_rules(&self, info_hash: &str, rules: super::SeedRules) -> Result<(), String> {
+        if info_hash.is_empty() {
+            return Ok(());
+        }
+        super::check_info_hash(info_hash)?;
         let ratio = rules
             .ratio
             .map(|r| r.to_string())

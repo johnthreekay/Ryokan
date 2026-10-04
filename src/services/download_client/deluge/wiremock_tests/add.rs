@@ -238,3 +238,12 @@ async fn add_torrent_paused_adds_running_then_skips_all_files_and_pauses() {
         .await
         .expect("add paused");
 }
+
+#[tokio::test]
+async fn refuses_a_non_url_release_before_any_request() {
+    let (server, client) = super::fixture::new_fixture().await;
+    crate::services::download_client::test_helpers::assert_refuses_non_url_releases(
+        &client, &server,
+    )
+    .await;
+}

@@ -241,6 +241,21 @@ async fn require_download_client(
     ))
 }
 
+/// The response for a preview already in flight for this hash: its
+/// session, so a second tab or click joins it.
+fn in_flight_preview(existing: pending_grabs::PendingGrab) -> GrabPreviewCreated {
+    GrabPreviewCreated {
+        preview_id: existing.preview_id,
+        status: if !existing.error_message.is_empty() {
+            "error".to_string()
+        } else if existing.file_list_json.is_empty() {
+            "fetching_metadata".to_string()
+        } else {
+            "ready".to_string()
+        },
+    }
+}
+
 #[utoipa::path(
     post,
     path = "/api/grab/preview",
@@ -305,16 +320,7 @@ pub async fn grab_preview(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
     {
-        return Ok(Json(GrabPreviewCreated {
-            preview_id: existing.preview_id,
-            status: if !existing.error_message.is_empty() {
-                "error".to_string()
-            } else if existing.file_list_json.is_empty() {
-                "fetching_metadata".to_string()
-            } else {
-                "ready".to_string()
-            },
-        }));
+        return Ok(Json(in_flight_preview(existing)));
     }
 
     // Multi-client routing — preview locks the dispatch client at
@@ -350,14 +356,12 @@ pub async fn grab_preview(
     // because non-qBit impls return immediately (they don't wait
     // for metadata in `add_torrent_paused`), and qBit's in-impl
     // wait is bounded to 10s.
-    let outcome = match client.add_torrent_paused(&form.url, &info_hash).await {
-        Ok(v) => v,
-        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
-    };
-    let we_added = matches!(outcome, AddOutcome::Added);
-
+    //
+    // The row is reserved before the add, in one statement, so a second
+    // click or tab during the up-to-10 s add joins this session instead
+    // of making a second row (see `pending_grabs::reserve`).
     let preview_id = generate_preview_id();
-    pending_grabs::create(
+    let reserved = pending_grabs::reserve(
         &state.db,
         &preview_id,
         &info_hash,
@@ -365,11 +369,34 @@ pub async fn grab_preview(
         form.indexer_id,
         form.series_id,
         &metadata_json,
-        we_added,
         Some(dispatch_client_id),
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    if !reserved {
+        return match pending_grabs::get_by_hash(&state.db, &info_hash)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        {
+            Some(existing) => Ok(Json(in_flight_preview(existing))),
+            None => Err((
+                StatusCode::CONFLICT,
+                "Another preview of this release just finished; try again.".to_string(),
+            )),
+        };
+    }
+    let outcome = match client.add_torrent_paused(&form.url, &info_hash).await {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = pending_grabs::delete(&state.db, &preview_id).await;
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, e));
+        }
+    };
+    if matches!(outcome, AddOutcome::Added) {
+        pending_grabs::set_we_added(&state.db, &preview_id)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    }
 
     // Spawn the metadata-wait + file-list-persist. qBit already
     // blocked up to 10s inside add_torrent_paused above and may have

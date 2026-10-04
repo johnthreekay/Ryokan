@@ -91,7 +91,7 @@ async fn empty_torrent_name_returns_400() {
     let state = build_test_app_state(db, None);
     let app = autobrr_webhook_router(state);
 
-    let body = r#"{"torrent_name": "", "info_hash": "h", "magnet_uri": "m", "indexer": "Nyaa"}"#;
+    let body = r#"{"torrent_name": "", "info_hash": "aabbccddeeff00112233445566778899aabbccdd", "magnet_uri": "m", "indexer": "Nyaa"}"#;
     let (status, body) = post_payload(app, body).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("torrent_name"), "body: {body}");
@@ -106,7 +106,7 @@ async fn no_download_url_returns_400() {
     let state = build_test_app_state(db, None);
     let app = autobrr_webhook_router(state);
 
-    let body = r#"{"torrent_name": "Show", "info_hash": "h", "indexer": "Nyaa"}"#;
+    let body = r#"{"torrent_name": "Show", "info_hash": "aabbccddeeff00112233445566778899aabbccdd", "indexer": "Nyaa"}"#;
     let (status, body) = post_payload(app, body).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("magnet_uri") || body.contains("torrent_url"));
@@ -134,7 +134,7 @@ async fn unknown_indexer_skips_with_200() {
     let state = build_test_app_state(db, None);
     let app = autobrr_webhook_router(state);
 
-    let body = r#"{"torrent_name": "Show", "info_hash": "h", "magnet_uri": "magnet:m", "indexer": "UnknownIndexer"}"#;
+    let body = r#"{"torrent_name": "Show", "info_hash": "aabbccddeeff00112233445566778899aabbccdd", "magnet_uri": "magnet:m", "indexer": "UnknownIndexer"}"#;
     let (status, body) = post_payload(app, body).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("\"status\":\"skipped\""), "body: {body}");
@@ -152,7 +152,7 @@ async fn no_tracked_series_skips_with_200() {
     rebuild_indexer_cache(&state).await;
     let app = autobrr_webhook_router(state);
 
-    let body = r#"{"torrent_name": "Some Random Title", "info_hash": "h", "magnet_uri": "magnet:m", "indexer": "Nyaa"}"#;
+    let body = r#"{"torrent_name": "Some Random Title", "info_hash": "aabbccddeeff00112233445566778899aabbccdd", "magnet_uri": "magnet:m", "indexer": "Nyaa"}"#;
     let (status, body) = post_payload(app, body).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("\"status\":\"skipped\""), "body: {body}");
@@ -169,7 +169,7 @@ async fn duplicate_hash_skips_with_200() {
     let series_id = seed_series(&db).await;
     crate::models::grabbed_torrents::record_grab(
         &db,
-        "deadbeef00",
+        "aabbccddeeff00112233445566778899aabbccdd",
         "Test Show - 01",
         series_id,
         &[1],
@@ -181,7 +181,7 @@ async fn duplicate_hash_skips_with_200() {
     rebuild_indexer_cache(&state).await;
     let app = autobrr_webhook_router(state);
 
-    let body = r#"{"torrent_name": "Test Show - 01", "info_hash": "deadbeef00", "magnet_uri": "magnet:m", "indexer": "Nyaa"}"#;
+    let body = r#"{"torrent_name": "Test Show - 01", "info_hash": "aabbccddeeff00112233445566778899aabbccdd", "magnet_uri": "magnet:m", "indexer": "Nyaa"}"#;
     let (status, body) = post_payload(app, body).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("duplicate hash"), "body: {body}");
@@ -200,7 +200,7 @@ async fn blocklisted_hash_skips_with_200() {
     let series_id = seed_series(&db).await;
     let grab_id = crate::models::grabbed_torrents::record_grab(
         &db,
-        "deadbeef99",
+        "deadbeef99deadbeef99deadbeef99deadbeef99",
         "Test Show - 01",
         series_id,
         &[1],
@@ -216,7 +216,7 @@ async fn blocklisted_hash_skips_with_200() {
     rebuild_indexer_cache(&state).await;
     let app = autobrr_webhook_router(state);
 
-    let body = r#"{"torrent_name": "Test Show - 01", "info_hash": "deadbeef99", "magnet_uri": "magnet:m", "indexer": "Nyaa"}"#;
+    let body = r#"{"torrent_name": "Test Show - 01", "info_hash": "deadbeef99deadbeef99deadbeef99deadbeef99", "magnet_uri": "magnet:m", "indexer": "Nyaa"}"#;
     let (status, body) = post_payload(app, body).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("\"status\":\"skipped\""), "body: {body}");
@@ -236,8 +236,23 @@ async fn no_download_client_returns_503() {
     rebuild_indexer_cache(&state).await;
     let app = autobrr_webhook_router(state);
 
-    let body = r#"{"torrent_name": "Test Show - 01 [BD 1080p]", "info_hash": "feedface", "magnet_uri": "magnet:m", "indexer": "Nyaa"}"#;
+    let body = r#"{"torrent_name": "Test Show - 01 [BD 1080p]", "info_hash": "feedfacefeedfacefeedfacefeedfacefeedface", "magnet_uri": "magnet:m", "indexer": "Nyaa"}"#;
     let (status, body) = post_payload(app, body).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert!(body.contains("download client"), "body: {body}");
 }
+
+#[tokio::test]
+async fn an_info_hash_that_is_not_a_hash_returns_400() {
+    // qBittorrent reads `all` as every torrent; it must never be stored.
+    let db = in_memory_pool().await;
+    seed_autobrr_enabled(&db, KEY).await;
+    let state = build_test_app_state(db, None);
+    let app = autobrr_webhook_router(state);
+
+    let body = r#"{"torrent_name": "Test Show - 01", "info_hash": "all", "torrent_url": "https://tracker.example/t/1.torrent", "indexer": "Nyaa"}"#;
+    let (status, body) = post_payload(app, body).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("info_hash"), "body: {body}");
+}
+

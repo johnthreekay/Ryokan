@@ -231,3 +231,59 @@ fn build_inner(name: &str, with_name_file: bool) -> Option<(tempfile::TempDir, P
     );
     Some((tmp, torrent_path))
 }
+
+/// Release URLs every client must refuse before sending anything: local
+/// paths (Transmission's `filename` and rTorrent's `load.start_verbose`
+/// would read them on the client's machine), other schemes, and strings
+/// that aren't URLs at all.
+const NON_URL_RELEASES: &[&str] = &[
+    "file:///etc/passwd",
+    "/config/torrents/planted.torrent",
+    "ftp://tracker.example/x.torrent",
+    "javascript:alert(1)",
+    "not-a-url",
+    "",
+];
+
+/// Drive every trait add method with each of [`NON_URL_RELEASES`] and
+/// assert `check_release_url` refused it with no request reaching
+/// `server`.
+pub(crate) async fn assert_refuses_non_url_releases(
+    client: &dyn super::DownloadClient,
+    server: &wiremock::MockServer,
+) {
+    const HASH: &str = "aabbccddeeff00112233445566778899aabbccdd";
+    let sent = || async { server.received_requests().await.map_or(0, |r| r.len()) };
+    let before = sent().await;
+    for url in NON_URL_RELEASES {
+        let refused = |method: &str, err: Option<String>| {
+            let err = err.unwrap_or_else(|| panic!("{method} accepted {url:?}"));
+            assert!(
+                err.starts_with("add rejected url="),
+                "{method} {url:?}: {err}"
+            );
+        };
+        refused("add_torrent", client.add_torrent(url, HASH).await.err());
+        refused(
+            "add_torrent_paused",
+            client.add_torrent_paused(url, HASH).await.err(),
+        );
+        refused(
+            "add_torrent_returning_id",
+            client.add_torrent_returning_id(url, HASH).await.err(),
+        );
+        let mut pick = |_: &[String]| -> Option<Vec<usize>> { None };
+        refused(
+            "add_torrent_with_file_filter",
+            client
+                .add_torrent_with_file_filter(url, HASH, &mut pick)
+                .await
+                .err(),
+        );
+    }
+    assert_eq!(
+        sent().await,
+        before,
+        "a refused URL must not reach the client"
+    );
+}

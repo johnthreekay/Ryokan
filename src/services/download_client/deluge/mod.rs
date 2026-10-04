@@ -446,10 +446,12 @@ impl DownloadClient for DelugeClient {
     }
 
     async fn add_torrent(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
         self.add_torrent_inner(url, info_hash, false).await
     }
 
     async fn add_torrent_paused(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
         // Same leaky abstraction qBit 5.x has: Deluge's `add_paused=True`
         // stops the peer handshake, which in turn prevents the
         // libtorrent metadata-exchange extension from running — so a
@@ -529,6 +531,7 @@ impl DownloadClient for DelugeClient {
         info_hash: &str,
         pick: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
     ) -> Result<SelectiveOutcome, String> {
+        super::check_release_url(url)?;
         if info_hash.is_empty() {
             return Err("Deluge selective download requires a known info hash".into());
         }

@@ -227,7 +227,20 @@ pub async fn webhook_autobrr(
             "either magnet_uri or torrent_url is required",
         );
     };
-    let info_hash_lc = payload.info_hash.trim().to_ascii_lowercase();
+    // An empty hash is allowed (autobrr can't always know it); anything
+    // else has to be a real one. See `download_client::normalize_info_hash`.
+    let info_hash_lc = match payload.info_hash.trim() {
+        "" => String::new(),
+        raw => match crate::services::download_client::normalize_info_hash(raw) {
+            Some(hash) => hash,
+            None => {
+                return err_json(
+                    StatusCode::BAD_REQUEST,
+                    "info_hash must be a 40- or 64-character hex info-hash",
+                );
+            }
+        },
+    };
 
     // Dedup: skip if Ryokan already has this hash in flight or
     // imported. Same shape as the RSS dedup — autobrr can race

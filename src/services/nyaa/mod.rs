@@ -408,21 +408,15 @@ pub(crate) fn extract_hash(magnet: &str) -> String {
     let end = payload.find('&').unwrap_or(payload.len());
     let hash = &payload[..end];
 
+    // Anything that isn't a real hash comes back "" ("no hash"). This
+    // used to lowercase and return whatever followed `btih:`, so a feed
+    // link like `...?btih:all` stored the hash `all`, which qBittorrent
+    // reads as every torrent (see `download_client::normalize_info_hash`).
     match hash.len() {
-        40 => hash.to_ascii_lowercase(),
-        32 => match base32_decode_infohash(hash) {
-            Some(bytes) => hex::encode(bytes),
-            // Malformed 32-char string — not valid RFC 4648 base32.
-            // Fall through to lowercase so we return *something*
-            // rather than silently swallowing; callers that treat ""
-            // as "no hash" stay unaffected, and a lowercased garbage
-            // string is at least deterministic.
-            None => hash.to_ascii_lowercase(),
-        },
-        // Any other length is a malformed BTIH — not a valid
-        // info-hash. Lowercase fallthrough preserves the prior
-        // behaviour of returning *something* to downstream code.
-        _ => hash.to_ascii_lowercase(),
+        32 => base32_decode_infohash(hash)
+            .map(hex::encode)
+            .unwrap_or_default(),
+        _ => crate::services::download_client::normalize_info_hash(hash).unwrap_or_default(),
     }
 }
 

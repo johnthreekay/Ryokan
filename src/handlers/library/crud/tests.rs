@@ -1170,6 +1170,37 @@ mod remove_series_safety {
     }
 
     #[tokio::test]
+    async fn a_hash_another_series_uses_is_left_in_the_client() {
+        // Series A's grab of a batch was cancelled and the batch was
+        // re-grabbed under series B. Deleting A with files used to
+        // delete the hash with its data, destroying B's download.
+        let db = in_memory_pool().await;
+        let a = crate::test_support::seed_series(&db, 1101, "Show A").await;
+        let b = crate::test_support::seed_series(&db, 1102, "Show B").await;
+        crate::test_support::seed_grabbed_torrent(&db, a, "hash-shared", "batch", &[1]).await;
+        crate::test_support::seed_grabbed_torrent(&db, a, "hash-own", "a-only", &[2]).await;
+        crate::test_support::seed_grabbed_torrent(&db, b, "HASH-SHARED", "batch", &[1]).await;
+
+        let recorder = Arc::new(RecordingClient::default());
+        let client: Arc<dyn DownloadClient> = recorder.clone();
+        let state = build_test_app_state(db.clone(), Some(client));
+        let form = super::super::RemoveSeriesForm {
+            id: a,
+            delete_files: Some(true),
+            add_exclusion: None,
+        };
+        let _ = remove_series(State(state), AxumJson(form))
+            .await
+            .expect("handler ok");
+
+        assert_eq!(
+            *recorder.deletes.lock().unwrap(),
+            vec!["hash-own".to_string()],
+            "only the hash no other series uses is deleted"
+        );
+    }
+
+    #[tokio::test]
     async fn handles_zero_grabbed_torrents_without_dispatching() {
         // Pins line 313's `if !hashes.is_empty()` guard. With no grabs,
         // mutating `delete !` would still leave the for-loop a no-op

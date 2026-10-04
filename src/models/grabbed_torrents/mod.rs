@@ -486,9 +486,14 @@ pub async fn client_removed_at(db: &SqlitePool, id: i64) -> Option<String> {
     .flatten()
 }
 
+/// Only a `pending` grab becomes `imported`. A copy-mode import can run
+/// for minutes, and a user who cancels meanwhile marks the grab `removed`
+/// (and deletes its torrent); the unconditional UPDATE then flipped it
+/// back to `imported` when the copy finished.
 pub async fn mark_imported(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "UPDATE grabbed_torrents SET state = 'imported', imported_at = CURRENT_TIMESTAMP WHERE id = ?",
+        "UPDATE grabbed_torrents SET state = 'imported', imported_at = CURRENT_TIMESTAMP \
+          WHERE id = ? AND state = 'pending'",
     )
     .bind(id)
     .execute(db)
@@ -1325,6 +1330,33 @@ pub async fn remove(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
 /// stop seeding and tell qBittorrent to drop the data when the user
 /// removes a series from the library — without this, qBit keeps holding
 /// torrent state for a series Ryokan has already forgotten about.
+/// Whether deleting `hash` (series `series_id`'s grab `grab_id`) from
+/// the client would take another series' download with it: another
+/// series has a grab with that hash (this series' grab was cancelled
+/// and the release re-grabbed there), or the grab is a batch that also
+/// routes files to another series. A lookup error counts as "in use",
+/// so in doubt the data stays.
+pub async fn hash_in_use_elsewhere(
+    db: &SqlitePool,
+    hash: &str,
+    series_id: i64,
+    grab_id: i64,
+) -> bool {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT EXISTS(SELECT 1 FROM grabbed_torrents \
+                        WHERE hash = ? COLLATE NOCASE AND series_id != ?) \
+             OR EXISTS(SELECT 1 FROM grabbed_torrent_series \
+                        WHERE grab_id = ? AND series_id != ?)",
+    )
+    .bind(hash)
+    .bind(series_id)
+    .bind(grab_id)
+    .bind(series_id)
+    .fetch_one(db)
+    .await
+    .map_or(true, |in_use| in_use != 0)
+}
+
 pub async fn get_all_for_series(
     db: &SqlitePool,
     series_id: i64,

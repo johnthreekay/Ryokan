@@ -290,3 +290,28 @@ async fn add_returning_id_takes_first_nzo_id_when_multiple_returned() {
         .expect("multi-id response must still succeed");
     assert_eq!(id, "SABnzbd_nzo_first");
 }
+
+#[tokio::test]
+async fn refuses_a_non_url_release_before_any_request() {
+    let (server, client) = super::fixture::new_fixture().await;
+    crate::services::download_client::test_helpers::assert_refuses_non_url_releases(
+        &client, &server,
+    )
+    .await;
+    // SAB's inherent paused variant the picker calls directly.
+    let Err(err) = client
+        .add_torrent_paused_returning_id("file:///etc/passwd", "")
+        .await
+    else {
+        panic!("SAB's paused add accepted a file URL");
+    };
+    assert!(err.starts_with("add rejected url="), "{err}");
+    assert!(
+        server
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .is_empty(),
+        "a refused URL must not reach SABnzbd"
+    );
+}

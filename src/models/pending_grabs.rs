@@ -144,6 +144,62 @@ const SELECT_COLUMNS: &str = "preview_id, info_hash, client_kind, indexer_id, se
      created_at, heartbeat_at, file_list_json, release_metadata_json, \
      error_message, we_added_torrent, download_client_id, wanted_indices_json";
 
+/// [`create`] unless another preview for `info_hash` is in flight, as
+/// one statement. Returns whether this call got the row. The handler
+/// used to check [`get_by_hash`], then spend up to 10 s on the paused
+/// add, then insert: a second click or tab in that window made a second
+/// row, its heartbeat went unanswered, and the walkaway sweep committed
+/// it with every file wanted, overriding the subset the user picked.
+/// `we_added_torrent` starts false and is set by [`set_we_added`] once
+/// the add has answered.
+#[allow(clippy::too_many_arguments)]
+pub async fn reserve(
+    db: &SqlitePool,
+    preview_id: &str,
+    info_hash: &str,
+    client_kind: &str,
+    indexer_id: Option<i64>,
+    series_id: Option<i64>,
+    release_metadata_json: &str,
+    download_client_id: Option<i64>,
+) -> Result<bool, String> {
+    let now = now_unix();
+    let res = sqlx::query(
+        "INSERT INTO pending_grabs \
+         (preview_id, info_hash, client_kind, indexer_id, series_id, \
+          created_at, heartbeat_at, file_list_json, release_metadata_json, \
+          error_message, we_added_torrent, download_client_id, wanted_indices_json) \
+         SELECT ?, ?, ?, ?, ?, ?, ?, '', ?, '', 0, ?, '' \
+          WHERE NOT EXISTS (SELECT 1 FROM pending_grabs \
+                             WHERE info_hash = ? AND error_message = '')",
+    )
+    .bind(preview_id)
+    .bind(info_hash)
+    .bind(client_kind)
+    .bind(indexer_id)
+    .bind(series_id)
+    .bind(now)
+    .bind(now)
+    .bind(release_metadata_json)
+    .bind(download_client_id)
+    .bind(info_hash)
+    .execute(db)
+    .await
+    .map_err(|e| format!("failed to reserve pending grab: {}", e))?;
+    Ok(res.rows_affected() == 1)
+}
+
+/// Record that this preview's add created the torrent, so a cancel
+/// deletes it (see [`reserve`]).
+pub async fn set_we_added(db: &SqlitePool, preview_id: &str) -> Result<(), String> {
+    sqlx::query("UPDATE pending_grabs SET we_added_torrent = 1 WHERE preview_id = ?")
+        .bind(preview_id)
+        .execute(db)
+        .await
+        .map_err(|e| format!("failed to mark pending grab as ours: {}", e))?;
+    Ok(())
+}
+
 pub async fn get(db: &SqlitePool, preview_id: &str) -> Result<Option<PendingGrab>, String> {
     sqlx::query_as::<_, PendingGrab>(sqlx::AssertSqlSafe(format!(
         "SELECT {SELECT_COLUMNS} FROM pending_grabs WHERE preview_id = ?"
@@ -314,6 +370,31 @@ fn now_unix() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn only_one_preview_reserves_a_hash_at_a_time() {
+        let db = crate::test_support::in_memory_pool().await;
+        let hash = "aabbccddeeff00112233445566778899aabbccdd";
+        let reserve_as = |id: &'static str| {
+            let db = db.clone();
+            async move {
+                reserve(&db, id, hash, "qbittorrent", None, None, "{}", Some(1))
+                    .await
+                    .unwrap()
+            }
+        };
+        assert!(reserve_as("first").await);
+        assert!(
+            !reserve_as("second").await,
+            "a second click joins the first session"
+        );
+        assert!(!get(&db, "first").await.unwrap().unwrap().we_added_torrent);
+        // Once the first one failed, a fresh preview may start.
+        set_error(&db, "first", "metadata fetch failed")
+            .await
+            .unwrap();
+        assert!(reserve_as("third").await);
+    }
     use crate::test_support::in_memory_pool;
 
     #[tokio::test]

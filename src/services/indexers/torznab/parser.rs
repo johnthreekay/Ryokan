@@ -123,8 +123,10 @@ fn parse_item_block(
         })
         .and_then(|s| s.parse::<i32>().ok())
         .unwrap_or(0);
+    // Only a real hash is kept; see `download_client::normalize_info_hash`
+    // for what an indexer-supplied `all` used to do.
     let info_hash = attr("infohash")
-        .map(|s| s.to_ascii_lowercase())
+        .and_then(|s| crate::services::download_client::normalize_info_hash(&s))
         .unwrap_or_default();
     let magnet = attr("magneturl").unwrap_or_default();
 
@@ -606,6 +608,8 @@ fn parse_rfc2822_to_unix(s: &str) -> i64 {
             && (sign == '+' || sign == '-')
             && tz.len() >= 5
         {
+            // `get`, not `[1..3]`: a multi-byte character in an indexer's
+            // timezone (`+0é00`) put a byte offset inside it and panicked.
             let hh: i64 = tz.get(1..3).and_then(|v| v.parse().ok()).unwrap_or(0);
             let mm: i64 = tz.get(3..5).and_then(|v| v.parse().ok()).unwrap_or(0);
             let offset = (hh * 3600 + mm * 60) * if sign == '+' { -1 } else { 1 };
@@ -613,4 +617,45 @@ fn parse_rfc2822_to_unix(s: &str) -> i64 {
         }
     }
     unix
+}
+
+#[cfg(test)]
+mod info_hash_tests {
+    use super::*;
+
+    fn item_with_hash(hash: &str) -> String {
+        format!(
+            r#"<item><title>Show - 01</title><link>https://idx.example/dl/1</link>
+            <torznab:attr name="infohash" value="{hash}"/></item>"#
+        )
+    }
+
+    #[test]
+    fn an_infohash_that_is_not_a_hash_is_dropped() {
+        for bad in ["all", "ABC", "aabbccddeeff00112233445566778899aabbccdd|x"] {
+            let release = parse_item_block(&item_with_hash(bad), 1, 0, "idx");
+            assert_eq!(release.info_hash, "", "{bad}");
+        }
+        let release = parse_item_block(
+            &item_with_hash("AABBCCDDEEFF00112233445566778899AABBCCDD"),
+            1,
+            0,
+            "idx",
+        );
+        assert_eq!(
+            release.info_hash,
+            "aabbccddeeff00112233445566778899aabbccdd"
+        );
+    }
+
+    #[test]
+    fn a_non_ascii_timezone_does_not_panic() {
+        // Byte offsets inside `é` used to panic the RSS tick on every
+        // restart while the item stayed in the feed.
+        let base = parse_rfc2822_to_unix("Fri, 24 Apr 2026 18:32:01 +0000");
+        assert_eq!(
+            parse_rfc2822_to_unix("Fri, 24 Apr 2026 18:32:01 +0é00"),
+            base
+        );
+    }
 }

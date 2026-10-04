@@ -934,13 +934,20 @@ mod tests {
     }
 
     #[test]
-    fn extract_hash_malformed_base32_falls_back() {
+    fn extract_hash_malformed_base32_is_not_a_hash() {
         // 32-char payload that fails RFC 4648 decoding (contains '1',
-        // which is not in the base32 alphabet). Callers get a
-        // lowercased string rather than "", matching the defensive
-        // fallthrough behavior for other malformed inputs.
+        // which is not in the base32 alphabet). Not a hash, so "".
         let magnet = "magnet:?xt=urn:btih:11111111111111111111111111111111&dn=thing";
-        assert_eq!(extract_hash(magnet), "11111111111111111111111111111111");
+        assert_eq!(extract_hash(magnet), "");
+        // Strings qBittorrent would read as "every torrent" or a list,
+        // and 40 characters that aren't hex, are not hashes either.
+        for bad in [
+            "https://x.example/t.torrent?btih:all",
+            "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd|ffeeddccbbaa00112233445566778899aabbccdd",
+            "magnet:?xt=urn:btih:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        ] {
+            assert_eq!(extract_hash(bad), "", "{bad}");
+        }
     }
 
     #[test]

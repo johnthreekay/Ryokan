@@ -1021,3 +1021,26 @@ async fn mark_failed_with_reason_sets_state_and_reason() {
     assert!(is_blocklisted(&db, "stall2").await.unwrap());
     assert!(get_all_pending(&db).await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_grab_cancelled_during_the_import_stays_removed() {
+    // A copy-mode import runs for minutes; the user cancels meanwhile.
+    let db = crate::test_support::in_memory_pool().await;
+    let series_id = crate::test_support::seed_series(&db, 77, "Show").await;
+    let id = crate::test_support::seed_grabbed_torrent(
+        &db,
+        series_id,
+        "aabbccddeeff00112233445566778899aabbccdd",
+        "pack",
+        &[1],
+    )
+    .await;
+    mark_removed(&db, id).await.unwrap();
+    mark_imported(&db, id).await.unwrap();
+    let state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(state, "removed");
+}

@@ -37,7 +37,10 @@ async fn get_files_maps_priority_to_wanted_flag(
         .respond_with(ResponseTemplate::new(200).set_body_json(files_with_priority(priority)))
         .mount(&server)
         .await;
-    let files = client.get_files("abc").await.expect("get_files");
+    let files = client
+        .get_files("aabbccddeeff00112233445566778899aabbccdd")
+        .await
+        .expect("get_files");
     assert_eq!(files.len(), 1);
     assert_eq!(
         files[0].wanted, expected_wanted,
@@ -53,7 +56,10 @@ async fn get_files_preserves_other_fields_through_conversion() {
         .respond_with(ResponseTemplate::new(200).set_body_json(files_with_priority(1)))
         .mount(&server)
         .await;
-    let files = client.get_files("abc").await.expect("get_files");
+    let files = client
+        .get_files("aabbccddeeff00112233445566778899aabbccdd")
+        .await
+        .expect("get_files");
     assert_eq!(files[0].name, "file1.mkv");
     assert_eq!(files[0].size, 800_000_000);
     assert_eq!(files[0].progress, 1.0);
@@ -74,7 +80,10 @@ async fn get_files_missing_priority_defaults_to_wanted_true() {
         ])))
         .mount(&server)
         .await;
-    let files = client.get_files("abc").await.expect("get_files");
+    let files = client
+        .get_files("aabbccddeeff00112233445566778899aabbccdd")
+        .await
+        .expect("get_files");
     assert!(
         files[0].wanted,
         "missing priority field must default to wanted=true"
@@ -91,7 +100,10 @@ async fn get_files_empty_array_returns_empty_vec() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
         .mount(&server)
         .await;
-    let files = client.get_files("abc").await.expect("get_files");
+    let files = client
+        .get_files("aabbccddeeff00112233445566778899aabbccdd")
+        .await
+        .expect("get_files");
     assert!(files.is_empty());
 }
 
@@ -108,13 +120,15 @@ async fn set_file_wanted_true_sends_priority_1() {
     Mock::given(method("POST"))
         .and(path("/api/v2/torrents/filePrio"))
         .and(body_string_contains("priority=1"))
-        .and(body_string_contains("hash=abc"))
+        .and(body_string_contains(
+            "hash=aabbccddeeff00112233445566778899aabbccdd",
+        ))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)
         .mount(&server)
         .await;
     client
-        .set_file_wanted("abc", &[0, 1, 2], true)
+        .set_file_wanted("aabbccddeeff00112233445566778899aabbccdd", &[0, 1, 2], true)
         .await
         .expect("set_file_wanted true");
 }
@@ -125,13 +139,15 @@ async fn set_file_wanted_false_sends_priority_0() {
     Mock::given(method("POST"))
         .and(path("/api/v2/torrents/filePrio"))
         .and(body_string_contains("priority=0"))
-        .and(body_string_contains("hash=abc"))
+        .and(body_string_contains(
+            "hash=aabbccddeeff00112233445566778899aabbccdd",
+        ))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)
         .mount(&server)
         .await;
     client
-        .set_file_wanted("abc", &[0, 1], false)
+        .set_file_wanted("aabbccddeeff00112233445566778899aabbccdd", &[0, 1], false)
         .await
         .expect("set_file_wanted false");
 }
@@ -149,6 +165,8 @@ async fn set_file_wanted_empty_slice_is_noop_does_not_call_server() {
         .expect(0)
         .mount(&server)
         .await;
-    let result = client.set_file_wanted("abc", &[], true).await;
+    let result = client
+        .set_file_wanted("aabbccddeeff00112233445566778899aabbccdd", &[], true)
+        .await;
     assert!(result.is_ok());
 }

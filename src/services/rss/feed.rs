@@ -335,9 +335,10 @@ pub(super) fn parse_feed(xml: &str, source: RssSource) -> Vec<RssItem> {
         let magnet = decode_xml(&extract_tag(block, "nyaa:magneturi"))
             .trim()
             .to_string();
-        let info_hash = decode_xml(&extract_tag(block, "nyaa:infohash"))
-            .trim()
-            .to_lowercase();
+        let info_hash = crate::services::download_client::normalize_info_hash(&decode_xml(
+            &extract_tag(block, "nyaa:infohash"),
+        ))
+        .unwrap_or_default();
         let group = extract_group(&title);
         let resolution = extract_resolution(&title);
         let is_batch = detect_batch(&title);
@@ -931,7 +932,7 @@ mod parser_tests {
                 <guid>https://nyaa.si/view/1</guid>
                 <nyaa:downloadurl>https://nyaa.si/download/1.torrent</nyaa:downloadurl>
                 <nyaa:magneturi>magnet:?xt=urn:btih:abc</nyaa:magneturi>
-                <nyaa:infohash>ABC</nyaa:infohash>
+                <nyaa:infohash>ABCDEF0123ABCDEF0123ABCDEF0123ABCDEF0123</nyaa:infohash>
             </item>"#,
         );
         let items = parse_feed(&xml, RssSource::Nyaa);
@@ -946,7 +947,7 @@ mod parser_tests {
         assert_eq!(item.torrent, "https://nyaa.si/download/1.torrent");
         assert_eq!(item.magnet, "magnet:?xt=urn:btih:abc");
         // info_hash is lowercased even though the feed emitted uppercase.
-        assert_eq!(item.info_hash, "abc");
+        assert_eq!(item.info_hash, "abcdef0123abcdef0123abcdef0123abcdef0123");
         assert_eq!(item.group, "SubsPlease");
         assert_eq!(item.resolution, "1080");
         assert!(!item.is_batch);

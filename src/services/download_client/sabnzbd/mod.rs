@@ -356,6 +356,7 @@ impl DownloadClient for SabClient {
     }
 
     async fn add_torrent(&self, url: &str, _info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
         // BT-shape callers that don't read the returned id still need
         // a working add path. Drop the captured id; the caller's
         // `info_hash` was a synthetic one or empty — neither is
@@ -371,6 +372,7 @@ impl DownloadClient for SabClient {
         url: &str,
         _info_hash: &str,
     ) -> Result<(AddOutcome, String), String> {
+        super::check_release_url(url)?;
         // First-grab safety net: ensure the configured category
         // exists in SAB before issuing addurl. Without this, a user
         // who saved their SAB row in Settings without clicking Test
@@ -489,6 +491,7 @@ impl DownloadClient for SabClient {
     }
 
     async fn add_torrent_paused(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
         let (outcome, _id) = self.add_torrent_paused_returning_id(url, info_hash).await?;
         Ok(outcome)
     }
@@ -499,6 +502,7 @@ impl DownloadClient for SabClient {
         info_hash: &str,
         _pick: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
     ) -> Result<SelectiveOutcome, String> {
+        super::check_release_url(url)?;
         // SAB has no per-file API for in-flight downloads — file
         // selection is done at extraction time post-download via
         // SAB's own scripting hooks, outside Ryokan's reach. Dispatch
@@ -816,6 +820,7 @@ impl SabClient {
         url: &str,
         _info_hash: &str,
     ) -> Result<(AddOutcome, String), String> {
+        super::check_release_url(url)?;
         // Same first-grab category safety net as the unpaused add
         // path. The picker flow goes through here too; without this
         // the picker's first interactive grab against a fresh SAB

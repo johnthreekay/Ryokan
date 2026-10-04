@@ -245,3 +245,12 @@ async fn label_command_appears_in_load_start_verbose_body() {
         .await;
     client.add_torrent(MAGNET, HASH_LC).await.expect("add");
 }
+
+#[tokio::test]
+async fn refuses_a_non_url_release_before_any_request() {
+    let (server, client) = super::fixture::new_fixture().await;
+    crate::services::download_client::test_helpers::assert_refuses_non_url_releases(
+        &client, &server,
+    )
+    .await;
+}
