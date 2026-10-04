@@ -153,22 +153,29 @@ pub(crate) fn login_record_failure(key: &str) {
     entry.push(Instant::now());
 }
 
-/// The per-IP bucket for wrong API keys, beside the login buckets.
-fn api_key_bucket(req: &Request<Body>) -> String {
+/// The per-IP bucket for wrong API keys, beside the login buckets, one
+/// per key (`scope` names it: "Sonarr", "Radarr"). Seerr calls both
+/// shims from one address, so a shared bucket let a stale Radarr key
+/// lock out its correct Sonarr calls.
+fn api_key_bucket(req: &Request<Body>, scope: &str) -> String {
     let peer = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
         .map(|info| info.0);
     let ip = client_ip_from_request(req.headers(), peer);
-    format!("key:{}", ip.chars().take(64).collect::<String>())
+    format!(
+        "key:{}:{}",
+        scope.to_ascii_lowercase(),
+        ip.chars().take(64).collect::<String>()
+    )
 }
 
-/// Whether this client has sent too many wrong API keys lately (same
-/// window and soft cap as logins). The Sonarr / Radarr keys can be any
-/// string the user typed, and nothing limited how fast one could be
+/// Whether this client has sent too many wrong `scope` API keys lately
+/// (same window and soft cap as logins). The Sonarr / Radarr keys can be
+/// any string the user typed, and nothing limited how fast one could be
 /// guessed. Only failures count, so a working client is never slowed.
-pub(crate) fn api_key_throttled(req: &Request<Body>) -> bool {
-    let key = api_key_bucket(req);
+pub(crate) fn api_key_throttled(req: &Request<Body>, scope: &str) -> bool {
+    let key = api_key_bucket(req, scope);
     let mut guard = LOGIN_FAILURES.lock().unwrap();
     let cutoff = Instant::now() - LOGIN_WINDOW;
     match guard.get_mut(&key) {
@@ -180,9 +187,9 @@ pub(crate) fn api_key_throttled(req: &Request<Body>) -> bool {
     }
 }
 
-/// Count a wrong API key against this client.
-pub(crate) fn api_key_failed(req: &Request<Body>) {
-    let key = api_key_bucket(req);
+/// Count a wrong `scope` API key against this client.
+pub(crate) fn api_key_failed(req: &Request<Body>, scope: &str) {
+    let key = api_key_bucket(req, scope);
     let mut guard = LOGIN_FAILURES.lock().unwrap();
     let cutoff = Instant::now() - LOGIN_WINDOW;
     let times = guard.entry(key).or_default();

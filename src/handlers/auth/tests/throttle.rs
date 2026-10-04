@@ -470,3 +470,53 @@ async fn a_first_login_from_a_browser_sets_the_device_cookie() {
         "{cookies:?}"
     );
 }
+
+#[tokio::test]
+async fn a_stale_radarr_key_does_not_throttle_sonarr_calls() {
+    // Seerr calls both shims from one address, and they shared one
+    // `key:<ip>` bucket.
+    use tower::ServiceExt;
+    let db = crate::test_support::in_memory_pool().await;
+    let cfg = crate::models::config::Config {
+        sonarr_enabled: true,
+        sonarr_api_key: "sonarr-key-0123456789abcdef".into(),
+        radarr_enabled: true,
+        radarr_api_key: "radarr-key-0123456789abcdef".into(),
+        ..crate::models::config::Config::default()
+    };
+    crate::models::config::save_config(&db, &cfg).await.unwrap();
+    let state = crate::test_support::build_test_app_state(db, None);
+    let peer: std::net::SocketAddr = "198.51.100.60:5000".parse().unwrap();
+    let call = |app: axum::Router, uri: &'static str, key: &'static str| async move {
+        let req = axum::http::Request::builder()
+            .uri(uri)
+            .header("x-api-key", key)
+            .extension(axum::extract::ConnectInfo(peer))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        app.oneshot(req).await.unwrap().status()
+    };
+    let radarr = crate::test_support::radarr_router(state.clone());
+    for _ in 0..LOGIN_MAX_FAILURES {
+        call(
+            radarr.clone(),
+            "/radarr/api/v3/system/status",
+            "stale-radarr-key",
+        )
+        .await;
+    }
+    assert_eq!(
+        call(radarr, "/radarr/api/v3/system/status", "stale-radarr-key").await,
+        axum::http::StatusCode::TOO_MANY_REQUESTS
+    );
+    let sonarr = crate::test_support::sonarr_router(state);
+    assert_eq!(
+        call(
+            sonarr,
+            "/api/v3/system/status",
+            "sonarr-key-0123456789abcdef"
+        )
+        .await,
+        axum::http::StatusCode::OK
+    );
+}
