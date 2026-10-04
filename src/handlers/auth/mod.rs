@@ -954,7 +954,8 @@ pub async fn login_submit(
     // A browser that has logged in before is throttled on its own
     // bucket rather than the username's and the IP's, so someone else's
     // failed attempts can't lock it out (`models::login_device`).
-    let known_device = match cookie_value(&headers, login_device::COOKIE) {
+    let device_token = cookie_value(&headers, login_device::COOKIE);
+    let known_device = match device_token {
         Some(token) if login_device::is_known(&state.db, token).await => {
             Some(format!("d:{}", login_device::hash(token)))
         }
@@ -1068,10 +1069,15 @@ pub async fn login_submit(
                 .status(StatusCode::SEE_OTHER)
                 .header(header::LOCATION, "/")
                 .header(header::SET_COOKIE, set_session_cookie(&token, &headers));
-            if known_device.is_none()
-                && let Some(device) = new_device_cookie(&state.db, u.id, &headers).await
-            {
-                response = response.header(header::SET_COOKIE, device);
+            match (&known_device, device_token) {
+                // The device's 400 days restart only on a login that
+                // worked, never on an attempt.
+                (Some(_), Some(token)) => login_device::touch(&state.db, token).await,
+                _ => {
+                    if let Some(device) = new_device_cookie(&state.db, u.id, &headers).await {
+                        response = response.header(header::SET_COOKIE, device);
+                    }
+                }
             }
             response
                 .body(Body::empty())

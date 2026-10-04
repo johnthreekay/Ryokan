@@ -374,6 +374,58 @@ async fn someone_elses_failed_logins_do_not_lock_out_a_known_device() {
 }
 
 #[tokio::test]
+async fn only_a_successful_login_marks_a_device_used() {
+    // The device lookup used to be an UPDATE, so every login carrying
+    // the cookie (throttled ones included) cost a write.
+    let user = "touch-admin";
+    let db = crate::test_support::in_memory_pool().await;
+    let user_id = crate::models::user::create_user(&db, user, "correct-horse-1")
+        .await
+        .unwrap();
+    let device = crate::models::login_device::create(&db, user_id)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE login_devices SET last_used_at = strftime('%s', 'now') - 864000")
+        .execute(&db)
+        .await
+        .unwrap();
+    let last_used = || async {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT strftime('%s', 'now') - last_used_at FROM login_devices",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap()
+    };
+    let state = crate::test_support::build_test_app_state(db.clone(), None);
+
+    let failed = login(
+        state.clone(),
+        user,
+        "198.51.100.40:5000",
+        Some(&device),
+        "wrong",
+    )
+    .await;
+    assert_eq!(failed.status(), axum::http::StatusCode::OK);
+    assert!(
+        last_used().await >= 864000,
+        "a failed attempt writes nothing"
+    );
+
+    let ok = login(
+        state,
+        user,
+        "198.51.100.40:5000",
+        Some(&device),
+        "correct-horse-1",
+    )
+    .await;
+    assert_eq!(ok.status(), axum::http::StatusCode::SEE_OTHER);
+    assert!(last_used().await < 60, "a login restarts the device's age");
+}
+
+#[tokio::test]
 async fn a_throttled_username_logs_once_per_window_whatever_the_client() {
     // The damping was keyed on the client address, so a username
     // throttled by attempts from many addresses logged a row for each.

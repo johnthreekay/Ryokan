@@ -37,21 +37,48 @@ pub async fn create(db: &SqlitePool, user_id: i64) -> Result<String, sqlx::Error
 }
 
 /// True when `token` belongs to a device that logged in within
-/// [`MAX_AGE_DAYS`]; marks it used. A lookup error reads as unknown, so
-/// the login falls back to the ordinary per-username and per-IP buckets.
+/// [`MAX_AGE_DAYS`]. A read only: it runs before the throttle on every
+/// login that carries the cookie, throttled or not, so writing here
+/// cost a write per request. [`touch`] marks the device used once a
+/// login succeeds. A lookup error reads as unknown, so the login falls
+/// back to the ordinary per-username and per-IP buckets.
 pub async fn is_known(db: &SqlitePool, token: &str) -> bool {
-    if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if !well_formed(token) {
         return false;
     }
-    sqlx::query(
-        "UPDATE login_devices SET last_used_at = strftime('%s', 'now') \
+    sqlx::query_scalar::<_, i64>(
+        "SELECT 1 FROM login_devices \
           WHERE token_hash = ? AND last_used_at > strftime('%s', 'now') - ?",
     )
     .bind(hash(token))
     .bind(MAX_AGE_DAYS * 86_400)
+    .fetch_optional(db)
+    .await
+    .is_ok_and(|row| row.is_some())
+}
+
+/// Mark the device used after a successful login, which restarts its
+/// [`MAX_AGE_DAYS`]. Best effort: a failed write only shortens how long
+/// the device stays known.
+pub async fn touch(db: &SqlitePool, token: &str) {
+    if !well_formed(token) {
+        return;
+    }
+    if let Err(e) = sqlx::query(
+        "UPDATE login_devices SET last_used_at = strftime('%s', 'now') WHERE token_hash = ?",
+    )
+    .bind(hash(token))
     .execute(db)
     .await
-    .is_ok_and(|r| r.rows_affected() > 0)
+    {
+        tracing::warn!("could not mark the login device used: {e}");
+    }
+}
+
+/// The shape [`create`] mints: 64 hex characters. Anything else is not
+/// worth a query.
+fn well_formed(token: &str) -> bool {
+    token.len() == 64 && token.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// Drop devices unused for [`MAX_AGE_DAYS`].
