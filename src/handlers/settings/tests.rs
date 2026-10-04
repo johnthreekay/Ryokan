@@ -2076,3 +2076,55 @@ mod sync_exclusions_list {
         assert!(!html.contains("Allow again"));
     }
 }
+
+#[test]
+fn a_short_shim_key_is_refused_by_name() {
+    assert_eq!(shim_key_error(None, None), None);
+    assert_eq!(
+        shim_key_error(Some(""), Some("   ")),
+        None,
+        "blank clears the key"
+    );
+    let long = "k".repeat(MIN_SHIM_KEY_CHARS);
+    assert_eq!(shim_key_error(Some(&long), Some(&long)), None);
+    assert!(
+        shim_key_error(Some("seerr"), None)
+            .unwrap()
+            .contains("Sonarr")
+    );
+    assert!(
+        shim_key_error(Some(&long), Some("seerr"))
+            .unwrap()
+            .contains("Radarr")
+    );
+}
+
+#[tokio::test]
+async fn the_legacy_bulk_save_refuses_a_short_shim_key_too() {
+    // `POST /settings` writes the shim keys like the Integrations tab
+    // does, and used to skip the minimum.
+    use axum::extract::FromRequest;
+    let db = crate::test_support::in_memory_pool().await;
+    config::save_config(&db, &config::Config::default())
+        .await
+        .unwrap();
+    let state = crate::test_support::build_test_app_state(db.clone(), None);
+    let req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/settings")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(axum::body::Body::from(
+            "tab=integrations&sonarr_api_key=seerr&radarr_api_key=\
+             &qbit_url=&qbit_user=&qbit_pass=&qbit_category=&qbit_download_path=\
+             &jellyfin_url=&jellyfin_api_key=&preferred_groups=&blocked_groups=\
+             &preferred_source=&preferred_resolution=&cutoff_source=&cutoff_resolution=\
+             &finished_series_quality=&media_root=&title_language=romaji\
+             &rss_interval_minutes=15&post_processing_mode=hardlink&prefer_subs=",
+        ))
+        .unwrap();
+    let form = Form::<SettingsForm>::from_request(req, &()).await.unwrap();
+    let page = settings_submit(State(state), form).await.0;
+    assert!(page.contains("at least"), "the refusal is shown");
+    let saved = config::get_config(&db).await.unwrap().unwrap();
+    assert_ne!(saved.sonarr_api_key, "seerr");
+}

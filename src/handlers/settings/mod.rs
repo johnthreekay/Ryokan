@@ -1076,6 +1076,22 @@ pub async fn settings_page(
     Html(template.render().unwrap_or_default())
 }
 
+/// The Sonarr / Radarr keys are whatever the user types; a short one
+/// ("seerr") could be guessed. Checked by every handler that writes
+/// them: the Integrations tab and the legacy bulk `POST /settings`.
+fn shim_key_error(sonarr: Option<&str>, radarr: Option<&str>) -> Option<String> {
+    [("Sonarr", sonarr), ("Radarr", radarr)]
+        .into_iter()
+        .find_map(|(label, key)| {
+            let key = key.unwrap_or("").trim();
+            (!key.is_empty() && key.chars().count() < MIN_SHIM_KEY_CHARS).then(|| {
+                format!(
+                    "The {label} API key must be at least {MIN_SHIM_KEY_CHARS} characters. Use Generate for a random one."
+                )
+            })
+        })
+}
+
 pub async fn settings_submit(
     State(state): State<AppState>,
     Form(form): Form<SettingsForm>,
@@ -1088,6 +1104,18 @@ pub async fn settings_submit(
     // posting to `/settings` would race with a concurrent per-tab
     // save without this lock.
     let _guard = CONFIG_WRITE_LOCK.lock().await;
+    // This handler writes the shim keys too (Integrations or no tab).
+    if matches!(form.tab.as_deref(), Some("integrations") | None)
+        && let Some(err) = shim_key_error(
+            form.sonarr_api_key.as_deref(),
+            form.radarr_api_key.as_deref(),
+        )
+    {
+        let template =
+            build_settings_template(&state, form.tab.clone(), None, None, Some(err), None, None)
+                .await;
+        return Html(template.render().unwrap_or_default());
+    }
     // Load the existing config row once and derive every non-form
     // field from it. The previous code fetched it twice back-to-back
     // (once for force_mal_fallback, once for the rest), which was
@@ -2339,19 +2367,11 @@ pub async fn settings_integrations_submit(
             return integrations_response(&state, None, None, Some(err), is_htmx).await;
         }
     };
-    // The Sonarr / Radarr keys are whatever the user types; a short one
-    // ("seerr") could be guessed.
-    for (label, key) in [
-        ("Sonarr", form.sonarr_api_key.as_deref()),
-        ("Radarr", form.radarr_api_key.as_deref()),
-    ] {
-        let key = key.unwrap_or("").trim();
-        if !key.is_empty() && key.chars().count() < MIN_SHIM_KEY_CHARS {
-            let err = format!(
-                "The {label} API key must be at least {MIN_SHIM_KEY_CHARS} characters. Use Generate for a random one."
-            );
-            return integrations_response(&state, None, None, Some(err), is_htmx).await;
-        }
+    if let Some(err) = shim_key_error(
+        form.sonarr_api_key.as_deref(),
+        form.radarr_api_key.as_deref(),
+    ) {
+        return integrations_response(&state, None, None, Some(err), is_htmx).await;
     }
 
     let cfg = config::Config {
