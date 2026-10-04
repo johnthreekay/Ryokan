@@ -2,6 +2,7 @@ pub mod airing_refresh;
 pub mod anilist;
 pub mod anime_relations;
 pub mod calendar;
+pub mod http_body;
 pub mod crypto;
 pub mod download_client;
 pub mod external_sync;

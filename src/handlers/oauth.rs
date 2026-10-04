@@ -50,6 +50,7 @@ use serde::{Deserialize, Serialize};
 use crate::AppState;
 use crate::models::external_accounts::{self, LinkRequest, PROVIDER_ANILIST, PROVIDER_MAL};
 use crate::models::log::LogCategory;
+use crate::services::http_body::CappedBody;
 use crate::services::{anilist, external_sync, logger, oauth_state, progress};
 
 /// AniList public client ID. Registered 2026-04-22 against the
@@ -532,7 +533,7 @@ async fn fetch_anilist_viewer(token: &str) -> Result<AniListViewer, String> {
     let status = resp.status();
     let headers = resp.headers().clone();
     let body = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("AniList response read failed: {e}"))?;
     // Participate in the same rate-limit cooldown the in-module AL
@@ -607,7 +608,7 @@ async fn exchange_mal_code(code: &str, verifier: &str) -> Result<MalTokenRespons
 
     let status = resp.status();
     let body = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("MAL token response read failed: {e}"))?;
     if !status.is_success() {
@@ -648,7 +649,7 @@ async fn fetch_mal_me(token: &str) -> Result<MalUserInfo, String> {
 
     let status = resp.status();
     let body = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("MAL @me response read failed: {e}"))?;
     if !status.is_success() {

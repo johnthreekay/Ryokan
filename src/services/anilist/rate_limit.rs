@@ -146,7 +146,11 @@ pub(super) fn record_rate_limit_headers(headers: &reqwest::header::HeaderMap) {
     let reset_at = reset_unix.and_then(|reset| {
         let now_unix = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
         if reset > now_unix {
-            Some(Instant::now() + Duration::from_secs(reset - now_unix))
+            // AniList's windows are a minute long. Clamped, and
+            // `checked_add`: a header of u64::MAX overflowed `Instant` and
+            // panicked every AniList response.
+            let secs = (reset - now_unix).min(3600);
+            Instant::now().checked_add(Duration::from_secs(secs))
         } else {
             None
         }
@@ -234,6 +238,15 @@ fn decide_wait(
 /// burst limiter trips and we eat a full minute of cooldown for what
 /// would've been a 1-second pause if we'd just paced ourselves.
 pub(super) async fn throttle_before_anilist_request() {
+    // One caller at a time through decide / sleep / stamp. Without this,
+    // concurrent callers (a series add hydrating metadata while the
+    // airing refresh runs, a Seerr fan-out of auto-searches) all read the
+    // same `LAST_AL_REQUEST`, computed the same wait and fired together,
+    // which is the burst this function exists to prevent: a 429 and a
+    // global cooldown. Same shape as `source_description::rate_limit`.
+    static TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _turn = TURN.lock().await;
+
     let snap = RATE_LIMIT_STATE.lock().ok().and_then(|g| *g);
     let last = LAST_AL_REQUEST.lock().ok().and_then(|g| *g);
     let wait = decide_wait(snap, last, Instant::now());
@@ -546,6 +559,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_absurd_reset_header_does_not_panic() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-ratelimit-limit", "90".parse().unwrap());
+        headers.insert("x-ratelimit-remaining", "0".parse().unwrap());
+        headers.insert("x-ratelimit-reset", u64::MAX.to_string().parse().unwrap());
+        record_rate_limit_headers(&headers);
+        let reset = RATE_LIMIT_STATE.lock().unwrap().and_then(|s| s.reset_at);
+        let reset = reset.expect("a clamped reset is still recorded");
+        assert!(reset <= Instant::now() + Duration::from_secs(3601));
+    }
+
+    #[test]
     fn classify_429_is_rate_limited() {
         let (kind, msg) = classify_anilist_failure(
             reqwest::StatusCode::TOO_MANY_REQUESTS,
@@ -706,6 +731,30 @@ mod tests {
             remaining,
             reset_at,
         }
+    }
+
+    #[tokio::test]
+    async fn concurrent_callers_are_spaced_not_fired_together() {
+        // A request went out 1 s ago, so both callers have to wait. They
+        // used to read that same stamp, sleep the same ~1 s and fire
+        // together. With no rate-limit headers the spacing is 60 / 30 = 2 s.
+        *LAST_AL_REQUEST.lock().unwrap() = Some(Instant::now() - Duration::from_secs(1));
+        let start = Instant::now();
+        let (a, b) = tokio::join!(
+            async {
+                throttle_before_anilist_request().await;
+                start.elapsed()
+            },
+            async {
+                throttle_before_anilist_request().await;
+                start.elapsed()
+            },
+        );
+        let gap = a.max(b) - a.min(b);
+        assert!(
+            gap >= Duration::from_millis(1900),
+            "second call started {gap:?} after the first"
+        );
     }
 
     #[test]

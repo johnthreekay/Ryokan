@@ -27,6 +27,7 @@
 use std::sync::LazyLock;
 use std::time::Duration;
 
+use crate::services::http_body::CappedBody;
 use serde::Deserialize;
 
 /// MAL public client ID (App Type `other`). Same value used in
@@ -47,6 +48,11 @@ const MAL_REQUEST_DELAY: Duration = Duration::from_secs(1);
 /// in the wild; let MAL truncate and follow `paging.next` rather
 /// than guessing the live cap.
 const MAL_PAGE_SIZE: u32 = 1000;
+
+/// Most list pages followed (200,000 entries). Past it the drain is an
+/// error, not a short list: external sync reads a missing entry as a
+/// removal, so returning what was fetched so far would act on it.
+const MAX_LIST_PAGES: usize = 200;
 
 static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     // User-Agent set at the builder layer so every request the
@@ -142,8 +148,15 @@ pub async fn fetch_animelist(token: &str) -> Result<Vec<MalAnimeListEntry>, MalF
     ));
     let mut out: Vec<MalAnimeListEntry> = Vec::new();
     let mut first_page = true;
+    let mut pages = 0usize;
 
     while let Some(url) = next_url.take() {
+        pages += 1;
+        if pages > MAX_LIST_PAGES {
+            return Err(MalFetchError::Other(format!(
+                "MAL list still had a next page after {MAX_LIST_PAGES} pages; refusing a partial list"
+            )));
+        }
         if !first_page {
             // Politeness pause between pages. First page fires
             // immediately; subsequent ones wait.
@@ -164,7 +177,7 @@ pub async fn fetch_animelist(token: &str) -> Result<Vec<MalAnimeListEntry>, MalF
             return Err(MalFetchError::Unauthorized);
         }
         if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
+            let body = resp.text_capped().await.unwrap_or_default();
             return Err(MalFetchError::Other(format!(
                 "status {status}: {}",
                 excerpt(&body)
@@ -172,7 +185,7 @@ pub async fn fetch_animelist(token: &str) -> Result<Vec<MalAnimeListEntry>, MalF
         }
 
         let body: serde_json::Value = resp
-            .json()
+            .json_capped()
             .await
             .map_err(|e| MalFetchError::Other(format!("response parse: {e}")))?;
 
@@ -272,7 +285,7 @@ pub async fn refresh_access_token(refresh_token: &str) -> Result<TokenResponse, 
 
     let status = resp.status();
     let body = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("MAL refresh response read failed: {e}"))?;
 

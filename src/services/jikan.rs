@@ -8,6 +8,7 @@ use tokio::sync::RwLock;
 
 use crate::models::log::LogCategory;
 use crate::services::anilist::{AnimeDetail, AnimeEntry, RelatedEntry, StreamingEpisode};
+use crate::services::http_body::CappedBody;
 use crate::services::logger;
 
 /// Default base URL for the MAL metadata fallback. Tenrai's v1 API is a
@@ -17,6 +18,9 @@ use crate::services::logger;
 /// Point `JIKAN_API_BASE` at any Jikan-v4-compatible base (e.g. a
 /// self-hosted Jikan) to override.
 const JIKAN_API: &str = "https://api.tenrai.org/v1";
+
+/// Most episode-list pages fetched for one series (100 episodes each).
+const MAX_EPISODE_PAGES: i32 = 50;
 
 /// Cache TTL in seconds (7 days).
 const CACHE_TTL_SECS: i64 = 7 * 24 * 60 * 60;
@@ -124,7 +128,7 @@ async fn get_text_with_retry(client: &reqwest::Client, url: &str) -> Result<Stri
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok());
         let text = resp
-            .text()
+            .text_capped()
             .await
             .map_err(|e| format!("Failed to read Jikan response: {}", e))?;
 
@@ -355,7 +359,7 @@ pub async fn search_anime(query: &str) -> Result<Vec<AnimeEntry>, String> {
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());
     let text = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("Failed to read Jikan search response: {}", e))?;
 
@@ -1059,6 +1063,18 @@ async fn fetch_from_jikan(mal_id: i64) -> Result<HashMap<i32, EpisodeInfo>, Stri
         // off the payload size instead: Jikan serves 100 episodes per page,
         // so anything smaller means we're past the last full page.
         if body.data.len() < 100 {
+            break;
+        }
+        // The loop otherwise ends only on a short page, and episode
+        // numbers are derived from `page`, so an API that ignores
+        // `?page=` repeated page 1 forever: an endless loop holding the
+        // metadata sweep's lock. 50 pages is 5,000 episodes.
+        if page >= MAX_EPISODE_PAGES {
+            tracing::warn!(
+                target: "ryokan::jikan",
+                mal_id,
+                "episode list still full at page {page}; stopping"
+            );
             break;
         }
 

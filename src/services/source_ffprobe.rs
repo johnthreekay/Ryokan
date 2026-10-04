@@ -125,20 +125,28 @@ pub async fn classify_ffprobe(db: &SqlitePool, path: &Path) -> FfprobeClassifica
     scan_ffprobe_json_logged(path_str, &probe_json)
 }
 
+/// Largest ffprobe stdout Ryokan keeps. A real episode's probe (streams,
+/// format, chapters) is 25-70 KB; a crafted 13 MB mkv with 50k chapters
+/// and an 8 MB tag printed 25 MB, all of which used to be buffered,
+/// parsed into a `Value`, and cached. A probe over the cap is dropped.
+const FFPROBE_STDOUT_CAP: usize = 4 << 20;
+/// stderr only feeds the non-zero-exit warn line.
+const FFPROBE_STDERR_CAP: usize = 64 << 10;
+
 /// Spawn `ffprobe` and capture its JSON output. Returns `None` on any
-/// failure including a missing binary. We pass `-v quiet` to suppress
+/// failure including a missing binary. We pass `-v error` to suppress
 /// ffprobe's banner so cache hits compare byte-for-byte.
 ///
 /// Each failure branch emits a targeted `warn!` so the user can see
 /// *why* ffprobe didn't contribute evidence: missing binary vs. probe
-/// refusal vs. non-UTF8 output are distinct failure modes with
-/// different remediation.
+/// refusal vs. oversized or non-UTF8 output are distinct failure modes
+/// with different remediation.
 async fn run_ffprobe(path: &Path) -> Option<String> {
     // Capture stderr so the non-zero-exit branch can surface the reason.
     // kill_on_drop ensures the child is reaped if the surrounding
     // timeout fires (and would otherwise leave an orphan ffprobe
     // chewing CPU forever on a corrupt container).
-    let output_fut = Command::new("ffprobe")
+    let spawned = Command::new("ffprobe")
         .arg("-v")
         .arg("error")
         .arg("-show_streams")
@@ -151,7 +159,27 @@ async fn run_ffprobe(path: &Path) -> Option<String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
-        .output();
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(err) => {
+            tracing::warn!(
+                target: "ryokan::source::ffprobe",
+                path = %path.display(),
+                %err,
+                "ffprobe spawn failed — is the `ffprobe` binary installed and on PATH?"
+            );
+            return None;
+        }
+    };
+    let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
+    let probe = async {
+        let (out, err) = tokio::join!(
+            read_capped(stdout, FFPROBE_STDOUT_CAP),
+            read_capped(stderr, FFPROBE_STDERR_CAP),
+        );
+        (out, err, child.wait().await)
+    };
 
     // Cap ffprobe at 60s. A partially-downloaded mkv with a corrupt
     // container or a Blu-ray .m2ts with an inconsistent index will spin
@@ -161,14 +189,20 @@ async fn run_ffprobe(path: &Path) -> Option<String> {
     // generous enough that any non-pathological input completes well
     // under the cap.
     const FFPROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-    let output = match tokio::time::timeout(FFPROBE_TIMEOUT, output_fut).await {
-        Ok(Ok(o)) => o,
-        Ok(Err(err)) => {
+    let (stdout, stderr, status) = match tokio::time::timeout(FFPROBE_TIMEOUT, probe).await {
+        Ok((Ok(out), Ok(err), Ok(status))) => (out, err, status),
+        Ok((out, err, status)) => {
+            let err = [out.err(), err.err(), status.err()]
+                .into_iter()
+                .flatten()
+                .next()
+                .map(|e| e.to_string())
+                .unwrap_or_default();
             tracing::warn!(
                 target: "ryokan::source::ffprobe",
                 path = %path.display(),
                 %err,
-                "ffprobe spawn failed — is the `ffprobe` binary installed and on PATH?"
+                "ffprobe output read failed"
             );
             return None;
         }
@@ -182,18 +216,27 @@ async fn run_ffprobe(path: &Path) -> Option<String> {
             return None;
         }
     };
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr.kept);
         tracing::warn!(
             target: "ryokan::source::ffprobe",
             path = %path.display(),
-            code = ?output.status.code(),
+            code = ?status.code(),
             stderr = stderr.trim(),
             "ffprobe exited non-zero"
         );
         return None;
     }
-    match String::from_utf8(output.stdout) {
+    if stdout.truncated {
+        tracing::warn!(
+            target: "ryokan::source::ffprobe",
+            path = %path.display(),
+            cap_mb = FFPROBE_STDOUT_CAP >> 20,
+            "ffprobe output exceeded the size cap; skipping probe"
+        );
+        return None;
+    }
+    match String::from_utf8(stdout.kept) {
         Ok(s) => Some(s),
         Err(err) => {
             tracing::warn!(
@@ -204,6 +247,41 @@ async fn run_ffprobe(path: &Path) -> Option<String> {
             );
             None
         }
+    }
+}
+
+/// What [`read_capped`] kept of a pipe.
+struct CappedRead {
+    kept: Vec<u8>,
+    /// More than `cap` bytes arrived; `kept` holds the first `cap`.
+    truncated: bool,
+}
+
+/// Read `pipe` to EOF keeping at most `cap` bytes. It drains past the
+/// cap rather than stopping there: a full pipe would block ffprobe
+/// until the timeout. A missing pipe reads as empty.
+async fn read_capped<R: tokio::io::AsyncRead + Unpin>(
+    pipe: Option<R>,
+    cap: usize,
+) -> std::io::Result<CappedRead> {
+    use tokio::io::AsyncReadExt;
+
+    let mut out = CappedRead {
+        kept: Vec::new(),
+        truncated: false,
+    };
+    let Some(mut pipe) = pipe else {
+        return Ok(out);
+    };
+    let mut chunk = vec![0_u8; 64 << 10];
+    loop {
+        let n = pipe.read(&mut chunk).await?;
+        if n == 0 {
+            return Ok(out);
+        }
+        let room = cap.saturating_sub(out.kept.len());
+        out.truncated |= n > room;
+        out.kept.extend_from_slice(&chunk[..n.min(room)]);
     }
 }
 
@@ -867,5 +945,40 @@ mod tests {
         let out = scan_ffprobe_json(&probe_json(vec![audio_stream("flac")]));
         assert!(out.evidence.is_empty());
         assert!(out.resolution.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_capped_keeps_a_pipe_under_the_cap_whole() {
+        let out = read_capped(Some(&b"{\"streams\":[]}"[..]), 64)
+            .await
+            .unwrap();
+        assert_eq!(out.kept, b"{\"streams\":[]}");
+        assert!(!out.truncated);
+    }
+
+    #[tokio::test]
+    async fn read_capped_at_exactly_the_cap_is_not_truncated() {
+        let out = read_capped(Some(&[7_u8; 10][..]), 10).await.unwrap();
+        assert_eq!(out.kept.len(), 10);
+        assert!(!out.truncated);
+    }
+
+    #[tokio::test]
+    async fn read_capped_keeps_the_prefix_and_drains_the_rest() {
+        // Larger than one 64 KiB read, so the cap lands mid-stream and
+        // later reads still have to be drained.
+        let body: Vec<u8> = (0..200_000_u32).map(|i| (i % 251) as u8).collect();
+        let mut reader = &body[..];
+        let out = read_capped(Some(&mut reader), 100_000).await.unwrap();
+        assert_eq!(out.kept, &body[..100_000]);
+        assert!(out.truncated);
+        assert!(reader.is_empty(), "the pipe was drained to EOF");
+    }
+
+    #[tokio::test]
+    async fn read_capped_reads_a_missing_pipe_as_empty() {
+        let out = read_capped(None::<&[u8]>, 10).await.unwrap();
+        assert!(out.kept.is_empty());
+        assert!(!out.truncated);
     }
 }

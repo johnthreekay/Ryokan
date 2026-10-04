@@ -34,9 +34,40 @@ fn sanitize_key(key: &str) -> String {
         .collect()
 }
 
+/// Largest artwork Ryokan downloads. Covers and banners are well under
+/// 2 MB; the URL comes from a metadata provider, so the cap is what stops
+/// a hostile one from making Ryokan buffer an unbounded body.
+const ARTWORK_BODY_CAP: usize = 20 << 20;
+
+/// The image type `bytes` actually holds, read from its magic number, or
+/// `None` when it is none of the formats artwork is shown in. Artwork is
+/// stored and served under this type, never the upstream `Content-Type`:
+/// a provider URL answering `text/html` was otherwise cached and served
+/// back from Ryokan's own origin as a page.
+pub fn sniff_image_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && matches!(&bytes[8..12], b"avif" | b"avis")
+    {
+        Some("image/avif")
+    } else {
+        None
+    }
+}
+
 fn extension_for(content_type: &str, url: &str) -> &'static str {
     let ct = content_type.to_ascii_lowercase();
-    if ct.contains("png") || url.ends_with(".png") {
+    if ct.contains("avif") {
+        "avif"
+    } else if ct.contains("png") || url.ends_with(".png") {
         "png"
     } else if ct.contains("webp") || url.ends_with(".webp") {
         "webp"
@@ -73,6 +104,20 @@ pub fn media_cache_dir() -> PathBuf {
 /// until `cache_image` fetches the image again. Blob file names are
 /// content-addressed, so the file of that name under the current root
 /// is the same image. `None` when the stored path already is that file.
+/// Where the blob `local_path` names actually lives: the cache's
+/// `blobs/` directory plus the stored file name, never the stored
+/// directory. `local_path` comes from the database, and a restored
+/// database could name any file (`/dev/zero`, the data dir's
+/// `.ryokan-key`) to be served at `/media/art` or copied into the
+/// library as a poster. Also covers a data dir moved since caching.
+pub fn blob_path_in_cache(stored: &str) -> Option<PathBuf> {
+    Some(
+        media_cache_dir()
+            .join("blobs")
+            .join(Path::new(stored).file_name()?),
+    )
+}
+
 pub fn relocated_blob_path(stored: &str) -> Option<PathBuf> {
     relocate_into(stored, &media_cache_dir())
 }
@@ -170,16 +215,12 @@ pub async fn cache_image(
         ));
     }
 
-    let headers = resp.headers().clone();
-    let content_type = headers
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("image/jpeg")
-        .to_string();
-    let bytes = resp
-        .bytes()
+    let bytes = crate::services::http_body::read_capped(resp, ARTWORK_BODY_CAP)
         .await
-        .map_err(|e| format!("artwork body failed: {}", e))?;
+        .map_err(|e| format!("artwork body failed: {e}"))?;
+    let content_type = sniff_image_type(&bytes)
+        .ok_or("artwork is not a JPEG, PNG, GIF, WebP or AVIF image")?
+        .to_string();
 
     let blob_hash = hex::encode(Sha256::digest(&bytes));
     let dir = media_cache_dir().join("blobs");
@@ -341,12 +382,9 @@ pub async fn load_bytes(db: &SqlitePool, cache_key: &str) -> Option<(Vec<u8>, St
     // Use tokio::fs::read so the artwork serving path doesn't block a
     // runtime worker — Seerr does a lot of artwork lookups during
     // discovery scans and the sync read would stack up behind itself.
-    let bytes = match tokio::fs::read(Path::new(&entry.local_path)).await {
-        Ok(bytes) => bytes,
-        Err(_) => tokio::fs::read(relocated_blob_path(&entry.local_path)?)
-            .await
-            .ok()?,
-    };
+    let bytes = tokio::fs::read(blob_path_in_cache(&entry.local_path)?)
+        .await
+        .ok()?;
     Some((bytes, entry.content_type))
 }
 
@@ -555,5 +593,45 @@ mod tests {
             provider_relation_cover_key(10, 20, Some(30)),
             "provider-al-10-relation-mal-30-cover"
         );
+    }
+
+    #[test]
+    fn sniff_image_type_reads_the_magic_number_not_the_name() {
+        assert_eq!(
+            sniff_image_type(&[0xFF, 0xD8, 0xFF, 0xE0, 0, 0]),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            sniff_image_type(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR"),
+            Some("image/png")
+        );
+        assert_eq!(sniff_image_type(b"GIF89a\x01\0\x01\0"), Some("image/gif"));
+        assert_eq!(
+            sniff_image_type(b"RIFF\x24\0\0\0WEBPVP8 "),
+            Some("image/webp")
+        );
+        assert_eq!(
+            sniff_image_type(b"\0\0\0\x1cftypavif\0\0\0\0"),
+            Some("image/avif")
+        );
+    }
+
+    #[test]
+    fn sniff_image_type_refuses_pages_and_other_files() {
+        for body in [
+            &b"<!doctype html><script>alert(1)</script>"[..],
+            b"<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'/>",
+            b"{\"Code\":\"Success\",\"AccessKeyId\":\"x\"}",
+            b"RIFF\x24\0\0\0WAVEfmt ",
+            b"\0\0\0\x1cftypisom\0\0\0\0",
+            b"",
+        ] {
+            assert_eq!(
+                sniff_image_type(body),
+                None,
+                "{:?}",
+                String::from_utf8_lossy(body)
+            );
+        }
     }
 }

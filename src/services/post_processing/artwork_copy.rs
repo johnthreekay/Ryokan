@@ -88,20 +88,18 @@ pub(super) async fn copy_artwork(
         PerDest(Vec<Result<(), std::io::Error>>),
     }
 
-    let src = std::path::PathBuf::from(&entry.local_path);
-    // A data dir moved since the blob was cached (#259) leaves the row
-    // pointing at the old root; the same file name under the current
-    // root is the same blob.
-    let relocated = crate::services::artwork::relocated_blob_path(&entry.local_path);
+    // Only the cache's own copy, by file name (`blob_path_in_cache`):
+    // the stored path comes from the database, and a restored one could
+    // name any readable file to be copied into the media library.
+    let Some(src) = crate::services::artwork::blob_path_in_cache(&entry.local_path) else {
+        return vec![false; dests.len()];
+    };
     let owned_dests: Vec<std::path::PathBuf> = dests.iter().map(|p| p.to_path_buf()).collect();
     let src_display = src.display().to_string();
     let copy_result = tokio::task::spawn_blocking(move || -> CopyOutcome {
         let bytes = match std::fs::read(&src) {
             Ok(b) => b,
-            Err(e) => match relocated.and_then(|p| std::fs::read(p).ok()) {
-                Some(b) => b,
-                None => return CopyOutcome::SourceReadFailed(e),
-            },
+            Err(e) => return CopyOutcome::SourceReadFailed(e),
         };
         // First dest gets the real write; subsequent dests are
         // hardlinked to it when possible so a multi-dest fan-out
@@ -383,6 +381,22 @@ mod tests {
         db
     }
 
+    /// A blob path inside the real artwork cache: copies read only from
+    /// there (`blob_path_in_cache`). Named after the test's own temp dir
+    /// so parallel tests never share one; removed with `remove_test_blob`.
+    fn test_blob_path(dir: &std::path::Path) -> std::path::PathBuf {
+        let blobs = crate::services::artwork::media_cache_dir().join("blobs");
+        std::fs::create_dir_all(&blobs).expect("create blob dir");
+        blobs.join(format!(
+            "{}.jpg",
+            dir.file_name().unwrap().to_string_lossy()
+        ))
+    }
+
+    fn remove_test_blob(dir: &std::path::Path) {
+        let _ = std::fs::remove_file(test_blob_path(dir));
+    }
+
     fn unique_test_dir(label: &str) -> std::path::PathBuf {
         let nonce = format!(
             "ryokan_pp_test_{}_{}_{}",
@@ -431,10 +445,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_blob_path_outside_the_cache_is_never_read() {
+        // A restored database can set `local_path` to any file. Only the
+        // cache's own copy (same file name under `blobs/`) is read.
+        let db = setup_artwork_only_db().await;
+        let dir = unique_test_dir("copy_outside");
+        let outside = dir.join("secret.key");
+        std::fs::write(&outside, b"\xFF\xD8\xFF not really a key").unwrap();
+        register_blob(&db, "series-42-cover", &outside, "deadbeef", 8).await;
+        let dst = dir.join("poster.jpg");
+        let results = copy_artwork(&db, 42, "series-42-cover", "cover", None, &[&dst]).await;
+        assert_eq!(results, vec![false]);
+        assert!(
+            !dst.exists(),
+            "the outside file was not copied into the library"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
     async fn copy_artwork_fans_out_single_blob_to_multiple_dests() {
         let db = setup_artwork_only_db().await;
         let dir = unique_test_dir("copy_fanout");
-        let blob_path = dir.join("blob.jpg");
+        let blob_path = test_blob_path(&dir);
         let payload = b"\xFF\xD8\xFF\xE0test jpeg body".to_vec();
         std::fs::write(&blob_path, &payload).expect("write blob");
         register_blob(
@@ -465,6 +498,7 @@ mod tests {
         );
 
         // Cleanup — best effort.
+        remove_test_blob(&dir);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -496,7 +530,7 @@ mod tests {
 
         let db = setup_artwork_only_db().await;
         let dir = unique_test_dir("copy_hardlink");
-        let blob_path = dir.join("blob.jpg");
+        let blob_path = test_blob_path(&dir);
         let payload = b"\xFF\xD8\xFF\xE0anchor-inode-test".to_vec();
         std::fs::write(&blob_path, &payload).expect("write blob");
         register_blob(
@@ -540,6 +574,7 @@ mod tests {
             banner_meta.nlink(),
         );
 
+        remove_test_blob(&dir);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -552,7 +587,7 @@ mod tests {
     async fn copy_artwork_overwrites_preexisting_dest_files() {
         let db = setup_artwork_only_db().await;
         let dir = unique_test_dir("copy_overwrite");
-        let blob_path = dir.join("blob.jpg");
+        let blob_path = test_blob_path(&dir);
         let new_payload = b"new artwork blob".to_vec();
         std::fs::write(&blob_path, &new_payload).expect("write blob");
         register_blob(
@@ -584,6 +619,7 @@ mod tests {
         assert_eq!(std::fs::read(&banner_dst).unwrap(), new_payload);
         assert_eq!(std::fs::read(&backdrop_dst).unwrap(), new_payload);
 
+        remove_test_blob(&dir);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -603,6 +639,7 @@ mod tests {
         assert!(!dst_a.exists(), "dst_a must not exist on cache miss");
         assert!(!dst_b.exists(), "dst_b must not exist on cache miss");
 
+        remove_test_blob(&dir);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -616,7 +653,7 @@ mod tests {
         // nothing lands on disk.
         let db = setup_artwork_only_db().await;
         let dir = unique_test_dir("copy_srcgone");
-        let blob_path = dir.join("blob.jpg");
+        let blob_path = test_blob_path(&dir);
         // Register the ref as if the blob were real, then remove the
         // file so `fs::read` fails.
         std::fs::write(&blob_path, b"stub").expect("write stub");
@@ -633,6 +670,7 @@ mod tests {
         assert!(!dst_a.exists());
         assert!(!dst_b.exists());
 
+        remove_test_blob(&dir);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

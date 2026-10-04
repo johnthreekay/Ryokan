@@ -631,8 +631,14 @@ fn parse_bytes(bytes: &[u8]) -> Result<MappingCache, String> {
 async fn download_parse_and_persist() -> Result<MappingCache, String> {
     tracing::info!("Refreshing anibridge mappings...");
 
+    // Timeouts and a body cap: the download runs under DOWNLOAD_LOCK, and
+    // every Sonarr / Radarr shim request and external sync on a cold
+    // cache waits on that lock. With no timeout, one stalled connection
+    // hung all of them indefinitely.
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(5))
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
@@ -739,10 +745,11 @@ async fn download_parse_and_persist() -> Result<MappingCache, String> {
             .map(str::to_string),
     };
 
-    let bytes = resp
-        .bytes()
+    // The mappings file is ~9 MB.
+    const MAPPINGS_BODY_CAP: usize = 64 << 20;
+    let bytes = crate::services::http_body::read_capped(resp, MAPPINGS_BODY_CAP)
         .await
-        .map_err(|e| format!("Failed to read mappings response: {}", e))?;
+        .map_err(|e| format!("Failed to read mappings response: {e}"))?;
 
     tracing::info!("Parsing anibridge mappings ({} bytes)...", bytes.len());
 

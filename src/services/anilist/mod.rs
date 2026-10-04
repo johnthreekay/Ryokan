@@ -9,6 +9,7 @@ use crate::services::jikan;
 
 pub mod airing_schedules;
 mod rate_limit;
+use crate::services::http_body::CappedBody;
 #[cfg(any(test, feature = "test-support"))]
 pub use rate_limit::reset_state_for_tests;
 use rate_limit::{
@@ -320,7 +321,7 @@ pub async fn fetch_media_list_collection(
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
             set_anilist_cooldown(retry_after_secs, ANILIST_COOLDOWN_DEFAULT);
         }
-        let body = resp.text().await.unwrap_or_default();
+        let body = resp.text_capped().await.unwrap_or_default();
         // OAuth2-shaped 400 responses with an `invalid_token` /
         // `invalid_grant` error code mean the token is dead — same
         // remediation as a 401/403 (user must re-link). AL's
@@ -363,7 +364,7 @@ pub async fn fetch_media_list_collection(
     }
 
     let json: serde_json::Value = resp
-        .json()
+        .json_capped()
         .await
         .map_err(|e| format!("AniList MediaListCollection parse failed: {e}"))?;
 
@@ -688,7 +689,7 @@ pub async fn search_anime_with_options(
     // Read the body as text first so a non-JSON error body (common on 4xx/5xx)
     // produces a useful error instead of "Failed to parse AniList response".
     let body_text = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("AniList response read failed (HTTP {}): {}", status, e))?;
 
@@ -1142,10 +1143,10 @@ async fn fetch_media_detail(selector: MediaSelector) -> Result<Option<AnimeDetai
     let headers = resp.headers().clone();
     record_rate_limit_headers(&headers);
 
-    // Read as text first (not .json()) so a Cloudflare HTML challenge
+    // Read as text first (not .json_capped()) so a Cloudflare HTML challenge
     // doesn't blow up at the parse step — we need the body to classify
     // the failure correctly.
-    let body_text = match resp.text().await {
+    let body_text = match resp.text_capped().await {
         Ok(t) => t,
         Err(e) => {
             // Body-read failure: the status header was already received,
@@ -1480,7 +1481,7 @@ pub async fn get_anime_details_batch(ids: &[i64]) -> Result<HashMap<i64, AnimeDe
         record_rate_limit_headers(&headers);
 
         let body_text = resp
-            .text()
+            .text_capped()
             .await
             .map_err(|e| format!("AniList batch unavailable: failed to read response: {}", e))?;
 
