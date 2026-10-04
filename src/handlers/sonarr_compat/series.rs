@@ -486,17 +486,11 @@ pub async fn add_series(
         .unwrap_or(false)
     {
         for s in &processed {
-            let state_clone = state.clone();
-            let id = s.id;
-            tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                let _ = super::super::library::search::auto_search_series(
-                    axum::extract::State(state_clone),
-                    axum::extract::Path(id),
-                    axum::extract::Query(super::super::library::search::AutoSearchQuery::default()),
-                )
-                .await;
-            });
+            super::super::library::search::queue_shim_search(
+                state.clone(),
+                s.id,
+                std::time::Duration::from_secs(2),
+            );
         }
     }
 
@@ -570,15 +564,11 @@ pub async fn execute_command(
     if name == "SeriesSearch"
         && let Some(series_id) = body.series_id
     {
-        let state_clone = state.clone();
-        tokio::spawn(async move {
-            let _ = super::super::library::search::auto_search_series(
-                axum::extract::State(state_clone),
-                axum::extract::Path(series_id),
-                axum::extract::Query(super::super::library::search::AutoSearchQuery::default()),
-            )
-            .await;
-        });
+        super::super::library::search::queue_shim_search(
+            state.clone(),
+            series_id,
+            std::time::Duration::ZERO,
+        );
     }
 
     Json(serde_json::json!({

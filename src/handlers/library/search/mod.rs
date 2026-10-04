@@ -40,6 +40,25 @@ mod interactive;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod shim_search_queue_tests {
+    use super::*;
+
+    #[test]
+    fn shim_searches_are_deduped_capped_and_released() {
+        let first = reserve_shim_search(9_000_001).expect("first request queues");
+        assert!(reserve_shim_search(9_000_001).is_none(), "already queued");
+        drop(first);
+        let again = reserve_shim_search(9_000_001).expect("the slot is given back on drop");
+        let held: Vec<_> = (0i64..)
+            .map_while(|i| reserve_shim_search(9_100_000 + i))
+            .collect();
+        assert_eq!(held.len() + 1, SHIM_SEARCH_QUEUE_CAP);
+        drop(again);
+        assert!(reserve_shim_search(9_000_002).is_some());
+    }
+}
+
 pub(crate) use auto_search::series_still_in_library;
 pub use auto_search::{
     __path_auto_search_episode, __path_auto_search_series, AutoSearchQuery, auto_search_episode,
@@ -54,6 +73,66 @@ pub use interactive::{
     __path_interactive_search_episodes, __path_search_batch_releases, interactive_search_batches,
     interactive_search_episode, interactive_search_episodes, search_batch_releases,
 };
+
+/// Series with a shim-started search queued or running.
+static SHIM_SEARCHES_QUEUED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<i64>>> =
+    std::sync::LazyLock::new(Default::default);
+/// How many shim-started searches run at once.
+static SHIM_SEARCH_PERMITS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+/// Most shim searches queued or running; past it a request is dropped.
+const SHIM_SEARCH_QUEUE_CAP: usize = 64;
+
+/// A series' place in the shim search queue, given back on drop.
+struct ShimSearchSlot(i64);
+
+impl Drop for ShimSearchSlot {
+    fn drop(&mut self) {
+        SHIM_SEARCHES_QUEUED.lock().unwrap().remove(&self.0);
+    }
+}
+
+fn reserve_shim_search(series_id: i64) -> Option<ShimSearchSlot> {
+    let mut queued = SHIM_SEARCHES_QUEUED.lock().unwrap();
+    if queued.len() >= SHIM_SEARCH_QUEUE_CAP || !queued.insert(series_id) {
+        return None;
+    }
+    Some(ShimSearchSlot(series_id))
+}
+
+/// Start a series' auto-search in the background for the Sonarr /
+/// Radarr shims (Seerr's SeriesSearch and MoviesSearch commands, an add
+/// with "search on add"). Each call used to spawn its own full search,
+/// so a loop of commands queued thousands on the Nyaa semaphore and the
+/// AniList budget and starved RSS and the scheduled searches. Now a
+/// series already queued or searching is not queued again, at most
+/// [`SHIM_SEARCH_QUEUE_CAP`] wait, and two run at a time. Returns
+/// whether the search was queued.
+pub(crate) fn queue_shim_search(
+    state: AppState,
+    series_id: i64,
+    delay: std::time::Duration,
+) -> bool {
+    let Some(slot) = reserve_shim_search(series_id) else {
+        tracing::debug!(
+            "shim search for series {series_id} not queued: already queued, or the queue is full"
+        );
+        return false;
+    };
+    tokio::spawn(async move {
+        let _slot = slot;
+        tokio::time::sleep(delay).await;
+        let Ok(_permit) = SHIM_SEARCH_PERMITS.acquire().await else {
+            return;
+        };
+        let _ = auto_search_series(
+            State(state),
+            Path(series_id),
+            Query(AutoSearchQuery::default()),
+        )
+        .await;
+    });
+    true
+}
 
 /// Pre-computed display fields for one search result row. Built by
 /// `build_search_results_partial` from a raw `AnimeEntry` so the Askama

@@ -223,16 +223,11 @@ pub async fn add_movie(
         .and_then(|o| o.search_for_movie)
         .unwrap_or(false)
     {
-        let state_clone = state.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            let _ = super::super::library::search::auto_search_series(
-                axum::extract::State(state_clone),
-                axum::extract::Path(id),
-                axum::extract::Query(super::super::library::search::AutoSearchQuery::default()),
-            )
-            .await;
-        });
+        super::super::library::search::queue_shim_search(
+            state.clone(),
+            id,
+            std::time::Duration::from_secs(2),
+        );
     }
 
     let cfg = config::get_config(&state.db)
@@ -307,15 +302,11 @@ pub async fn execute_command(
         && let Some(movie_ids) = body.movie_ids
     {
         for movie_id in movie_ids {
-            let state_clone = state.clone();
-            tokio::spawn(async move {
-                let _ = super::super::library::search::auto_search_series(
-                    axum::extract::State(state_clone),
-                    axum::extract::Path(movie_id),
-                    axum::extract::Query(super::super::library::search::AutoSearchQuery::default()),
-                )
-                .await;
-            });
+            super::super::library::search::queue_shim_search(
+                state.clone(),
+                movie_id,
+                std::time::Duration::ZERO,
+            );
         }
     }
 
