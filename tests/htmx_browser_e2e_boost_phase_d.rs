@@ -250,12 +250,19 @@ async fn boosted_nav_to_protected_page_with_invalidated_session_lands_on_login()
     let _ = assert_htmx_loaded(&client).await;
 
     // Wipe the session from the DB so the middleware's
-    // `validate_session` returns Ok(None) → redirect-to-login.
-    sqlx::query("DELETE FROM sessions WHERE token = ?")
-        .bind(&session_token)
-        .execute(&db)
+    // `validate_session` returns Ok(None) → redirect-to-login. Through
+    // the model: the table holds the token's hash, so a raw
+    // `WHERE token = ?` on the cookie value deletes nothing.
+    ryokan::models::session::delete_session(&db, &session_token)
         .await
         .expect("delete session");
+    assert_eq!(
+        ryokan::models::session::validate_session(&db, &session_token)
+            .await
+            .expect("validate"),
+        None,
+        "the session is gone"
+    );
 
     // Boost-click any top-nav link. Middleware refuses, returns
     // 200 + HX-Redirect: /login. htmx triggers real nav.
