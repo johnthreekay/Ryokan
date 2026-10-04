@@ -700,3 +700,59 @@ fn extraction_caps_read_the_pax_size_not_the_header() {
     );
     cleanup(&paths);
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn snapshots_and_staged_files_are_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    let paths = temp_paths("modes");
+    let db = pool_at(&paths).await;
+    let backup_dir = paths.data_dir.join("backups");
+
+    // The snapshot, and so the archive's header for it.
+    let snapshot = paths.data_dir.join("snap.db");
+    vacuum_into(&db, &snapshot).await.unwrap();
+    assert_eq!(mode(&snapshot), 0o600);
+    let out = paths.data_dir.join("out.tar.gz");
+    create_backup(&db, &paths, BackupOptions::default(), &out)
+        .await
+        .unwrap();
+    let file = fs::File::open(&out).unwrap();
+    let mut tar = tar::Archive::new(GzDecoder::new(BufReader::new(file)));
+    let db_mode = tar
+        .entries()
+        .unwrap()
+        .map(|e| e.unwrap())
+        .find(|e| e.path().unwrap().as_ref() == Path::new("ryokan.db"))
+        .map(|e| e.header().mode().unwrap() & 0o777);
+    assert_eq!(db_mode, Some(0o600));
+
+    // An archive whose headers say 0644 (one made before the snapshot
+    // was created owner-only) still stages owner-only.
+    let manifest = BackupManifest {
+        ryokan_version: env!("CARGO_PKG_VERSION").to_string(),
+        backup_timestamp: 1,
+        max_migration_id: 0,
+        includes_artwork: false,
+        includes_key: true,
+        sanitized: false,
+        hostname: None,
+        db_size_bytes: 0,
+        artwork_size_bytes: 0,
+    };
+    let key = paths.data_dir.join("legacy.key");
+    fs::write(&key, [7u8; 32]).unwrap();
+    for file in [&snapshot, &key] {
+        fs::set_permissions(file, fs::Permissions::from_mode(0o644)).unwrap();
+    }
+    let legacy = paths.data_dir.join("legacy.tar.gz");
+    write_archive(&legacy, &manifest, &snapshot, Some(&key), None).unwrap();
+    stage_restore(&db, &paths, &backup_dir, &legacy)
+        .await
+        .expect("stage");
+    let pending = paths.pending_dir();
+    assert_eq!(mode(&pending.join("ryokan.db")), 0o600);
+    assert_eq!(mode(&pending.join(".ryokan-key")), 0o600);
+    cleanup(&paths);
+}

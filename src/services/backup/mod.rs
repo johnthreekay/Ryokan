@@ -339,15 +339,21 @@ fn dir_size(dir: &Path) -> u64 {
 /// `VACUUM INTO <path>`: a consistent, WAL-free snapshot of the live
 /// database. The path is spliced as an escaped literal: SQLite reads a
 /// bound parameter here as an empty string and quietly runs a plain
-/// `VACUUM` instead, producing no file at all. The path is one this
-/// module built under the data dir, never user input.
+/// `VACUUM` instead, writing nothing. The path is one this module built
+/// under the data dir, never user input.
+///
+/// The file is created empty and owner-only first (`VACUUM INTO` accepts
+/// an empty file): SQLite would create it with the umask's mode, 0644
+/// on most systems, for a copy of every credential the live database
+/// holds, and the archive's tar header carries that mode into a restore.
 pub(crate) async fn vacuum_into(db: &SqlitePool, path: &Path) -> Result<(), String> {
+    create_private(path).map_err(|e| format!("create {}: {e}", path.display()))?;
     let literal = path.to_string_lossy().replace('\'', "''");
     sqlx::query(sqlx::AssertSqlSafe(format!("VACUUM INTO '{literal}'")))
         .execute(db)
         .await
         .map_err(|e| format!("VACUUM INTO failed: {e}"))?;
-    if !path.is_file() {
+    if !fs::metadata(path).is_ok_and(|m| m.len() > 0) {
         return Err(format!(
             "VACUUM INTO reported success but wrote nothing at {}",
             path.display()
@@ -919,6 +925,17 @@ fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
         return Err(RestoreError::Invalid(
             "the archive's encryption key is not 32 bytes".to_string(),
         ));
+    }
+    // Owner-only, whatever mode the archive's headers gave them
+    // (`unpack_in` applies it, and backups made before the snapshot was
+    // created 0600 say 0644): both wait here until the next restart.
+    #[cfg(unix)]
+    for name in ["ryokan.db", ".ryokan-key"] {
+        use std::os::unix::fs::PermissionsExt;
+        let path = into.join(name);
+        if path.is_file() {
+            let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        }
     }
     Ok(())
 }
