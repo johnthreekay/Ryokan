@@ -33,7 +33,8 @@ async fn remove_hardlinks_with_inode_finds_link_in_subdirectory() {
     // Capture the shared inode via the media side (the realistic
     // call shape — caller has the media file's inode pre-deletion).
     use std::os::unix::fs::MetadataExt;
-    let inode = std::fs::metadata(&media).unwrap().ino();
+    let meta = std::fs::metadata(&media).unwrap();
+    let inode = (meta.dev(), meta.ino());
     // Remove the media side first (mirrors the production order:
     // delete media file, then walk SAB content_path for the
     // surviving hardlink).
@@ -62,9 +63,20 @@ async fn remove_hardlinks_with_inode_skips_when_inode_does_not_match() {
 
     // Pick an inode that very likely doesn't match anything in
     // tmp (max u64 sentinel — real inodes are never this).
-    let removed = remove_hardlinks_with_inode(root, u64::MAX).await;
+    let removed = remove_hardlinks_with_inode(root, (u64::MAX, u64::MAX)).await;
     assert!(removed.is_empty());
     assert!(source.exists(), "non-matching files must survive");
+
+    // The same inode number on another device is another file: inode
+    // numbers repeat across filesystems.
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(&source).unwrap();
+    let removed = remove_hardlinks_with_inode(root, (meta.dev() ^ 1, meta.ino())).await;
+    assert!(removed.is_empty());
+    assert!(
+        source.exists(),
+        "an inode match on another device must survive"
+    );
 }
 
 /// `remove_stamped_source_paths` removes the exact paths recorded
