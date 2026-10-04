@@ -275,6 +275,17 @@ var dlPoll = (window.__ryokanSeriesDlPoll = window.__ryokanSeriesDlPoll || {
     lastByHash: {},
 });
 
+// Status-column and progress markup the live row updates write; the
+// same markup series.html renders on page load. 65b545e dropped these
+// while keeping their uses, so every in-place update (an import
+// landing, a grab starting, a file deleted) threw a ReferenceError and
+// left the row on "Importing…". tests/js_constants_audit.rs now fails
+// on an all-caps name used here but defined nowhere.
+var STATUS_ICON_HAVE = '<span class="ep-status-icon ep-have" title="On disk"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
+var STATUS_ICON_MISSING = '<span class="ep-status-icon ep-missing" title="Missing"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></span>';
+var STATUS_ICON_UNAIRED = '<span class="ep-status-icon ep-unaired" title="Unaired"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>';
+var DL_PROGRESS_HTML_ZERO = '<div class="dl-progress-wrap"><div class="dl-progress-bar"><div class="dl-progress-fill" style="width:0%"></div></div><span class="dl-progress-text">0.0%</span></div>';
+
 // What the download client says about an item, in the words the
 // Downloads page uses. `paused` covers a torrent the client stopped at
 // its own seeding limit (`seeding_done`) as well as one paused by hand:

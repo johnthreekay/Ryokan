@@ -51,6 +51,11 @@ path = "tests/htmx_redirect_audit.rs"
 required-features = ["test-support"]
 
 [[test]]
+name = "js_constants_audit"
+path = "tests/js_constants_audit.rs"
+required-features = ["test-support"]
+
+[[test]]
 name = "htmx_grab_bag"
 path = "tests/htmx_grab_bag.rs"
 required-features = ["test-support"]
