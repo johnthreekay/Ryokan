@@ -24,12 +24,11 @@
 # layout. `--baseline` may point at a non-existent file (first run);
 # the script then skips the diff section.
 #
-# Dependencies: `jq` (parse + emit baseline JSON), `awk`, `comm`,
-# `sort`. All standard on ubuntu-latest runners.
+# Dependencies: `jq` (parse + emit baseline JSON), `awk` (POSIX; the
+# runner's is mawk), `sort`. All standard on ubuntu-latest runners.
 
 set -euo pipefail
-# `sort` and `comm` must agree on ordering, or comm reports unsorted
-# input and exits non-zero under `set -e`.
+# A byte-order sort, so report lists come out the same on every machine.
 export LC_ALL=C
 
 # How many flipped mutants each report section lists; the rest are
@@ -91,15 +90,50 @@ fi
 # mutant; compared with positions, a moved mutant dropped out of the
 # diff instead of showing as caught or missed.
 mutant_key() {
-    sed -E 's/^([^:]+):[0-9]+:[0-9]+: /\1: /' | sort
+    sed -E 's/^([^:]+):[0-9]+:[0-9]+: /\1: /'
 }
 
-# The first `$2` lines of `$1`, then "...and N more" when there are more.
+# Keys that moved from one list to the other since the baseline, as
+# "<key>\t<count>" lines. Args: the "from" list last run and this run,
+# then the "to" list last run and this run (one key per line each).
+# Without positions, identical mutants in one function share a key
+# (`replace && with || in aggregate` four times), and one copy caught
+# while another is missed puts the key in both lists every week, so
+# membership in both is not a flip. A key flipped only when its count
+# in the "to" list rose and its count in the "from" list fell, and by
+# the smaller of the two: a copy added or removed by an edit is not one.
+flipped() {
+    awk '
+        FILENAME == ARGV[1] { from_prev[$0]++; next }
+        FILENAME == ARGV[2] { from_cur[$0]++; next }
+        FILENAME == ARGV[3] { to_prev[$0]++; next }
+        { to_cur[$0]++ }
+        END {
+            for (k in to_cur) {
+                rose = to_cur[k] - to_prev[k]
+                fell = from_prev[k] - from_cur[k]
+                n = rose < fell ? rose : fell
+                if (n > 0) printf "%s\t%d\n", k, n
+            }
+        }' "$1" "$2" "$3" "$4" | sort
+}
+
+# How many mutants a `flipped` list covers (the sum of its counts).
+flip_total() {
+    awk -F '\t' '{ n += $2 } END { print n + 0 }' <<< "$1"
+}
+
+# The first `$2` keys of a `flipped` list `$1`, then "...and N more"
+# when there are more.
 list_capped() {
     local lines="$1" cap="$2" count
     count=$(printf '%s\n' "$lines" | wc -l | tr -d ' ')
-    sed -n "1,${cap}p" <<< "$lines" | while IFS= read -r line; do
-        echo "- \`$line\`"
+    sed -n "1,${cap}p" <<< "$lines" | while IFS=$'\t' read -r key n; do
+        if [[ "$n" -gt 1 ]]; then
+            echo "- \`$key\` ($n copies)"
+        else
+            echo "- \`$key\`"
+        fi
     done
     if [[ "$count" -gt "$cap" ]]; then
         echo "- ...and $((count - cap)) more (full lists in the workflow artifact)"
@@ -165,23 +199,22 @@ jq -n \
         cur_missed_tmp=$(mktemp)
         # caught/missed.txt carry no timing suffix (unlike the streaming
         # log), and `mutant_key` drops the position, so a mutant matches
-        # across runs even when edits above it moved its line. Comparing
-        # by description means two identical mutants in one file count
-        # as a pair; comm matches duplicates one to one.
+        # across runs even when edits above it moved its line. Identical
+        # mutants in one function share a key, so `flipped` compares
+        # per-key counts rather than membership.
         jq -r '.caught_list[]' "$BASELINE_PATH" | mutant_key > "$prev_caught_tmp"
         jq -r '.missed_list[]' "$BASELINE_PATH" | mutant_key > "$prev_missed_tmp"
         mutant_key < "$current_caught_file" > "$cur_caught_tmp"
         mutant_key < "$current_missed_file" > "$cur_missed_tmp"
 
-        # Newly missed mutants: present in BOTH prev_caught and
-        # current_missed = caught last week, missed this week.
-        new_misses=$(comm -12 "$prev_caught_tmp" "$cur_missed_tmp")
-        # Newly caught: present in BOTH prev_missed and current_caught
-        # = missed last week, caught this week. Informational.
-        new_catches=$(comm -12 "$prev_missed_tmp" "$cur_caught_tmp")
+        # Newly missed mutants: fewer caught and more missed than last
+        # week under one key.
+        new_misses=$(flipped "$prev_caught_tmp" "$cur_caught_tmp" "$prev_missed_tmp" "$cur_missed_tmp")
+        # Newly caught: fewer missed and more caught. Informational.
+        new_catches=$(flipped "$prev_missed_tmp" "$cur_missed_tmp" "$prev_caught_tmp" "$cur_caught_tmp")
 
         if [[ -n "$new_misses" ]]; then
-            echo "### 🚨 Newly missed mutants (regression: flipped CAUGHT to MISSED)"
+            echo "### 🚨 Newly missed mutants (regression: $(flip_total "$new_misses") flipped CAUGHT to MISSED)"
             echo
             list_capped "$new_misses" "$MAX_MISSES_LISTED"
             regression=1
@@ -189,7 +222,7 @@ jq -n \
         fi
 
         if [[ -n "$new_catches" ]]; then
-            echo "### ✅ Newly caught mutants (improvement: flipped MISSED to CAUGHT)"
+            echo "### ✅ Newly caught mutants (improvement: $(flip_total "$new_catches") flipped MISSED to CAUGHT)"
             echo
             list_capped "$new_catches" "$MAX_CATCHES_LISTED"
             echo
