@@ -542,8 +542,11 @@ pub async fn search(
         if !seen.insert(id) {
             continue;
         }
+        // The library id: `auto_search_series` reads an id as an
+        // internal one first, so the AniList id passed here searched
+        // (and grabbed for) whichever series had that internal id.
         if let Ok(Some(row)) = series::get_by_id(&state.db, id).await {
-            targets.push((row.anilist_id, row.title));
+            targets.push((row.id, row.title));
         }
     }
     if targets.is_empty() {
@@ -574,7 +577,7 @@ pub async fn search(
             let handle = handle_for_loop;
             let mut grabbed = 0usize;
             let mut errors = 0usize;
-            for (i, (anilist_id, title)) in targets.into_iter().enumerate() {
+            for (i, (series_id, title)) in targets.into_iter().enumerate() {
                 if let Some(h) = &handle {
                     h.emit(
                         "search",
@@ -591,7 +594,7 @@ pub async fn search(
                 // this task writes to the toast.
                 let result = crate::handlers::library::search::auto_search_series(
                     State(state.clone()),
-                    Path(anilist_id),
+                    Path(series_id),
                     Query(crate::handlers::library::search::AutoSearchQuery {
                         progress_id: None,
                         include_disk_upgrades,

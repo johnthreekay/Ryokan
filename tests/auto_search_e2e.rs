@@ -1904,3 +1904,42 @@ async fn misgrab_re_search_searches_the_series_its_anilist_id_collides_with_no_m
 
     unset_nyaa_base();
 }
+
+#[tokio::test]
+async fn wanted_search_searches_the_listed_series_not_the_row_its_anilist_id_names() {
+    let _gate = ENV_LOCK.lock().await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(research_results_page()))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let state = build_state().await;
+    let series_id = seed_research_show_behind_a_decoy(&state).await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let response = ryokan::handlers::wanted::search(
+        axum::extract::State(state.clone()),
+        axum::extract::Query(AutoSearchQuery::default()),
+        axum::Json(ryokan::handlers::wanted::WantedSearchRequest {
+            series_ids: vec![series_id],
+            tab: None,
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), axum::http::StatusCode::ACCEPTED);
+
+    // The decoy's titles find nothing on this page; Research Show's
+    // episode 3 is there.
+    assert_eq!(
+        wait_for_log_like(&state.db, "Searched 1 series, grabbed 1 release").await,
+        1,
+        "{}",
+        dump_logs(&state.db).await
+    );
+    assert_eq!(client.add_calls().len(), 1);
+
+    unset_nyaa_base();
+}
