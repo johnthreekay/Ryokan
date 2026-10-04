@@ -102,7 +102,12 @@ async fn check_media_root(path: &str) -> Result<(), String> {
             "Ryokan can't find the folder {path}. In Docker this is a path inside the container, on a mounted volume."
         ));
     }
-    let probe = root.join(format!(".ryokan-write-test-{}", std::process::id()));
+    // A random name: the PID is always 1 in Docker, so a probe a crash
+    // left behind made `create_new` fail on every later attempt.
+    let probe = root.join(format!(
+        ".ryokan-write-test-{}",
+        hex::encode(rand::random::<[u8; 8]>())
+    ));
     match tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -339,6 +344,28 @@ mod tests {
             assert!(!cfg.post_processing_enabled, "{path}");
             assert!(cfg.media_root.is_empty(), "{path}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_write_probe_left_by_a_crash_does_not_block_the_step() {
+        // The probe was named after the PID, which is always 1 in
+        // Docker, so a stranded one refused every later attempt.
+        let (_db, state, cookie) = seeded().await;
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path()
+                .join(format!(".ryokan-write-test-{}", std::process::id())),
+            b"",
+        )
+        .unwrap();
+        let (status, location, _) = post(
+            state,
+            &cookie,
+            form(&[("media_root", root.path().to_str().unwrap())]),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SEE_OTHER);
+        assert_eq!(location, "/");
     }
 
     #[tokio::test]
