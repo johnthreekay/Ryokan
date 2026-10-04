@@ -225,21 +225,22 @@ jobs:
         if: steps.report.outputs.regression == '1' && needs.shard.result == 'success'
         run: |
           gh issue create \
-            --title "Mutation regression — $(date -u +%F)" \
+            --title "Mutation regression, $(date -u +%F)" \
             --body-file mutants-report.md \
             --label "test-quality"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Save the new baseline, but only from a complete run: a
-      # partial snapshot would make every unfinished mutant look
-      # "new" next week. Unique key per run so we never miss the save
+      # Save the new baseline, but only from a complete run whose
+      # report finished (the script exits 0 or 1): a partial snapshot
+      # would make every unfinished mutant look "new" next week, and an
+      # empty run (3) or a crash leaves last week's baseline in place. Unique key per run so we never miss the save
       # (cache@v4 doesn't overwrite on key-hit). Restoration on the
       # next run uses the prefix `mutants-baseline-v1-` to match
       # whichever entry is most recent. GH evicts unmatched-prefix
       # cache entries after 7 days of no access.
       - name: Save baseline for next run
-        if: needs.shard.result == 'success' && steps.report.outputs.regression != ''
+        if: needs.shard.result == 'success' && (steps.report.outputs.regression == '0' || steps.report.outputs.regression == '1')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mutants.baseline.json
