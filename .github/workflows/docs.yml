@@ -7,11 +7,19 @@
 #
 # Triggered only when the docs source actually changes so a code-
 # only commit doesn't churn gh-pages. Manual `workflow_dispatch`
-# stays available so you can force a rebuild after a zensical /
-# pymdown-extensions release without committing.
+# stays available so you can force a rebuild without committing.
 #
 # Zensical reads `mkdocs.yml` directly — no separate `zensical.toml`
 # file is needed.
+#
+# Supply chain: every action is pinned to a commit SHA (Dependabot
+# bumps the SHA and the version comment together), and the build runs
+# third-party code (Zensical and its dependencies, installed from the
+# hash-pinned `docs-requirements.txt`) in a job that holds only a
+# read-only token. Only the deploy job can push, and it runs nothing
+# but the pinned deploy action. gh-pages also serves the OAuth broker,
+# so a token that can push there could swap the broker for one that
+# forwards AniList tokens elsewhere.
 name: Build and deploy docs
 
 on:
@@ -20,19 +28,12 @@ on:
     paths:
       - docs/**
       - mkdocs.yml
+      - docs-requirements.txt
       - .github/workflows/docs.yml
   workflow_dispatch:
 
-# `peaceiris/actions-gh-pages` pushes to the gh-pages branch via
-# the workflow's GITHUB_TOKEN, which needs `contents: write`.
-# `pages: write` is for the GH Pages publish API; not strictly
-# required for the branch-source publish path the peaceiris action
-# uses, but doesn't hurt and keeps us future-compatible if we ever
-# migrate to the artifact-source mode.
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 # Only one docs deploy at a time — back-to-back pushes shouldn't
 # race each other on the gh-pages branch.
@@ -41,21 +42,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.x'
+          # The version `docs-requirements.txt` was compiled for.
+          python-version: '3.13'
           cache: pip
           cache-dependency-path: docs-requirements.txt
 
       - name: Install Zensical
-        run: pip install -r docs-requirements.txt
+        # Every package is pinned with its hashes; pip refuses anything
+        # else. To change versions, edit docs-requirements.in and
+        # regenerate (the command is in that file).
+        run: pip install --require-hashes -r docs-requirements.txt
 
       - name: Build site
         # `-s` (strict) upgrades broken internal links and other
@@ -63,8 +71,32 @@ jobs:
         # the workflow instead of shipping a 404.
         run: zensical build -s
 
+      - name: Hand the site to the deploy job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-site
+          path: site
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # `peaceiris/actions-gh-pages` pushes to the gh-pages branch with
+    # the workflow's GITHUB_TOKEN. It publishes from the branch, so
+    # neither `pages: write` nor `id-token: write` is needed.
+    permissions:
+      contents: write
+    steps:
+      - name: Fetch the built site
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: docs-site
+          path: site
+
       - name: Deploy to gh-pages/docs
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
