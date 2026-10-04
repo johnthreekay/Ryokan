@@ -485,7 +485,9 @@ ${portsBlock}    volumes:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"  # dashboard; remove for prod
+      # Dashboard on host port 8090: qBittorrent's web UI has 8080.
+      # Remove for prod.
+      - "8090:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${cfg.paths.appdata}/traefik/traefik.yml:/etc/traefik/traefik.yml
