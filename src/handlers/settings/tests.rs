@@ -872,9 +872,9 @@ mod non_htmx_path {
                 jellyfin_url: String::new(), // empty — skips connection-test
                 jellyfin_api_key: String::new(),
                 sonarr_enabled: Some(String::new()), // seed=false → submit→true
-                sonarr_api_key: Some("sonarr-submit-key".to_string()),
+                sonarr_api_key: Some("sonarr-submit-key-0123".to_string()),
                 radarr_enabled: None, // seed=true → submit→false
-                radarr_api_key: Some("radarr-submit-key".to_string()),
+                radarr_api_key: Some("radarr-submit-key-0123".to_string()),
                 external_sync_interval_minutes: Some(120), // seed=60
             }),
         )
@@ -913,9 +913,9 @@ mod non_htmx_path {
         assert!(saved.jellyfin_url.is_empty());
         assert!(saved.jellyfin_api_key.is_empty());
         assert!(saved.sonarr_enabled);
-        assert_eq!(saved.sonarr_api_key, "sonarr-submit-key");
+        assert_eq!(saved.sonarr_api_key, "sonarr-submit-key-0123");
         assert!(!saved.radarr_enabled);
-        assert_eq!(saved.radarr_api_key, "radarr-submit-key");
+        assert_eq!(saved.radarr_api_key, "radarr-submit-key-0123");
         // The picker lives on General now; an Integrations save preserves it.
         assert_eq!(saved.grab_preview_mode, "never");
         assert_eq!(saved.external_sync_interval_minutes, 120);

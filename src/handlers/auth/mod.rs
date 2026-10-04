@@ -129,6 +129,45 @@ pub(crate) fn login_record_failure(key: &str) {
     entry.push(Instant::now());
 }
 
+/// The per-IP bucket for wrong API keys, beside the login buckets.
+fn api_key_bucket(req: &Request<Body>) -> String {
+    let peer = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|info| info.0);
+    let ip = client_ip_from_request(req.headers(), peer);
+    format!("key:{}", ip.chars().take(64).collect::<String>())
+}
+
+/// Whether this client has sent too many wrong API keys lately (same
+/// window and soft cap as logins). The Sonarr / Radarr keys can be any
+/// string the user typed, and nothing limited how fast one could be
+/// guessed. Only failures count, so a working client is never slowed.
+pub(crate) fn api_key_throttled(req: &Request<Body>) -> bool {
+    let key = api_key_bucket(req);
+    let mut guard = LOGIN_FAILURES.lock().unwrap();
+    let cutoff = Instant::now() - LOGIN_WINDOW;
+    match guard.get_mut(&key) {
+        Some(times) => {
+            times.retain(|t| *t > cutoff);
+            times.len() >= LOGIN_MAX_FAILURES
+        }
+        None => false,
+    }
+}
+
+/// Count a wrong API key against this client.
+pub(crate) fn api_key_failed(req: &Request<Body>) {
+    let key = api_key_bucket(req);
+    let mut guard = LOGIN_FAILURES.lock().unwrap();
+    let cutoff = Instant::now() - LOGIN_WINDOW;
+    let times = guard.entry(key).or_default();
+    times.retain(|t| *t > cutoff);
+    if times.len() < LOGIN_HARD_CAP {
+        times.push(Instant::now());
+    }
+}
+
 /// Reset the counter for `key` after a successful login so a
 /// legitimate user who mistyped a few times isn't locked out by
 /// their own prior failures.
@@ -887,6 +926,14 @@ pub async fn login_submit(
         user::verify_user(&state.db, &form.username, &form.password).await
     };
 
+    // One log row per client per minute: a throttled client can keep
+    // sending, and each line is a database row.
+    if rate_limited && !logger::first_in_window(&format!("login-throttled:{ip}"), LOGIN_WINDOW) {
+        let template = LoginTemplate {
+            error: Some("Too many failed attempts. Please wait a minute and try again.".into()),
+        };
+        return Html(template.render().unwrap_or_default()).into_response();
+    }
     if rate_limited {
         logger::warn(
             &state.db,

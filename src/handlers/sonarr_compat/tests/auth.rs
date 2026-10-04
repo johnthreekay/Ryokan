@@ -71,7 +71,34 @@ async fn returns_503_when_shim_is_disabled_in_config() {
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
+#[tokio::test]
+async fn a_sanitizer_placeholder_key_counts_as_no_key() {
+    // A restored sanitized backup used to leave `[REDACTED]` as the
+    // configured key, and anyone could send it.
+    let db = in_memory_pool().await;
+    crate::test_support::seed_sonarr_enabled(&db, "[REDACTED]").await;
+    let state = build_test_app_state(db, None);
+    let app = sonarr_router(state);
+    let response = get(app, "/api/v3/system/status", Some("[REDACTED]"), None).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
 // ─── 401 paths (enabled, key wrong) ────────────────────────────────
+
+#[tokio::test]
+async fn wrong_keys_from_one_client_are_throttled() {
+    // A user-typed key can be short, and nothing limited guessing it.
+    let db = in_memory_pool().await;
+    crate::test_support::seed_sonarr_enabled(&db, "the-real-key-0123456789").await;
+    let state = build_test_app_state(db, None);
+    let app = sonarr_router(state);
+    for _ in 0..crate::handlers::auth::LOGIN_MAX_FAILURES {
+        let response = get(app.clone(), "/api/v3/system/status", Some("guess"), None).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+    let response = get(app, "/api/v3/system/status", Some("guess"), None).await;
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+}
 
 #[tokio::test]
 async fn returns_401_when_api_key_missing_but_shim_enabled() {

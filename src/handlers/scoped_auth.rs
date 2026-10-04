@@ -65,14 +65,26 @@ async fn check_scope(
         Ok(Some(k)) => k,
         Ok(None) => {
             // Wrong / disabled / nonexistent key. Log at warn so
-            // probing surfaces in System → Logs.
-            logger::warn(
-                &state.db,
-                LogCategory::Auth,
-                "Scoped API request rejected",
-                &format!("scope={} reason=unknown_key", required_scope),
-            )
-            .await;
+            // probing surfaces in System → Logs, once a minute per
+            // client: each line is a database row, and a probe loop
+            // otherwise wrote thousands a second.
+            let peer = req
+                .extensions()
+                .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                .map(|info| info.0.ip().to_string())
+                .unwrap_or_default();
+            if logger::first_in_window(
+                &format!("scoped-reject:{peer}"),
+                std::time::Duration::from_secs(60),
+            ) {
+                logger::warn(
+                    &state.db,
+                    LogCategory::Auth,
+                    "Scoped API request rejected",
+                    &format!("scope={} reason=unknown_key", required_scope),
+                )
+                .await;
+            }
             return (StatusCode::UNAUTHORIZED, "Invalid API key").into_response();
         }
         Err(e) => {

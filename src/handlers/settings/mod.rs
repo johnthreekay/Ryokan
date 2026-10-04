@@ -25,6 +25,9 @@ pub mod indexers;
 pub mod naming;
 use custom_formats::ImportReviewView;
 
+/// Shortest Sonarr / Radarr shim API key a save accepts.
+const MIN_SHIM_KEY_CHARS: usize = 20;
+
 /// Process-wide serializer for `config` row read-modify-write across
 /// every Settings save handler — the per-tab subforms
 /// (`settings_general_submit`, `settings_quality_submit`,
@@ -2337,6 +2340,20 @@ pub async fn settings_integrations_submit(
             return integrations_response(&state, None, None, Some(err), is_htmx).await;
         }
     };
+    // The Sonarr / Radarr keys are whatever the user types; a short one
+    // ("seerr") could be guessed.
+    for (label, key) in [
+        ("Sonarr", form.sonarr_api_key.as_deref()),
+        ("Radarr", form.radarr_api_key.as_deref()),
+    ] {
+        let key = key.unwrap_or("").trim();
+        if !key.is_empty() && key.chars().count() < MIN_SHIM_KEY_CHARS {
+            let err = format!(
+                "The {label} API key must be at least {MIN_SHIM_KEY_CHARS} characters. Use Generate for a random one."
+            );
+            return integrations_response(&state, None, None, Some(err), is_htmx).await;
+        }
+    }
 
     let cfg = config::Config {
         active_client: match form.active_client.trim() {

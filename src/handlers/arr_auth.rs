@@ -85,6 +85,14 @@ where
     // Constant-time compare so the equality check itself never becomes a
     // timing oracle. The threat is largely theoretical over the network,
     // but it costs nothing to remove.
+    if crate::handlers::auth::api_key_throttled(&req) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(axum::http::header::RETRY_AFTER, "60")],
+            "Too many wrong API keys; wait a minute",
+        )
+            .into_response();
+    }
     let valid = match &api_key {
         Some(key) => bool::from(subtle::ConstantTimeEq::ct_eq(
             key.as_bytes(),
@@ -95,6 +103,7 @@ where
     if valid {
         next.run(req).await
     } else {
+        crate::handlers::auth::api_key_failed(&req);
         (StatusCode::UNAUTHORIZED, "Invalid or missing API key").into_response()
     }
 }
