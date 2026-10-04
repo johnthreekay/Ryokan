@@ -1317,7 +1317,10 @@ async fn main() {
             get(handlers::progress::stream_progress),
         )
         .route("/media/art/{cache_key}", get(handlers::media::artwork))
-        .route("/logout", get(handlers::auth::logout))
+        // POST so `require_auth`'s same-origin check covers it: as a GET,
+        // any site could log the user out with a link (SameSite=Lax sends
+        // the cookie on top-level navigations).
+        .route("/logout", post(handlers::auth::logout))
         // SwaggerUI/OpenAPI live behind the auth wall: the OpenAPI doc
         // describes the entire route surface and form schemas, including
         // the rate-limited /login and /setup shapes. Exposing it

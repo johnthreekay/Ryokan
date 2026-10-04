@@ -234,6 +234,7 @@ pub async fn logged_in_session(db: &SqlitePool) -> (AppState, String) {
 /// * `GET /setup` — public setup page render
 /// * `POST /setup` — public setup submit (wrapped in `csrf_public`)
 /// * `GET /api/health` — protected health check (wrapped in `require_auth`)
+/// * `POST /logout` — protected logout (wrapped in `require_auth`)
 ///
 /// Later test waves extend this helper — add new routes to the
 /// matching route group (public vs protected) and re-merge.
@@ -253,6 +254,7 @@ pub fn handler_router(state: AppState) -> Router {
 
     let protected_routes = Router::new()
         .route("/api/health", get(handlers::settings::api_health))
+        .route("/logout", axum::routing::post(handlers::auth::logout))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             handlers::auth::require_auth,
@@ -746,7 +748,7 @@ window.addEventListener('DOMContentLoaded', function () {
             .route("/", get(crate::handlers::library::pages::index))
             .route("/search", get(crate::handlers::search::search_page))
             .route("/system", get(crate::handlers::system::system_page))
-            // Phase D's logout-flow test follows the GET → /logout
+            // Phase D's logout-flow test follows the POST /logout
             // → 303 /login chain, so the logout handler needs to be
             // reachable. /logout must be inside the protected layer
             // (the auth middleware reads the cookie before clearing
@@ -756,7 +758,7 @@ window.addEventListener('DOMContentLoaded', function () {
             // identically here as in production, so the assertion
             // that subsequent navs land on `/login` reflects the
             // genuine middleware redirect, not a mocked path.
-            .route("/logout", get(crate::handlers::auth::logout))
+            .route("/logout", post(crate::handlers::auth::logout))
             // Issue #129 completion — per-tab subform handlers
             // (`/settings/general`, `/settings/quality`,
             // `/settings/integrations`). Mounted here so the

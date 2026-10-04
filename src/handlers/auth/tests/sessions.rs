@@ -8,7 +8,9 @@
 //!     https` only while proxy headers are trusted.
 //!   * HTTP round-trip through `handler_router` — anonymous hits to
 //!     `/api/health` redirect, a valid `session=<token>` cookie
-//!     passes, an unknown token is rejected.
+//!     passes, an unknown token is rejected; `POST /logout` ends the
+//!     session from the same origin only, and a `GET /logout` is a 405
+//!     that leaves it alone.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
@@ -237,4 +239,85 @@ async fn malformed_cookie_header_is_rejected() {
         response.status(),
         StatusCode::SEE_OTHER | StatusCode::FOUND
     ));
+}
+
+// ─── Logout ────────────────────────────────────────────────────────
+
+/// `POST /logout` with `cookie` and the given `Origin`, through
+/// `handler_router`. `Host` is always `ryokan.local`.
+async fn post_logout(
+    state: crate::AppState,
+    cookie: &str,
+    origin: &str,
+) -> axum::response::Response {
+    handler_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/logout")
+                .header(header::HOST, "ryokan.local")
+                .header(header::ORIGIN, origin)
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+async fn session_is_valid(db: &sqlx::SqlitePool, cookie: &str) -> bool {
+    let token = cookie.strip_prefix("session=").unwrap();
+    crate::models::session::validate_session(db, token)
+        .await
+        .unwrap()
+        .is_some()
+}
+
+#[tokio::test]
+async fn same_origin_logout_post_ends_the_session() {
+    let db = in_memory_pool().await;
+    let (state, cookie) = logged_in_session(&db).await;
+    let response = post_logout(state, &cookie, "http://ryokan.local").await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.headers().get(header::LOCATION).unwrap(), "/login");
+    let set_cookie = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(set_cookie.contains("Max-Age=0"), "got {set_cookie:?}");
+    assert!(!session_is_valid(&db, &cookie).await);
+}
+
+#[tokio::test]
+async fn cross_origin_logout_post_is_rejected() {
+    // The reason /logout is a POST: another site can't end the
+    // session, because `require_auth` checks the Origin on unsafe
+    // methods.
+    let db = in_memory_pool().await;
+    let (state, cookie) = logged_in_session(&db).await;
+    let response = post_logout(state, &cookie, "https://evil.example").await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(session_is_valid(&db, &cookie).await);
+}
+
+#[tokio::test]
+async fn logout_get_does_not_end_the_session() {
+    // A GET skips the same-origin check, so a link or redirect from
+    // any site could reach it. It must not log the user out.
+    let db = in_memory_pool().await;
+    let (state, cookie) = logged_in_session(&db).await;
+    let response = handler_router(state)
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/logout")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert!(session_is_valid(&db, &cookie).await);
 }

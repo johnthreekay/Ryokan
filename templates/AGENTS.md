@@ -23,7 +23,7 @@ Askama 0.16 (Jinja2-like, compiled into the binary at build time via proc-macro)
 `templates/base.html` loads the htmx core as `defer` *before* `static/js/page_lifecycle.js` and `static/js/base.js` so any code referencing the `htmx.*` global sees it on first paint. `base.js` guards its modal IIFEs, so a page without the modal markup (test fixtures) still gets the toast helpers and the listeners defined after them; the confirm bridge registers too but needs the modal markup to actually confirm anything.
 
 Per-element `hx-boost="false"` opt-outs:
-- `/logout` links in `base.html` (avoids a swap-then-redirect race against session-clear)
+- the `/logout` form in `base.html` (avoids a swap-then-redirect race against session-clear). `/logout` is a POST so `require_auth`'s same-origin check covers it; both Logout buttons (text and mobile icon) submit the one hidden `#logout-form` through their `form` attribute, which keeps them direct children of `.nav-links` for the mobile filter
 - download links (`system.html`, `partials/system/backup.html`): a boosted click would swap the attachment's bytes into the page
 - the API-key create form (`partials/settings/api_keys.html`): a JS `submit` listener owns that form
 
@@ -73,7 +73,7 @@ Boost-nav users don't notice because the helpers stay loaded from a prior page; 
 
 ## Links inside forms that carry `hx-target`
 
-Under htmx 2's implicit inheritance a plain `<a href>` inside a form with `hx-target="#some-region" hx-swap="outerHTML"` (the per-tab Settings subforms) was boosted **using the form's target and swap**, rendering the destination page nested inside that region with two sidebars overlapping. htmx 4 inherits only through `:inherited`, so this can't happen unless someone adds `hx-target:inherited` to a form; don't. The per-link `hx-boost="false"` opt-outs (download links, `/logout`, the API-key create form) are listed under Boot order.
+Under htmx 2's implicit inheritance a plain `<a href>` inside a form with `hx-target="#some-region" hx-swap="outerHTML"` (the per-tab Settings subforms) was boosted **using the form's target and swap**, rendering the destination page nested inside that region with two sidebars overlapping. htmx 4 inherits only through `:inherited`, so this can't happen unless someone adds `hx-target:inherited` to a form; don't. The per-element `hx-boost="false"` opt-outs (download links, the `/logout` form, the API-key create form) are listed under Boot order.
 
 ## Per-page JS quirks under hx-boost
 
