@@ -2055,24 +2055,91 @@ mod sync_exclusions_list {
 
 #[test]
 fn a_short_shim_key_is_refused_by_name() {
-    assert_eq!(shim_key_error(None, None), None);
+    assert_eq!(shim_key_error(None, None, None), None);
     assert_eq!(
-        shim_key_error(Some(""), Some("   ")),
+        shim_key_error(Some(""), Some("   "), None),
         None,
         "blank clears the key"
     );
     let long = "k".repeat(MIN_SHIM_KEY_CHARS);
-    assert_eq!(shim_key_error(Some(&long), Some(&long)), None);
+    assert_eq!(shim_key_error(Some(&long), Some(&long), None), None);
     assert!(
-        shim_key_error(Some("seerr"), None)
+        shim_key_error(Some("seerr"), None, None)
             .unwrap()
             .contains("Sonarr")
     );
     assert!(
-        shim_key_error(Some(&long), Some("seerr"))
+        shim_key_error(Some(&long), Some("seerr"), None)
             .unwrap()
             .contains("Radarr")
     );
+}
+
+#[test]
+fn only_a_changed_shim_key_is_held_to_the_minimum() {
+    // A short key saved before the minimum existed is posted back on
+    // every Integrations save; refusing it blocked the whole tab.
+    let stored = config::Config {
+        sonarr_api_key: "seerr".into(),
+        radarr_api_key: "radarr".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        shim_key_error(Some(" seerr "), Some("radarr"), Some(&stored)),
+        None
+    );
+    assert!(
+        shim_key_error(Some("seerr2"), Some("radarr"), Some(&stored))
+            .unwrap()
+            .contains("Sonarr")
+    );
+    assert!(
+        shim_key_error(Some("seerr"), Some("seerr"), Some(&stored))
+            .unwrap()
+            .contains("Radarr"),
+        "a key is compared with its own shim's stored key"
+    );
+}
+
+#[tokio::test]
+async fn an_unchanged_short_shim_key_does_not_block_the_integrations_tab() {
+    use axum::extract::FromRequest;
+    let db = crate::test_support::in_memory_pool().await;
+    let cfg = config::Config {
+        sonarr_enabled: true,
+        sonarr_api_key: "seerr".into(),
+        ..Default::default()
+    };
+    config::save_config(&db, &cfg).await.unwrap();
+    let state = crate::test_support::build_test_app_state(db.clone(), None);
+    let submit = |body: &'static str| {
+        let state = state.clone();
+        async move {
+            let req = axum::http::Request::builder()
+                .method("POST")
+                .uri("/settings/integrations")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(axum::body::Body::from(body))
+                .unwrap();
+            let form = Form::<IntegrationsForm>::from_request(req, &())
+                .await
+                .unwrap();
+            settings_integrations_submit(State(state), axum_htmx::HxRequest(false), form).await
+        }
+    };
+    submit("sonarr_enabled=on&sonarr_api_key=seerr&jellyfin_url=http%3A%2F%2Fjellyfin%3A8096")
+        .await;
+    let saved = config::get_config(&db).await.unwrap().unwrap();
+    assert_eq!(
+        saved.jellyfin_url, "http://jellyfin:8096",
+        "the save went through"
+    );
+    assert_eq!(saved.sonarr_api_key, "seerr");
+    // A new short key is still refused.
+    submit("sonarr_enabled=on&sonarr_api_key=seerr2&jellyfin_url=").await;
+    let saved = config::get_config(&db).await.unwrap().unwrap();
+    assert_eq!(saved.sonarr_api_key, "seerr");
+    assert_eq!(saved.jellyfin_url, "http://jellyfin:8096");
 }
 
 #[tokio::test]
