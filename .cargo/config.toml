@@ -3,8 +3,8 @@
 # precedence order).
 
 # Use mold (https://github.com/rui314/mold) as the linker on Linux.
-# Cuts incremental link time 3-5x vs. ld/lld, which dominates the edit-
-# build-test loop once the dep graph is warm. Install: pacman -S mold
+# Links faster than the default (rust-lld since Rust 1.90), and linking
+# dominates the edit-build-test loop once the dep graph is warm. Install: pacman -S mold
 # (Arch) / apt install mold (Ubuntu 22.04+).
 #
 # CI note: GitHub's ubuntu-latest runners ship with binutils ld and
@@ -21,7 +21,8 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 # Cargo aliases. `cargo t` becomes the canonical "run the test suite"
 # command and routes through nextest with the test-support feature
 # (which `cargo test` requires anyway because all tests/ targets list
-# it under required-features). Falls back to `cargo test` only if
-# nextest isn't installed.
+# it under required-features). It needs cargo-nextest installed; an
+# alias has no fallback, so without it run
+# `cargo test --features test-support`.
 [alias]
 t = ["nextest", "run", "--features", "test-support"]

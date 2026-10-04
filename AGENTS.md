@@ -21,7 +21,7 @@ docker compose up -d --build
 cargo t                                                                  # = cargo nextest run --features test-support
 cargo t <test_name>                                                      # single-test filter (same syntax as cargo test <name>)
 cargo nextest run --workspace --features test-support                    # explicit form
-cargo test --workspace --locked --features test-support                  # CI-shape fallback (doc tests, --locked)
+cargo test --workspace --locked --features test-support                  # without nextest (CI uses nextest; there are no doctests)
 
 # Lint / format / coverage
 cargo fmt --all -- --check                                               # CI runs this first; short-circuits on failure
@@ -33,14 +33,14 @@ cargo llvm-cov --workspace --features test-support                       # cover
 
 - **Rust 1.95+** (enforced via `package.rust-version`).
 - **C/C++ toolchain** + **`cmake`** — needed because two crates compile native code at build time: `anitomy-sys` ships C++ source it builds via `cc` (anime title tokenization), and `aws-lc-sys` builds aws-lc via cmake (rustls' crypto provider since reqwest 0.13). SQLite is statically bundled by sqlx's `sqlite` feature; no system `libsqlite3` is needed at runtime. No OpenSSL headers either — TLS is pure-Rust rustls + aws-lc.
-- **`mold` + `clang`** — `.cargo/config.toml` pins `linker = "clang"` with `-fuse-ld=mold` for x86_64 + aarch64 Linux. Cuts incremental link time 3-5× vs ld/lld; without them a build fails with `"linker 'clang' not found"` or `"ld.mold not found"`. Install: `sudo pacman -S mold clang` (Arch) / `sudo apt install mold clang` (Debian/Ubuntu). CI installs both via apt before the build steps.
-- **`cargo-nextest`** for `cargo t`. Falls through to `cargo test` if not installed, but nextest is the default. Install: `cargo install cargo-nextest --locked`.
+- **`mold` + `clang`** — `.cargo/config.toml` pins `linker = "clang"` with `-fuse-ld=mold` for x86_64 + aarch64 Linux. Links faster than the default rust-lld; without them a build fails with `"linker 'clang' not found"` or `"ld.mold not found"`. Install: `sudo pacman -S mold clang` (Arch) / `sudo apt install mold clang` (Debian/Ubuntu). CI installs both via apt before the build steps.
+- **`cargo-nextest`** for `cargo t`. Required: a cargo alias has no fallback, so without nextest `cargo t` errors and you run `cargo test --features test-support` instead. Install: `cargo install cargo-nextest --locked`.
 - **`cargo-llvm-cov`** for coverage (optional). Install: `cargo install cargo-llvm-cov --locked`.
 
 **Test profile / nextest config:**
 
 - `[profile.test.package."*"] opt-level = 1` in `Cargo.toml` — dependencies build optimized so wiremock/sqlx/regex hot paths run 2-3× faster; Ryokan's own code stays at `opt-level = 0` for fast incremental rebuilds.
-- `.config/nextest.toml`: default profile retries failures once (matches `cargo test` behavior so a flaky wiremock port-bind doesn't fail the whole run), slow-warn at 60s and terminate at 180s. The `ci` profile bumps retries to 2, `fail-fast = false`, and emits `junit.xml`.
+- `.config/nextest.toml`: default profile retries failures once (nextest's own retry, so a flaky wiremock port-bind shows as FLAKY instead of failing the run; `cargo test` never retries), slow-warn at 60s and terminate at 180s. The `ci` profile bumps retries to 2, `fail-fast = false`, and the slow window to 120s × 2.
 
 ## Environment Variables
 

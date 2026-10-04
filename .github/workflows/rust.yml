@@ -55,7 +55,7 @@ jobs:
       - name: Install mold + clang
         run: sudo apt-get update && sudo apt-get install -y mold clang
       # nextest is the parallel test runner pinned in `.config/nextest.toml`
-      # — runs ~1900 tests roughly 2x faster than `cargo test` thanks
+      # — runs ~3,100 tests roughly 2x faster than `cargo test` thanks
       # to a process-per-test scheduler and a less serialized fixture
       # boot. taiki-e/install-action grabs a precompiled binary from
       # the GitHub release rather than building from source (~20s vs
@@ -85,9 +85,9 @@ jobs:
         # tests under `tests/` actually execute. Release builds and
         # Docker images deliberately leave the feature off so the test
         # helpers don't ship to production.
-        # `--profile ci` picks up the JUnit-output + retry-twice
-        # profile in `.config/nextest.toml` so flaky port-bind / DNS
-        # races don't fail the whole run.
+        # `--profile ci` picks up the retry-twice, no-fail-fast profile
+        # in `.config/nextest.toml` so flaky port-bind / DNS races don't
+        # fail the whole run.
         run: cargo nextest run --workspace --locked --features test-support --profile ci
 
   msrv:
