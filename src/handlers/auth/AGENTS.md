@@ -16,7 +16,7 @@ Cookie-based sessions for the web UI. `require_auth` middleware on protected rou
 
 `models::user::authenticate` bcrypt-verifies against a warmed dummy hash (`DUMMY_BCRYPT_HASH`) on the missing-user path so failed logins take the same ~50ms as real ones. `main()` forces the `LazyLock` to initialize via `warm_timing_equalizer` at startup, otherwise the very first probe would be a one-shot timing oracle for username enumeration.
 
-bcrypt cost is **10**. `models::user::register` pushes `bcrypt::hash` into `tokio::task::spawn_blocking` so the ~50ms CPU cost doesn't stall a runtime worker. The dummy hash on the authenticate path is pre-computed at the same cost so the equalizer comparison is apples-to-apples.
+bcrypt cost is **10**. `models::user::hash_password` (behind `create_user` and `create_first_user`) pushes `bcrypt::hash` into `tokio::task::spawn_blocking` so the ~50ms CPU cost doesn't stall a runtime worker. The dummy hash on the authenticate path is pre-computed at the same cost so the equalizer comparison is apples-to-apples.
 
 ## CSRF (Origin-based, not token-based)
 
@@ -30,9 +30,17 @@ Two layers run the check:
 
 **Missing both Origin and Referer → reject.**
 
+**Ports count when the Host header names one.** `SameSite` ignores ports, so another app on the same machine (`:8080` posting to Ryokan on `:8978`) gets the cookie sent; the Origin check is the only thing that tells them apart. `origin_matches` requires the Origin's port (the scheme default when omitted) to equal the Host header's. A Host header without a port (a reverse proxy forwarding `$host`) and `X-Forwarded-Host` entries (proxies disagree on whether they carry their own port) compare hosts only. IPv6 literals are parsed by `split_authority`; splitting at the first `:` used to turn every one into `[`.
+
+`handlers::security_headers` sends `Referrer-Policy: same-origin`. Keep it that way: under `no-referrer` browsers send `Origin: null` on every POST, and this check would reject all of them.
+
+Safe methods (GET / HEAD / OPTIONS) skip the check, so nothing that changes state may be a GET. **`/logout` is a POST for this reason**: as a GET, any site could log the user out with a link, since `SameSite=Lax` sends the cookie on top-level navigations. `tests/sessions.rs` pins the cross-origin 403 and the `GET /logout` 405.
+
 ## Per-IP login throttle
 
-In-memory `LOGIN_FAILURES: Mutex<HashMap<String, Vec<Instant>>>` keyed by client IP. Failed login attempts push timestamps; middleware rejects when the per-window count exceeds the cap.
+In-memory `LOGIN_FAILURES: Mutex<HashMap<String, Vec<Instant>>>`, one bucket per username (`u:` + SHA-256 of the trimmed, lowercased name, so a 2 MB username costs 66 bytes) and one per client IP. `login_attempt` counts each attempt **as it starts**, under the lock, and a success clears its buckets; checking first and recording after the bcrypt await let a parallel burst all pass the check. Past the hard cap a bucket stops growing.
+
+**Device cookies** (`models::login_device`, OWASP's lockout answer): a successful login or setup sets `ryokan_device` (random token, 400-day HttpOnly cookie; the table stores only its SHA-256). A login carrying a known device is throttled on that device's own bucket instead of the username's and the IP's, so someone else failing as `admin` can't lock out a browser that has logged in before, even behind a reverse proxy where every client shares one IP. A stranger's browser still faces both buckets. The hourly cleanup drops devices unused for 400 days.
 
 `sweep_login_failures()` runs from the `cleanup` background task every hour and prunes expired timestamps so a probe storm can't grow the map unbounded.
 
@@ -40,11 +48,19 @@ Client IP comes from `client_ip_from_request()`, which honors `X-Forwarded-For` 
 
 Usernames are passed through `sanitize_for_log()` (strip control chars, cap at 64 bytes) before embedding in log lines so a probe can't smuggle terminal escapes or multi-KB garbage into `tracing` output.
 
+**API keys** share the map: `api_key_throttled` / `api_key_failed` keep a `key:<ip>` bucket for wrong Sonarr / Radarr shim keys (`arr_auth::check_api_key`), with the login window and soft cap; only failures count, and a throttled client gets 429 + `Retry-After: 60`. Those keys are whatever the user typed, so Settings refuses one under 20 characters (`MIN_SHIM_KEY_CHARS`). Log lines an unauthenticated client can repeat (a throttled login, a wrong scoped key) go through `logger::first_in_window`, one row per client per minute, since each is a database row.
+
+**Cross-site GETs**: `refuse_cross_site_get` 403s a `Sec-Fetch-Site: cross-site` request to a GET that does something (`/api/backup/download`, the OAuth `/start` routes), which `SameSite=Lax` would otherwise send the session cookie with; no header (curl) or same-origin passes.
+
 `LOGIN_FAILURES` deliberately uses `.lock().unwrap()` — security-adjacent state should crash-loop on programmer error, not silently continue with half-mutated state.
 
 ## `users_exist` first-run cache
 
-`AppState.users_exist: Arc<AtomicBool>` is a flip-to-true-once cache so `require_auth` can skip a `SELECT COUNT(*) FROM users` on every protected request once setup is complete. `models::user::register` flips it after successful registration.
+`AppState.users_exist: Arc<AtomicBool>` is a flip-to-true-once cache so `require_auth` can skip a `SELECT COUNT(*) FROM users` on every protected request once setup is complete. `main.rs` primes it at boot, and `require_auth` promotes it the first time `has_users` reads true; setup itself never writes it.
+
+## One admin, even under concurrent setup
+
+`setup_submit` creates the account through `models::user::create_first_user`, an `INSERT ... SELECT ... WHERE NOT EXISTS (SELECT 1 FROM users)`, never `create_user`. Its `has_users` gate runs before the ~50ms bcrypt hash, so two submissions in flight at once both pass it; with a plain insert both landed and a second admin with a different username slipped in beside the first (`UNIQUE(username)` only catches a repeated name). The loser gets `Ok(None)`, an `Auth` warn line, and a redirect to `/login`. `create_user` stays for tests that seed users. `tests/setup.rs::concurrent_setup_posts_create_exactly_one_account` pins it.
 
 ## Sonarr/Radarr shim auth (out of scope)
 

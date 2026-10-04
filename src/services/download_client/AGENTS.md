@@ -10,6 +10,10 @@
 - The 40-char-hex contract only applies inside the four BT impls' add paths.
 - The `pick` callback in `add_torrent_with_file_filter` is `&mut dyn FnMut` (not generic) to keep the trait object-safe for `Arc<dyn DownloadClient>` storage on `AppState`.
 
+**Every add method calls `check_release_url(url)?` first**, before any request: `add_torrent`, `add_torrent_paused`, `add_torrent_with_file_filter`, and any `*_returning_id` override. The URL comes from feeds, indexers and autobrr, and Transmission's `filename` / rTorrent's `load.start_verbose` would also read a local path on the client's machine. `test_helpers::assert_refuses_non_url_releases` is the per-client test; a new client gets one in its `wiremock_tests/add.rs`.
+
+**Info-hashes are only ever real hashes.** Every source normalizes through `normalize_info_hash` (40 or 64 hex, lowercased; anything else becomes `""` or a 400): `nyaa::extract_hash`, the Nyaa RSS `nyaa:infohash` tag, the torznab `infohash` attribute, the autobrr payload, the interactive grab bodies. qBittorrent reads `hashes=all` as every torrent and `a|b` as a list, so its client also runs `check_info_hash` before any call that sends a hash (an empty hash on pause / resume / delete / seed rules stays a no-op, for hashless grabs). `wiremock_tests/control.rs::hashes_qbit_reads_as_many_torrents_are_refused_before_any_request` pins it.
+
 ## Multi-client routing pool
 
 `AppState.download_clients` is a `DownloadClientsCache = Arc<RwLock<Arc<DownloadClientPool>>>`. The pool holds `clients: HashMap<i64, Arc<dyn DownloadClient>>` keyed by `download_clients.id`, plus `default_torrent_id` and `default_usenet_id` (the `is_default = 1` rows scoped per protocol — both can coexist).
