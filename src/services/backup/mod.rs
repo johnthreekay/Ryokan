@@ -28,7 +28,7 @@
 
 use std::fmt;
 use std::fs;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -805,19 +805,23 @@ async fn stage_into(
     })
 }
 
-/// Unpack `archive` into `into`, accepting only the entries a Ryokan
-/// backup contains. `unpack_in` refuses anything that would land
-/// outside `into`.
 /// Most entries a restore unpacks (artwork blobs are most of them).
 const RESTORE_MAX_ENTRIES: usize = 500_000;
 /// Most bytes a restore unpacks: well past any real database plus
 /// artwork, short of filling a disk on a gzip bomb.
 const RESTORE_MAX_TOTAL_BYTES: u64 = 64 << 30;
+/// Most decompressed bytes a restore reads: the data cap plus room for
+/// every entry's header and padding. Counted under the tar reader, so
+/// the PAX and long-name records it consumes on its own count too.
+const RESTORE_MAX_READ_BYTES: u64 = RESTORE_MAX_TOTAL_BYTES + (1 << 30);
 
+/// Unpack `archive` into `into`, accepting only the entries a Ryokan
+/// backup contains. `unpack_in` refuses anything that would land
+/// outside `into`.
 fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
     let file =
         fs::File::open(archive).map_err(|e| RestoreError::Other(format!("open upload: {e}")))?;
-    let decoder = GzDecoder::new(BufReader::new(file));
+    let decoder = GzDecoder::new(BufReader::new(file)).take(RESTORE_MAX_READ_BYTES);
     let mut tar = tar::Archive::new(decoder);
     let entries = tar
         .entries()
@@ -840,7 +844,10 @@ fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
         }
         // Size and count caps, so a crafted archive can't fill the
         // filesystem the live database shares before any check runs.
-        let size = entry.header().size().unwrap_or(u64::MAX);
+        // `entry.size()`, not the header's: a PAX `size` record replaces
+        // the ustar field, so an entry whose header said 0 unpacked
+        // whatever length its PAX record named, past both caps.
+        let size = entry.size();
         count += 1;
         total = total.saturating_add(size);
         if count > RESTORE_MAX_ENTRIES || total > RESTORE_MAX_TOTAL_BYTES {
@@ -927,7 +934,6 @@ fn check_database_file(path: &Path) -> Result<(), RestoreError> {
     let mut head = [0u8; 16];
     let mut file = fs::File::open(path)
         .map_err(|_| RestoreError::Invalid("ryokan.db is missing".to_string()))?;
-    use std::io::Read;
     file.read_exact(&mut head)
         .map_err(|_| RestoreError::Invalid("ryokan.db is not a SQLite database".to_string()))?;
     if head != DB_MAGIC {

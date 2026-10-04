@@ -624,3 +624,79 @@ async fn stage_restore_refuses_links_bad_keys_and_foreign_schema_objects() {
     assert!(!paths.pending_dir().exists(), "nothing was staged");
     cleanup(&paths);
 }
+
+/// A PAX `x` record giving the next entry's `size`. The length prefix
+/// counts its own digits.
+fn pax_size_record(size: u64) -> Vec<u8> {
+    let body = format!(" size={size}\n");
+    let mut len = body.len() + 1;
+    loop {
+        let record = format!("{len}{body}");
+        if record.len() == len {
+            return record.into_bytes();
+        }
+        len = record.len();
+    }
+}
+
+/// An archive of one regular file `name` whose ustar header says 0 bytes
+/// while a PAX record says `pax_size`, followed by `data`.
+fn archive_with_pax_size(out: &Path, name: &str, pax_size: u64, data: &[u8]) {
+    let file = fs::File::create(out).unwrap();
+    let mut tar = tar::Builder::new(GzEncoder::new(file, Compression::default()));
+    let record = pax_size_record(pax_size);
+    let mut pax = tar::Header::new_ustar();
+    pax.set_entry_type(tar::EntryType::XHeader);
+    pax.set_path(format!("PaxHeaders/{name}")).unwrap();
+    pax.set_size(record.len() as u64);
+    pax.set_mode(0o644);
+    pax.set_cksum();
+    tar.append(&pax, record.as_slice()).unwrap();
+    let mut header = tar::Header::new_ustar();
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_path(name).unwrap();
+    header.set_size(0);
+    header.set_mode(0o644);
+    header.set_cksum();
+    // `append` writes whatever the reader yields, whatever the header says.
+    tar.append(&header, data).unwrap();
+    tar.into_inner().unwrap().finish().unwrap();
+}
+
+#[test]
+fn extraction_caps_read_the_pax_size_not_the_header() {
+    let paths = temp_paths("pax-size");
+    let into = paths.data_dir.join("into");
+    fs::create_dir_all(&into).unwrap();
+    let invalid = |r: Result<(), RestoreError>, needle: &str| match r {
+        Err(RestoreError::Invalid(msg)) => assert!(msg.contains(needle), "{msg}"),
+        Err(other) => panic!("expected Invalid({needle}), got {other}"),
+        Ok(()) => panic!("expected Invalid({needle}), got an extracted archive"),
+    };
+
+    // A 2 MiB manifest behind a ustar size of 0 passed the 1 MiB cap and
+    // was unpacked whole.
+    let mut manifest = b"{}".to_vec();
+    manifest.resize(2 << 20, b' ');
+    let big_manifest = paths.data_dir.join("big-manifest.tar.gz");
+    archive_with_pax_size(
+        &big_manifest,
+        "manifest.json",
+        manifest.len() as u64,
+        &manifest,
+    );
+    invalid(
+        extract_archive(&big_manifest, &into),
+        "'manifest.json' is larger than a Ryokan backup's",
+    );
+    assert!(!into.join("manifest.json").exists(), "nothing was unpacked");
+
+    // The total cap reads the same size, before any data is read.
+    let huge = paths.data_dir.join("huge.tar.gz");
+    archive_with_pax_size(&huge, "artwork/blob.jpg", RESTORE_MAX_TOTAL_BYTES + 1, b"");
+    invalid(
+        extract_archive(&huge, &into),
+        "larger than any Ryokan backup",
+    );
+    cleanup(&paths);
+}
