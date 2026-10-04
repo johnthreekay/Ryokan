@@ -75,23 +75,47 @@ pub(crate) fn login_check(key: &str) -> LoginCheck {
     classify_login_count(count)
 }
 
-/// Count an attempt against `key` as it starts, and classify it, in one
-/// critical section. The handler used to check first and record the
-/// failure only after the ~50 ms bcrypt verify, so a burst of parallel
-/// requests all passed the check before any failure landed and each got
-/// a real verdict: hundreds of guesses a minute instead of five. A
-/// success calls [`login_clear`], so the reservation only sticks for
-/// failures. Past the hard cap the bucket stops growing.
-pub(crate) fn login_attempt(key: &str) -> LoginCheck {
+/// Count an attempt against every bucket in `keys` as it starts, and
+/// classify each, in one critical section. The handler used to check
+/// first and record the failure only after the ~50 ms bcrypt verify, so
+/// a burst of parallel requests all passed the check before any failure
+/// landed and each got a real verdict: hundreds of guesses a minute
+/// instead of five. A success calls [`login_clear`], so the reservation
+/// only sticks for failures. Past the hard cap a bucket stops growing.
+///
+/// Only an attempt that every bucket allows creates a bucket. A
+/// throttled attempt gets no verdict whatever its username, so it counts
+/// only against buckets that already exist: otherwise one client sending
+/// a fresh username per request would add a bucket per request until the
+/// hourly sweep.
+pub(crate) fn login_attempt(keys: &[String]) -> Vec<LoginCheck> {
     let mut guard = LOGIN_FAILURES.lock().unwrap();
-    let cutoff = Instant::now() - LOGIN_WINDOW;
-    let entry = guard.entry(key.to_string()).or_default();
-    entry.retain(|t| *t > cutoff);
-    let count = entry.len();
-    if count < LOGIN_HARD_CAP {
-        entry.push(Instant::now());
+    let now = Instant::now();
+    let cutoff = now - LOGIN_WINDOW;
+    let tiers: Vec<LoginCheck> = keys
+        .iter()
+        .map(|key| {
+            let count = guard.get_mut(key.as_str()).map_or(0, |times| {
+                times.retain(|t| *t > cutoff);
+                times.len()
+            });
+            classify_login_count(count)
+        })
+        .collect();
+    let allowed = tiers.iter().all(|tier| *tier == LoginCheck::Allow);
+    for key in keys {
+        let times = if allowed {
+            Some(guard.entry(key.clone()).or_default())
+        } else {
+            guard.get_mut(key.as_str())
+        };
+        if let Some(times) = times
+            && times.len() < LOGIN_HARD_CAP
+        {
+            times.push(now);
+        }
     }
-    classify_login_count(count)
+    tiers
 }
 
 /// The tier for a bucket that already holds `count` attempts.
@@ -959,7 +983,7 @@ pub async fn login_submit(
     //
     // Every attempt is counted as it starts (`login_attempt`); a success
     // clears its buckets below.
-    let tiers: Vec<LoginCheck> = buckets.iter().map(|key| login_attempt(key)).collect();
+    let tiers = login_attempt(&buckets);
     let hard_throttled = tiers.contains(&LoginCheck::HardThrottled);
     let rate_limited = tiers.iter().any(|tier| *tier != LoginCheck::Allow);
 

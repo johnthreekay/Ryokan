@@ -38,7 +38,7 @@ Safe methods (GET / HEAD / OPTIONS) skip the check, so nothing that changes stat
 
 ## Per-IP login throttle
 
-In-memory `LOGIN_FAILURES: Mutex<HashMap<String, Vec<Instant>>>`, one bucket per username (`u:` + SHA-256 of the trimmed, lowercased name, so a 2 MB username costs 66 bytes) and one per client IP. `login_attempt` counts each attempt **as it starts**, under the lock, and a success clears its buckets; checking first and recording after the bcrypt await let a parallel burst all pass the check. Past the hard cap a bucket stops growing.
+In-memory `LOGIN_FAILURES: Mutex<HashMap<String, Vec<Instant>>>`, one bucket per username (`u:` + SHA-256 of the trimmed, lowercased name, so a 2 MB username costs 66 bytes) and one per client IP. `login_attempt` classifies and counts an attempt's buckets **as it starts**, under one lock, and a success clears its buckets; checking first and recording after the bcrypt await let a parallel burst all pass the check. Past the hard cap a bucket stops growing. Only an attempt every bucket allows creates a bucket; a throttled one gets no verdict, so it counts only against buckets that already exist, and a client sending a fresh username per request can't grow the map.
 
 **Device cookies** (`models::login_device`, OWASP's lockout answer): a successful login or setup sets `ryokan_device` (random token, 400-day HttpOnly cookie; the table stores only its SHA-256). A login carrying a known device is throttled on that device's own bucket instead of the username's and the IP's, so someone else failing as `admin` can't lock out a browser that has logged in before, even behind a reverse proxy where every client shares one IP. A stranger's browser still faces both buckets. The hourly cleanup drops devices unused for 400 days.
 

@@ -215,7 +215,7 @@ fn login_attempt_counts_each_attempt_as_it_starts() {
     let key = "test:reserve:burst";
     login_clear(key);
     let tiers: Vec<LoginCheck> = (0..LOGIN_MAX_FAILURES + 2)
-        .map(|_| crate::handlers::auth::login_attempt(key))
+        .map(|_| crate::handlers::auth::login_attempt(&[key.to_string()])[0])
         .collect();
     assert!(
         tiers[..LOGIN_MAX_FAILURES]
@@ -231,10 +231,62 @@ fn login_attempt_stops_growing_a_bucket_at_the_hard_cap() {
     let key = "test:reserve:cap";
     login_clear(key);
     for _ in 0..LOGIN_HARD_CAP * 3 {
-        crate::handlers::auth::login_attempt(key);
+        crate::handlers::auth::login_attempt(&[key.to_string()]);
     }
     assert_eq!(login_failure_count_for_test(key), LOGIN_HARD_CAP);
     login_clear(key);
+}
+
+#[test]
+fn a_throttled_client_cycling_usernames_adds_no_buckets() {
+    // Each request with a fresh username used to create a bucket even
+    // once the client's own bucket was throttled, so the map grew by a
+    // bucket per request until the hourly sweep.
+    let ip = "test:cycle:ip".to_string();
+    login_clear(&ip);
+    let users: Vec<String> = (0..LOGIN_HARD_CAP * 2)
+        .map(|i| format!("test:cycle:user:{i}"))
+        .collect();
+    let tiers: Vec<Vec<LoginCheck>> = users
+        .iter()
+        .map(|user| crate::handlers::auth::login_attempt(&[user.clone(), ip.clone()]))
+        .collect();
+    // The first attempts get a verdict and count against both buckets.
+    for user in &users[..LOGIN_MAX_FAILURES] {
+        assert_eq!(login_failure_count_for_test(user), 1, "{user}");
+    }
+    // After that the client is throttled and nothing new is created...
+    for user in &users[LOGIN_MAX_FAILURES..] {
+        assert_eq!(login_failure_count_for_test(user), 0, "{user}");
+    }
+    // ...while its own bucket still climbs to the hard cap.
+    assert_eq!(tiers[LOGIN_MAX_FAILURES][1], LoginCheck::SoftThrottled);
+    assert_eq!(tiers[LOGIN_HARD_CAP][1], LoginCheck::HardThrottled);
+    assert_eq!(login_failure_count_for_test(&ip), LOGIN_HARD_CAP);
+    login_clear(&ip);
+    for user in &users {
+        login_clear(user);
+    }
+}
+
+#[test]
+fn a_throttled_attempt_still_counts_against_existing_buckets() {
+    // A username already being guessed keeps counting when the request
+    // comes from a throttled client, as it would from any other client.
+    let ip = "test:existing:ip".to_string();
+    let user = "test:existing:user".to_string();
+    login_clear(&ip);
+    login_clear(&user);
+    for _ in 0..LOGIN_MAX_FAILURES {
+        login_record_failure(&ip);
+    }
+    login_record_failure(&user);
+    let tiers = crate::handlers::auth::login_attempt(&[user.clone(), ip.clone()]);
+    assert_eq!(tiers, vec![LoginCheck::Allow, LoginCheck::SoftThrottled]);
+    assert_eq!(login_failure_count_for_test(&user), 2);
+    assert_eq!(login_failure_count_for_test(&ip), LOGIN_MAX_FAILURES + 1);
+    login_clear(&ip);
+    login_clear(&user);
 }
 
 #[test]
