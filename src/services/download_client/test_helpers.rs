@@ -133,12 +133,8 @@ pub(crate) async fn upload_torrent_file_qbit(
     panic!("uploaded torrent {expected} never registered in qBit");
 }
 
-/// Compute the v1 infohash of a `.torrent` by SHA1'ing the raw
-/// bencoded `info` dict. Minimal hand-parse — finds the `4:info`
-/// key at the top level, then slices the bencoded dict that
-/// follows. Doesn't validate the rest of the `.torrent` structure;
-/// assumes well-formed input from `transmission-create` (which all
-/// test helpers in this module produce).
+/// Compute the v1 infohash of a `.torrent` (the SHA-1 of its top-level
+/// bencoded `info` dict), through `services::torrent_file`.
 ///
 /// Shared between the rtorrent smoke (where `load.raw_start_verbose`
 /// returns 0 rather than echoing back the hash, so we compute it
@@ -147,48 +143,7 @@ pub(crate) async fn upload_torrent_file_qbit(
 /// first-in-category — makes the helper safe to call multiple times
 /// against the same category).
 pub(crate) fn bencode_info_hash(bytes: &[u8]) -> Option<String> {
-    let key = b"4:info";
-    let start = find_subslice(bytes, key)? + key.len();
-    let end = bencode_end(bytes, start)?;
-    let info_slice = &bytes[start..end];
-    let mut hasher = sha1_smol::Sha1::new();
-    hasher.update(info_slice);
-    Some(hasher.digest().to_string())
-}
-
-fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|w| w == needle)
-}
-
-/// Given a bencoded value starting at `start`, return the index
-/// just past its end. Handles dicts (`d...e`), lists (`l...e`),
-/// ints (`i...e`), and byte-strings (`N:...`) — the full bencode
-/// grammar. Returns `None` on malformed input.
-fn bencode_end(bytes: &[u8], start: usize) -> Option<usize> {
-    let mut i = start;
-    if i >= bytes.len() {
-        return None;
-    }
-    match bytes[i] {
-        b'd' | b'l' => {
-            i += 1;
-            while i < bytes.len() && bytes[i] != b'e' {
-                i = bencode_end(bytes, i)?;
-            }
-            if i < bytes.len() { Some(i + 1) } else { None }
-        }
-        b'i' => {
-            let e = find_subslice(&bytes[i..], b"e")? + i;
-            Some(e + 1)
-        }
-        b'0'..=b'9' => {
-            let colon = bytes[i..].iter().position(|&b| b == b':')? + i;
-            let len_str = std::str::from_utf8(&bytes[i..colon]).ok()?;
-            let len: usize = len_str.parse().ok()?;
-            Some(colon + 1 + len)
-        }
-        _ => None,
-    }
+    crate::services::torrent_file::torrent_info_hash(bytes)
 }
 
 fn build_inner(name: &str, with_name_file: bool) -> Option<(tempfile::TempDir, PathBuf)> {

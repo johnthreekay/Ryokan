@@ -230,8 +230,8 @@ pub async fn webhook_autobrr(
     };
     // An empty hash is allowed (autobrr can't always know it); anything
     // else has to be a real one. See `download_client::normalize_info_hash`.
-    let info_hash_lc = match payload.info_hash.trim() {
-        "" => String::new(),
+    let mut info_hash_lc = match payload.info_hash.trim() {
+        "" => crate::services::torrent_file::magnet_info_hash(&download_url).unwrap_or_default(),
         raw => match crate::services::download_client::normalize_info_hash(raw) {
             Some(hash) => hash,
             None => {
@@ -368,9 +368,34 @@ pub async fn webhook_autobrr(
             );
         }
     };
+    // No hash in the push or the magnet: read it from the .torrent, so
+    // post-processing can find the grab in the client by hash rather
+    // than by name (a single-file torrent named after its file never
+    // matched, and the grab was marked removed while downloading).
+    // Torrent clients only: fetching an NZB can count against an
+    // indexer's daily grab limit.
+    let derived_hash = info_hash_lc.is_empty() && client.protocol() == "torrent";
+    if derived_hash {
+        match crate::services::torrent_file::fetch_torrent_info_hash(payload.torrent_url.trim())
+            .await
+        {
+            Some(hash) => info_hash_lc = hash,
+            None => {
+                logger::warn(
+                    &state.db,
+                    LogCategory::Grab,
+                    &format!(
+                        "autobrr: no info_hash for {safe_release} and the .torrent couldn't be read; Ryokan will look for it in the client by name"
+                    ),
+                    "add info_hash to the autobrr webhook template",
+                )
+                .await;
+            }
+        }
+    }
     // A misgrab blocks its hash for the series it was misgrabbed for
     // only, so that check waits for the match (the one above covers
-    // every other failure).
+    // every other failure, for a hash the push carried).
     if !info_hash_lc.is_empty()
         && grabbed_torrents::is_blocklisted_for(&state.db, &info_hash_lc, Some(series.id))
             .await
@@ -384,6 +409,12 @@ pub async fn webhook_autobrr(
         )
         .await;
         return skipped("hash is blocklisted");
+    }
+    if derived_hash
+        && !info_hash_lc.is_empty()
+        && grabbed_torrents::is_known_hash(&state.db, &info_hash_lc).await
+    {
+        return skipped("duplicate hash already grabbed");
     }
     // `add_torrent_returning_id` returns the canonical client-
     // side id alongside the outcome. For BT clients the returned id

@@ -286,6 +286,11 @@ regex-lite = "0.1"
 # they don't need look-around and we want the linear-time guarantee.
 fancy-regex = "0.19"
 sha2 = "0.11"
+# SHA-1 for a .torrent's v1 infohash (its bencoded `info` dict): an
+# autobrr push without a hash (`services::torrent_file`), and the
+# rtorrent smoke, since `load.raw_start_verbose` returns 0 rather than
+# the hash. BitTorrent v1 mandates SHA-1, so sha2 can't stand in.
+sha1_smol = "1"
 # HMAC-SHA256 for outbound webhook signatures (issue #119). Tracks
 # the same `digest = 0.11` crate `sha2 = "0.11"` already uses — using
 # `hmac = "0.12"` would pull in the older `digest = 0.10` and produce
@@ -334,11 +339,6 @@ fantoccini = { version = "0.22", optional = true, default-features = false, feat
 # file-list testing without depending on DHT metadata fetch landing
 # during the test window.
 tempfile = "3"
-# SHA-1 for computing a .torrent's v1 infohash from its bencoded
-# `info` dict — needed by the rtorrent smoke since `load.raw_start_verbose`
-# returns 0 on success rather than echoing back the hash. Test-only;
-# BitTorrent's v1 spec mandates SHA-1 here so we can't swap to sha2.
-sha1_smol = "1"
 
 # ── Test-coverage-expansion (issue-# to be filed) infrastructure ──
 #

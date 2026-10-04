@@ -256,3 +256,116 @@ async fn an_info_hash_that_is_not_a_hash_returns_400() {
     assert!(body.contains("info_hash"), "body: {body}");
 }
 
+/// Accepts every add; nothing else is called on the push path.
+struct AcceptingClient;
+
+#[async_trait::async_trait]
+impl crate::services::download_client::DownloadClient for AcceptingClient {
+    async fn test(&self) -> Result<String, String> {
+        Ok("ok".into())
+    }
+    async fn add_torrent(
+        &self,
+        _u: &str,
+        _h: &str,
+    ) -> Result<crate::services::download_client::AddOutcome, String> {
+        Ok(crate::services::download_client::AddOutcome::Added)
+    }
+    async fn add_torrent_with_file_filter(
+        &self,
+        _u: &str,
+        _h: &str,
+        _p: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
+    ) -> Result<crate::services::download_client::SelectiveOutcome, String> {
+        Ok(crate::services::download_client::SelectiveOutcome::FullDownload)
+    }
+    async fn list_scoped(
+        &self,
+    ) -> Result<Vec<crate::services::download_client::DownloadItem>, String> {
+        Ok(vec![])
+    }
+    async fn get_files(
+        &self,
+        _h: &str,
+    ) -> Result<Vec<crate::services::download_client::DownloadFile>, String> {
+        Ok(vec![])
+    }
+    async fn pause(&self, _h: &str) -> Result<(), String> {
+        Ok(())
+    }
+    async fn resume(&self, _h: &str) -> Result<(), String> {
+        Ok(())
+    }
+    async fn delete(&self, _h: &str, _df: bool) -> Result<(), String> {
+        Ok(())
+    }
+    async fn set_file_wanted(&self, _h: &str, _f: &[usize], _w: bool) -> Result<(), String> {
+        Ok(())
+    }
+    fn sonarr_impl_name(&self) -> &'static str {
+        "QBittorrent"
+    }
+}
+
+#[tokio::test]
+async fn a_push_without_a_hash_records_the_torrents_own() {
+    // With no hash the grab could only be found in the client by name,
+    // which a single-file torrent named after its file never matched.
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let info = b"d6:lengthi1e4:name5:a.mkv12:piece lengthi16384e6:pieces0:e";
+    let mut torrent = b"d4:info".to_vec();
+    torrent.extend_from_slice(info);
+    torrent.push(b'e');
+    let mut hasher = sha1_smol::Sha1::new();
+    hasher.update(info);
+    let expected = hasher.digest().to_string();
+
+    let tracker = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/t/1.torrent"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(torrent))
+        .mount(&tracker)
+        .await;
+
+    let db = in_memory_pool().await;
+    seed_autobrr_enabled(&db, KEY).await;
+    seed_indexer(&db, "Nyaa").await;
+    seed_series(&db).await;
+    let state = build_test_app_state(db.clone(), Some(std::sync::Arc::new(AcceptingClient)));
+    rebuild_indexer_cache(&state).await;
+    let app = autobrr_webhook_router(state);
+
+    let body = serde_json::json!({
+        "torrent_name": "Test Show - 01 [1080p]",
+        "torrent_url": format!("{}/t/1.torrent", tracker.uri()),
+        "indexer": "Nyaa",
+    })
+    .to_string();
+    let (status, body) = post_payload(app, &body).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let hash: String = sqlx::query_scalar("SELECT hash FROM grabbed_torrents")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(hash, expected);
+}
+
+#[tokio::test]
+async fn a_magnet_push_without_a_hash_takes_the_magnets() {
+    let db = in_memory_pool().await;
+    seed_autobrr_enabled(&db, KEY).await;
+    seed_indexer(&db, "Nyaa").await;
+    seed_series(&db).await;
+    let state = build_test_app_state(db.clone(), Some(std::sync::Arc::new(AcceptingClient)));
+    rebuild_indexer_cache(&state).await;
+    let app = autobrr_webhook_router(state);
+    let body = r#"{"torrent_name": "Test Show - 02", "magnet_uri": "magnet:?xt=urn:btih:C12FE1C06BBA254A9DC9F519B335AA7C1367A88A", "indexer": "Nyaa"}"#;
+    let (status, body) = post_payload(app, body).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let hash: String = sqlx::query_scalar("SELECT hash FROM grabbed_torrents")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(hash, "c12fe1c06bba254a9dc9f519b335aa7c1367a88a");
+}
