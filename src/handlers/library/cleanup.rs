@@ -221,11 +221,25 @@ pub async fn cleanup_series_files(
     if let Some(root) = media_root
         && !root.trim().is_empty()
         && !folder_name.trim().is_empty()
+        && !crate::services::media::usable_folder_name(folder_name)
+    {
+        // `.`, `..` or a path: never joined onto the media root.
+        report.folder_status = "refused";
+        report.folder_detail = format!("unusable folder name {folder_name:?}");
+    } else if let Some(root) = media_root
+        && !root.trim().is_empty()
+        && !folder_name.trim().is_empty()
     {
         let series_dir = std::path::Path::new(root).join(folder_name);
         match tokio::fs::canonicalize(root).await {
             Ok(media_root_canon) => match tokio::fs::canonicalize(&series_dir).await {
-                Ok(series_canon) if series_canon.starts_with(&media_root_canon) => {
+                // Strictly inside the media root: a folder that resolves
+                // to the root itself (a `.` folder name, a symlink to the
+                // root) would take every series with it.
+                Ok(series_canon)
+                    if series_canon.starts_with(&media_root_canon)
+                        && series_canon != media_root_canon =>
+                {
                     // Recycle bin (#123): the folder moves into the bin
                     // when one is configured; with no bin `recycle` does
                     // the permanent `remove_dir_all` this branch used to

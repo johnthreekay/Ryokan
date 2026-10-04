@@ -664,7 +664,10 @@ pub fn render(kind: TemplateKind, template: &str, ctx: &NameContext) -> Result<R
             stem = sanitize_folder_name(&cut_to_bytes(&stem, budget));
         }
     }
-    if stem.is_empty() {
+    // A dots-only stem is `.` or `..` as a path component: the media
+    // root or its parent. `sanitize_folder_name` can't produce one any
+    // more; this keeps any future path from doing so.
+    if stem.is_empty() || stem.chars().all(|c| c == '.') {
         return Err(format!(
             "the {} template renders to an empty name",
             kind.label()

@@ -975,7 +975,10 @@ async fn load_series_import_ctx(
 
     // Auto-generate folder_name from the series-folder template (#124)
     // if it was never set.
-    let folder_name = if series.folder_name.is_empty() {
+    // Empty (never set) or unusable (`.`, `..`, from a title written
+    // before `sanitize_folder_name` handled dots and spaces together):
+    // regenerate it from the template, which can't produce either.
+    let folder_name = if !media::usable_folder_name(&series.folder_name) {
         if nfo::best_title(&series).trim().is_empty() {
             return Err(format!(
                 "series '{}' has no usable title for folder name",

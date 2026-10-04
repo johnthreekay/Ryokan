@@ -941,6 +941,64 @@ mod remove_series_safety {
     }
 
     #[tokio::test]
+    async fn a_dot_folder_name_never_takes_the_library_with_it() {
+        // A title of dots and spaces used to sanitize to "." (the media
+        // root itself), and removing that series with files recycled or
+        // deleted every series' folder.
+        let tmp = TempDir::new().expect("tempdir");
+        let media_root = tmp.path().to_path_buf();
+        let other = media_root.join("Other Show");
+        std::fs::create_dir(&other).unwrap();
+        std::fs::write(other.join("ep01.mkv"), b"x").unwrap();
+
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 1010, "Dots").await;
+        override_folder_name(&db, series_id, ".").await;
+        save_media_root(&db, media_root.to_str().unwrap()).await;
+        let state = build_test_app_state(db.clone(), None);
+        let form = super::super::RemoveSeriesForm {
+            id: series_id,
+            delete_files: Some(true),
+            add_exclusion: None,
+        };
+        let resp = remove_series(State(state), AxumJson(form))
+            .await
+            .expect("handler ok");
+        assert_eq!(folder_status(&resp), "refused");
+        assert!(
+            other.join("ep01.mkv").exists(),
+            "another series' file must survive"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_folder_that_resolves_to_the_media_root_is_refused() {
+        let tmp = TempDir::new().expect("tempdir");
+        let media_root = tmp.path().join("media");
+        std::fs::create_dir(&media_root).unwrap();
+        let other = media_root.join("Other Show");
+        std::fs::create_dir(&other).unwrap();
+        std::fs::write(other.join("ep01.mkv"), b"x").unwrap();
+        std::os::unix::fs::symlink(&media_root, media_root.join("Show")).unwrap();
+
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 1011, "Show").await;
+        save_media_root(&db, media_root.to_str().unwrap()).await;
+        let state = build_test_app_state(db.clone(), None);
+        let form = super::super::RemoveSeriesForm {
+            id: series_id,
+            delete_files: Some(true),
+            add_exclusion: None,
+        };
+        let resp = remove_series(State(state), AxumJson(form))
+            .await
+            .expect("handler ok");
+        assert_eq!(folder_status(&resp), "refused");
+        assert!(other.join("ep01.mkv").exists(), "the library must survive");
+    }
+
+    #[tokio::test]
     async fn removes_folder_when_under_media_root() {
         // Happy path. Pins line 373's positive arm + line 374's
         // remove_dir_all. Without this assertion, a mutation flipping

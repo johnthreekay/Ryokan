@@ -241,9 +241,22 @@ pub fn sanitize_folder_name(s: &str) -> String {
             c => c,
         })
         .collect::<String>()
-        .trim_matches('.')
-        .trim()
+        // Dots and whitespace in one pass: trimming dots first and
+        // whitespace second turned " .. " into "..", a provider title
+        // that named the media root's parent as a series folder.
+        .trim_matches(|c: char| c == '.' || c.is_whitespace())
         .to_string()
+}
+
+/// Whether a stored `series.folder_name` can be joined onto the media
+/// root: one non-empty path component that isn't `.` or `..`. A folder
+/// name of `.` is the media root itself: its scan reads every series'
+/// files as its own, and removing the series with files would recycle
+/// or delete the whole library. New names can't come out that way
+/// ([`sanitize_folder_name`]), but a row written before that fix can.
+pub fn usable_folder_name(name: &str) -> bool {
+    let name = name.trim();
+    !name.is_empty() && !name.chars().all(|c| c == '.') && !name.contains(['/', '\\', '\0'])
 }
 
 /// A file found on disk that represents an episode, or several (issue
@@ -363,6 +376,9 @@ pub fn scan_series_folder_split(
     media_root: &str,
     folder_name: &str,
 ) -> (Vec<EpisodeFile>, Vec<EpisodeFile>) {
+    if !usable_folder_name(folder_name) {
+        return (Vec::new(), Vec::new());
+    }
     let series_path = Path::new(media_root).join(folder_name);
     if !series_path.is_dir() {
         return (Vec::new(), Vec::new());
@@ -1036,6 +1052,40 @@ fn format_size(bytes: u64) -> String {
     } else {
         let mb = bytes as f64 / (1024.0 * 1024.0);
         format!("{:.0} MiB", mb)
+    }
+}
+
+#[cfg(test)]
+mod folder_name_tests {
+    use super::{sanitize_folder_name, usable_folder_name};
+
+    #[test]
+    fn dots_and_spaces_never_survive_at_the_edges() {
+        // Trimming dots and then spaces turned " .. " into "..".
+        for title in [
+            " .. ",
+            " . .. . ",
+            " . . . ",
+            "\u{3000}.\u{3000}",
+            ". ",
+            " .",
+            "...",
+        ] {
+            assert_eq!(sanitize_folder_name(title), "", "{title:?}");
+        }
+        assert_eq!(sanitize_folder_name(".hack//Sign"), "hack__Sign");
+        assert_eq!(sanitize_folder_name(" Show. "), "Show");
+        assert_eq!(sanitize_folder_name("Dr. Stone"), "Dr. Stone");
+    }
+
+    #[test]
+    fn only_a_real_component_is_a_usable_folder_name() {
+        for bad in ["", "  ", ".", "..", "...", "a/b", "a\\b", "../x", "a\0b"] {
+            assert!(!usable_folder_name(bad), "{bad:?}");
+        }
+        for good in ["Show", "Dr. Stone", ".hack", "Show (2011)"] {
+            assert!(usable_folder_name(good), "{good:?}");
+        }
     }
 }
 
