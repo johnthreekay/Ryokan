@@ -19,9 +19,11 @@
       label: 'qBittorrent',
       image: 'lscr.io/linuxserver/qbittorrent:latest',
       port: 8080,
-      extra_ports: ['6881:6881', '6881:6881/udp'],
+      extra_ports: [],
+      // Peer port from the shared 6881+ range (see peerPorts); the
+      // linuxserver image passes TORRENTING_PORT to qbittorrent-nox.
+      peer_port: { udp_only: false, env: 'TORRENTING_PORT' },
       category: 'anime',
-      download_path: '/downloads',
       default_url: 'http://qbittorrent:8080',
       config_dir: 'qbittorrent',
       env: { WEBUI_PORT: '8080' },
@@ -31,9 +33,11 @@
       label: 'Deluge',
       image: 'lscr.io/linuxserver/deluge:latest',
       port: 8112,
-      extra_ports: ['6881:6881', '6881:6881/udp'],
+      extra_ports: [],
+      // No env for it: Deluge starts on a random port until the
+      // settings snippet's Incoming Port step pins this one.
+      peer_port: { udp_only: false, env: null },
       category: 'anime',
-      download_path: '/downloads',
       default_url: 'http://deluge:8112',
       config_dir: 'deluge',
       env: {},
@@ -45,7 +49,6 @@
       port: 9091,
       extra_ports: ['51413:51413', '51413:51413/udp'],
       category: 'anime',
-      download_path: '/downloads',
       default_url: 'http://transmission:9091',
       config_dir: 'transmission',
       env: {},
@@ -71,10 +74,11 @@
       expose_main_port: false,
       // 8082:8080 host:container = ruTorrent web UI.
       // 50000 = inbound BT peer connections.
-      // 6881/udp = DHT.
-      extra_ports: ['8082:8080', '50000:50000', '6881:6881/udp'],
+      extra_ports: ['8082:8080', '50000:50000'],
+      // DHT (udp) from the shared 6881+ range; the image reads
+      // RT_DHT_PORT.
+      peer_port: { udp_only: true, env: 'RT_DHT_PORT' },
       category: 'anime',
-      download_path: '/downloads',
       // /RPC2 path is required; rTorrent's XML-RPC endpoint.
       default_url: 'http://rutorrent:8000/RPC2',
       config_dir: 'rutorrent',
@@ -94,7 +98,6 @@
       host_port: 8081,
       extra_ports: [],
       category: 'anime',
-      download_path: '/downloads',
       default_url: 'http://sabnzbd:8080',
       config_dir: 'sabnzbd',
       env: {},
@@ -128,12 +131,55 @@
       puid: get('puid').value || '1000',
       pgid: get('pgid').value || '1000',
       tz: get('tz').value || 'UTC',
-      paths: {
-        downloads: get('downloads_path').value || '/srv/media/downloads',
-        media: get('media_path').value || '/srv/media/anime',
-        appdata: get('appdata_path').value || '/srv/docker',
-      },
+      paths: sharedPaths(
+        get('shared_path').value,
+        get('appdata_path').value || '/srv/docker'
+      ),
     };
+  }
+
+  // One host folder holds the downloads and the library, and every
+  // container mounts it at the same path it has on the host. A
+  // hardlink needs both ends inside one mount, and with identical
+  // paths the clients report locations Ryokan can open as they are
+  // (no per-client path rewrite), and the Media Root the user types
+  // is the host path they already know.
+  function sharedPaths(raw, appdata) {
+    const shared = (raw || '').trim().replace(/\/+$/, '') || '/srv/media';
+    return {
+      shared,
+      downloads: `${shared}/downloads`,
+      media: `${shared}/anime`,
+      appdata,
+    };
+  }
+
+  // Host ports from 6881 up for the torrent clients that take one
+  // (peer_port), in the order they were picked, so two clients never
+  // publish the same port: that made `docker compose up` fail with
+  // "port is already allocated".
+  function peerPorts(cfg) {
+    const ports = {};
+    let next = 6881;
+    cfg.dlclients.forEach((kind) => {
+      if (CLIENTS[kind].peer_port) ports[kind] = next++;
+    });
+    return ports;
+  }
+
+  // Every host port mapping a client publishes (on itself, or on
+  // gluetun when it sits behind the VPN).
+  function portMappings(kind, cfg) {
+    const c = CLIENTS[kind];
+    const out = [];
+    if (c.expose_main_port !== false) out.push(`${c.host_port || c.port}:${c.port}`);
+    out.push(...c.extra_ports);
+    const peer = peerPorts(cfg)[kind];
+    if (peer) {
+      if (!c.peer_port.udp_only) out.push(`${peer}:${peer}`);
+      out.push(`${peer}:${peer}/udp`);
+    }
+    return out;
   }
 
   // Whether a given download client should sit behind the VPN.
@@ -183,23 +229,19 @@
     // inside but is mapped to 8081 outside). `expose_main_port:
     // false` skips the main mapping entirely (rTorrent's XML-RPC
     // is reachable via Docker DNS only; no host expose needed).
-    const mainMapping =
-      c.expose_main_port === false
-        ? null
-        : `"${c.host_port || c.port}:${c.port}"`;
     const portsList = behindVpn
       ? null
-      : [
-          ...(mainMapping ? [mainMapping] : []),
-          ...c.extra_ports.map((p) => `"${p}"`),
-        ];
+      : portMappings(kind, cfg).map((p) => `"${p}"`);
 
     const baseEnv = [
       `      PUID: "${cfg.puid}"`,
       `      PGID: "${cfg.pgid}"`,
       `      TZ: "${cfg.tz}"`,
     ];
-    const extraEnv = Object.entries(c.env).map(
+    const envVars = Object.assign({}, c.env);
+    const peer = peerPorts(cfg)[kind];
+    if (peer && c.peer_port.env) envVars[c.peer_port.env] = String(peer);
+    const extraEnv = Object.entries(envVars).map(
       ([k, v]) => `      ${k}: "${v}"`
     );
     const envBlock = baseEnv.concat(extraEnv).join('\n');
@@ -225,14 +267,6 @@
     lines.push('    volumes:');
     const configTarget = c.config_mount_target || '/config';
     lines.push(`      - ${cfg.paths.appdata}/${c.config_dir}:${configTarget}`);
-    // SAB splits in-progress (`/incomplete-downloads`) from completed
-    // (`/downloads`); without a mount for the incomplete side, SAB
-    // falls back to writing it under /config which clutters the
-    // config volume and makes pause/resume across container restarts
-    // unreliable.
-    if (kind === 'sabnzbd') {
-      lines.push(`      - ${cfg.paths.appdata}/sabnzbd/incomplete:/incomplete-downloads`);
-    }
     // rTorrent's crazy-max image looks for htpasswd files at /passwd
     // (rutorrent.htpasswd for the web UI, rpc.htpasswd for XML-RPC).
     // Mount the folder unconditionally so users can drop files in to
@@ -246,7 +280,7 @@
       // docs/quick-start does the same layering.
       lines.push(`      - ${cfg.paths.appdata}/rutorrent/passwd:/passwd`);
     }
-    lines.push(`      - ${cfg.paths.downloads}:${c.download_path}`);
+    lines.push(`      - ${cfg.paths.shared}:${cfg.paths.shared}`);
     lines.push('    environment:');
     lines.push(envBlock);
     lines.push('    restart: unless-stopped');
@@ -261,8 +295,12 @@
       // Keeping the explicit list makes startup ordering visible
       // in `docker compose ps`.
     }
+    // Service names, not form values: rTorrent's service is rutorrent,
+    // and naming `rtorrent` here made the whole compose invalid.
     const dependsList = deps.length
-      ? `    depends_on:\n${deps.map((k) => `      - ${k}`).join('\n')}\n`
+      ? `    depends_on:\n${deps
+          .map((k) => `      - ${CLIENTS[k].service_name || k}`)
+          .join('\n')}\n`
       : '';
     // Opt-in DNS-rebinding defense (docs/docker.md#host-check). A proxy
     // passes the public domain through as the Host, so it has to be
@@ -284,8 +322,7 @@
       - "8978:8978"
     volumes:
       - ${cfg.paths.appdata}/ryokan:/data
-      - ${cfg.paths.downloads}:/downloads
-      - ${cfg.paths.media}:/media/anime
+      - ${cfg.paths.shared}:${cfg.paths.shared}
     environment:
       PUID: "${cfg.puid}"
       PGID: "${cfg.pgid}"
@@ -313,7 +350,7 @@ ${dependsList}    restart: unless-stopped`;
       - /dev/dri:/dev/dri
     volumes:
       - ${cfg.paths.appdata}/jellyfin:/config
-      - ${cfg.paths.media}:/data/media:ro
+      - ${cfg.paths.media}:${cfg.paths.media}:ro
     environment:
       PUID: "${cfg.puid}"
       PGID: "${cfg.pgid}"
@@ -354,17 +391,7 @@ ${deps.map((d) => `      - ${d}`).join('\n')}
     // stays consistent.
     const portForwards = cfg.dlclients
       .filter((k) => isBehindVpn(k, cfg))
-      .flatMap((k) => {
-        const c = CLIENTS[k];
-        const mainMapping =
-          c.expose_main_port === false
-            ? null
-            : `      - "${c.host_port || c.port}:${c.port}"`;
-        return [
-          ...(mainMapping ? [mainMapping] : []),
-          ...c.extra_ports.map((p) => `      - "${p}"`),
-        ];
-      });
+      .flatMap((k) => portMappings(k, cfg).map((p) => `      - "${p}"`));
     const portsBlock = portForwards.length
       ? `    ports:\n${portForwards.join('\n')}\n`
       : '';
@@ -559,11 +586,12 @@ ${portsBlock}    volumes:
 #   sudo mkdir -p ${cfg.paths.downloads} ${cfg.paths.media} ${appdataPaths}
 #   sudo chown -R ${cfg.puid}:${cfg.pgid} ${cfg.paths.downloads} ${cfg.paths.media} ${cfg.paths.appdata}
 #
-# Path layout: ${cfg.paths.downloads} (downloads) and ${cfg.paths.media}
-# (library) should be on the same filesystem so post-processing can
-# hardlink instead of copying. Both are mounted into Ryokan AND the
-# download client(s) at matching paths inside the container, so no
-# per-client \`download_path\` translation is needed in Settings.
+# Path layout: ${cfg.paths.shared} holds downloads/ and anime/ (the
+# library), and every container mounts it at that same path. A hardlink
+# needs both ends inside one mount, so this is what lets post-processing
+# hardlink instead of copy, and the clients report paths Ryokan can open
+# as they are. Point each client's download folder at
+# ${cfg.paths.downloads} (the settings below say where).
 #
 # =============================================================================
 
@@ -576,8 +604,55 @@ services:
     return header + services.join('\n\n') + '\n';
   }
 
+  // What to change inside a client once it's up: its download folder
+  // (inside the shared mount, which no image uses by default) and, for
+  // Deluge and SAB, the port and hostname settings Ryokan needs.
+  function clientSteps(kind, cfg) {
+    const dl = cfg.paths.downloads;
+    const peer = peerPorts(cfg)[kind];
+    const out = ['  In the client:'];
+    if (kind === 'qbittorrent') {
+      out.push(`    Tools → Options → Downloads → Default Save Path: ${dl}`);
+    } else if (kind === 'deluge') {
+      out.push(`    Preferences → Downloads → Download to: ${dl}`);
+      out.push(`    Preferences → Network → Incoming Port: uncheck "Use Random Port", set ${peer}`);
+      out.push('    (the port the compose publishes; Deluge picks a random one until then)');
+    } else if (kind === 'transmission') {
+      out.push(`    Edit preferences → Torrents → Download to: ${dl}`);
+      out.push(`    and Use temporary folder: ${dl}/incomplete`);
+    } else if (kind === 'rtorrent') {
+      out.push(`    The image hardcodes /downloads. After the first start, edit`);
+      out.push(`    ${cfg.paths.appdata}/rutorrent/rtorrent/.rtorrent.rc:`);
+      out.push(`      add:     directory.default.set = ${dl}/temp`);
+      out.push('      change the d.get_finished_dir line to:');
+      out.push(`               method.insert = d.get_finished_dir, simple, "cat=${dl}/complete/,$d.custom1="`);
+      out.push('    then `docker compose restart rutorrent`.');
+    } else if (kind === 'sabnzbd') {
+      out.push(`    Config → Folders → Temporary Download Folder: ${dl}/incomplete`);
+      out.push(`    Config → Folders → Completed Download Folder: ${dl}/complete`);
+      out.push('    Config → Special → host_whitelist: add  sabnzbd  (the name Ryokan calls it by),');
+      out.push('    Save, and restart SAB. Until then SAB answers Ryokan with');
+      out.push('    "Access denied - Hostname verification failed".');
+    }
+    return out;
+  }
+
   function renderSettings(cfg) {
     const lines = [];
+    // First: setup asks for these before anything else.
+    lines.push("--- Ryokan's first-run setup (\"Set up your library\") ---");
+    lines.push('');
+    lines.push('Right after you create your account, Ryokan asks for these. Saving turns on');
+    lines.push('post-processing, which places finished downloads in the library.');
+    lines.push('');
+    lines.push(`  Media Root Path:      ${cfg.paths.media}`);
+    lines.push('  File operation mode:  Hardlink');
+    if (cfg.media_server === 'jellyfin') {
+      lines.push('  Jellyfin:             the URL and API key below, or leave it empty there and');
+      lines.push('                        add it later under Settings → Connections');
+    }
+    lines.push('');
+
     lines.push('--- Settings → Download Clients ---');
     lines.push('');
     if (cfg.dlclients.length === 0) {
@@ -600,17 +675,6 @@ services:
           lines.push('                 Find it with:  docker logs qbittorrent | grep -i "temporary password"');
           lines.push('                 Log in with that, set a permanent password under');
           lines.push('                 Tools → Options → Web UI → Authentication, then paste it here.');
-          // qBit 4.5+ enables Host header validation by default. The
-          // Host header on requests from Ryokan-in-container is
-          // `qbittorrent:8080`, which qBit rejects with 401 even when
-          // the credentials are correct. Symptom: Ryokan shows the
-          // row stuck on "qBittorrent Unauthorized" while the WebUI
-          // works fine from a browser. Standard homelab workaround
-          // is to disable the check entirely.
-          lines.push('  Heads-up:      Settings → Connections will say "qBittorrent Unauthorized" even with');
-          lines.push('                 correct credentials until you turn off Host header validation.');
-          lines.push('                 Tools → Options → Web UI → uncheck "Enable Host header validation",');
-          lines.push('                 Save, then `docker compose restart qbittorrent`.');
         } else if (kind === 'rtorrent') {
           // crazy-max image looks for /passwd/rutorrent.htpasswd (web UI)
           // and /passwd/rpc.htpasswd (XML-RPC). Without files, both are
@@ -623,7 +687,7 @@ services:
           lines.push('  API Key:       (paste from SAB → Config → General → API Key)');
         }
         lines.push(`  Category:      ${c.category}`);
-        lines.push(`  Download path: ${c.download_path}    # what Ryokan sees inside its container`);
+        lines.push('  Download path: (leave empty; the client and Ryokan see the same paths)');
         // First client of each protocol becomes the default for that
         // protocol. Walk the list in order; first qbit/deluge/trans/
         // rtorrent → torrent default; first sabnzbd → usenet default.
@@ -634,6 +698,7 @@ services:
         lines.push(
           `  Default for ${c.protocol}: ${isFirstOfProtocol ? 'YES' : 'no'}`
         );
+        clientSteps(kind, cfg).forEach((l) => lines.push(l));
         lines.push('');
       });
 
@@ -680,11 +745,6 @@ services:
       lines.push('');
     }
 
-    lines.push('--- Settings → General ---');
-    lines.push('');
-    lines.push('Media Root Path:  /media/anime');
-    lines.push('File operation:   hardlink   (default; works because downloads and media share a filesystem)');
-    lines.push('');
 
     if (cfg.requests === 'seerr') {
       // Both shims live on the same Ryokan host:port — Sonarr at the
@@ -699,8 +759,8 @@ services:
       lines.push('  Port:            8978');
       lines.push('  API Key:         (Ryokan → Settings → Connections → Sonarr API → API Key)');
       lines.push('  Use SSL:         no');
-      lines.push('  Quality Profile: HD-1080p');
-      lines.push('  Root Folder:     /media/anime');
+      lines.push('  Quality Profile: Default');
+      lines.push(`  Root Folder:     ${cfg.paths.media}`);
       lines.push('');
       lines.push('Add Radarr server (anibridge shim, for anime films; note the /radarr URL base):');
       lines.push('  Hostname:        ryokan');
@@ -708,8 +768,8 @@ services:
       lines.push('  URL Base:        /radarr');
       lines.push('  API Key:         (Ryokan → Settings → Connections → Radarr API → API Key)');
       lines.push('  Use SSL:         no');
-      lines.push('  Quality Profile: HD-1080p');
-      lines.push('  Root Folder:     /media/anime');
+      lines.push('  Quality Profile: Default');
+      lines.push(`  Root Folder:     ${cfg.paths.media}`);
       lines.push('');
     }
 

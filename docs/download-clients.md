@@ -15,7 +15,7 @@ Pick the tab for your client. Each one covers preparation steps inside the clien
     **Prepare qBit:**
 
     1. Open qBit's web UI (default port 8080) and create your admin password if it's still on the random first-run password.
-    2. **Tools → Options → Web UI**: uncheck **Enable Host header validation**, then Save and restart the qBit container. qBit 4.5+ enables this by default; with it on, qBit returns 401 even for correct credentials when Ryokan-in-container POSTs with a `Host: qbittorrent:8080` header. Symptom in Ryokan is "qBittorrent Unauthorized" stuck on Settings → Download Clients while the web UI works fine from your browser.
+    2. Nothing to change for qBit's host check. It's on by default, but its **Server domains** list (Tools → Options → Web UI) defaults to `*`, which accepts `qbittorrent:8080`. Only if you narrowed that list, add the name Ryokan calls qBit by; otherwise qBit answers 401 even for correct credentials, and Settings → Download Clients shows "qBittorrent Unauthorized" while the web UI works from your browser.
 
     **Add it to Ryokan** (Settings → Download Clients):
 
@@ -89,6 +89,7 @@ Pick the tab for your client. Each one covers preparation steps inside the clien
 
     1. Open SAB's web UI (default port 8080 inside the container; in the bundled compose that's host port 8081). Walk through the first-run wizard.
     2. **Get the API key**: SAB shows it on the wizard's final step, or from **Config → General → Security → API Key** later. Make sure it's the **full** API key, not the read-only `nzb_api_key`. The Test-connection probe in Ryokan catches a wrong/missing key at config time instead of at first grab.
+    3. **Allow the name Ryokan uses**: SAB checks the hostname it is called by. Add `sabnzbd` (or whatever name is in Ryokan's URL) under **Config → Special → host_whitelist**, Save, and restart SAB. Until then SAB answers Ryokan with "Access denied - Hostname verification failed", which Test connection shows as a 403.
 
     **Add it to Ryokan** (Settings → Download Clients):
 
@@ -125,7 +126,7 @@ The most common causes:
 
 - **Wrong URL host**: container-name URLs like `http://qbittorrent:8080` rely on Docker's per-compose DNS. If Ryokan and the client are in separate compose files, run on different hosts, or you have a network plugin that interferes with Docker DNS, swap the container name for your host's LAN IP and the host-mapped port.
 - **Wrong port**: container port vs. host port matters. The URLs above use container ports (because Ryokan reaches the client over Docker's internal network); the host-mapped port is only for your browser.
-- **Stuck-on credentials**: qBit's "Unauthorized" with right credentials usually means Host header validation needs disabling (see the qBittorrent tab above). SAB's "Unauthorized" usually means the read-only `nzb_api_key` was pasted instead of the full key.
+- **Stuck-on credentials**: qBit's "Unauthorized" with right credentials means its Server domains list leaves out the name Ryokan uses (see the qBittorrent tab above). SAB's "Unauthorized" usually means the read-only `nzb_api_key` was pasted instead of the full key, and its 403 means the name Ryokan uses isn't in `host_whitelist` (see the SABnzbd tab).
 
 ## Per-client download paths
 
