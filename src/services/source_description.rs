@@ -106,9 +106,11 @@ pub async fn classify_description(
         Some(text) => text,
         None => {
             let Some(page) = nyaa_view_url(view_url) else {
+                // The host only: a torznab download link carries the
+                // indexer's `apikey=`.
                 tracing::debug!(
                     target: "ryokan::classify",
-                    url = view_url,
+                    host = %link_host(view_url),
                     "not a Nyaa listing link; skipping description fetch"
                 );
                 return Vec::new();
@@ -116,9 +118,11 @@ pub async fn classify_description(
             let fetched = match fetch_description(&page).await {
                 Ok(text) => text,
                 Err(err) => {
+                    // The page built from the link's id, not the link,
+                    // whose query string is the result's own.
                     tracing::warn!(
                         target: "ryokan::classify",
-                        url = view_url,
+                        url = %page,
                         error = %err,
                         "Nyaa description fetch failed"
                     );
@@ -137,6 +141,15 @@ pub async fn classify_description(
 /// [`crate::services::nyaa::view_page_url`].
 fn nyaa_view_url(link: &str) -> Option<String> {
     crate::services::nyaa::view_page_url(link)
+}
+
+/// The host of `link`, for a log line that must not carry the link
+/// itself; empty when it isn't a URL.
+fn link_host(link: &str) -> String {
+    reqwest::Url::parse(link.trim())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -696,5 +709,14 @@ Video: 1080p HEVC
         ] {
             assert_eq!(nyaa_view_url_on("https://nyaa.si", link), None, "{link}");
         }
+    }
+
+    #[test]
+    fn a_refused_link_is_logged_by_host_alone() {
+        assert_eq!(
+            link_host("http://prowlarr:9696/1/download?apikey=secret&link=abc"),
+            "prowlarr"
+        );
+        assert_eq!(link_host("Chihiro"), "");
     }
 }
