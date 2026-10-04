@@ -521,6 +521,19 @@ pub(crate) fn files_share_inode(a: &Path, b: &Path) -> bool {
     a == b
 }
 
+/// The mode an import actually used, for its log line. Hardlink mode
+/// copies when the link fails (the download and the library on two
+/// filesystems, or on two Docker mounts of one disk), and the log used
+/// to say "hardlink" either way, so a user whose every import was a
+/// full copy had no way to tell.
+pub(crate) fn mode_used(mode: &str, src: &Path, dest: &Path) -> String {
+    if cfg!(unix) && mode == "hardlink" && !files_share_inode(src, dest) {
+        "copy (a hardlink wasn't possible: the download and the library are on different filesystems or Docker mounts)".to_string()
+    } else {
+        mode.to_string()
+    }
+}
+
 /// Hardlink → copy fallback. For "move" mode: rename → copy+delete fallback.
 ///
 /// Runs the whole operation under `spawn_blocking` because a Blu-ray
@@ -2423,7 +2436,7 @@ async fn import_torrent(
                     &format!("Imported {} of '{}'", slot, ctx.series.title),
                     &format!(
                         "mode={} dest={}",
-                        cfg.post_processing_mode,
+                        mode_used(&cfg.post_processing_mode, &src, &dest_video),
                         dest_video.display()
                     ),
                 )

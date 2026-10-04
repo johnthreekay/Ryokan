@@ -14,7 +14,9 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use crate::services::post_processing::{CONTENT_COMPARE_CHUNK, do_file_op, files_same_content};
+use crate::services::post_processing::{
+    CONTENT_COMPARE_CHUNK, do_file_op, files_same_content, mode_used,
+};
 
 fn write_src(dir: &TempDir, name: &str, body: &[u8]) -> PathBuf {
     let path = dir.path().join(name);
@@ -367,4 +369,20 @@ fn same_content_accepts_two_empty_files() {
     let a = write_src(&dir, "a.mkv", b"");
     let b = write_src(&dir, "b.mkv", b"");
     assert!(files_same_content(&a, &b));
+}
+
+#[test]
+fn the_import_log_says_copy_when_a_hardlink_fell_back() {
+    let dir = TempDir::new().unwrap();
+    let src = dir.path().join("ep.mkv");
+    fs::write(&src, b"video").unwrap();
+    let linked = dir.path().join("linked.mkv");
+    fs::hard_link(&src, &linked).unwrap();
+    let copied = dir.path().join("copied.mkv");
+    fs::copy(&src, &copied).unwrap();
+
+    assert_eq!(mode_used("hardlink", &src, &linked), "hardlink");
+    assert!(mode_used("hardlink", &src, &copied).starts_with("copy"));
+    // Other modes are reported as configured.
+    assert_eq!(mode_used("copy", &src, &copied), "copy");
 }
