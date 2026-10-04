@@ -564,6 +564,25 @@ pub async fn remove(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+/// The title of another series stored with the same folder name as row
+/// `id` (case-insensitively, as [`unique_series_folder`] compares), if
+/// any. New rows get their own folder, but rows written before that
+/// rule can share one.
+pub async fn other_series_in_folder(
+    db: &SqlitePool,
+    id: i64,
+    folder_name: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT title FROM series WHERE lower(folder_name) = lower(?) AND id != ? \
+         ORDER BY id LIMIT 1",
+    )
+    .bind(folder_name)
+    .bind(id)
+    .fetch_optional(db)
+    .await
+}
+
 /// Update the folder name mapping for a series.
 pub async fn update_folder(db: &SqlitePool, id: i64, folder_name: &str) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE series SET folder_name = ? WHERE id = ?")

@@ -999,6 +999,43 @@ mod remove_series_safety {
     }
 
     #[tokio::test]
+    async fn a_folder_another_series_shares_is_kept() {
+        // Two rows written before each new series got its own folder
+        // can both name `Show`: recycling it with one took the other's
+        // episodes.
+        let tmp = TempDir::new().expect("tempdir");
+        let media_root = tmp.path().to_path_buf();
+        let shared = media_root.join("Show");
+        std::fs::create_dir(&shared).unwrap();
+        std::fs::write(shared.join("ep01.mkv"), b"x").unwrap();
+
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 1012, "Show").await;
+        let remake = seed_series(&db, 1013, "Show (Remake)").await;
+        override_folder_name(&db, remake, "show").await;
+        save_media_root(&db, media_root.to_str().unwrap()).await;
+        let state = build_test_app_state(db.clone(), None);
+        let form = super::super::RemoveSeriesForm {
+            id: series_id,
+            delete_files: Some(true),
+            add_exclusion: None,
+        };
+        let resp = remove_series(State(state), AxumJson(form))
+            .await
+            .expect("handler ok");
+        assert_eq!(folder_status(&resp), "shared");
+        assert_eq!(resp["folder_detail"], "Show (Remake)");
+        assert!(shared.join("ep01.mkv").exists(), "the shared folder stays");
+        assert!(
+            crate::models::series::get_by_id(&db, series_id)
+                .await
+                .unwrap()
+                .is_none(),
+            "the series itself is removed"
+        );
+    }
+
+    #[tokio::test]
     async fn removes_folder_when_under_media_root() {
         // Happy path. Pins line 373's positive arm + line 374's
         // remove_dir_all. Without this assertion, a mutation flipping

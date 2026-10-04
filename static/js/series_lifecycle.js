@@ -127,7 +127,17 @@ function performRemoveSeries(dbId) {
         }
         return data;
     })
-    .then(() => {
+    .then(data => {
+        // A folder another series also uses is kept with its files;
+        // say so on the library page this navigates to.
+        if (data && data.folder === 'shared') {
+            window.ryokanQueueToast({
+                title: 'Files kept',
+                body: `The files were left in place because ${data.folder_detail || 'another series'} uses the same folder.`,
+                kind: 'warn',
+                category: 'library',
+            });
+        }
         // `replace` rather than `href = '/'` because:
         //   * The series we just removed has its detail URL
         //     (`/series/<id>`) at the top of history; leaving it
