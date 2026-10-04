@@ -327,6 +327,21 @@ pub async fn restore(State(state): State<AppState>, Path(entry_id): Path<String>
         Ok(_) => None,
         Err(e) => return json_err(status_for(&e), &e),
     };
+    // Placement in the library is the importers' job, under their locks,
+    // and each checks a destination is free before writing it. A restore
+    // racing an import of the same episode could replace the file the
+    // import just placed (a cross-device restore copies for a minute),
+    // or have hardlink mode unlink the restored file. Same `try_lock`
+    // pair as the temp sweep; busy means try again shortly.
+    let (Ok(_post_proc), Ok(_manual_import)) = (
+        crate::services::post_processing::POST_PROC_LOCK.try_lock(),
+        crate::services::manual_import::import::IMPORT_LOCK.try_lock(),
+    ) else {
+        return json_err(
+            axum::http::StatusCode::CONFLICT,
+            "An import is running right now. Restore again in a moment.",
+        );
+    };
     match recycle::restore(&bin, &entry_id, &media_root).await {
         Ok(RestoreOutcome::Restored { final_path }) => {
             if let Some(series_id) = series_id {
@@ -465,6 +480,32 @@ mod tests {
     /// unknown id. Guards the Askama render path (`unwrap_or_default`
     /// would otherwise turn a runtime template failure into a silent
     /// blank page).
+    #[tokio::test]
+    async fn restore_waits_for_a_running_import() {
+        // An import placing files holds POST_PROC_LOCK; a restore in the
+        // middle of it could overwrite, or be unlinked by, that import.
+        let db = in_memory_pool().await;
+        let tmp = tempfile::tempdir().unwrap();
+        config::save_config(
+            &db,
+            &config::Config {
+                media_root: tmp.path().join("media").display().to_string(),
+                recycle_bin_path: tmp.path().join("recycle").display().to_string(),
+                recycle_bin_age_days: 30,
+                ..config::Config::default()
+            },
+        )
+        .await
+        .unwrap();
+        let state = build_test_app_state(db, None);
+        let _import = crate::services::post_processing::POST_PROC_LOCK
+            .lock()
+            .await;
+        let resp = restore(State(state), Path("0123abcd".to_string())).await;
+        assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
+        assert!(body_string(resp).await.contains("import is running"));
+    }
+
     #[tokio::test]
     async fn page_lists_entries_and_endpoints_round_trip() {
         let db = in_memory_pool().await;

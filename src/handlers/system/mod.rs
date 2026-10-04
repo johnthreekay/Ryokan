@@ -514,6 +514,10 @@ pub async fn debug_settings_submit(
     State(state): State<AppState>,
     Form(form): Form<DebugSettingsForm>,
 ) -> Html<String> {
+    // Read-modify-write of the whole config row: under the same lock as
+    // every other settings save, or a concurrent save of another tab
+    // writes back its stale copy over this change.
+    let _guard = crate::handlers::settings::CONFIG_WRITE_LOCK.lock().await;
     let mut cfg = config::get_config(&state.db)
         .await
         .ok()

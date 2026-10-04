@@ -42,7 +42,7 @@ use custom_formats::ImportReviewView;
 /// for serializing handler-level work that read-modify-writes shared
 /// state. A multi-process deployment (which Ryokan doesn't support
 /// today) would need DB-level locking instead.
-static CONFIG_WRITE_LOCK: LazyLock<tokio::sync::Mutex<()>> =
+pub(crate) static CONFIG_WRITE_LOCK: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 /// View-model wrapper rendered on the Custom Formats tab. Surfaces

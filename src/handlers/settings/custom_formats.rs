@@ -357,6 +357,10 @@ pub async fn settings_custom_formats_minimum_score(
     HxRequest(is_htmx): HxRequest,
     Form(form): Form<CustomFormatMinScoreForm>,
 ) -> Response {
+    // Read-modify-write of the whole config row: under the same lock as
+    // every other settings save, or a concurrent save of another tab
+    // writes back its stale copy over this change.
+    let _guard = super::CONFIG_WRITE_LOCK.lock().await;
     let existing = config::get_config(&state.db).await.ok().flatten();
     let Some(mut cfg) = existing else {
         return crate::handlers::responses::htmx_aware_redirect(
