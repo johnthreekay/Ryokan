@@ -234,14 +234,19 @@ pub async fn cache_image(
     // while the broken blob row sat untouched. Self-heal: if the stored
     // path is missing, rewrite the file to the current (absolute) path
     // and upsert_blob so image_blobs is updated in place.
+    //
+    // "Missing" is judged where reads look (`blob_path_in_cache`), not at
+    // the stored path: after the cache dir moved, the old file still sat
+    // at the stored path, so the blob was never written under the new
+    // root and every `/media/art` request for it 404ed.
     let existing_path = artwork_cache::get_blob_path(db, &blob_hash)
         .await
         .map_err(|e| e.to_string())?;
 
     let file_is_live = existing_path
         .as_deref()
-        .map(|p| std::path::Path::new(p).is_file())
-        .unwrap_or(false);
+        .and_then(blob_path_in_cache)
+        .is_some_and(|p| p.is_file());
 
     if !file_is_live {
         let filename = blob_filename(&blob_hash, &content_type, source_url);
@@ -633,5 +638,73 @@ mod tests {
                 String::from_utf8_lossy(body)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_blob_left_at_an_old_cache_root_is_written_again_under_the_current_one() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        // The image this test serves, unique so its content-addressed
+        // blob name is too.
+        let nonce = format!(
+            "{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let mut bytes = b"\xFF\xD8\xFF\xE0".to_vec();
+        bytes.extend_from_slice(nonce.as_bytes());
+        let hash = hex::encode(Sha256::digest(&bytes));
+
+        // The row points into a cache root the data dir has since moved
+        // away from, and the old file is still there.
+        let old_root = std::env::temp_dir().join(format!("ryokan-old-art-{nonce}"));
+        std::fs::create_dir_all(old_root.join("blobs")).unwrap();
+        let old_blob = old_root.join("blobs").join(format!("{hash}.jpg"));
+        std::fs::write(&old_blob, &bytes).unwrap();
+        let db = crate::test_support::in_memory_pool().await;
+        artwork_cache::upsert_blob(
+            &db,
+            &hash,
+            &old_blob.to_string_lossy(),
+            "image/jpeg",
+            bytes.len() as i64,
+        )
+        .await
+        .unwrap();
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(bytes.clone()))
+            .mount(&server)
+            .await;
+        let key = format!("test-{nonce}-cover");
+        cache_image(
+            &db,
+            &key,
+            "series",
+            None,
+            "cover",
+            &format!("{}/cover.jpg", server.uri()),
+        )
+        .await
+        .unwrap();
+
+        let current = media_cache_dir().join("blobs").join(format!("{hash}.jpg"));
+        let served = load_bytes(&db, &sanitize_key(&key)).await;
+        let _ = std::fs::remove_file(&current);
+        let _ = std::fs::remove_dir_all(&old_root);
+        assert_eq!(
+            served.map(|(b, _)| b),
+            Some(bytes),
+            "the image is served from the current root"
+        );
+        assert_eq!(
+            artwork_cache::get_blob_path(&db, &hash).await.unwrap(),
+            Some(current.to_string_lossy().into_owned())
+        );
     }
 }
