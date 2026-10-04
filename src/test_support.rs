@@ -713,6 +713,12 @@ window.addEventListener('DOMContentLoaded', function () {
                 "/api/downloads/blocklist/remove",
                 post(crate::handlers::downloads::api_blocklist_remove),
             )
+            // The queue's poll and its Pause button.
+            .route("/api/torrents", get(crate::handlers::search::get_torrents))
+            .route(
+                "/api/downloads/pause",
+                post(crate::handlers::downloads::api_pause_torrent),
+            )
             .route(
                 "/api/library/misgrabs/{id}/restore",
                 post(crate::handlers::library::misgrabs::restore_misgrab),
