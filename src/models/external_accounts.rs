@@ -170,6 +170,17 @@ pub async fn get_current(db: &SqlitePool) -> Result<Option<ExternalAccount>, Str
 /// a duplicate, per decision #8. The returned id is the existing
 /// row's, so callers can treat `link` as idempotent against the same
 /// provider user.
+/// The linked account's id, provider and username, without touching
+/// its tokens: what unlinking needs when the tokens no longer decrypt.
+pub async fn current_row(db: &SqlitePool) -> Result<Option<(i64, String, String)>, String> {
+    sqlx::query_as(
+        "SELECT id, provider, username FROM external_accounts ORDER BY linked_at DESC LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("external_accounts query failed: {e}"))
+}
+
 pub async fn link(db: &SqlitePool, req: LinkRequest) -> Result<i64, String> {
     let now = current_unix_ts();
 
@@ -240,6 +251,17 @@ pub async fn link(db: &SqlitePool, req: LinkRequest) -> Result<i64, String> {
     // "another account is already linked, unlink first" string. Widening
     // to "any row" routes both same-provider-different-user and
     // different-provider switches through the same friendly error.
+    // An account whose tokens no longer decrypt (the key changed: a
+    // restored key-less or sanitized backup, `RYOKAN_ENCRYPTION_KEY` set
+    // over a stale key file) can't be shown, used or unlinked from
+    // Settings, which renders it as "not linked". Refusing the new link
+    // because of it left no way out, so it makes way for this one.
+    if get_current(db).await.is_err()
+        && let Some((stale_id, _, _)) = current_row(db).await?
+    {
+        unlink(db, stale_id).await?;
+    }
+
     let inserted: Option<i64> = sqlx::query_scalar(
         "INSERT INTO external_accounts
             (provider, provider_user_id, username,
@@ -672,6 +694,30 @@ mod tests {
         assert_eq!(got.access_token, "mal-rotated-access");
         assert_eq!(got.refresh_token, "mal-rotated-refresh");
         assert_eq!(got.access_token_expires_at, Some(1_900_000_000));
+    }
+
+    #[tokio::test]
+    async fn an_account_whose_tokens_no_longer_decrypt_makes_way_for_a_new_link() {
+        // After a key change the old row can't be read, shown or
+        // unlinked; a new link used to be refused because of it.
+        let db = in_memory_pool().await;
+        link(&db, sample_mal_request()).await.unwrap();
+        sqlx::query("UPDATE external_accounts SET access_token_encrypted = x'00', refresh_token_encrypted = x'00'")
+            .execute(&db)
+            .await
+            .unwrap();
+        assert!(
+            get_current(&db).await.is_err(),
+            "unreadable, as after a key change"
+        );
+
+        let mut other_user = sample_mal_request();
+        other_user.provider_user_id = "different_mal_user".to_string();
+        link(&db, other_user)
+            .await
+            .expect("the stale row makes way");
+        let current = get_current(&db).await.unwrap().unwrap();
+        assert_eq!(current.provider_user_id, "different_mal_user");
     }
 
     #[tokio::test]

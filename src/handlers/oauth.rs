@@ -401,10 +401,35 @@ pub async fn unlink(State(state): State<AppState>) -> impl IntoResponse {
             StatusCode::OK,
             Json(serde_json::json!({"ok": true, "already": "unlinked"})),
         ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false, "error": e})),
-        ),
+        // The tokens don't decrypt (the encryption key changed), which
+        // used to make unlinking impossible: unlink by id instead.
+        Err(e) => {
+            match external_accounts::current_row(&state.db).await {
+                Ok(Some((id, provider, username))) => {
+                    if let Err(e) = external_accounts::unlink(&state.db, id).await {
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({"ok": false, "error": e})),
+                        );
+                    }
+                    logger::info(
+                    &state.db,
+                    LogCategory::ExternalSync,
+                    &format!("Unlinked {provider} account '{username}' (its tokens no longer decrypted)"),
+                    &format!("external_account_id={id}"),
+                )
+                .await;
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({"ok": true, "provider": provider})),
+                    )
+                }
+                _ => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"ok": false, "error": e})),
+                ),
+            }
+        }
     }
 }
 
