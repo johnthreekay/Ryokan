@@ -9,7 +9,7 @@ use crate::{
         monitoring::{self, EpisodeMonitorState, MonitorMode},
         series,
     },
-    services::{jikan, media},
+    services::{anilist, jikan, media},
 };
 
 #[derive(Debug, Clone)]
@@ -121,8 +121,12 @@ pub async fn ensure_series_monitoring_rows(
 /// against zero episodes and the per-episode Monitor buttons have nothing
 /// to toggle.
 async fn effective_episode_count(db: &SqlitePool, row: &series::Series) -> i32 {
-    if let Some(n) = row.episodes
-        && n > 0
+    // Each source read through the provider bound: a row or blob
+    // stored before it existed, or an airing schedule's episode number,
+    // becomes the length of a `1..=n` vector below.
+    if let Some(n) = row
+        .episodes
+        .and_then(|n| anilist::plausible_episode_count(n.into()))
     {
         return n;
     }
@@ -133,7 +137,11 @@ async fn effective_episode_count(db: &SqlitePool, row: &series::Series) -> i32 {
         }
     }
     if let Ok(map) = local_metadata::get_episode_map_for_series(db, row.id).await
-        && let Some(max) = map.keys().copied().max()
+        && let Some(max) = map
+            .keys()
+            .copied()
+            .filter(|&n| anilist::plausible_episode_count(n.into()).is_some())
+            .max()
     {
         return max;
     }
@@ -651,5 +659,25 @@ mod tests {
         // E2: aired ≤ today → monitored.
         // E3: no info, fallback `3 ≤ 2` → not monitored.
         assert_eq!(got, ep_set(&[1, 2]));
+    }
+}
+
+#[cfg(test)]
+mod count_bound_tests {
+    use crate::test_support::{in_memory_pool, seed_series};
+
+    #[tokio::test]
+    async fn a_stored_count_past_the_bound_never_becomes_a_range() {
+        // A row written before the provider bound existed: the
+        // recompute built `1..=episodes` whole.
+        let db = in_memory_pool().await;
+        let id = seed_series(&db, 77, "Show").await;
+        sqlx::query("UPDATE series SET episodes = 2147483647 WHERE id = ?")
+            .bind(id)
+            .execute(&db)
+            .await
+            .unwrap();
+        let summary = super::recompute_series_monitoring(&db, id).await.unwrap();
+        assert_eq!(summary.total_count, 0);
     }
 }

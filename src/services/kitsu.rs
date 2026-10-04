@@ -330,7 +330,9 @@ fn to_anime_detail(item: Candidate) -> AnimeDetail {
         format: item.subtype.to_ascii_uppercase(),
         status: item.status.to_ascii_uppercase().replace(' ', "_"),
         status_display: item.status.replace('-', " "),
-        episodes: item.episode_count.filter(|&n| n > 0),
+        episodes: item
+            .episode_count
+            .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
         duration: item.episode_length,
         season: String::new(),
         season_year: parse_year(item.start_date.as_deref()),

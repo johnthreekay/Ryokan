@@ -389,7 +389,9 @@ pub async fn search_anime(query: &str) -> Result<Vec<AnimeEntry>, String> {
                 format,
                 status,
                 status_display,
-                episodes: anime.episodes.filter(|&n| n > 0),
+                episodes: anime
+                    .episodes
+                    .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
                 season_year: None, // Jikan search results don't include year
                 source: "mal".to_string(),
                 // MAL ships a 0-10 float; AnimeEntry stores 0-100 to
@@ -473,7 +475,9 @@ async fn fetch_relation_card_detail(mal_id: i64, fallback_name: &str) -> Related
         format,
         status,
         status_display,
-        episodes: anime.episodes.filter(|&n| n > 0),
+        episodes: anime
+            .episodes
+            .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
         relation_type: String::new(),
         season_year: anime.year,
         media_type: "ANIME".to_string(),
@@ -679,7 +683,9 @@ pub async fn get_anime_detail(mal_id: i64) -> Result<AnimeDetail, String> {
         format,
         status,
         status_display,
-        episodes: anime.episodes.filter(|&n| n > 0),
+        episodes: anime
+            .episodes
+            .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
         duration,
         season: anime.season.unwrap_or_default().to_uppercase(),
         season_year: anime.year,
@@ -690,7 +696,9 @@ pub async fn get_anime_detail(mal_id: i64) -> Result<AnimeDetail, String> {
         average_score_display: anime.score.map(format_ten_point_score),
         score_is_ten_point: true,
         score_class: score_class(anime.score.map(|s| s.round() as i32), true),
-        next_airing_episode: next_airing.and_then(|(ep, _)| ep),
+        next_airing_episode: next_airing
+            .and_then(|(ep, _)| ep)
+            .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
         next_airing_at: next_airing.and_then(|(_, ts)| ts),
         synonyms: Vec::new(),
         streaming_episodes: anime
