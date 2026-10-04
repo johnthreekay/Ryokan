@@ -623,8 +623,17 @@ async fn main() {
     // (env-var parse, file read, possible first-run key generation
     // with a 0600 chmod) at boot rather than during the user's first
     // OAuth `/submit`. Wrapped in `spawn_blocking` because the
-    // first-run path may write to disk.
-    let _ = tokio::task::spawn_blocking(services::crypto::warm_key).await;
+    // first-run path may write to disk. A key that can't be loaded or
+    // created (malformed `RYOKAN_ENCRYPTION_KEY`, unreadable key file)
+    // stops the boot here: the panic used to end only the blocking task,
+    // and Ryokan ran on with every OAuth link and token read failing.
+    if tokio::task::spawn_blocking(services::crypto::warm_key)
+        .await
+        .is_err()
+    {
+        tracing::error!("Encryption key failed to load (the reason is above); not starting");
+        std::process::exit(1);
+    }
 
     // Warm the Custom Formats cache from disk. Parse failures are logged
     // inside `load_compiled_cfs` and skipped — startup never aborts over
