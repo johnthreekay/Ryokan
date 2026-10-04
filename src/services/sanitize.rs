@@ -164,9 +164,12 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
     // re-add it), a direct feed's address, and every link the RSS sync
     // has seen. The passkey can sit in the path too (AnimeBytes-style
     // `/feed/<passkey>`), so only scheme and host survive (`redact_url`).
-    let url_rows = redact_url_column(&pool, "grabbed_torrents", "source_url").await?
-        + redact_url_column(&pool, "direct_rss_feeds", "url").await?
-        + redact_url_column(&pool, "rss_seen", "link").await?;
+    // A feed's URL is UNIQUE, and two feeds on one host (two uploaders'
+    // Nyaa feeds) redact to the same value, so those keep their row id.
+    let url_rows = redact_url_column(&pool, "grabbed_torrents", "source_url", false).await?
+        + redact_url_column(&pool, "direct_rss_feeds", "url", true).await?
+        + redact_url_column(&pool, "rss_seen", "link", false).await?
+        + redact_item_keys(&pool).await?;
 
     // Notification providers: the Discord webhook URL carries its token,
     // a generic webhook its URL, HMAC secret and custom headers
@@ -335,8 +338,15 @@ pub fn redact_url(raw: &str) -> String {
 }
 
 /// Run [`redact_url`] over `table.column`, skipping rows already blank.
-/// A missing table (an old database) counts as nothing to do.
-async fn redact_url_column(pool: &SqlitePool, table: &str, column: &str) -> Result<u64, String> {
+/// A missing table (an old database) counts as nothing to do. A
+/// `unique` column gets [`row_tagged`] values, since two URLs on one
+/// host redact to the same string.
+async fn redact_url_column(
+    pool: &SqlitePool,
+    table: &str,
+    column: &str,
+    unique: bool,
+) -> Result<u64, String> {
     let (t, c) = (quote_ident(table), quote_ident(column));
     let rows: Vec<(i64, String)> = match sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT rowid, {c} FROM {t} WHERE {c} != ''"
@@ -349,7 +359,10 @@ async fn redact_url_column(pool: &SqlitePool, table: &str, column: &str) -> Resu
     };
     let mut changed = 0;
     for (rowid, url) in rows {
-        let redacted = redact_url(&url);
+        let mut redacted = redact_url(&url);
+        if unique && redacted != url {
+            redacted = row_tagged(&redacted, rowid);
+        }
         if redacted != url {
             sqlx::query(sqlx::AssertSqlSafe(format!(
                 "UPDATE {t} SET {c} = ? WHERE rowid = ?"
@@ -361,6 +374,52 @@ async fn redact_url_column(pool: &SqlitePool, table: &str, column: &str) -> Resu
             .map_err(|e| format!("redact {table}.{column}: {e}"))?;
             changed += 1;
         }
+    }
+    Ok(changed)
+}
+
+/// `redacted` with the row id appended, for a UNIQUE column: the
+/// redacted forms of two different values can be equal.
+fn row_tagged(redacted: &str, rowid: i64) -> String {
+    format!("{redacted}#{rowid}")
+}
+
+/// The RSS dedup keys. An item with no info-hash is keyed by its guid,
+/// else its link (`rss::feed::build_item_key`), and private trackers put
+/// the passkey in both. The key is UNIQUE, so a changed one is
+/// [`row_tagged`]. Restored, those items read as unseen, the same as
+/// any item whose link was redacted.
+async fn redact_item_keys(pool: &SqlitePool) -> Result<u64, String> {
+    let rows: Vec<(i64, String)> = match sqlx::query_as(
+        "SELECT rowid, item_key FROM rss_seen \
+          WHERE item_key LIKE 'guid:%' OR item_key LIKE 'link:%'",
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => return Ok(0),
+    };
+    let mut changed = 0;
+    for (rowid, key) in rows {
+        let (prefix, value) = key.split_at(5);
+        // A link is a URL; a guid is often an opaque id, and only a URL
+        // or `passkey=`-style text inside it is taken out.
+        let redacted = if prefix == "link:" {
+            redact_url(value)
+        } else {
+            redact_text(value)
+        };
+        if redacted == value {
+            continue;
+        }
+        sqlx::query("UPDATE rss_seen SET item_key = ? WHERE rowid = ?")
+            .bind(format!("{prefix}{}", row_tagged(&redacted, rowid)))
+            .bind(rowid)
+            .execute(pool)
+            .await
+            .map_err(|e| format!("redact rss_seen.item_key: {e}"))?;
+        changed += 1;
     }
     Ok(changed)
 }
@@ -637,6 +696,79 @@ mod tests {
         assert!(err.contains("FOREIGN KEY"), "{err}");
     }
 
+    #[tokio::test]
+    async fn sanitize_keeps_unique_columns_unique_and_scrubs_rss_keys() {
+        // Two uploaders' Nyaa feeds share a host, so both redacted to
+        // `https://nyaa.si/[redacted]` and the UNIQUE `url` failed the
+        // whole sanitize. Private trackers also put the passkey in the
+        // RSS dedup key (`link:<url>`, or a guid that is a URL).
+        let dir = tmpdir();
+        let live = dir.join("live.db");
+        seed_live_db(&live).await;
+        {
+            let url = format!("sqlite://{}?mode=rwc", live.display());
+            let pool = SqlitePool::connect(&url).await.unwrap();
+            for (name, url) in [
+                ("Erai-raws", "https://nyaa.si/?page=rss&u=Erai-raws"),
+                ("SubsPlease", "https://nyaa.si/?page=rss&u=subsplease"),
+            ] {
+                sqlx::query("INSERT INTO direct_rss_feeds (name, url, enabled) VALUES (?, ?, 1)")
+                    .bind(name)
+                    .bind(url)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+            for key in [
+                "link:https://tracker.example/rss/download/123/link-passkey-sekrit/x.torrent",
+                "link:https://tracker.example/rss/download/124/link-passkey-sekrit/y.torrent",
+                "guid:https://tracker.example/details.php?id=1&torrent_pass=guid-pass-sekrit",
+                "guid:nyaa-1234567",
+                "hash:aabbccddeeff00112233445566778899aabbccdd",
+            ] {
+                sqlx::query("INSERT INTO rss_seen (item_key) VALUES (?)")
+                    .bind(key)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+            pool.close().await;
+        }
+        let out = dir.join("sanitized.db");
+        run_sanitize(&live, &out).await.expect("sanitize");
+
+        let url = format!("sqlite://{}?mode=ro", out.display());
+        let pool = SqlitePool::connect(&url).await.unwrap();
+        let feeds: Vec<String> =
+            sqlx::query_scalar("SELECT url FROM direct_rss_feeds WHERE url LIKE '%nyaa.si%'")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(feeds.len(), 2);
+        assert_ne!(feeds[0], feeds[1]);
+        assert!(
+            feeds
+                .iter()
+                .all(|u| u.starts_with("https://nyaa.si/[redacted]")),
+            "{feeds:?}"
+        );
+        let keys: Vec<String> = sqlx::query_scalar("SELECT item_key FROM rss_seen")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert!(keys.contains(&"guid:nyaa-1234567".to_string()), "{keys:?}");
+        assert!(
+            keys.contains(&"hash:aabbccddeeff00112233445566778899aabbccdd".to_string()),
+            "{keys:?}"
+        );
+        pool.close().await;
+        let haystack = String::from_utf8_lossy(&fs::read(&out).unwrap()).into_owned();
+        for secret in ["link-passkey-sekrit", "guid-pass-sekrit"] {
+            assert!(!haystack.contains(secret), "{secret} survived in the file");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     fn tmpdir() -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!(
             "ryokan-sanitize-test-{}",
@@ -900,7 +1032,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(feed_url, "https://tracker.example/[redacted]");
+        assert_eq!(feed_url, "https://tracker.example/[redacted]#1");
 
         let jf_key: String = sqlx::query_scalar("SELECT jellyfin_api_key FROM config WHERE id = 1")
             .fetch_one(&pool)
