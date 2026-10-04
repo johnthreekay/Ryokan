@@ -1067,3 +1067,39 @@ async fn a_grab_cancelled_during_the_import_stays_removed() {
         .unwrap();
     assert_eq!(state, "removed");
 }
+
+#[tokio::test]
+async fn only_another_series_live_grab_keeps_a_hash_in_use() {
+    // Series B once grabbed this release, and it was a misgrab there.
+    // That dead row used to count as B using the hash, so removing A
+    // with files left A's own download in the client.
+    let db = crate::test_support::in_memory_pool().await;
+    let a = crate::test_support::seed_series(&db, 1201, "Show A").await;
+    let b = crate::test_support::seed_series(&db, 1202, "Show B").await;
+    let hash = "c12fe1c06bba254a9dc9f519b335aa7c1367a88a";
+    let b_grab = crate::test_support::seed_grabbed_torrent(&db, b, hash, "rel", &[1]).await;
+    mark_failed_with_reason(&db, b_grab, "misgrab")
+        .await
+        .unwrap();
+    let a_grab = crate::test_support::seed_grabbed_torrent(&db, a, hash, "rel", &[1]).await;
+    assert!(!hash_in_use_elsewhere(&db, hash, a, a_grab).await);
+    for dead in ["removed", "replaced"] {
+        sqlx::query("UPDATE grabbed_torrents SET state = ? WHERE id = ?")
+            .bind(dead)
+            .bind(b_grab)
+            .execute(&db)
+            .await
+            .unwrap();
+        assert!(!hash_in_use_elsewhere(&db, hash, a, a_grab).await, "{dead}");
+    }
+
+    // The other way round, B's live grab keeps it, whatever state A's
+    // own row is in and however the hash is cased.
+    mark_failed(&db, a_grab).await.unwrap();
+    sqlx::query("UPDATE grabbed_torrents SET state = 'imported' WHERE id = ?")
+        .bind(b_grab)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert!(hash_in_use_elsewhere(&db, &hash.to_uppercase(), a, a_grab).await);
+}

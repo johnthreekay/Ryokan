@@ -1341,17 +1341,17 @@ pub async fn remove(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-/// Return every (id, hash) pair currently associated with `series_id`,
-/// regardless of state. Used by the "remove series" handler so we can
-/// stop seeding and tell qBittorrent to drop the data when the user
-/// removes a series from the library — without this, qBit keeps holding
-/// torrent state for a series Ryokan has already forgotten about.
 /// Whether deleting `hash` (series `series_id`'s grab `grab_id`) from
 /// the client would take another series' download with it: another
-/// series has a grab with that hash (this series' grab was cancelled
-/// and the release re-grabbed there), or the grab is a batch that also
-/// routes files to another series. A lookup error counts as "in use",
-/// so in doubt the data stays.
+/// series has a live grab with that hash (this series' grab was
+/// cancelled and the release re-grabbed there), or the grab is a batch
+/// that also routes files to another series. A lookup error counts as
+/// "in use", so in doubt the data stays.
+///
+/// Live is `pending` / `imported`, the states the partial unique index
+/// on `hash` covers. A failed, removed or replaced row is a grab that
+/// is over (an old misgrab of this release for another series, say),
+/// and counting it left this series' own download in the client.
 pub async fn hash_in_use_elsewhere(
     db: &SqlitePool,
     hash: &str,
@@ -1360,7 +1360,8 @@ pub async fn hash_in_use_elsewhere(
 ) -> bool {
     sqlx::query_scalar::<_, i64>(
         "SELECT EXISTS(SELECT 1 FROM grabbed_torrents \
-                        WHERE hash = ? COLLATE NOCASE AND series_id != ?) \
+                        WHERE hash = ? COLLATE NOCASE AND series_id != ? \
+                          AND state IN ('pending', 'imported')) \
              OR EXISTS(SELECT 1 FROM grabbed_torrent_series \
                         WHERE grab_id = ? AND series_id != ?)",
     )
@@ -1373,6 +1374,11 @@ pub async fn hash_in_use_elsewhere(
     .map_or(true, |in_use| in_use != 0)
 }
 
+/// Return every (id, hash) pair currently associated with `series_id`,
+/// regardless of state. Used by the "remove series" handler so we can
+/// stop seeding and tell qBittorrent to drop the data when the user
+/// removes a series from the library — without this, qBit keeps holding
+/// torrent state for a series Ryokan has already forgotten about.
 pub async fn get_all_for_series(
     db: &SqlitePool,
     series_id: i64,
