@@ -1,7 +1,8 @@
 use anitomy::{Anitomy, ElementCategory};
 use regex_lite::Regex;
 use serde::Serialize;
-use std::path::Path;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 // ── Pre-compiled regexes for episode-number parsing ───────────────────────
@@ -424,7 +425,13 @@ pub fn scan_series_folder_split(
     }
 
     let mut files = Vec::new();
-    scan_dir_recursive(&series_path, &series_path, &mut files);
+    scan_dir_recursive(
+        &series_path,
+        &series_path,
+        &mut files,
+        0,
+        &mut HashSet::new(),
+    );
     let (specials, mut files): (Vec<EpisodeFile>, Vec<EpisodeFile>) =
         files.into_iter().partition(|f| f.is_special);
 
@@ -464,7 +471,30 @@ pub fn list_media_folders(media_root: &str) -> Vec<String> {
     folders
 }
 
-fn scan_dir_recursive(dir: &Path, series_root: &Path, files: &mut Vec<EpisodeFile>) {
+/// How far below a series folder the scan reads. Real layouts are one or
+/// two levels deep (`Season 01/`, `Specials/`, a release folder inside).
+const MAX_SCAN_DEPTH: usize = 6;
+
+/// Symlinked folders are followed (a season linked in from another
+/// drive is a real layout), but each real directory is read once and
+/// never past [`MAX_SCAN_DEPTH`]: a link back to a parent folder used to
+/// recurse until the stack overflowed and the process aborted.
+fn scan_dir_recursive(
+    dir: &Path,
+    series_root: &Path,
+    files: &mut Vec<EpisodeFile>,
+    depth: usize,
+    visited: &mut HashSet<PathBuf>,
+) {
+    if depth > MAX_SCAN_DEPTH {
+        return;
+    }
+    let Ok(real) = dir.canonicalize() else {
+        return;
+    };
+    if !visited.insert(real) {
+        return;
+    }
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -473,7 +503,7 @@ fn scan_dir_recursive(dir: &Path, series_root: &Path, files: &mut Vec<EpisodeFil
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            scan_dir_recursive(&path, series_root, files);
+            scan_dir_recursive(&path, series_root, files, depth + 1, visited);
         } else if is_video_file(&path)
             && let Some(ep) = parse_episode_file(&path, series_root)
         {
@@ -1095,6 +1125,32 @@ mod folder_name_tests {
     use super::{
         ANITOMY_MAX_INPUT, anitomy_input, anitomy_parse, sanitize_folder_name, usable_folder_name,
     };
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_loop_is_read_once_and_never_overflows() {
+        // `Show/Season 01/loop -> ..` used to recurse until the stack
+        // overflowed. A season linked in from elsewhere still counts.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("media");
+        let show = root.join("Show");
+        let s1 = show.join("Season 01");
+        std::fs::create_dir_all(&s1).unwrap();
+        std::fs::write(s1.join("Show - S01E01.mkv"), b"x").unwrap();
+        std::os::unix::fs::symlink(&show, s1.join("loop")).unwrap();
+        let elsewhere = tmp.path().join("disk2").join("Season 02");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("Show - S02E01.mkv"), b"x").unwrap();
+        std::os::unix::fs::symlink(&elsewhere, show.join("Season 02")).unwrap();
+
+        let (files, _) = super::scan_series_folder_split(root.to_str().unwrap(), "Show");
+        let mut names: Vec<_> = files.iter().map(|f| f.filename.as_str()).collect();
+        names.sort();
+        assert_eq!(
+            names,
+            ["Season 01/Show - S01E01.mkv", "Season 02/Show - S02E01.mkv"]
+        );
+    }
 
     #[test]
     fn anitomy_never_sees_more_than_its_bound() {

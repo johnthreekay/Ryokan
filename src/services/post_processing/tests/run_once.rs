@@ -2604,6 +2604,134 @@ async fn run_once_never_imports_a_subtitle_from_outside_the_download() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn run_once_never_imports_a_subtitle_symlinked_outside_the_download() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // A torrent can carry a symlink. A `.srt` inside the download that
+    // links to a file outside it (the database, the key) passes the
+    // path-fragment check; resolving it must keep it out.
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let outer = tempfile::TempDir::new().expect("outer tempdir");
+    let source = outer.path().join("a").join("b");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::write(outer.path().join("evil.srt"), b"outside").unwrap();
+    std::os::unix::fs::symlink(
+        outer.path().join("evil.srt"),
+        source.join("[Group] Show Title - 01 (1080p).srt"),
+    )
+    .unwrap();
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode, \
+         import_extra_files, extra_file_extensions, auto_redownload_failed) \
+         VALUES (1, 1, ?, 'copy', 1, 'srt,ass', 0)",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    let title = "[Group] Show Title - 01 (1080p)";
+    let video = "[Group] Show Title - 01 (1080p).mkv";
+    std::fs::write(source.join(video), b"video").unwrap();
+    std::fs::write(
+        source.join("[Group] Show Title - 01 (1080p).eng.ass"),
+        b"subs",
+    )
+    .unwrap();
+    let g = grabbed_torrents::record_grab(&db, "evilhash", title, series_id, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(1))
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let torrent = DownloadItem {
+        hash: "evilhash".into(),
+        name: title.into(),
+        size: 5,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: source_path.clone(),
+        content_path: source_path.clone(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let files = vec![
+        DownloadFile {
+            name: video.to_string(),
+            size: 5,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "[Group] Show Title - 01 (1080p).eng.ass".to_string(),
+            size: 4,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "[Group] Show Title - 01 (1080p).srt".to_string(),
+            size: 7,
+            progress: 1.0,
+            wanted: true,
+        },
+        DownloadFile {
+            name: "[Group] Show Title - 01 (1080p).jpn.ass".to_string(),
+            size: 4,
+            progress: 0.0,
+            wanted: false,
+        },
+    ];
+    let state = build_test_app_state(db.clone(), None);
+    let client = Arc::new(ImportingClient { torrent, files });
+    install_pool(
+        &state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+    let season_dir = media_root.path().join("Show Title").join("Season 01");
+    let mut names: Vec<String> = std::fs::read_dir(&season_dir)
+        .expect("season dir")
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| !n.ends_with(".nfo"))
+        .collect();
+    names.sort();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert!(
+        names.iter().all(|n| !n.ends_with(".srt")),
+        "the entry outside the download never lands in the library: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.ends_with(".en.ass")),
+        "the download's own subtitle still imports: {names:?}"
+    );
+}
+
 // ─── Specials respect the grab-ownership rule ──────────────────────
 
 #[tokio::test]

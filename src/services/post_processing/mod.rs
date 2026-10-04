@@ -608,6 +608,19 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
     .map_err(|e| std::io::Error::other(format!("join error: {}", e)))?
 }
 
+/// Whether `path` resolves (symlinks followed) to a regular file inside
+/// `base`. Subtitles from the client's file list go through this: a
+/// torrent can carry a symlink, and a `.srt` linking to the database
+/// or the key file would otherwise be copied into the library, where
+/// Jellyfin serves it. Strict, unlike the video loop's check: a file
+/// that can't be resolved is skipped.
+fn resolves_to_file_inside(path: &Path, base: &Path) -> bool {
+    match (path.canonicalize(), base.canonicalize()) {
+        (Ok(real), Ok(real_base)) => real.starts_with(&real_base) && real.is_file(),
+        _ => false,
+    }
+}
+
 /// Sibling temp name an upgrade lands at before the swap (issue #202):
 /// `.<basename>.ryokan-new` in the same directory as `dest`, so the
 /// final step is an atomic rename. The leading dot matters: retiring
@@ -2342,6 +2355,7 @@ async fn import_torrent(
                                 }
                             })
                             .map(|f| Path::new(&source_base).join(&f.name))
+                            .filter(|p| resolves_to_file_inside(p, Path::new(&source_base)))
                             .collect()
                     };
                     // Every video the download holds, wanted or not:
