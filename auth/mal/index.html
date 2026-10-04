@@ -14,10 +14,18 @@
     </a>
     <div class="broker-eyebrow">MyAnimeList authorization</div>
 
+    <section id="handoff" class="broker-prose" hidden>
+      <h1 class="broker-heading">Send to your Ryokan?</h1>
+      <p>The page that opened this window is at the address below. Send it the code only if that is your own Ryokan, the tab where you clicked <em>Link MyAnimeList</em>. Any other page that opened this window would receive the code.</p>
+      <span class="broker-label">Ryokan address</span>
+      <code class="broker-value" id="handoff-origin"></code>
+      <button class="broker-btn" type="button" id="handoff-send">Send to this Ryokan</button>
+    </section>
+
     <div id="autofilled" hidden>
       <div class="broker-success-banner">
         <strong>Sent to Ryokan.</strong>
-        <div>The code and state were posted back to your Ryokan tab automatically. Switch to that tab to confirm the link landed.</div>
+        <div>The code and state were sent to <span id="sent-origin"></span>. Switch to that tab to confirm the link landed.</div>
         <div class="broker-autoclose" id="autoclose-hint"></div>
       </div>
       <details class="broker-fallback-toggle">
@@ -64,7 +72,7 @@
     </section>
 
     <footer>
-      Part of <a href="https://github.com/johnthreekay/Ryokan">Ryokan</a>, a self-hosted anime PVR. This page receives the OAuth authorization code + state nonce from MyAnimeList and either posts them back to your Ryokan tab automatically or displays them for manual copy. Both stay in your browser. <a href="https://github.com/johnthreekay/Ryokan/blob/gh-pages/auth/mal/index.html">View source.</a>
+      Part of <a href="https://github.com/johnthreekay/Ryokan">Ryokan</a>, a self-hosted anime PVR. This page receives the OAuth authorization code + state nonce from MyAnimeList and either sends them to your Ryokan tab once you confirm its address, or displays them for manual copy. Both stay in your browser. <a href="https://github.com/johnthreekay/Ryokan/blob/gh-pages/auth/mal/index.html">View source.</a>
     </footer>
   </main>
 
@@ -91,29 +99,57 @@
         });
       }
 
-      // Same auto-postback path as the AniList broker page; see
-      // auth/anilist/index.html for the full rationale. If
-      // window.opener is set (this tab was opened from a Ryokan tab
-      // via window.open), post the code + state back so the user
-      // does not have to copy-paste. The receiver in
-      // static/js/settings.js validates origin against this broker
-      // before auto-submitting.
-      function tryAutofill(code, state) {
-        if (!window.opener || window.opener.closed) return false;
-        try {
-          window.opener.postMessage(
-            {
-              type: 'ryokan-oauth-mal',
-              code: code,
-              state: state || '',
-            },
-            '*'
-          );
-          return true;
-        } catch (e) {
-          console.warn('postMessage to opener failed:', e);
-          return false;
-        }
+      // Hand-off to the Ryokan tab that started the flow. Ryokan can
+      // live at any address, so this page can't know where to send the
+      // code up front. It used to post to window.opener with target
+      // '*', which handed the code to any page that opened the
+      // authorize URL in a popup. Now the opener has to introduce itself
+      // with a `ryokan-oauth-hello` message: the browser supplies its
+      // origin (event.origin, which the sender can't forge), the user
+      // sees it and clicks Send, and the code goes to that origin
+      // only. Ryokan builds from before the hello never say it and get
+      // the copy-paste view, which stays on screen until a send.
+      function offerHandoff(payload) {
+        if (!window.opener) return;
+        var offered = false;
+        window.addEventListener('message', function (event) {
+          var data = event.data || {};
+          if (offered || event.source !== window.opener) return;
+          if (data.type !== 'ryokan-oauth-hello' || data.provider !== 'mal') return;
+          if (!/^https?:\/\/[^\/]+$/.test(event.origin)) return;
+          offered = true;
+          var origin = event.origin;
+          var target = event.source;
+          document.getElementById('handoff-origin').textContent = origin;
+          document.getElementById('handoff').hidden = false;
+          document.getElementById('handoff-send').addEventListener('click', function () {
+            try {
+              target.postMessage(payload, origin);
+            } catch (e) {
+              console.warn('postMessage to opener failed:', e);
+              return;
+            }
+            showSent(origin);
+          }, { once: true });
+        });
+      }
+
+      function showSent(origin) {
+        document.getElementById('handoff').hidden = true;
+        document.getElementById('success').hidden = true;
+        document.getElementById('sent-origin').textContent = origin;
+        document.getElementById('autofilled').hidden = false;
+        var closeIn = 5;
+        var hint = document.getElementById('autoclose-hint');
+        var tick = setInterval(function () {
+          closeIn -= 1;
+          if (hint) hint.textContent = 'Closing in ' + closeIn + 's.';
+          if (closeIn <= 0) {
+            clearInterval(tick);
+            try { window.close(); } catch (e) { /* ignore */ }
+          }
+        }, 1000);
+        if (hint) hint.textContent = 'Closing in ' + closeIn + 's.';
       }
 
       if (error) {
@@ -122,29 +158,6 @@
           ? error + ': ' + errorDesc
           : error;
       } else if (code) {
-        var autofilled = tryAutofill(code, state);
-
-        if (autofilled) {
-          document.getElementById('autofilled').hidden = false;
-          document.getElementById('code-fallback').textContent = code;
-          document.getElementById('state-fallback').textContent = state || '';
-          bindCopy('copy-code-fallback', 'code-fallback', 'Copy code');
-          bindCopy('copy-state-fallback', 'state-fallback', 'Copy state');
-
-          var closeIn = 5;
-          var hint = document.getElementById('autoclose-hint');
-          var tick = setInterval(function () {
-            closeIn -= 1;
-            if (hint) hint.textContent = 'Closing in ' + closeIn + 's.';
-            if (closeIn <= 0) {
-              clearInterval(tick);
-              try { window.close(); } catch (e) { /* ignore */ }
-            }
-          }, 1000);
-          if (hint) hint.textContent = 'Closing in ' + closeIn + 's.';
-          return;
-        }
-
         document.getElementById('success').hidden = false;
         document.getElementById('code').textContent = code;
         // State should always be present; Ryokan's /start always sets
@@ -155,6 +168,12 @@
 
         bindCopy('copy-code', 'code', 'Copy code');
         bindCopy('copy-state', 'state', 'Copy state');
+
+        document.getElementById('code-fallback').textContent = code;
+        document.getElementById('state-fallback').textContent = state || '';
+        bindCopy('copy-code-fallback', 'code-fallback', 'Copy code');
+        bindCopy('copy-state-fallback', 'state-fallback', 'Copy state');
+        offerHandoff({ type: 'ryokan-oauth-mal', code: code, state: state || '' });
       } else {
         document.getElementById('no-code').hidden = false;
       }
