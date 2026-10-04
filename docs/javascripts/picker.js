@@ -578,7 +578,9 @@ ${portsBlock}    volumes:
     // pre-creates each one with the right ownership. Without this,
     // Docker creates lazy bind-mount targets as root on first up
     // and a Jellyfin / Seerr / non-linuxserver container can fail
-    // to write to its own config volume.
+    // to write to its own config volume. The chown takes these and
+    // nothing else: the config root itself often holds other stacks'
+    // folders, and a recursive chown of it re-owned all of them.
     const serviceDirs = ['ryokan'];
     cfg.dlclients.forEach((k) => serviceDirs.push(CLIENTS[k].config_dir));
     if (cfg.media_server === 'jellyfin') serviceDirs.push('jellyfin');
@@ -597,7 +599,7 @@ ${portsBlock}    volumes:
 #
 # Before first \`docker compose up\`:
 #   sudo mkdir -p ${cfg.paths.downloads} ${cfg.paths.media} ${appdataPaths}
-#   sudo chown -R ${cfg.puid}:${cfg.pgid} ${cfg.paths.downloads} ${cfg.paths.media} ${cfg.paths.appdata}
+#   sudo chown -R ${cfg.puid}:${cfg.pgid} ${cfg.paths.downloads} ${cfg.paths.media} ${appdataPaths}
 #
 # Path layout: ${cfg.paths.shared} holds downloads/ and anime/ (the
 # library), and every container mounts it at that same path. A hardlink
