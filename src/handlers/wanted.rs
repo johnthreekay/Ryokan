@@ -598,6 +598,7 @@ pub async fn search(
                     Query(crate::handlers::library::search::AutoSearchQuery {
                         progress_id: None,
                         include_disk_upgrades,
+                        by: None,
                     }),
                 )
                 .await;

@@ -776,7 +776,7 @@ async fn find_all_for_target_dedups_same_info_hash_across_query_passes() {
 
 use async_trait::async_trait;
 use ryokan::DownloadClientPool;
-use ryokan::handlers::library::search::{AutoSearchQuery, auto_search_episode};
+use ryokan::handlers::library::search::{AutoSearchQuery, auto_search_episode, auto_search_series};
 use ryokan::services::download_client::{
     AddOutcome, DownloadClient, DownloadFile, DownloadItem, SelectiveOutcome,
 };
@@ -1940,6 +1940,64 @@ async fn wanted_search_searches_the_listed_series_not_the_row_its_anilist_id_nam
         dump_logs(&state.db).await
     );
     assert_eq!(client.add_calls().len(), 1);
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn an_untracked_series_page_searches_by_its_anilist_id() {
+    // `/series/1?by=anilist` is Research Show's page while it is not in
+    // the library; the decoy holds internal id 1. The page's searches
+    // post the AniList id with `by=anilist`; read as an internal id it
+    // searched the decoy.
+    let _gate = ENV_LOCK.lock().await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(research_results_page()))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let state = build_state().await;
+    let decoy = seed_series_with_cache(&state, 9100, "Decoy Show").await;
+    assert_eq!(decoy, 1, "the decoy holds internal id 1");
+    ryokan::models::metadata_cache::upsert_provider(
+        &state.db,
+        1,
+        None,
+        &detail_for(1, "Research Show"),
+    )
+    .await
+    .unwrap();
+    let client = install_recording_default_torrent_client(&state).await;
+    let by_anilist = || {
+        axum::extract::Query(AutoSearchQuery {
+            by: Some("anilist".into()),
+            ..AutoSearchQuery::default()
+        })
+    };
+
+    let axum::response::Json(report) = auto_search_series(
+        axum::extract::State(state.clone()),
+        axum::extract::Path(1),
+        by_anilist(),
+    )
+    .await
+    .expect("series search");
+    assert_eq!(report.grabbed.len(), 1, "{report:?}");
+    assert!(report.grabbed[0].release_title.contains("Research Show"));
+
+    let axum::response::Json(report) = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((1, 3)),
+        by_anilist(),
+    )
+    .await
+    .expect("episode search");
+    assert_eq!(report.grabbed.len(), 1, "{report:?}");
+    assert!(report.grabbed[0].release_title.contains("Research Show"));
+    assert_eq!(client.add_calls().len(), 2);
 
     unset_nyaa_base();
 }
