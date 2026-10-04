@@ -2822,13 +2822,20 @@ async fn run_once_imports_the_special_a_grab_was_for() {
     assert!(specials[0].contains("S00E01"), "{specials:?}");
 }
 
-#[tokio::test]
-async fn run_once_fails_a_special_the_folder_already_holds_as_a_different_file() {
+/// What became of the second of two grabs whose OVA renders the same
+/// `S00E01` name, run after the first grab's OVA landed.
+struct SecondSpecial {
+    state: String,
+    download_kept: bool,
+    client_removed_at: Option<i64>,
+}
+
+/// Imports `[Group] Show Title - OVA 01` (body `ova`), then
+/// `[Other] Show Title - OVA 01` from its own download with
+/// `second_body`, and checks that the Specials folder still holds only
+/// the first file, untouched, whatever became of the second grab.
+async fn import_second_special_over_first(second_body: &[u8]) -> SecondSpecial {
     let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
-    // A special whose S00Exx name is taken by a different file never
-    // lands, and the grab used to count it as imported, which let the
-    // client cleanup delete a download that was still the only copy.
-    // Now the grab fails and the download stays in the client.
     let media_root = tempfile::TempDir::new().expect("media_root tempdir");
     let first_dir = tempfile::TempDir::new().expect("first source tempdir");
     let second_dir = tempfile::TempDir::new().expect("second source tempdir");
@@ -2932,11 +2939,11 @@ async fn run_once_fails_a_special_the_folder_already_holds_as_a_different_file()
     let placed = list_specials();
     assert_eq!(placed.len(), 1, "{placed:?}");
 
-    // Second grab: another group's OVA renders the same S00E01 name
-    // and is a different file (another length, another inode).
+    // Second grab: another group's OVA renders the same S00E01 name,
+    // from its own download (another inode).
     let second_title = "[Other] Show Title - OVA 01 (1080p)";
     let second_video = "[Other] Show Title - OVA 01 (1080p).mkv";
-    std::fs::write(second_dir.path().join(second_video), b"ova-two").unwrap();
+    std::fs::write(second_dir.path().join(second_video), second_body).unwrap();
     let g2 = grabbed_torrents::record_grab(&db, "otherova", second_title, series_id, &[3], false)
         .await
         .unwrap()
@@ -2948,7 +2955,7 @@ async fn run_once_fails_a_special_the_folder_already_holds_as_a_different_file()
         torrent: item("otherova", second_title, second_dir.path()),
         files: vec![DownloadFile {
             name: second_video.to_string(),
-            size: 7,
+            size: second_body.len() as i64,
             progress: 1.0,
             wanted: true,
         }],
@@ -2960,11 +2967,6 @@ async fn run_once_fails_a_special_the_folder_already_holds_as_a_different_file()
     .await;
     post_processing::run_once(&state).await;
 
-    assert_eq!(
-        state_of(g2).await,
-        "failed",
-        "nothing landed, so the grab fails"
-    );
     assert_eq!(state_of(g1).await, "imported");
     let after = list_specials();
     assert_eq!(after, placed, "the folder keeps the first special only");
@@ -2973,18 +2975,59 @@ async fn run_once_fails_a_special_the_folder_already_holds_as_a_different_file()
         b"ova",
         "the first file is untouched"
     );
-    assert!(
-        second_dir.path().join(second_video).exists(),
-        "the refused download is still where the client left it"
-    );
-    let removed: Option<i64> =
+    let client_removed_at: Option<i64> =
         sqlx::query_scalar("SELECT client_removed_at FROM grabbed_torrents WHERE id = ?")
             .bind(g2)
             .fetch_one(&db)
             .await
             .unwrap();
+    SecondSpecial {
+        state: state_of(g2).await,
+        download_kept: second_dir.path().join(second_video).exists(),
+        client_removed_at,
+    }
+}
+
+#[tokio::test]
+async fn run_once_fails_a_special_the_folder_already_holds_as_a_different_file() {
+    // A special whose S00Exx name is taken by a different file never
+    // lands, and the grab used to count it as imported, which let the
+    // client cleanup delete a download that was still the only copy.
+    // Now the grab fails and the download stays in the client.
+    let second = import_second_special_over_first(b"ova-two").await;
+    assert_eq!(second.state, "failed", "nothing landed, so the grab fails");
+    assert!(
+        second.download_kept,
+        "the refused download is still where the client left it"
+    );
     assert_eq!(
-        removed, None,
+        second.client_removed_at, None,
         "client cleanup never ran for the failed grab"
     );
+}
+
+#[tokio::test]
+async fn run_once_fails_a_special_held_as_a_different_file_of_the_same_length() {
+    // `OVA` against the placed `ova`: same length, other bytes. The
+    // length-only check read it as already placed, so the grab counted
+    // as imported and client cleanup could delete the download.
+    let second = import_second_special_over_first(b"OVA").await;
+    assert_eq!(second.state, "failed", "nothing landed, so the grab fails");
+    assert!(
+        second.download_kept,
+        "the refused download is still where the client left it"
+    );
+    assert_eq!(
+        second.client_removed_at, None,
+        "client cleanup never ran for the failed grab"
+    );
+}
+
+#[tokio::test]
+async fn run_once_counts_a_byte_identical_special_as_already_there() {
+    // The same bytes from another download (a second inode, so the
+    // hardlink check misses it) are the special already placed: the
+    // grab is done.
+    let second = import_second_special_over_first(b"ova").await;
+    assert_eq!(second.state, "imported");
 }
