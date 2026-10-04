@@ -3307,3 +3307,40 @@ async fn run_once_reads_a_title_claimed_number_past_the_series_as_absolute() {
         "not filed as E60: {names:?}"
     );
 }
+
+#[tokio::test]
+async fn a_regenerated_series_folder_is_never_another_series_folder() {
+    // A legacy row with no folder, titled like a row that has one: the
+    // regenerated name was the other series' folder, so each one's scan
+    // read the other's files.
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let db = in_memory_pool().await;
+    sqlx::query("INSERT INTO config (id, post_processing_enabled, media_root) VALUES (1, 1, ?)")
+        .bind(media_root.path().to_string_lossy().to_string())
+        .execute(&db)
+        .await
+        .expect("seed config row");
+    seed_series(&db, 1, "Show Title").await;
+    let legacy = seed_series(&db, 2, "Show Title").await;
+    sqlx::query("UPDATE series SET folder_name = '' WHERE id = ?")
+        .bind(legacy)
+        .execute(&db)
+        .await
+        .unwrap();
+    let state = build_test_app_state(db.clone(), None);
+    let cfg = crate::models::config::get_config(&db)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let ctx = post_processing::load_series_import_ctx(&state, &cfg, legacy)
+        .await
+        .expect("context");
+    assert_eq!(ctx.folder_name, "Show Title (2)");
+    let stored: String = sqlx::query_scalar("SELECT folder_name FROM series WHERE id = ?")
+        .bind(legacy)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(stored, "Show Title (2)", "persisted");
+}

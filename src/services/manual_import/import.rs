@@ -403,11 +403,30 @@ pub async fn run_import(
         let usable = media::usable_folder_name(&row.folder_name);
         if created || !usable {
             let base = if !usable {
-                naming::series_folder(
+                let generated = naming::series_folder(
                     &cfg.series_folder_format,
                     &cfg.title_language,
                     &naming::SeriesNames::from_series(&row),
+                );
+                // Never another series' folder: the rule a new row
+                // gets in `series::upsert`.
+                match series::unique_series_folder(
+                    &state.db,
+                    generated,
+                    row.season_year,
+                    Some(row.id),
                 )
+                .await
+                {
+                    Ok(name) => name,
+                    Err(e) => {
+                        gr.errors.push(format!("could not set folder name: {e}"));
+                        report.series_skipped += 1;
+                        gr.skipped = group.files.len();
+                        report.groups.push(gr);
+                        continue;
+                    }
+                }
             } else {
                 row.folder_name.clone()
             };

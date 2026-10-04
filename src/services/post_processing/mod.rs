@@ -1100,6 +1100,14 @@ async fn load_series_import_ctx(
             &cfg.title_language,
             &naming::SeriesNames::from_series(&series),
         );
+        // The uniqueness rule a new row gets (`series::upsert`): two
+        // dots-only titles both render `Unknown Series`, and a remake
+        // shares its original's title, so the plain name can be another
+        // series' folder.
+        let generated =
+            series::unique_series_folder(&state.db, generated, series.season_year, Some(series.id))
+                .await
+                .map_err(|e| e.to_string())?;
         // Persist it so future imports skip this path.
         let _ = series::update_folder(&state.db, series.id, &generated).await;
         generated
