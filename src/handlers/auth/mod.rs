@@ -491,19 +491,21 @@ pub(crate) fn split_authority(authority: &str) -> Option<Authority> {
     }
 }
 
-pub(crate) fn host_of(req: &Request<Body>) -> Option<Authority> {
-    let raw = req.headers().get(header::HOST)?.to_str().ok()?;
-    split_authority(raw)
+pub(crate) fn allowed_host_matches_with_trust(req: &Request<Body>, trust: bool) -> Vec<Authority> {
+    hosts_from_headers(req.headers(), trust)
 }
 
-pub(crate) fn allowed_host_matches_with_trust(req: &Request<Body>, trust: bool) -> Vec<Authority> {
+fn hosts_from_headers(headers: &HeaderMap, trust: bool) -> Vec<Authority> {
     let mut hosts = Vec::new();
-    if let Some(h) = host_of(req) {
+    if let Some(h) = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .and_then(split_authority)
+    {
         hosts.push(h);
     }
     if trust
-        && let Some(raw) = req
-            .headers()
+        && let Some(raw) = headers
             .get("x-forwarded-host")
             .and_then(|v| v.to_str().ok())
     {
@@ -593,6 +595,31 @@ pub(crate) fn verify_same_origin_with_trust(
     }
 
     Err("missing Origin and Referer headers")
+}
+
+/// Whether a page may show the text in its flash query (`?msg=` /
+/// `?err=` on Settings, `?message=` / `?error=` on System). Ryokan's own
+/// redirects after a save are same-origin navigations; a link from
+/// anywhere else is not, and showing its text would put the sender's
+/// words in Ryokan's banner ("your session expired, sign in at ...").
+/// A browser without `Sec-Fetch-Site` falls back to the Referer, which
+/// `Referrer-Policy: same-origin` sends on Ryokan's own navigations.
+pub(crate) fn flash_allowed(headers: &HeaderMap) -> bool {
+    flash_allowed_with_trust(headers, *TRUST_PROXY_HEADERS)
+}
+
+pub(crate) fn flash_allowed_with_trust(headers: &HeaderMap, trust: bool) -> bool {
+    if let Some(site) = headers.get("sec-fetch-site") {
+        return site
+            .to_str()
+            .is_ok_and(|s| s.eq_ignore_ascii_case("same-origin"));
+    }
+    let hosts = hosts_from_headers(headers, trust);
+    headers
+        .get(header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(url_authority)
+        .is_some_and(|referer| !hosts.is_empty() && origin_matches(&referer, &hosts))
 }
 
 fn csrf_forbidden(reason: &str) -> Response {

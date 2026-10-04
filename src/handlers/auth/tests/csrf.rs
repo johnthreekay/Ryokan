@@ -289,3 +289,40 @@ fn a_cross_site_navigation_to_a_side_effect_get_is_refused() {
     assert_eq!(with(Some("none")), None, "typed into the address bar");
     assert_eq!(with(None), None, "curl and scripts send no header");
 }
+
+#[test]
+fn flash_text_is_shown_only_on_a_same_origin_navigation() {
+    use crate::handlers::auth::flash_allowed_with_trust;
+    let headers = |pairs: &[(&'static str, &'static str)]| {
+        let mut h = axum::http::HeaderMap::new();
+        for (k, v) in pairs {
+            h.insert(*k, v.parse().unwrap());
+        }
+        h
+    };
+    let host = ("host", "ryokan.lan:8978");
+    assert!(flash_allowed_with_trust(
+        &headers(&[host, ("sec-fetch-site", "same-origin")]),
+        false
+    ));
+    for site in ["cross-site", "same-site", "none", "junk"] {
+        assert!(
+            !flash_allowed_with_trust(&headers(&[host, ("sec-fetch-site", site)]), false),
+            "{site}"
+        );
+    }
+    // No Sec-Fetch-Site (an older browser): the Referer decides, port included.
+    assert!(flash_allowed_with_trust(
+        &headers(&[host, ("referer", "http://ryokan.lan:8978/settings")]),
+        false
+    ));
+    assert!(!flash_allowed_with_trust(
+        &headers(&[host, ("referer", "http://ryokan.lan:8080/x")]),
+        false
+    ));
+    assert!(!flash_allowed_with_trust(
+        &headers(&[host, ("referer", "https://evil.example/")]),
+        false
+    ));
+    assert!(!flash_allowed_with_trust(&headers(&[host]), false));
+}

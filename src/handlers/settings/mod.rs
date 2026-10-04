@@ -1062,18 +1062,17 @@ async fn build_settings_template(
 
 pub async fn settings_page(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Query(params): Query<SettingsQuery>,
 ) -> Html<String> {
-    let template = build_settings_template(
-        &state,
-        params.tab,
-        params.edit_id,
-        params.msg,
-        params.err,
-        None,
-        None,
-    )
-    .await;
+    // Only Ryokan's own redirects may put text in the banner.
+    let (msg, err) = if crate::handlers::auth::flash_allowed(&headers) {
+        (params.msg, params.err)
+    } else {
+        (None, None)
+    };
+    let template =
+        build_settings_template(&state, params.tab, params.edit_id, msg, err, None, None).await;
     Html(template.render().unwrap_or_default())
 }
 

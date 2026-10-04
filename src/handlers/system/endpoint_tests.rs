@@ -820,3 +820,35 @@ async fn api_anibridge_reload_returns_502_when_mappings_endpoint_5xxes() {
         std::env::remove_var("RYOKAN_ANIBRIDGE_MAPPINGS_URL");
     }
 }
+
+// ── flash text only from Ryokan's own navigations ────────────────
+
+#[tokio::test]
+async fn a_link_from_another_site_never_puts_text_in_the_banner() {
+    let state = build_test_app_state(in_memory_pool().await, None);
+    let uri: axum::http::Uri = "/system?tab=debug&error=Session+expired,+sign+in+at+evil.example"
+        .parse()
+        .unwrap();
+    let page = |site: &'static str| {
+        let state = state.clone();
+        let uri = uri.clone();
+        async move {
+            let mut headers = axum::http::HeaderMap::new();
+            headers.insert("sec-fetch-site", site.parse().unwrap());
+            let query = axum::extract::Query::<SystemQuery>::try_from_uri(&uri).unwrap();
+            system_page(axum::extract::State(state), headers, query)
+                .await
+                .0
+        }
+    };
+    assert!(!page("cross-site").await.contains("evil.example"));
+    assert!(!page("same-site").await.contains("evil.example"));
+    assert!(
+        !page("none").await.contains("evil.example"),
+        "pasted into the address bar"
+    );
+    assert!(
+        page("same-origin").await.contains("evil.example"),
+        "Ryokan's own redirect"
+    );
+}

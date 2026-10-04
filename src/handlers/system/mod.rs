@@ -263,9 +263,15 @@ fn truncate_to_page<T, F: Fn(&T) -> i64>(
 
 pub async fn system_page(
     State(state): State<AppState>,
-    Query(params): Query<SystemQuery>,
+    headers: axum::http::HeaderMap,
+    Query(mut params): Query<SystemQuery>,
 ) -> Html<String> {
     let tab = normalize_system_tab(params.tab.clone());
+    // Only Ryokan's own redirects may put text in the banner.
+    if !crate::handlers::auth::flash_allowed(&headers) {
+        params.message = None;
+        params.error = None;
+    }
 
     let filter_level = params.level.unwrap_or_else(|| "info".to_string());
     let filter_category = params.category.unwrap_or_default();
