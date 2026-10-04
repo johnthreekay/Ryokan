@@ -459,9 +459,20 @@ pub async fn settings_download_clients_upsert(
         );
     }
 
-    // The password field is write-only (`handlers::secret_field`).
+    // The password field is write-only (`handlers::secret_field`). A
+    // failed lookup is an error, not "no saved row": read as none, a
+    // blank field resolved to an empty password and the save wiped it.
     let stored = match form.id {
-        Some(id) => get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => match get_by_id(&state.db, id).await {
+            Ok(row) => row,
+            Err(e) => {
+                let msg = format!("Couldn't read the saved client, so nothing was saved: {e}");
+                return crate::handlers::responses::htmx_aware_redirect(
+                    is_htmx,
+                    &format!("/settings?tab=downloads&err={}", urlencoding::encode(&msg)),
+                );
+            }
+        },
         None => None,
     };
     let password = match crate::handlers::secret_field::resolve(
@@ -768,7 +779,15 @@ pub async fn settings_download_clients_test(
         return test_result_response(false, "URL required");
     }
     let stored = match form.id {
-        Some(id) => get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => match get_by_id(&state.db, id).await {
+            Ok(row) => row,
+            Err(e) => {
+                return test_result_response(
+                    false,
+                    &format!("Couldn't read the saved client: {e}"),
+                );
+            }
+        },
         None => None,
     };
     let password = match crate::handlers::secret_field::resolve(
@@ -1470,5 +1489,62 @@ mod write_only_secret_tests {
             .unwrap_or("")
             .to_string();
         assert!(trigger.contains("address changed"), "{trigger}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_lookup_never_blanks_the_saved_password() {
+        // The lookup error read as "no saved row", so a blank field
+        // resolved to an empty password and the save wrote it.
+        let (db, state, id) = seeded().await;
+        // A column only the lookup reads: its SELECT fails, the UPDATE
+        // the save runs would not.
+        sqlx::query(
+            "ALTER TABLE download_clients RENAME COLUMN remove_failed TO remove_failed_gone",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        let saved = settings_download_clients_upsert(
+            State(state.clone()),
+            HxRequest(false),
+            Form(upsert(id, "http://qbit:8080", "")),
+        )
+        .await;
+        let location = saved
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(
+            location.contains("read%20the%20saved%20client"),
+            "{location}"
+        );
+        let test = settings_download_clients_test(
+            State(state),
+            Form(DownloadClientTestForm {
+                id: Some(id),
+                kind: "qbittorrent".into(),
+                url: "http://qbit:8080".into(),
+                username: "u".into(),
+                password: String::new(),
+                label: String::new(),
+            }),
+        )
+        .await;
+        let trigger = test
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(trigger.contains("read the saved client"), "{trigger}");
+        let password: String =
+            sqlx::query_scalar("SELECT password FROM download_clients WHERE id = ?")
+                .bind(id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(password, "dc-secret-123");
     }
 }

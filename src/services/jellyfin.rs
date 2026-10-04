@@ -241,7 +241,7 @@ fn normalize_base_url(base_url: &str) -> String {
 /// the same shape as the original 172.x bug. RFC 3986 requires
 /// brackets around an IPv6 host in a URL anyway, so any input that
 /// would lose the bracketless prefix path was already malformed.
-fn is_local_address(lower: &str) -> bool {
+pub(crate) fn is_local_address(lower: &str) -> bool {
     if lower.starts_with("localhost") || lower.starts_with("127.") {
         return true;
     }

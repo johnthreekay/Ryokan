@@ -446,12 +446,17 @@ pub async fn settings_indexers_upsert(
     let priority = parse_priority(&form.priority);
     let min_seeders = parse_optional_i32(&form.min_seeders, 1).max(0);
     let request_timeout_secs = parse_optional_secs(&form.request_timeout_secs);
-    // The API key field is write-only (`handlers::secret_field`).
+    // The API key field is write-only (`handlers::secret_field`). A
+    // failed lookup is an error, not "no saved row": read as none, a
+    // blank field resolved to an empty key and the save wiped it.
     let stored = match form.id {
-        Some(id) => crate::models::indexers::get_by_id(&state.db, id)
-            .await
-            .ok()
-            .flatten(),
+        Some(id) => match crate::models::indexers::get_by_id(&state.db, id).await {
+            Ok(row) => row,
+            Err(e) => {
+                let msg = format!("Couldn't read the saved indexer, so nothing was saved: {e}");
+                return error_redirect(is_htmx, &urlencoding::encode(&msg));
+            }
+        },
         None => None,
     };
     let api_key = match crate::handlers::secret_field::resolve(
@@ -890,10 +895,15 @@ pub async fn settings_indexers_test_stateless(
     // The API key field is write-only: blank stands for the saved key
     // while the URL keeps its host (`handlers::secret_field`).
     let stored = match form.id {
-        Some(id) => crate::models::indexers::get_by_id(&state.db, id)
-            .await
-            .ok()
-            .flatten(),
+        Some(id) => match crate::models::indexers::get_by_id(&state.db, id).await {
+            Ok(row) => row,
+            Err(e) => {
+                return indexer_test_trigger(
+                    false,
+                    &format!("Couldn't read the saved indexer: {e}"),
+                );
+            }
+        },
         None => None,
     };
     let api_key = match crate::handlers::secret_field::resolve(
@@ -1883,5 +1893,57 @@ mod write_only_secret_tests {
             .unwrap_or("")
             .to_string();
         assert!(trigger.contains("address changed"), "{trigger}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_lookup_never_blanks_the_saved_key() {
+        // The lookup error read as "no saved row", so a blank field
+        // resolved to an empty key and the save wrote it.
+        let (db, state, id) = seeded().await;
+        // A column only the lookup reads: its SELECT fails, the UPDATE
+        // the save runs would not.
+        sqlx::query("ALTER TABLE indexers RENAME COLUMN caps_refreshed_at TO caps_refreshed_gone")
+            .execute(&db)
+            .await
+            .unwrap();
+        let saved = settings_indexers_upsert(
+            State(state.clone()),
+            HxRequest(false),
+            Form(upsert(id, "https://prowlarr.local/1/api", "")),
+        )
+        .await;
+        let location = saved
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(
+            location.contains("read%20the%20saved%20indexer"),
+            "{location}"
+        );
+        let resp = settings_indexers_test_stateless(
+            State(state),
+            Form(IndexerStatelessTestForm {
+                kind: "torznab".into(),
+                url: "https://prowlarr.local/1/api".into(),
+                api_key: String::new(),
+                id: Some(id),
+            }),
+        )
+        .await;
+        let trigger = resp
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(trigger.contains("read the saved indexer"), "{trigger}");
+        let key: String = sqlx::query_scalar("SELECT api_key FROM indexers WHERE id = ?")
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(key, "ix-secret-456");
     }
 }

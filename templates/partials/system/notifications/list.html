@@ -35,10 +35,18 @@
                 </div>
                 <dl class="notif-card-meta">
                     {% if p.kind == "webhook" %}
-                        {% if let Some(url) = p.webhook_url.as_ref() %}
+                        {# Write-only like the Discord URL: the card names
+                           the host, never the path or query that carries
+                           the token. #}
+                        {% if let Some(origin) = p.webhook_origin.as_ref() %}
+                        <div class="notif-card-meta-row">
+                            <dt>Host</dt>
+                            <dd><code>{{ origin }}</code></dd>
+                        </div>
+                        {% else if p.webhook_has_url %}
                         <div class="notif-card-meta-row">
                             <dt>URL</dt>
-                            <dd><code>{{ url }}</code></dd>
+                            <dd><code>[set]</code></dd>
                         </div>
                         {% endif %}
                         {% if p.webhook_has_secret %}

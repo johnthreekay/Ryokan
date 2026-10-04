@@ -110,3 +110,38 @@ fn normalize_system_tab_unknown_or_missing_falls_back_to_logs() {
     assert_eq!(normalize_system_tab(Some("".to_string())), "logs");
     assert_eq!(normalize_system_tab(Some("garbage".to_string())), "logs");
 }
+
+// ── debug_settings_submit ────────────────────────────────────────
+
+#[tokio::test]
+async fn a_failed_settings_read_saves_no_debug_settings() {
+    // The read fell back to defaults and the save wrote them over the
+    // whole config row.
+    let db = crate::test_support::in_memory_pool().await;
+    let cfg = config::Config {
+        media_root: "/media/anime".into(),
+        ..config::Config::default()
+    };
+    config::save_config(&db, &cfg).await.unwrap();
+    sqlx::query("UPDATE config SET rss_interval_minutes = 'unreadable'")
+        .execute(&db)
+        .await
+        .unwrap();
+    let state = crate::test_support::build_test_app_state(db.clone(), None);
+    let Html(page) = debug_settings_submit(
+        State(state),
+        Form(DebugSettingsForm {
+            force_mal_fallback: Some("on".into()),
+            force_kitsu_fallback: None,
+        }),
+    )
+    .await;
+    assert!(page.contains("nothing was saved"), "{page}");
+    let (media_root, mal): (String, bool) =
+        sqlx::query_as("SELECT media_root, force_mal_fallback FROM config")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(media_root, "/media/anime");
+    assert!(!mal);
+}

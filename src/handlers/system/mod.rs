@@ -524,16 +524,24 @@ pub async fn debug_settings_submit(
     // every other settings save, or a concurrent save of another tab
     // writes back its stale copy over this change.
     let _guard = crate::handlers::settings::CONFIG_WRITE_LOCK.lock().await;
-    let mut cfg = config::get_config(&state.db)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let (mut cfg, read_error) = match config::get_config(&state.db).await {
+        Ok(cfg) => (cfg.unwrap_or_default(), None),
+        Err(e) => (config::Config::default(), Some(e)),
+    };
 
     cfg.force_mal_fallback = form.force_mal_fallback.is_some();
     cfg.force_kitsu_fallback = form.force_kitsu_fallback.is_some();
 
-    let result = config::save_config(&state.db, &cfg).await;
+    // The save writes the whole row, so after a failed read it would
+    // put defaults over every other setting.
+    let result = match read_error {
+        None => config::save_config(&state.db, &cfg)
+            .await
+            .map_err(|e| e.to_string()),
+        Some(e) => Err(format!(
+            "couldn't read the saved settings, so nothing was saved ({e})"
+        )),
+    };
     let (message, error) = match result {
         Ok(_) => {
             logger::info(
@@ -577,7 +585,7 @@ pub async fn debug_settings_submit(
                 &state.db,
                 LogCategory::System,
                 "Failed to update fallback debug settings",
-                &e.to_string(),
+                &e,
             )
             .await;
             (None, Some(format!("Failed to save debug settings: {}", e)))

@@ -247,6 +247,30 @@ fn a_default_port_matches_an_origin_that_omits_it() {
 }
 
 #[test]
+fn a_proxy_default_port_in_host_matches_the_other_default_port() {
+    // A proxy forwarding `$host:$server_port` behind a TLS edge sends
+    // `:80` while the browser's origin is https (443); every POST was
+    // refused.
+    let req = post_request("ryokan.example:80", Some("https://ryokan.example"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+    let req = post_request(
+        "ryokan.example:443",
+        None,
+        Some("http://ryokan.example/settings"),
+    );
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+    // Any other port still has to match exactly.
+    let req = post_request(
+        "ryokan.example:80",
+        Some("http://ryokan.example:8080"),
+        None,
+    );
+    assert!(verify_same_origin_with_trust(&req, false).is_err());
+    let req = post_request("ryokan.example:8978", Some("https://ryokan.example"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_err());
+}
+
+#[test]
 fn a_host_header_without_a_port_compares_hosts_only() {
     // A reverse proxy forwarding `$host` drops the public port.
     let req = post_request("ryokan.example", Some("https://ryokan.example:8443"), None);

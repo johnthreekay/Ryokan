@@ -49,8 +49,8 @@ pub struct HostCheck {
 }
 
 impl HostCheck {
-    /// `None` (no check) unless `RYOKAN_HOST_CHECK` is truthy, or it is
-    /// unset and `RYOKAN_ALLOWED_HOSTS` names something. Logs what it
+    /// `None` (no check) when `RYOKAN_HOST_CHECK` is falsy, or when it
+    /// is unset and `RYOKAN_ALLOWED_HOSTS` is blank. Logs what it
     /// allows.
     pub fn from_env() -> Option<Self> {
         let machine = nix::unistd::gethostname()
@@ -81,10 +81,23 @@ impl HostCheck {
         machine: Option<String>,
         trust_proxy: bool,
     ) -> Option<Self> {
-        let allowed = parse_allowed_hosts(allowed_hosts.unwrap_or(""));
+        let allowed_hosts = allowed_hosts.unwrap_or("");
+        let allowed = parse_allowed_hosts(allowed_hosts);
+        // Fails closed: only an explicit "off" turns the check off. A
+        // value it doesn't recognize (`enabled`) is someone asking for
+        // it, and a list whose every entry was dropped is still a list.
         let on = match enabled.map(|v| v.trim().to_ascii_lowercase()) {
-            Some(v) if !v.is_empty() => matches!(v.as_str(), "1" | "true" | "yes" | "on"),
-            _ => !allowed.is_empty(),
+            Some(v) if !v.is_empty() => match v.as_str() {
+                "0" | "false" | "no" | "off" => false,
+                "1" | "true" | "yes" | "on" => true,
+                _ => {
+                    tracing::warn!(
+                        "RYOKAN_HOST_CHECK={v:?} isn't a yes or no value, so the host check is on. Set it to 1 or 0."
+                    );
+                    true
+                }
+            },
+            _ => !allowed_hosts.trim().is_empty(),
         };
         on.then(|| Self {
             allowed: Arc::new(allowed),
@@ -232,6 +245,27 @@ mod tests {
         assert!(
             HostCheck::from_values(None, Some("ryokan.lan"), None, false).is_some(),
             "a list turns it on by itself"
+        );
+    }
+
+    #[test]
+    fn only_an_explicit_off_turns_it_off() {
+        // Both used to leave the check off without a word.
+        for value in ["enabled", "On", " 1 ", "y"] {
+            assert!(
+                HostCheck::from_values(Some(value), None, None, false).is_some(),
+                "{value:?}"
+            );
+        }
+        for value in ["0", "false", "NO", "off"] {
+            assert!(
+                HostCheck::from_values(Some(value), Some("ryokan.lan"), None, false).is_none(),
+                "{value:?}"
+            );
+        }
+        assert!(
+            HostCheck::from_values(None, Some("http://ryokan.lan/"), None, false).is_some(),
+            "a list whose entries were all dropped still asks for the check"
         );
     }
 

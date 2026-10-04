@@ -49,14 +49,22 @@ pub(crate) fn resolve(
     }
 }
 
-/// Scheme, host and port of a URL, read the way the clients read it (a
-/// scheme-less `host:port` is `http://host:port`).
+/// Scheme, host and port of a URL, read the way the clients read it: a
+/// scheme-less `host:port` is `http://` for a local address and
+/// `https://` for anything else (each client's `normalize_base_url`).
+/// Reading every scheme-less address as `http://` kept a secret saved
+/// for `seedbox.example.com:8080` (sent over https) when the form named
+/// `http://seedbox.example.com:8080`, and it then went out in the clear.
 fn destination(url: &str) -> Option<(String, String, Option<u16>)> {
     let url = url.trim();
     let parsed = reqwest::Url::parse(url)
         .ok()
         .filter(|u| u.has_host())
-        .or_else(|| reqwest::Url::parse(&format!("http://{url}")).ok())?;
+        .or_else(|| {
+            let local = crate::services::jellyfin::is_local_address(&url.to_ascii_lowercase());
+            let scheme = if local { "http" } else { "https" };
+            reqwest::Url::parse(&format!("{scheme}://{url}")).ok()
+        })?;
     Some((
         parsed.scheme().to_string(),
         parsed.host_str()?.to_ascii_lowercase(),
@@ -80,10 +88,9 @@ mod tests {
             resolve("", stored, "http://QBIT:8080/api").unwrap(),
             "hunter2"
         );
-        assert_eq!(
-            resolve("", stored, "qbit:8080").unwrap(),
-            "hunter2",
-            "scheme-less is http"
+        assert!(
+            resolve("", stored, "qbit:8080").is_err(),
+            "a scheme-less name that isn't local is https, as the clients send it"
         );
         for moved in [
             "http://evil.example:8080",
@@ -111,6 +118,39 @@ mod tests {
             resolve("", stored, "  ").unwrap(),
             "",
             "no address clears it"
+        );
+    }
+
+    #[test]
+    fn a_scheme_less_address_has_the_scheme_the_clients_give_it() {
+        // The clients send `seedbox.example.com:8080` over https; reading
+        // it as http kept its secret for `http://seedbox.example.com:8080`,
+        // which sent it in the clear.
+        let remote = Some(("hunter2", "seedbox.example.com:8080"));
+        assert!(resolve("", remote, "http://seedbox.example.com:8080").is_err());
+        assert_eq!(
+            resolve("", remote, "https://seedbox.example.com:8080/").unwrap(),
+            "hunter2"
+        );
+        // A local address is http, scheme or not.
+        for (saved, now) in [
+            ("192.168.1.5:8080", "http://192.168.1.5:8080"),
+            ("localhost:8112", "http://localhost:8112"),
+            ("http://10.0.0.2:9091", "10.0.0.2:9091"),
+        ] {
+            assert_eq!(
+                resolve("", Some(("hunter2", saved)), now).unwrap(),
+                "hunter2",
+                "{saved} -> {now}"
+            );
+        }
+        assert!(
+            resolve(
+                "",
+                Some(("hunter2", "192.168.1.5:8080")),
+                "https://192.168.1.5:8080"
+            )
+            .is_err()
         );
     }
 }

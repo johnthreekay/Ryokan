@@ -85,7 +85,7 @@ where
     // Constant-time compare so the equality check itself never becomes a
     // timing oracle. The threat is largely theoretical over the network,
     // but it costs nothing to remove.
-    if crate::handlers::auth::api_key_throttled(&req) {
+    if crate::handlers::auth::api_key_throttled(&req, label) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             [(axum::http::header::RETRY_AFTER, "60")],
@@ -103,7 +103,7 @@ where
     if valid {
         next.run(req).await
     } else {
-        crate::handlers::auth::api_key_failed(&req);
+        crate::handlers::auth::api_key_failed(&req, label);
         (StatusCode::UNAUTHORIZED, "Invalid or missing API key").into_response()
     }
 }

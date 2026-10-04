@@ -102,7 +102,12 @@ async fn check_media_root(path: &str) -> Result<(), String> {
             "Ryokan can't find the folder {path}. In Docker this is a path inside the container, on a mounted volume."
         ));
     }
-    let probe = root.join(format!(".ryokan-write-test-{}", std::process::id()));
+    // A random name: the PID is always 1 in Docker, so a probe a crash
+    // left behind made `create_new` fail on every later attempt.
+    let probe = root.join(format!(
+        ".ryokan-write-test-{}",
+        hex::encode(rand::random::<[u8; 8]>())
+    ));
     match tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -134,11 +139,26 @@ pub async fn setup_library_submit(
     let jellyfin_url = form.jellyfin_url.trim().to_string();
 
     let guard = CONFIG_WRITE_LOCK.lock().await;
-    let existing = config::get_config(&state.db)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    // The save below writes the whole row, so a read that failed must
+    // stop here: defaults would replace every other setting.
+    let existing = match config::get_config(&state.db).await {
+        Ok(cfg) => cfg.unwrap_or_default(),
+        Err(e) => {
+            let typed = config::Config {
+                media_root,
+                post_processing_mode,
+                jellyfin_url,
+                ..config::Config::default()
+            };
+            return render(
+                &typed,
+                Some(format!(
+                    "Couldn't read the saved settings, so nothing was saved ({e}). Try again in a moment."
+                )),
+                false,
+            );
+        }
+    };
     // Re-render with what the user typed, never the stored key.
     let typed = config::Config {
         media_root: media_root.clone(),
@@ -324,6 +344,57 @@ mod tests {
             assert!(!cfg.post_processing_enabled, "{path}");
             assert!(cfg.media_root.is_empty(), "{path}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_write_probe_left_by_a_crash_does_not_block_the_step() {
+        // The probe was named after the PID, which is always 1 in
+        // Docker, so a stranded one refused every later attempt.
+        let (_db, state, cookie) = seeded().await;
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path()
+                .join(format!(".ryokan-write-test-{}", std::process::id())),
+            b"",
+        )
+        .unwrap();
+        let (status, location, _) = post(
+            state,
+            &cookie,
+            form(&[("media_root", root.path().to_str().unwrap())]),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SEE_OTHER);
+        assert_eq!(location, "/");
+    }
+
+    #[tokio::test]
+    async fn a_failed_settings_read_saves_nothing() {
+        // The read fell back to defaults and the save wrote them over
+        // the whole row.
+        let (db, state, cookie) = seeded().await;
+        sqlx::query(
+            "UPDATE config SET jellyfin_url = 'http://kept:8096', rss_interval_minutes = 'unreadable'",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let (status, _, page) = post(
+            state,
+            &cookie,
+            form(&[("media_root", root.path().to_str().unwrap())]),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(page.contains("read the saved settings"), "{page}");
+        let (jellyfin_url, enabled): (String, bool) =
+            sqlx::query_as("SELECT jellyfin_url, post_processing_enabled FROM config")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(jellyfin_url, "http://kept:8096");
+        assert!(!enabled);
     }
 
     #[tokio::test]

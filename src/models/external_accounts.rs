@@ -134,6 +134,16 @@ impl std::fmt::Debug for LinkRequest {
 /// `Err` rather than a silent None so the UI can report "re-link
 /// required" instead of "not linked."
 pub async fn get_current(db: &SqlitePool) -> Result<Option<ExternalAccount>, String> {
+    current_raw(db)
+        .await?
+        .map(ExternalAccountRaw::into_plaintext)
+        .transpose()
+}
+
+/// The linked account's row with its tokens still encrypted. `Err` is
+/// a query failure only, so a caller can tell it apart from tokens
+/// that no longer decrypt.
+async fn current_raw(db: &SqlitePool) -> Result<Option<ExternalAccountRaw>, String> {
     // The one-at-a-time invariant means at most one row exists, so
     // `ORDER BY linked_at DESC LIMIT 1` is functionally equivalent to
     // a bare `LIMIT 1` today. The explicit ORDER BY is defensive: if
@@ -142,7 +152,7 @@ pub async fn get_current(db: &SqlitePool) -> Result<Option<ExternalAccount>, Str
     // most-recently-linked account is the right row to surface to the
     // UI. A bare LIMIT 1 would return whichever row sqlite happened
     // to scan first — implementation-defined and brittle.
-    let row: Option<ExternalAccountRaw> = sqlx::query_as::<_, ExternalAccountRaw>(
+    sqlx::query_as::<_, ExternalAccountRaw>(
         "SELECT id, provider, provider_user_id, username,
                 access_token_encrypted, refresh_token_encrypted,
                 access_token_expires_at, score_format,
@@ -156,8 +166,18 @@ pub async fn get_current(db: &SqlitePool) -> Result<Option<ExternalAccount>, Str
     )
     .fetch_optional(db)
     .await
-    .map_err(|e| format!("external_accounts query failed: {e}"))?;
-    row.map(ExternalAccountRaw::into_plaintext).transpose()
+    .map_err(|e| format!("external_accounts query failed: {e}"))
+}
+
+/// The linked account's id, provider and username, without touching
+/// its tokens: what unlinking needs when the tokens no longer decrypt.
+pub async fn current_row(db: &SqlitePool) -> Result<Option<(i64, String, String)>, String> {
+    sqlx::query_as(
+        "SELECT id, provider, username FROM external_accounts ORDER BY linked_at DESC LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("external_accounts query failed: {e}"))
 }
 
 /// Link a new external account. Rejects when any account is already
@@ -170,17 +190,6 @@ pub async fn get_current(db: &SqlitePool) -> Result<Option<ExternalAccount>, Str
 /// a duplicate, per decision #8. The returned id is the existing
 /// row's, so callers can treat `link` as idempotent against the same
 /// provider user.
-/// The linked account's id, provider and username, without touching
-/// its tokens: what unlinking needs when the tokens no longer decrypt.
-pub async fn current_row(db: &SqlitePool) -> Result<Option<(i64, String, String)>, String> {
-    sqlx::query_as(
-        "SELECT id, provider, username FROM external_accounts ORDER BY linked_at DESC LIMIT 1",
-    )
-    .fetch_optional(db)
-    .await
-    .map_err(|e| format!("external_accounts query failed: {e}"))
-}
-
 pub async fn link(db: &SqlitePool, req: LinkRequest) -> Result<i64, String> {
     let now = current_unix_ts();
 
@@ -255,11 +264,14 @@ pub async fn link(db: &SqlitePool, req: LinkRequest) -> Result<i64, String> {
     // restored key-less or sanitized backup, `RYOKAN_ENCRYPTION_KEY` set
     // over a stale key file) can't be shown, used or unlinked from
     // Settings, which renders it as "not linked". Refusing the new link
-    // because of it left no way out, so it makes way for this one.
-    if get_current(db).await.is_err()
-        && let Some((stale_id, _, _)) = current_row(db).await?
-    {
-        unlink(db, stale_id).await?;
+    // because of it left no way out, so it makes way for this one. Only
+    // tokens that fail to decrypt count: a query error propagates, since
+    // reading it as "stale" unlinked a valid account on a DB hiccup.
+    if let Some(raw) = current_raw(db).await? {
+        let id = raw.id;
+        if raw.into_plaintext().is_err() {
+            unlink(db, id).await?;
+        }
     }
 
     let inserted: Option<i64> = sqlx::query_scalar(
@@ -718,6 +730,29 @@ mod tests {
             .expect("the stale row makes way");
         let current = get_current(&db).await.unwrap().unwrap();
         assert_eq!(current.provider_user_id, "different_mal_user");
+    }
+
+    #[tokio::test]
+    async fn a_failed_read_during_a_link_leaves_the_linked_account_alone() {
+        // `get_current` errs on a query failure as well as on tokens that
+        // don't decrypt, and the link read either as "stale" and unlinked
+        // a valid account.
+        let db = in_memory_pool().await;
+        link(&db, sample_mal_request()).await.unwrap();
+        // A read failure the narrow `current_row` query doesn't hit.
+        sqlx::query("UPDATE external_accounts SET last_sync_deferred_count = 'unreadable'")
+            .execute(&db)
+            .await
+            .unwrap();
+        let mut other_user = sample_mal_request();
+        other_user.provider_user_id = "different_mal_user".to_string();
+        assert!(link(&db, other_user).await.is_err());
+        let rows: Vec<String> =
+            sqlx::query_scalar("SELECT provider_user_id FROM external_accounts")
+                .fetch_all(&db)
+                .await
+                .unwrap();
+        assert_eq!(rows, vec![sample_mal_request().provider_user_id]);
     }
 
     #[tokio::test]

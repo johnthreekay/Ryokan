@@ -75,23 +75,47 @@ pub(crate) fn login_check(key: &str) -> LoginCheck {
     classify_login_count(count)
 }
 
-/// Count an attempt against `key` as it starts, and classify it, in one
-/// critical section. The handler used to check first and record the
-/// failure only after the ~50 ms bcrypt verify, so a burst of parallel
-/// requests all passed the check before any failure landed and each got
-/// a real verdict: hundreds of guesses a minute instead of five. A
-/// success calls [`login_clear`], so the reservation only sticks for
-/// failures. Past the hard cap the bucket stops growing.
-pub(crate) fn login_attempt(key: &str) -> LoginCheck {
+/// Count an attempt against every bucket in `keys` as it starts, and
+/// classify each, in one critical section. The handler used to check
+/// first and record the failure only after the ~50 ms bcrypt verify, so
+/// a burst of parallel requests all passed the check before any failure
+/// landed and each got a real verdict: hundreds of guesses a minute
+/// instead of five. A success calls [`login_clear`], so the reservation
+/// only sticks for failures. Past the hard cap a bucket stops growing.
+///
+/// Only an attempt that every bucket allows creates a bucket. A
+/// throttled attempt gets no verdict whatever its username, so it counts
+/// only against buckets that already exist: otherwise one client sending
+/// a fresh username per request would add a bucket per request until the
+/// hourly sweep.
+pub(crate) fn login_attempt(keys: &[String]) -> Vec<LoginCheck> {
     let mut guard = LOGIN_FAILURES.lock().unwrap();
-    let cutoff = Instant::now() - LOGIN_WINDOW;
-    let entry = guard.entry(key.to_string()).or_default();
-    entry.retain(|t| *t > cutoff);
-    let count = entry.len();
-    if count < LOGIN_HARD_CAP {
-        entry.push(Instant::now());
+    let now = Instant::now();
+    let cutoff = now - LOGIN_WINDOW;
+    let tiers: Vec<LoginCheck> = keys
+        .iter()
+        .map(|key| {
+            let count = guard.get_mut(key.as_str()).map_or(0, |times| {
+                times.retain(|t| *t > cutoff);
+                times.len()
+            });
+            classify_login_count(count)
+        })
+        .collect();
+    let allowed = tiers.iter().all(|tier| *tier == LoginCheck::Allow);
+    for key in keys {
+        let times = if allowed {
+            Some(guard.entry(key.clone()).or_default())
+        } else {
+            guard.get_mut(key.as_str())
+        };
+        if let Some(times) = times
+            && times.len() < LOGIN_HARD_CAP
+        {
+            times.push(now);
+        }
     }
-    classify_login_count(count)
+    tiers
 }
 
 /// The tier for a bucket that already holds `count` attempts.
@@ -129,22 +153,29 @@ pub(crate) fn login_record_failure(key: &str) {
     entry.push(Instant::now());
 }
 
-/// The per-IP bucket for wrong API keys, beside the login buckets.
-fn api_key_bucket(req: &Request<Body>) -> String {
+/// The per-IP bucket for wrong API keys, beside the login buckets, one
+/// per key (`scope` names it: "Sonarr", "Radarr"). Seerr calls both
+/// shims from one address, so a shared bucket let a stale Radarr key
+/// lock out its correct Sonarr calls.
+fn api_key_bucket(req: &Request<Body>, scope: &str) -> String {
     let peer = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
         .map(|info| info.0);
     let ip = client_ip_from_request(req.headers(), peer);
-    format!("key:{}", ip.chars().take(64).collect::<String>())
+    format!(
+        "key:{}:{}",
+        scope.to_ascii_lowercase(),
+        ip.chars().take(64).collect::<String>()
+    )
 }
 
-/// Whether this client has sent too many wrong API keys lately (same
-/// window and soft cap as logins). The Sonarr / Radarr keys can be any
-/// string the user typed, and nothing limited how fast one could be
+/// Whether this client has sent too many wrong `scope` API keys lately
+/// (same window and soft cap as logins). The Sonarr / Radarr keys can be
+/// any string the user typed, and nothing limited how fast one could be
 /// guessed. Only failures count, so a working client is never slowed.
-pub(crate) fn api_key_throttled(req: &Request<Body>) -> bool {
-    let key = api_key_bucket(req);
+pub(crate) fn api_key_throttled(req: &Request<Body>, scope: &str) -> bool {
+    let key = api_key_bucket(req, scope);
     let mut guard = LOGIN_FAILURES.lock().unwrap();
     let cutoff = Instant::now() - LOGIN_WINDOW;
     match guard.get_mut(&key) {
@@ -156,9 +187,9 @@ pub(crate) fn api_key_throttled(req: &Request<Body>) -> bool {
     }
 }
 
-/// Count a wrong API key against this client.
-pub(crate) fn api_key_failed(req: &Request<Body>) {
-    let key = api_key_bucket(req);
+/// Count a wrong `scope` API key against this client.
+pub(crate) fn api_key_failed(req: &Request<Body>, scope: &str) {
+    let key = api_key_bucket(req, scope);
     let mut guard = LOGIN_FAILURES.lock().unwrap();
     let cutoff = Instant::now() - LOGIN_WINDOW;
     let times = guard.entry(key).or_default();
@@ -328,14 +359,6 @@ fn get_session_token(req: &Request<Body>) -> Option<String> {
     None
 }
 
-/// Whether the session cookie should carry `Secure` for this request.
-/// Mirrors Sonarr's cookie auth, which marks the cookie `Secure` only when
-/// the request itself came over HTTPS: Ryokan never terminates TLS, so
-/// "came over HTTPS" means a trusted reverse proxy said so via
-/// `X-Forwarded-Proto: https`. Without `RYOKAN_TRUSTED_PROXY` the header
-/// is ignored (any client could send it, and a `Secure` cookie handed out
-/// over plain HTTP is never sent back, which locks the user out).
-/// `RYOKAN_COOKIE_SECURE` forces it on for proxies that omit the header.
 /// The value of cookie `name` in the request's `Cookie` header.
 fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     let header = headers.get(header::COOKIE)?.to_str().ok()?;
@@ -386,6 +409,14 @@ async fn new_device_cookie(
     }
 }
 
+/// Whether the session cookie should carry `Secure` for this request.
+/// Mirrors Sonarr's cookie auth, which marks the cookie `Secure` only when
+/// the request itself came over HTTPS: Ryokan never terminates TLS, so
+/// "came over HTTPS" means a trusted reverse proxy said so via
+/// `X-Forwarded-Proto: https`. Without `RYOKAN_TRUSTED_PROXY` the header
+/// is ignored (any client could send it, and a `Secure` cookie handed out
+/// over plain HTTP is never sent back, which locks the user out).
+/// `RYOKAN_COOKIE_SECURE` forces it on for proxies that omit the header.
 fn cookie_secure_for(headers: &HeaderMap) -> bool {
     cookie_secure_for_with(headers, *COOKIE_SECURE, *TRUST_PROXY_HEADERS)
 }
@@ -527,11 +558,22 @@ fn hosts_from_headers(headers: &HeaderMap, trust: bool) -> Vec<Authority> {
 /// and `SameSite` ignores ports, so the session cookie went along. A
 /// Host header without a port (a reverse proxy that forwards `$host`)
 /// says nothing about the port, so only the host is compared there.
+///
+/// 80 and 443 match each other. A browser never writes a default port
+/// into Host, so `example.com:80` comes from a proxy appending its own
+/// listen port (`$host:$server_port`), and behind a TLS edge that is
+/// :80 while the browser's `https://example.com` origin is 443: every
+/// POST was refused. Letting the two default ports stand for each other
+/// admits nothing a portless Host doesn't already, and any other port
+/// (the `:8080` sibling app) still has to match exactly.
 fn origin_matches(origin: &Authority, hosts: &[Authority]) -> bool {
+    let is_default = |port: u16| port == 80 || port == 443;
     hosts.iter().any(|(host, port)| {
         host == &origin.0
             && match (port, origin.1) {
-                (Some(port), Some(origin_port)) => *port == origin_port,
+                (Some(port), Some(origin_port)) => {
+                    *port == origin_port || (is_default(*port) && is_default(origin_port))
+                }
                 _ => true,
             }
     })
@@ -845,14 +887,22 @@ pub async fn setup_submit(
             // never wrote a config row; the user opened Settings →
             // Connections, edited Jellyfin, hit Save, and got a
             // mysterious self-contradicting error since they HAD
-            // just run /setup. `INSERT OR IGNORE` so a re-run of
-            // setup somehow (shouldn't happen — has_users gate above
-            // catches it) doesn't clobber an already-saved config.
-            // Failure is non-fatal: the legacy bulk save handler at
-            // POST /settings still works without a row, and a noisy
-            // log is better than blocking account creation on a
-            // config write.
-            if let Err(e) = config::save_config(&state.db, &config::Config::default()).await {
+            // just run /setup. Only when no row exists: `save_config`
+            // is an upsert, and setup runs again with the settings in
+            // place after `RYOKAN_RESET_AUTH` wiped the account, which
+            // must not reset them all to defaults. A failed read seeds
+            // nothing for the same reason. Failure is non-fatal: the
+            // legacy bulk save handler at POST /settings still works
+            // without a row, and a noisy log is better than blocking
+            // account creation on a config write.
+            let seeded = match config::get_config(&state.db).await {
+                Ok(Some(_)) => Ok(()),
+                Ok(None) => config::save_config(&state.db, &config::Config::default())
+                    .await
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            if let Err(e) = seeded {
                 tracing::warn!(
                     "setup_submit: failed to seed default config row: {e} \
                      (subform saves will fail until a row exists; \
@@ -930,7 +980,8 @@ pub async fn login_submit(
     // A browser that has logged in before is throttled on its own
     // bucket rather than the username's and the IP's, so someone else's
     // failed attempts can't lock it out (`models::login_device`).
-    let known_device = match cookie_value(&headers, login_device::COOKIE) {
+    let device_token = cookie_value(&headers, login_device::COOKIE);
+    let known_device = match device_token {
         Some(token) if login_device::is_known(&state.db, token).await => {
             Some(format!("d:{}", login_device::hash(token)))
         }
@@ -959,7 +1010,7 @@ pub async fn login_submit(
     //
     // Every attempt is counted as it starts (`login_attempt`); a success
     // clears its buckets below.
-    let tiers: Vec<LoginCheck> = buckets.iter().map(|key| login_attempt(key)).collect();
+    let tiers = login_attempt(&buckets);
     let hard_throttled = tiers.contains(&LoginCheck::HardThrottled);
     let rate_limited = tiers.iter().any(|tier| *tier != LoginCheck::Allow);
 
@@ -982,9 +1033,22 @@ pub async fn login_submit(
         user::verify_user(&state.db, &form.username, &form.password).await
     };
 
-    // One log row per client per minute: a throttled client can keep
-    // sending, and each line is a database row.
-    if rate_limited && !logger::first_in_window(&format!("login-throttled:{ip}"), LOGIN_WINDOW) {
+    // One log row per tripped bucket per minute: a throttled client can
+    // keep sending, and each line is a database row. Keyed on the
+    // buckets (fixed size) rather than the client, so a username under
+    // attack from many addresses is one line, not one per address.
+    let tripped: Vec<&str> = buckets
+        .iter()
+        .zip(&tiers)
+        .filter(|(_, tier)| **tier != LoginCheck::Allow)
+        .map(|(key, _)| key.as_str())
+        .collect();
+    if rate_limited
+        && !logger::first_in_window(
+            &format!("login-throttled:{}", tripped.join(",")),
+            LOGIN_WINDOW,
+        )
+    {
         let template = LoginTemplate {
             error: Some("Too many failed attempts. Please wait a minute and try again.".into()),
         };
@@ -998,7 +1062,7 @@ pub async fn login_submit(
                 "Login rate-limited ({}): {} from {}",
                 if hard_throttled { "hard" } else { "soft" },
                 safe_username,
-                ip
+                sanitize_for_log(&ip)
             ),
             "",
         )
@@ -1031,10 +1095,15 @@ pub async fn login_submit(
                 .status(StatusCode::SEE_OTHER)
                 .header(header::LOCATION, "/")
                 .header(header::SET_COOKIE, set_session_cookie(&token, &headers));
-            if known_device.is_none()
-                && let Some(device) = new_device_cookie(&state.db, u.id, &headers).await
-            {
-                response = response.header(header::SET_COOKIE, device);
+            match (&known_device, device_token) {
+                // The device's 400 days restart only on a login that
+                // worked, never on an attempt.
+                (Some(_), Some(token)) => login_device::touch(&state.db, token).await,
+                _ => {
+                    if let Some(device) = new_device_cookie(&state.db, u.id, &headers).await {
+                        response = response.header(header::SET_COOKIE, device);
+                    }
+                }
             }
             response
                 .body(Body::empty())

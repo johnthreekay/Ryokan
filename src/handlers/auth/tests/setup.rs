@@ -192,9 +192,9 @@ async fn users_exist_atomic_promotes_on_first_protected_request() {
 /// the user landed on Settings → Connections, edited Jellyfin, hit
 /// Save, and got an error message that contradicted the action they
 /// had just completed. The seed runs from `setup_submit` directly
-/// after `create_user` and is upsert-shaped so a re-run can't
-/// clobber an already-saved config (defense in depth — `has_users`
-/// gates the path above this anyway).
+/// after `create_user` and writes only when no row exists, so a
+/// re-run after an auth reset can't clobber an already-saved config
+/// (`setup_after_an_auth_reset_keeps_the_settings`).
 #[tokio::test]
 async fn setup_submit_seeds_default_config_row() {
     let db = in_memory_pool().await;
@@ -245,6 +245,45 @@ async fn setup_submit_seeds_default_config_row() {
         post.is_some(),
         "config row should be seeded by setup_submit so subform saves don't bail"
     );
+}
+
+/// Regression: after `RYOKAN_RESET_AUTH` wipes the account, `/setup`
+/// runs again with the settings still in place. The seed was an upsert
+/// of `Config::default()`, so setting up the new account reset every
+/// setting.
+#[tokio::test]
+async fn setup_after_an_auth_reset_keeps_the_settings() {
+    let db = in_memory_pool().await;
+    let saved = crate::models::config::Config {
+        media_root: "/media/anime".into(),
+        sonarr_api_key: "kept-sonarr-key-0123456789".into(),
+        ..crate::models::config::Config::default()
+    };
+    crate::models::config::save_config(&db, &saved)
+        .await
+        .unwrap();
+    let state = fresh_install_state(db.clone());
+    let body = "username=admin&password=hunter2-test-password&confirm=hunter2-test-password";
+    let response = handler_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/setup")
+                .header(header::HOST, "ryokan.local")
+                .header(header::ORIGIN, "http://ryokan.local")
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let cfg = crate::models::config::get_config(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(cfg.media_root, "/media/anime");
+    assert_eq!(cfg.sonarr_api_key, "kept-sonarr-key-0123456789");
 }
 
 // ─── concurrent /setup submissions ───────────────────────────────

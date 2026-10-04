@@ -476,8 +476,13 @@ async fn main() {
     }
 
     // 0600 before SQLite opens it (it would create the file, and its WAL,
-    // with the umask's mode).
-    services::paths::make_db_private(&services::paths::live_db_path());
+    // with the umask's mode). Created here only when opening would create
+    // it anyway, so an explicit `DATABASE_URL` naming a missing file
+    // still fails the boot.
+    services::paths::make_db_private(
+        &services::paths::live_db_path(),
+        services::paths::opening_creates_db(database_url.as_deref()),
+    );
 
     // The default path goes in through `filename` rather than a
     // formatted URL: sqlx percent-decodes a URL's path, so a data dir
