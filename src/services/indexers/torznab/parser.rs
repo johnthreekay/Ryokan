@@ -621,9 +621,12 @@ fn parse_rfc2822_to_unix(s: &str) -> i64 {
     }
     // After splitting: parts[0]="Fri,", [1]="24", [2]="Apr",
     // [3]="2026", [4]="18:32:01", [5?]="+0000".
+    // Ranges checked before the day math below: an indexer's day 0
+    // underflowed it, a huge day or an `i32::MIN` year overflowed it
+    // (a panic in debug builds, a wrapped timestamp in release).
     let day: u32 = match parts[1].parse() {
-        Ok(n) => n,
-        Err(_) => return 0,
+        Ok(n @ 1..=31) => n,
+        _ => return 0,
     };
     let month = match parts[2] {
         "Jan" => 1,
@@ -641,8 +644,8 @@ fn parse_rfc2822_to_unix(s: &str) -> i64 {
         _ => return 0,
     };
     let year: i32 = match parts[3].parse() {
-        Ok(n) => n,
-        Err(_) => return 0,
+        Ok(n @ 1..=9999) => n,
+        _ => return 0,
     };
     let time_parts: Vec<&str> = parts[4].split(':').collect();
     if time_parts.len() != 3 {
@@ -721,6 +724,30 @@ mod info_hash_tests {
         assert_eq!(
             parse_rfc2822_to_unix("Fri, 24 Apr 2026 18:32:01 +0é00"),
             base
+        );
+    }
+
+    #[test]
+    fn hostile_dates_read_as_unknown_instead_of_overflowing() {
+        // Day 0 underflowed the day-of-year math, a huge day or an
+        // `i32::MIN` year overflowed it: a panic in debug builds.
+        for raw in [
+            "Sun, 0 Mar 2026 00:00:00 +0000",
+            "Sun, 32 Apr 2026 00:00:00 +0000",
+            "Sun, 4294967295 Apr 2026 00:00:00 +0000",
+            "Sun, 1 Jan -2147483648 00:00:00 +0000",
+            "Sun, 1 Jan 2147483647 00:00:00 +0000",
+            "Sun, 1 Jan 0 00:00:00 +0000",
+        ] {
+            assert_eq!(parse_rfc2822_to_unix(raw), 0, "{raw}");
+        }
+        assert_eq!(
+            parse_rfc2822_to_unix("Fri, 24 Apr 2026 18:32:01 +0000"),
+            1_777_055_521
+        );
+        assert_eq!(
+            parse_rfc2822_to_unix("Sun, 1 Mar 2026 00:00:00 +0000"),
+            1_772_323_200
         );
     }
 }
