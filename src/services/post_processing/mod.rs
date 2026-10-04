@@ -528,16 +528,22 @@ pub(crate) fn files_share_inode(a: &Path, b: &Path) -> bool {
     a == b
 }
 
-/// The mode an import actually used, for its log line. Hardlink mode
-/// copies when the link fails (the download and the library on two
-/// filesystems, or on two Docker mounts of one disk), and the log used
-/// to say "hardlink" either way, so a user whose every import was a
-/// full copy had no way to tell.
-pub(crate) fn mode_used(mode: &str, src: &Path, dest: &Path) -> String {
-    if cfg!(unix) && mode == "hardlink" && !files_share_inode(src, dest) {
-        "copy (a hardlink wasn't possible: the download and the library are on different filesystems or Docker mounts)".to_string()
-    } else {
-        mode.to_string()
+/// The mode an import actually used, for its log line, given the error
+/// that made [`do_file_op_reporting`] copy instead of link. Hardlink
+/// mode copies when the link fails, and the log used to say "hardlink"
+/// either way, so a user whose every import was a full copy had no way
+/// to tell. The cause is named only when the error says it: `EXDEV` is
+/// the download and the library on two filesystems (or two Docker
+/// mounts of one disk); anything else, such as `EPERM` from
+/// `fs.protected_hardlinks` when Ryokan's user doesn't own the
+/// download, is quoted as the system reported it.
+pub(crate) fn mode_used(mode: &str, link_error: Option<&std::io::Error>) -> String {
+    match link_error {
+        Some(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+            "copy (a hardlink wasn't possible: the download and the library are on different filesystems or Docker mounts)".to_string()
+        }
+        Some(e) => format!("copy (a hardlink wasn't possible: {e})"),
+        None => mode.to_string(),
     }
 }
 
@@ -548,10 +554,21 @@ pub(crate) fn mode_used(mode: &str, src: &Path, dest: &Path) -> String {
 /// multiple seconds; doing that on a tokio worker starves the RSS sync,
 /// HTTP handlers, and other background tasks sharing the same runtime.
 pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::Result<()> {
+    do_file_op_reporting(mode, src, dst).await.map(|_| ())
+}
+
+/// [`do_file_op`], also returning the `hard_link` error when the file
+/// was copied because the link failed (`None` when nothing fell back),
+/// for [`mode_used`].
+pub(crate) async fn do_file_op_reporting(
+    mode: &str,
+    src: &Path,
+    dst: &Path,
+) -> std::io::Result<Option<std::io::Error>> {
     let mode = mode.to_string();
     let src = src.to_path_buf();
     let dst = dst.to_path_buf();
-    tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+    tokio::task::spawn_blocking(move || -> std::io::Result<Option<std::io::Error>> {
         if let Some(p) = dst.parent() {
             std::fs::create_dir_all(p)?;
         }
@@ -577,7 +594,7 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
         // and the move-mode cross-fs fallback's `remove_file(src)`
         // after the rename would delete the only surviving copy.
         if files_share_inode(&src, &dst) {
-            return Ok(());
+            return Ok(None);
         }
         match mode.as_str() {
             "move" if link.is_some() => {
@@ -586,7 +603,7 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
                 // handed over (a manual import with symlinks followed
                 // pointing at a seeding download). Place it the way
                 // hardlink mode does and consume only the link.
-                link_or_copy(&src, &dst)?;
+                let link_error = link_or_copy(&src, &dst)?;
                 if let Some(link) = link
                     && let Err(e) = std::fs::remove_file(&link)
                 {
@@ -597,12 +614,12 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
                         "removing the imported symlink failed; it remains at the source",
                     );
                 }
-                Ok(())
+                Ok(link_error)
             }
             "move" => {
                 // Same-fs rename is atomic and instant — the happy path.
                 if std::fs::rename(&src, &dst).is_ok() {
-                    return Ok(());
+                    return Ok(None);
                 }
                 // Cross-fs fallback: copy to a sibling tmp first then
                 // rename onto dst so a partially-copied file can't be
@@ -629,11 +646,11 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
                         "post-copy remove_file failed; file remains at source AND destination",
                     );
                 }
-                Ok(())
+                Ok(None)
             }
             "copy" => {
                 std::fs::copy(&src, &dst)?;
-                Ok(())
+                Ok(None)
             }
             // "hardlink" (default).
             _ => link_or_copy(&src, &dst),
@@ -651,15 +668,19 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
 /// picked hardlink mode for). `do_file_op`'s same-inode short-circuit
 /// already handled the "dst is the same file as src via prior hardlink"
 /// case; reaching here means dst is a different file we're free to
-/// replace. Blocking; `do_file_op` runs it under `spawn_blocking`.
-fn link_or_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
+/// replace. Returns the link error when it copied. Blocking;
+/// `do_file_op` runs it under `spawn_blocking`.
+fn link_or_copy(src: &Path, dst: &Path) -> std::io::Result<Option<std::io::Error>> {
     if dst.exists() {
         let _ = std::fs::remove_file(dst);
     }
-    if std::fs::hard_link(src, dst).is_err() {
-        std::fs::copy(src, dst)?;
+    match std::fs::hard_link(src, dst) {
+        Ok(()) => Ok(None),
+        Err(link_error) => {
+            std::fs::copy(src, dst)?;
+            Ok(Some(link_error))
+        }
     }
-    Ok(())
 }
 
 /// Whether `path` resolves (symlinks followed) to a regular file inside
@@ -2118,7 +2139,7 @@ async fn import_torrent(
         } else {
             dest_video.clone()
         };
-        let placed = do_file_op(&cfg.post_processing_mode, &src, &landing).await;
+        let placed = do_file_op_reporting(&cfg.post_processing_mode, &src, &landing).await;
 
         if placed.is_ok() && is_upgrade {
             // Check if this is an upgrade replacing a previously imported file.
@@ -2371,7 +2392,7 @@ async fn import_torrent(
         }
 
         match placed {
-            Ok(()) => {
+            Ok(link_error) => {
                 let _ = nfo::write_multi_episode_nfo(
                     &dest_nfo,
                     &ctx.series_title,
@@ -2502,7 +2523,7 @@ async fn import_torrent(
                     &format!("Imported {} of '{}'", slot, ctx.series.title),
                     &format!(
                         "mode={} dest={}",
-                        mode_used(&cfg.post_processing_mode, &src, &dest_video),
+                        mode_used(&cfg.post_processing_mode, link_error.as_ref()),
                         dest_video.display()
                     ),
                 )

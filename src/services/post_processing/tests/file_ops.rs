@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 
 use crate::services::post_processing::{
-    CONTENT_COMPARE_CHUNK, do_file_op, files_same_content, mode_used,
+    CONTENT_COMPARE_CHUNK, do_file_op, do_file_op_reporting, files_same_content, mode_used,
 };
 
 fn write_src(dir: &TempDir, name: &str, body: &[u8]) -> PathBuf {
@@ -440,16 +440,52 @@ fn same_content_accepts_two_empty_files() {
 
 #[test]
 fn the_import_log_says_copy_when_a_hardlink_fell_back() {
-    let dir = TempDir::new().unwrap();
-    let src = dir.path().join("ep.mkv");
-    fs::write(&src, b"video").unwrap();
-    let linked = dir.path().join("linked.mkv");
-    fs::hard_link(&src, &linked).unwrap();
-    let copied = dir.path().join("copied.mkv");
-    fs::copy(&src, &copied).unwrap();
-
-    assert_eq!(mode_used("hardlink", &src, &linked), "hardlink");
-    assert!(mode_used("hardlink", &src, &copied).starts_with("copy"));
+    assert_eq!(mode_used("hardlink", None), "hardlink");
+    let cross_device = std::io::Error::from(std::io::ErrorKind::CrossesDevices);
+    let msg = mode_used("hardlink", Some(&cross_device));
+    assert!(msg.starts_with("copy"), "{msg}");
+    assert!(msg.contains("different filesystems"), "{msg}");
+    // Any other failure is quoted, not explained: EPERM is also what
+    // `fs.protected_hardlinks` returns for a file Ryokan's user
+    // doesn't own, which says nothing about filesystems.
+    let eperm = std::io::Error::from_raw_os_error(1);
+    let msg = mode_used("hardlink", Some(&eperm));
+    assert!(msg.starts_with("copy"), "{msg}");
+    assert!(msg.contains("os error 1"), "{msg}");
+    assert!(!msg.contains("filesystems"), "{msg}");
     // Other modes are reported as configured.
-    assert_eq!(mode_used("copy", &src, &copied), "copy");
+    assert_eq!(mode_used("copy", None), "copy");
+}
+
+#[tokio::test]
+async fn a_hardlink_on_one_filesystem_reports_no_fallback() {
+    let dir = TempDir::new().unwrap();
+    let src = write_src(&dir, "src.mkv", b"payload");
+    let dst = dir.path().join("dst.mkv");
+    let link_error = do_file_op_reporting("hardlink", &src, &dst)
+        .await
+        .expect("hardlink");
+    assert!(link_error.is_none(), "{link_error:?}");
+}
+
+#[tokio::test]
+async fn a_hardlink_across_filesystems_reports_why_it_copied() {
+    // `/dev/shm` is its own tmpfs on Linux; skip where it is missing or
+    // shares the temp dir's filesystem.
+    let Ok(other_fs) = TempDir::new_in("/dev/shm") else {
+        return;
+    };
+    let dir = TempDir::new().unwrap();
+    if fs::metadata(other_fs.path()).unwrap().dev() == fs::metadata(dir.path()).unwrap().dev() {
+        return;
+    }
+    let src = write_src(&other_fs, "src.mkv", b"payload");
+    let dst = dir.path().join("dst.mkv");
+    let link_error = do_file_op_reporting("hardlink", &src, &dst)
+        .await
+        .expect("copied");
+    assert_eq!(fs::read(&dst).unwrap(), b"payload");
+    let link_error = link_error.expect("the link failed, so it copied");
+    assert_eq!(link_error.kind(), std::io::ErrorKind::CrossesDevices);
+    assert!(mode_used("hardlink", Some(&link_error)).contains("different filesystems"));
 }
