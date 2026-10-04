@@ -46,16 +46,41 @@ mod shim_search_queue_tests {
 
     #[test]
     fn shim_searches_are_deduped_capped_and_released() {
-        let first = reserve_shim_search(9_000_001).expect("first request queues");
-        assert!(reserve_shim_search(9_000_001).is_none(), "already queued");
+        // A queue of its own: the shims' command tests queue searches
+        // on the global one while this runs.
+        static QUEUE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<i64>>> =
+            std::sync::LazyLock::new(Default::default);
+        let reserve = |id| reserve_shim_search_in(&QUEUE, id);
+        let first = reserve(1).ok().expect("first request queues");
+        assert!(
+            matches!(reserve(1), Err(NotQueued::AlreadyQueued)),
+            "already queued"
+        );
         drop(first);
-        let again = reserve_shim_search(9_000_001).expect("the slot is given back on drop");
-        let held: Vec<_> = (0i64..)
-            .map_while(|i| reserve_shim_search(9_100_000 + i))
-            .collect();
+        let again = reserve(1).ok().expect("the slot is given back on drop");
+        let held: Vec<_> = (100i64..).map_while(|i| reserve(i).ok()).collect();
         assert_eq!(held.len() + 1, SHIM_SEARCH_QUEUE_CAP);
+        assert!(matches!(reserve(2), Err(NotQueued::QueueFull)));
         drop(again);
-        assert!(reserve_shim_search(9_000_002).is_some());
+        assert!(reserve(2).is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_search_for_a_series_not_in_the_library_is_not_queued() {
+        // `auto_search_series` reads an unknown internal id as an
+        // AniList id, so a stale id from Seerr searched, and grabbed
+        // for, whatever show has that number.
+        let db = crate::test_support::in_memory_pool().await;
+        let state = crate::test_support::build_test_app_state(db.clone(), None);
+        assert!(!queue_shim_search(state, 9_200_001, std::time::Duration::ZERO).await);
+        assert!(!SHIM_SEARCHES_QUEUED.lock().unwrap().contains(&9_200_001));
+        let logged: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM logs WHERE level = 'warn' AND message LIKE '%9200001%'",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(logged, 1);
     }
 }
 
@@ -82,21 +107,38 @@ static SHIM_SEARCH_PERMITS: tokio::sync::Semaphore = tokio::sync::Semaphore::con
 /// Most shim searches queued or running; past it a request is dropped.
 const SHIM_SEARCH_QUEUE_CAP: usize = 64;
 
-/// A series' place in the shim search queue, given back on drop.
-struct ShimSearchSlot(i64);
+/// A series' place in a shim search queue, given back on drop.
+struct ShimSearchSlot {
+    queue: &'static std::sync::Mutex<std::collections::HashSet<i64>>,
+    series_id: i64,
+}
 
 impl Drop for ShimSearchSlot {
     fn drop(&mut self) {
-        SHIM_SEARCHES_QUEUED.lock().unwrap().remove(&self.0);
+        self.queue.lock().unwrap().remove(&self.series_id);
     }
 }
 
-fn reserve_shim_search(series_id: i64) -> Option<ShimSearchSlot> {
-    let mut queued = SHIM_SEARCHES_QUEUED.lock().unwrap();
-    if queued.len() >= SHIM_SEARCH_QUEUE_CAP || !queued.insert(series_id) {
-        return None;
+/// Why [`reserve_shim_search_in`] gave no slot.
+#[derive(Debug)]
+enum NotQueued {
+    AlreadyQueued,
+    QueueFull,
+}
+
+fn reserve_shim_search_in(
+    queue: &'static std::sync::Mutex<std::collections::HashSet<i64>>,
+    series_id: i64,
+) -> Result<ShimSearchSlot, NotQueued> {
+    let mut queued = queue.lock().unwrap();
+    if queued.contains(&series_id) {
+        return Err(NotQueued::AlreadyQueued);
     }
-    Some(ShimSearchSlot(series_id))
+    if queued.len() >= SHIM_SEARCH_QUEUE_CAP {
+        return Err(NotQueued::QueueFull);
+    }
+    queued.insert(series_id);
+    Ok(ShimSearchSlot { queue, series_id })
 }
 
 /// Start a series' auto-search in the background for the Sonarr /
@@ -107,16 +149,56 @@ fn reserve_shim_search(series_id: i64) -> Option<ShimSearchSlot> {
 /// series already queued or searching is not queued again, at most
 /// [`SHIM_SEARCH_QUEUE_CAP`] wait, and two run at a time. Returns
 /// whether the search was queued.
-pub(crate) fn queue_shim_search(
+///
+/// The id must be a series in the library. One Seerr still holds for a
+/// series removed since would reach `auto_search_series` as an AniList
+/// id, and search (and grab, through the search-before-add path) for
+/// whatever show has that number.
+pub(crate) async fn queue_shim_search(
     state: AppState,
     series_id: i64,
     delay: std::time::Duration,
 ) -> bool {
-    let Some(slot) = reserve_shim_search(series_id) else {
-        tracing::debug!(
-            "shim search for series {series_id} not queued: already queued, or the queue is full"
-        );
+    // A loop of commands could write a warn row per request; one per
+    // series (or one for a full queue) a minute is enough to see it.
+    let window = std::time::Duration::from_secs(60);
+    let missing = match crate::models::series::get_by_id(&state.db, series_id).await {
+        Ok(Some(_)) => None,
+        Ok(None) => Some(String::new()),
+        Err(e) => Some(e.to_string()),
+    };
+    if let Some(detail) = missing {
+        if logger::first_in_window(&format!("shim-search-missing:{series_id}"), window) {
+            logger::warn(
+                &state.db,
+                LogCategory::AutoSearch,
+                &format!("Seerr search request skipped: series {series_id} is not in the library"),
+                &detail,
+            )
+            .await;
+        }
         return false;
+    }
+    let slot = match reserve_shim_search_in(&SHIM_SEARCHES_QUEUED, series_id) {
+        Ok(slot) => slot,
+        Err(NotQueued::AlreadyQueued) => {
+            tracing::debug!("shim search for series {series_id} not queued: already queued");
+            return false;
+        }
+        Err(NotQueued::QueueFull) => {
+            if logger::first_in_window("shim-search-queue-full", window) {
+                logger::warn(
+                    &state.db,
+                    LogCategory::AutoSearch,
+                    &format!(
+                        "Seerr search request for series {series_id} dropped: {SHIM_SEARCH_QUEUE_CAP} searches are already waiting"
+                    ),
+                    "",
+                )
+                .await;
+            }
+            return false;
+        }
     };
     tokio::spawn(async move {
         let _slot = slot;

@@ -227,7 +227,8 @@ pub async fn add_movie(
             state.clone(),
             id,
             std::time::Duration::from_secs(2),
-        );
+        )
+        .await;
     }
 
     let cfg = config::get_config(&state.db)
@@ -306,7 +307,8 @@ pub async fn execute_command(
                 state.clone(),
                 movie_id,
                 std::time::Duration::ZERO,
-            );
+            )
+            .await;
         }
     }
 

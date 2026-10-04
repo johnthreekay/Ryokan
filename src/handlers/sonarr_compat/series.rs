@@ -536,7 +536,8 @@ pub async fn add_series(
                 state.clone(),
                 s.id,
                 std::time::Duration::from_secs(2),
-            );
+            )
+            .await;
         }
     }
 
@@ -617,7 +618,8 @@ pub async fn execute_command(
             state.clone(),
             series_id,
             std::time::Duration::ZERO,
-        );
+        )
+        .await;
     }
 
     Json(serde_json::json!({
