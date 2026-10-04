@@ -746,6 +746,12 @@ window.addEventListener('DOMContentLoaded', function () {
             // up each page's distinct `{% block page_css %}` link.
             // Phase D pentagon-nav test exercises every route here.
             .route("/", get(crate::handlers::library::pages::index))
+            // The library's add-series Monitor Episodes dialog posts
+            // here (`tests/htmx_browser_e2e_add_series_monitor.rs`).
+            .route(
+                "/api/library/monitoring",
+                post(crate::handlers::library::crud::set_monitoring),
+            )
             .route("/search", get(crate::handlers::search::search_page))
             .route("/system", get(crate::handlers::system::system_page))
             // Phase D's logout-flow test follows the POST /logout
