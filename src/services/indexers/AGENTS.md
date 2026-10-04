@@ -20,7 +20,7 @@ When adding new release sources: add an `Indexer` impl. Don't refactor Nyaa.
 
 - `TORZNAB_CAT_ANIME = 5070`
 - `DEFAULT_REQUEST_TIMEOUT_SECS = 30` — overridable via `RYOKAN_INDEXER_DEFAULT_TIMEOUT_SECS`. Tighter than Sonarr's 100s default because Ryokan's interactive search needs lower user-perceived latency.
-- `CAPS_TTL_SECONDS = 7 * 24 * 60 * 60` — indexer caps cache TTL, matches Sonarr's `NewznabCapabilitiesProvider.cs`. Refetched lazily on next read past TTL; manual "Refresh caps" button on the indexer edit page covers the out-of-band edit case.
+- `CAPS_TTL_SECONDS = 7 * 24 * 60 * 60` — indexer caps cache TTL, matches Sonarr's `NewznabCapabilitiesProvider.cs`. Not enforced yet: `rebuild_cache` probes caps in the background only for rows whose `caps_json` is empty (`models::indexers::update_caps`), so stored caps never refresh and there is no "Refresh caps" control.
 
 ## `Release` snapshot fields
 

@@ -344,7 +344,7 @@ Ryokan is now on port 8978, Jellyfin on 8096, your download client on its defaul
 
 ## 2. First login to Ryokan
 
-Open <http://localhost:8978> in a browser. You'll be redirected to a setup page; pick a username and password and submit. That account is your admin account; Ryokan is single-user, so this is the only one you'll create.
+Open <http://localhost:8978> in a browser. You'll be redirected to a setup page. Pick a username and a password of 8 to 72 characters, type it twice, and submit. That account is your admin account; Ryokan is single-user, so this is the only one you'll create.
 
 Once you're logged in you'll see an empty library page. That's expected; we haven't told Ryokan about any shows yet.
 
@@ -458,7 +458,7 @@ Skip this for now if you want; Nyaa is built in and works out of the box. But if
 
 **Settings → Indexers → Add indexer**. Paste the URL Prowlarr or Jackett gave you (it ends in `/api`), the API key, and pick a name. The defaults handle the rest.
 
-Click **Test connection** to confirm Ryokan can reach it.
+Click **Test** to confirm Ryokan can reach it.
 
 ## 7. Add a show and watch it land
 
@@ -468,7 +468,7 @@ When the series page opens, each episode row has two icon buttons: **Interactive
 
 The grab fires off to your download client. When it finishes:
 
-1. Post-processing hardlinks the file into `/srv/media/anime/<show name>/Season 01/<episode>.mkv` on your host.
+1. Post-processing places the file at `/srv/media/anime/<show name>/Season 01/<episode>.mkv` on your host. These composes mount downloads and the library separately, and a hardlink can't cross mounts, so it's a copy. The shared `/data` layout in [Docker](docker.md#moving-ryokans-data-folder) keeps hardlinks.
 2. Jellyfin picks it up on its next library scan (or immediately if you click **Scan All Libraries**).
 3. The episode is now playable from any Jellyfin client (web, mobile, TV).
 
@@ -485,4 +485,4 @@ If you want Ryokan to add new shows automatically when you mark them watching on
 
 ---
 
-*Last updated: 2026-08-29.*
+*Last updated: 2026-10-04.*

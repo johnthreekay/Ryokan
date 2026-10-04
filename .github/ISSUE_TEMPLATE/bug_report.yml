@@ -51,11 +51,12 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Fill in everything that applies. The /system page shows the running version; `git rev-parse HEAD` if you built from source.
+      description: Fill in everything that applies. Settings → General → About shows the running version; `git rev-parse HEAD` if you built from source.
       value: |
         - Ryokan version:
         - Install method: <!-- Docker (which image tag - latest, a pinned version, ...?) / built from source -->
         - Behind a reverse proxy?: <!-- no, or which one (nginx, Caddy, Traefik, ...) -->
+        - RYOKAN_* variables set: <!-- e.g. RYOKAN_TRUSTED_PROXY, RYOKAN_COOKIE_SECURE, RYOKAN_HOST_CHECK, RYOKAN_ALLOWED_HOSTS, RYOKAN_FRAME_ANCESTORS; names only, never a key -->
         - Download client(s) + version:
         - Host OS / arch:
         - Browser (if it's a UI issue):
@@ -67,7 +68,7 @@ body:
     attributes:
       label: Logs
       description: |
-        **Required for most bug reports.** Run with `RUST_LOG=ryokan=debug` (or a specific category, e.g. `ryokan=debug,DownloadClient=trace`, `ryokan=debug,AniList=trace`) and paste the lines around the failure. The /system → Logs page also shows the DB-backed log. **Redact any API keys / passwords / tokens first.** If the output is large, put it in a [gist](https://gist.github.com/) and link it instead of pasting.
+        **Required for most bug reports.** Run with `RUST_LOG=ryokan=debug` (`ryokan=trace` for the most detail) and paste the lines around the failure. System → Logs shows the same lines, filterable by category, when `RYOKAN_DB_LOG_LEVEL=debug` is set (it keeps `info` and above by default). **Redact any API keys / passwords / tokens first.** If the output is large, put it in a [gist](https://gist.github.com/) and link it instead of pasting.
       render: text
     validations:
       required: true

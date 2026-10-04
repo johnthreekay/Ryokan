@@ -1,13 +1,13 @@
 # Calendar
 
-Ryokan's calendar shows what's airing for the shows in your library. It lives at `/calendar` from the top nav, between Library and Search. There's also a subscription feed if you'd rather see new episodes inside Apple Calendar, Google Calendar, or Thunderbird alongside the rest of your week.
+Ryokan's calendar shows what's airing for the shows in your library. It lives at `/calendar` in the top nav, between Library and Wanted. There's also a subscription feed if you'd rather see new episodes inside Apple Calendar, Google Calendar, or Thunderbird alongside the rest of your week.
 
 ## Views
 
 Three quick toggles at the top of the page:
 
 - **This week**: list view. Each day is a sticky header with the episodes airing that day stacked beneath. Today gets a colored stripe so your eye lands there.
-- **Next week**: same shape, but the next seven days.
+- **Next week**: same shape, for the seven days after that (days 8 to 14 from now).
 - **This month**: calendar grid view. Sun-to-Sat rows for the current month; each cell holds the episodes for that day.
 
 ## What you'll see on each episode
@@ -38,7 +38,7 @@ Then in your calendar app:
 - **Google Calendar**: Other calendars → + → From URL, paste the URL.
 - **Thunderbird**: New Calendar → On the Network → iCalendar (ICS), paste the URL.
 
-The feed defaults to the next 30 days. If you want a wider or narrower window, append `?days=N` to the URL (capped at 90). Append `?monitored=true` to only see monitored series.
+The feed defaults to the next 30 days. The URL you copy already ends in `?apikey=...`, so add options with `&`: `&days=N` for a wider or narrower window (capped at 90), `&monitored=true` to only see monitored series.
 
 ## How fresh is the data?
 
@@ -53,4 +53,4 @@ A few series in your library may have come from MAL instead of AniList. These ar
 
 ---
 
-*Last updated: 2026-08-29.*
+*Last updated: 2026-10-04.*
