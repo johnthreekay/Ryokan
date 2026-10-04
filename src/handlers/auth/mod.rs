@@ -534,6 +534,11 @@ pub async fn csrf_public(req: Request<Body>, next: Next) -> Response {
 
 // ---------- Setup ----------
 
+/// Shortest admin password `/setup` accepts.
+pub(crate) const MIN_PASSWORD_CHARS: usize = 8;
+/// Longest: bcrypt ignores everything past byte 72.
+pub(crate) const MAX_PASSWORD_BYTES: usize = 72;
+
 pub async fn setup_page(State(state): State<AppState>) -> impl IntoResponse {
     // If users already exist, redirect to login.
     if let Ok(true) = user::has_users(&state.db).await {
@@ -581,8 +586,45 @@ pub async fn setup_submit(
         return Html(template.render().unwrap_or_default()).into_response();
     }
 
-    match user::create_user(&state.db, form.username.trim(), &form.password).await {
-        Ok(user_id) => {
+    // bcrypt reads only the first 72 bytes, so anything after them was
+    // silently not part of the password; and nothing stopped a
+    // one-character admin password.
+    if form.password.chars().count() < MIN_PASSWORD_CHARS {
+        let template = SetupTemplate {
+            error: Some(format!(
+                "Use a password of at least {MIN_PASSWORD_CHARS} characters."
+            )),
+        };
+        return Html(template.render().unwrap_or_default()).into_response();
+    }
+    if form.password.len() > MAX_PASSWORD_BYTES {
+        let template = SetupTemplate {
+            error: Some(format!(
+                "Use a password of at most {MAX_PASSWORD_BYTES} bytes; longer ones are cut there."
+            )),
+        };
+        return Html(template.render().unwrap_or_default()).into_response();
+    }
+
+    // The `has_users` gate above runs before the ~50ms bcrypt hash, so
+    // two submissions racing through it both pass it. `create_first_user`
+    // re-checks inside the insert statement and only one of them gets
+    // the row; the other lands on the login page like a late submit.
+    match user::create_first_user(&state.db, form.username.trim(), &form.password).await {
+        Ok(None) => {
+            logger::warn(
+                &state.db,
+                LogCategory::Auth,
+                &format!(
+                    "Setup refused for '{}': an account was created first",
+                    sanitize_for_log(form.username.trim())
+                ),
+                "",
+            )
+            .await;
+            Redirect::to("/login").into_response()
+        }
+        Ok(Some(user_id)) => {
             logger::info(
                 &state.db,
                 LogCategory::Auth,

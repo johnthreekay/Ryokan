@@ -14,8 +14,8 @@
 //! - `src/handlers/auth/mod.rs::login_page` and `setup_page` — public
 //!   pages, never reached via boost (the unauth `/login` doesn't have
 //!   boost active; redirects from these are the FIRST page load).
-//! - `src/handlers/auth/mod.rs::setup_submit::Ok(true)` branch — same
-//!   as above.
+//! - `src/handlers/auth/mod.rs::setup_submit::Ok(true)` branch and its
+//!   lost-race `create_first_user` `Ok(None)` branch — same as above.
 //! - `src/handlers/library/pages/mod.rs::needs_review_page` — 308 permanent
 //!   for a moved URL; documented inline as boost-safe (target is a
 //!   top-level page render, no form context to nest into).
@@ -50,9 +50,10 @@ use std::path::PathBuf;
 const EXPECTED_REDIRECTS: &[(&str, usize)] = &[
     // Helper itself — `Redirect::to` is the non-HTMX branch.
     ("src/handlers/responses.rs", 1),
-    // Auth: `login_page` (1), `setup_submit::Ok(true)` (1), `setup_page` (1).
+    // Auth: `login_page` (1), `setup_submit::Ok(true)` (1),
+    // `setup_submit` lost race (1), `setup_page` (1).
     // All never reached via boost; documented above.
-    ("src/handlers/auth/mod.rs", 3),
+    ("src/handlers/auth/mod.rs", 4),
     // 308 permanent for moved /library/review URL — boost-safe.
     ("src/handlers/library/pages/mod.rs", 1),
     // Blocklist row removal — is_htmx branch is the empty 200 swap;

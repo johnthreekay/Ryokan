@@ -238,3 +238,94 @@ async fn setup_submit_seeds_default_config_row() {
         "config row should be seeded by setup_submit so subform saves don't bail"
     );
 }
+
+// ─── concurrent /setup submissions ───────────────────────────────
+
+/// Regression: two `/setup` POSTs in flight at once used to both pass
+/// the `has_users` gate during the bcrypt hash and both insert, so a
+/// second admin with a different username slipped in next to the
+/// first. `create_first_user` makes the emptiness check part of the
+/// insert; exactly one submission wins and the other is sent to
+/// `/login`, whichever way the two interleave.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_setup_posts_create_exactly_one_account() {
+    let db = in_memory_pool().await;
+    let state = fresh_install_state(db.clone());
+    let submit = |username: &'static str| {
+        let app = handler_router(state.clone());
+        async move {
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/setup")
+                        .header(header::HOST, "ryokan.local")
+                        .header(header::ORIGIN, "http://ryokan.local")
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .body(Body::from(format!(
+                            "username={username}&password=race-pw-1&confirm=race-pw-1"
+                        )))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::SEE_OTHER);
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string()
+        }
+    };
+
+    let (a, b) = tokio::join!(submit("admin"), submit("intruder"));
+
+    let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        users.0, 1,
+        "only one setup submission may create an account"
+    );
+    let mut locations = [a, b];
+    locations.sort();
+    assert_eq!(
+        locations,
+        ["/".to_string(), "/login".to_string()],
+        "the winner lands on the app, the loser on the login page"
+    );
+}
+
+#[tokio::test]
+async fn setup_refuses_passwords_bcrypt_would_mangle_or_that_are_trivial() {
+    for (password, needle) in [("x", "at least"), (&*"p".repeat(73), "at most")] {
+        let db = in_memory_pool().await;
+        let app = handler_router(fresh_install_state(db.clone()));
+        let body = format!("username=admin&password={password}&confirm={password}");
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/setup")
+                    .header(header::HOST, "ryokan.local")
+                    .header(header::ORIGIN, "http://ryokan.local")
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "the form comes back");
+        let html = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert!(String::from_utf8_lossy(&html).contains(needle), "{needle}");
+        let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(users.0, 0);
+    }
+}
