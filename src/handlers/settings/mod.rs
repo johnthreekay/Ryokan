@@ -27,7 +27,7 @@ pub mod setup_library;
 use custom_formats::ImportReviewView;
 
 /// Shortest Sonarr / Radarr shim API key a save accepts.
-const MIN_SHIM_KEY_CHARS: usize = 20;
+pub(crate) const MIN_SHIM_KEY_CHARS: usize = 20;
 
 /// Process-wide serializer for `config` row read-modify-write across
 /// every Settings save handler — the per-tab subforms
@@ -1065,28 +1065,37 @@ pub async fn settings_page(
 /// The Sonarr / Radarr keys are whatever the user types; a short one
 /// ("seerr") could be guessed. Checked by every handler that writes
 /// them: the Integrations tab and the legacy bulk `POST /settings`.
-/// Only a key that changes is held to the minimum: the Integrations tab
-/// posts the visible key back on every save, so a short key saved
-/// before the minimum existed blocked every other field on the tab.
+///
+/// Only a new or changed key is checked. A short key saved before the
+/// minimum existed is what Seerr holds, and refusing it made every save
+/// of the tab fail until the user rotated it, Jellyfin edits included.
+/// The tab warns about it instead (`shim_key_is_short`).
 fn shim_key_error(
     sonarr: Option<&str>,
     radarr: Option<&str>,
-    existing: Option<&config::Config>,
+    stored: Option<&config::Config>,
 ) -> Option<String> {
+    let kept = |pick: fn(&config::Config) -> &str| stored.map(|c| pick(c).trim()).unwrap_or("");
     [
-        ("Sonarr", sonarr, existing.map(|c| c.sonarr_api_key.as_str())),
-        ("Radarr", radarr, existing.map(|c| c.radarr_api_key.as_str())),
+        ("Sonarr", sonarr, kept(|c| c.sonarr_api_key.as_str())),
+        ("Radarr", radarr, kept(|c| c.radarr_api_key.as_str())),
     ]
     .into_iter()
-    .find_map(|(label, key, stored)| {
+    .find_map(|(label, key, kept)| {
         let key = key.unwrap_or("").trim();
-        (!key.is_empty() && key.chars().count() < MIN_SHIM_KEY_CHARS && stored != Some(key))
-            .then(|| {
-                format!(
-                    "The {label} API key must be at least {MIN_SHIM_KEY_CHARS} characters. Use Generate for a random one."
-                )
-            })
+        (!key.is_empty() && key != kept && shim_key_is_short(key)).then(|| {
+            format!(
+                "The {label} API key must be at least {MIN_SHIM_KEY_CHARS} characters. Use Generate for a random one."
+            )
         })
+    })
+}
+
+/// A stored shim key under the minimum, which the Integrations tab
+/// warns about.
+pub(crate) fn shim_key_is_short(key: &str) -> bool {
+    let key = key.trim();
+    !key.is_empty() && key.chars().count() < MIN_SHIM_KEY_CHARS
 }
 
 pub async fn settings_submit(

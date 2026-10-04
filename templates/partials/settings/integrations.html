@@ -72,7 +72,9 @@
                     <button type="button" class="btn btn-secondary" onclick="copyApiKey('sonarr_api_key', this)" style="white-space:nowrap">Copy</button>
                     <button type="button" class="btn btn-secondary" onclick="generateApiKey()" style="white-space:nowrap">Generate</button>
                 </div>
-                
+                {% if crate::handlers::settings::shim_key_is_short(config.sonarr_api_key) %}
+                <div class="alert alert-warn" role="status" style="margin: 8px 0 0">This key is shorter than {{ crate::handlers::settings::MIN_SHIM_KEY_CHARS }} characters, so it is easy to guess. Press Generate, Save, then paste the new key into Seerr's Sonarr server.</div>
+                {% endif %}
             </div>
         </div>
 
@@ -96,7 +98,9 @@
                     <button type="button" class="btn btn-secondary" onclick="copyApiKey('radarr_api_key', this)" style="white-space:nowrap">Copy</button>
                     <button type="button" class="btn btn-secondary" onclick="generateRadarrApiKey()" style="white-space:nowrap">Generate</button>
                 </div>
-                
+                {% if crate::handlers::settings::shim_key_is_short(config.radarr_api_key) %}
+                <div class="alert alert-warn" role="status" style="margin: 8px 0 0">This key is shorter than {{ crate::handlers::settings::MIN_SHIM_KEY_CHARS }} characters, so it is easy to guess. Press Generate, Save, then paste the new key into Seerr's Radarr server.</div>
+                {% endif %}
             </div>
         </div>
 

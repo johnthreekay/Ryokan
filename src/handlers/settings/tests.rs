@@ -2076,70 +2076,73 @@ fn a_short_shim_key_is_refused_by_name() {
 }
 
 #[test]
-fn only_a_changed_shim_key_is_held_to_the_minimum() {
-    // A short key saved before the minimum existed is posted back on
-    // every Integrations save; refusing it blocked the whole tab.
+fn a_stored_short_shim_key_is_kept_but_a_new_one_is_checked() {
     let stored = config::Config {
-        sonarr_api_key: "seerr".into(),
-        radarr_api_key: "radarr".into(),
-        ..Default::default()
+        sonarr_api_key: "seerr-key-12345".to_string(),
+        ..config::Config::default()
     };
     assert_eq!(
-        shim_key_error(Some(" seerr "), Some("radarr"), Some(&stored)),
-        None
+        shim_key_error(Some("seerr-key-12345"), None, Some(&stored)),
+        None,
+        "the key Seerr already holds still saves"
     );
     assert!(
-        shim_key_error(Some("seerr2"), Some("radarr"), Some(&stored))
-            .unwrap()
-            .contains("Sonarr")
+        shim_key_error(Some("seerr-key-99999"), None, Some(&stored)).is_some(),
+        "a changed short key is refused"
     );
     assert!(
-        shim_key_error(Some("seerr"), Some("seerr"), Some(&stored))
-            .unwrap()
-            .contains("Radarr"),
-        "a key is compared with its own shim's stored key"
+        shim_key_error(None, Some("seerr-key-12345"), Some(&stored)).is_some(),
+        "each shim is compared with its own stored key"
     );
+    assert!(shim_key_is_short("seerr-key-12345"));
+    assert!(!shim_key_is_short(""));
+    assert!(!shim_key_is_short(&"k".repeat(MIN_SHIM_KEY_CHARS)));
 }
 
 #[tokio::test]
-async fn an_unchanged_short_shim_key_does_not_block_the_integrations_tab() {
+async fn an_install_with_a_short_shim_key_still_saves_the_tab_and_is_warned() {
+    // 2.1.2 accepted any key. After the minimum arrived, an upgraded
+    // install with a short one couldn't save Connections at all (a
+    // Jellyfin edit included) until it rotated the key Seerr holds.
     use axum::extract::FromRequest;
     let db = crate::test_support::in_memory_pool().await;
     let cfg = config::Config {
         sonarr_enabled: true,
-        sonarr_api_key: "seerr".into(),
-        ..Default::default()
+        sonarr_api_key: "seerr-key-12345".to_string(),
+        external_sync_interval_minutes: 60,
+        ..config::Config::default()
     };
     config::save_config(&db, &cfg).await.unwrap();
     let state = crate::test_support::build_test_app_state(db.clone(), None);
-    let submit = |body: &'static str| {
-        let state = state.clone();
-        async move {
-            let req = axum::http::Request::builder()
-                .method("POST")
-                .uri("/settings/integrations")
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(axum::body::Body::from(body))
-                .unwrap();
-            let form = Form::<IntegrationsForm>::from_request(req, &())
-                .await
-                .unwrap();
-            settings_integrations_submit(State(state), axum_htmx::HxRequest(false), form).await
-        }
-    };
-    submit("sonarr_enabled=on&sonarr_api_key=seerr&jellyfin_url=http%3A%2F%2Fjellyfin%3A8096")
-        .await;
-    let saved = config::get_config(&db).await.unwrap().unwrap();
-    assert_eq!(
-        saved.jellyfin_url, "http://jellyfin:8096",
-        "the save went through"
+    let req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/settings/integrations")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(axum::body::Body::from(
+            "sonarr_enabled=on&sonarr_api_key=seerr-key-12345&external_sync_interval_minutes=90",
+        ))
+        .unwrap();
+    let form = Form::<IntegrationsForm>::from_request(req, &())
+        .await
+        .unwrap();
+    let resp = settings_integrations_submit(State(state), HxRequest(false), form)
+        .await
+        .into_response();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let page = String::from_utf8_lossy(&bytes);
+    assert!(
+        !page.contains("must be at least"),
+        "the save is not refused"
     );
-    assert_eq!(saved.sonarr_api_key, "seerr");
-    // A new short key is still refused.
-    submit("sonarr_enabled=on&sonarr_api_key=seerr2&jellyfin_url=").await;
     let saved = config::get_config(&db).await.unwrap().unwrap();
-    assert_eq!(saved.sonarr_api_key, "seerr");
-    assert_eq!(saved.jellyfin_url, "http://jellyfin:8096");
+    assert_eq!(saved.external_sync_interval_minutes, 90, "the edit saved");
+    assert_eq!(saved.sonarr_api_key, "seerr-key-12345");
+    assert!(
+        page.contains("shorter than 20 characters"),
+        "the tab says to replace the short key"
+    );
 }
 
 #[tokio::test]
