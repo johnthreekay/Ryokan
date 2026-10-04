@@ -51,13 +51,13 @@ mod shim_search_queue_tests {
         static QUEUE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<i64>>> =
             std::sync::LazyLock::new(Default::default);
         let reserve = |id| reserve_shim_search_in(&QUEUE, id);
-        let first = reserve(1).ok().expect("first request queues");
+        let first = reserve(1).expect("first request queues");
         assert!(
             matches!(reserve(1), Err(NotQueued::AlreadyQueued)),
             "already queued"
         );
         drop(first);
-        let again = reserve(1).ok().expect("the slot is given back on drop");
+        let again = reserve(1).expect("the slot is given back on drop");
         let held: Vec<_> = (100i64..).map_while(|i| reserve(i).ok()).collect();
         assert_eq!(held.len() + 1, SHIM_SEARCH_QUEUE_CAP);
         assert!(matches!(reserve(2), Err(NotQueued::QueueFull)));
