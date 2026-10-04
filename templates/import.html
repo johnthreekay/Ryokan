@@ -159,7 +159,7 @@
         {% for g in report.groups %}
             <tr class="{% if !g.errors.is_empty() %}import-report-row-error{% endif %}">
                 <td><span class="import-path" title="{{ g.parsed_title }}">{{ g.parsed_title }}</span></td>
-                <td>{% if g.series_id.is_some() && g.anilist_id != 0 %}<a href="/series/{{ g.anilist_id }}">{{ g.series_title }}</a>{% else %}{{ g.series_title }}{% endif %}{% if !g.folder_name.is_empty() %} <span class="form-hint"><code>{{ g.folder_name }}</code></span>{% endif %}</td>
+                <td>{% if let Some(series_id) = g.series_id %}<a href="/series/{{ series_id }}">{{ g.series_title }}</a>{% else %}{{ g.series_title }}{% endif %}{% if !g.folder_name.is_empty() %} <span class="form-hint"><code>{{ g.folder_name }}</code></span>{% endif %}</td>
                 <td class="import-nowrap">{% if g.series_id.is_none() %}<span class="import-status">Untouched</span>{% else if g.created %}<span class="import-status import-status-import">Created</span>{% else %}<span class="import-status import-status-present">Merged</span>{% endif %}</td>
                 <td class="import-nowrap">{{ g.written }}</td>
                 <td class="import-nowrap">{{ g.replaced }}</td>

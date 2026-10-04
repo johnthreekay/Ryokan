@@ -20,7 +20,7 @@
         <label class="wanted-row-select">
             <input type="checkbox" class="wanted-select" value="{{ row.series_id }}" aria-label="Select {{ row.title }}">
         </label>
-        <a class="wanted-row-link" href="/series/{{ row.anilist_id }}">
+        <a class="wanted-row-link" href="/series/{{ row.series_id }}">
             {% if !row.cover_url.is_empty() %}
             <img class="wanted-row-cover" src="{{ row.cover_url }}" alt="" loading="lazy">
             {% else %}

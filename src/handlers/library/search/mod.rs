@@ -31,7 +31,7 @@ use crate::models::log::LogCategory;
 use crate::services::{anilist, logger};
 
 use super::AnilistSearchQuery;
-use super::reconcile::{force_mal_fallback_enabled, resolve_series_context};
+use super::reconcile::{force_mal_fallback_enabled, resolve_series_context_by};
 
 mod auto_search;
 mod grab;
@@ -271,8 +271,9 @@ pub async fn anilist_search(
 pub async fn api_series_detail(
     State(state): State<AppState>,
     Path(request_id): Path<i64>,
+    Query(kind): Query<super::SeriesIdKind>,
 ) -> Result<Json<anilist::AnimeDetail>, (axum::http::StatusCode, String)> {
-    let (_, _, detail) = resolve_series_context(&state.db, request_id)
+    let (_, _, detail) = resolve_series_context_by(&state.db, request_id, kind.by_anilist())
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(detail))

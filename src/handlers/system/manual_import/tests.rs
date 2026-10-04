@@ -591,7 +591,10 @@ mod router_tests {
         let (_, body) = get_page(&app, &format!("/system/import?session={id}")).await;
         assert!(body.contains("import-group-merge"), "{body}");
         assert!(body.contains("In your library as"));
-        assert!(body.contains("/series/100"));
+        assert!(
+            body.contains(&format!("/series/{series_id}")),
+            "links by the library id"
+        );
         assert!(
             body.contains("import-status-present"),
             "episode 1 already have"
@@ -1011,7 +1014,7 @@ mod import_router_tests {
         let body = get_page(&app, &format!("/system/import?session={id}")).await;
         assert!(body.contains("Import finished with errors"), "{body}");
         assert!(body.contains("2.0 KiB"), "{body}");
-        assert!(body.contains("/series/100"));
+        assert!(body.contains("/series/7"), "links by the library id");
         assert!(body.contains("permission denied"));
         assert!(body.contains("Import another folder"));
     }

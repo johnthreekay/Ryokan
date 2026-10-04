@@ -130,7 +130,7 @@
         <div class="relation-cards">
         {% for group in relation_groups %}
         {% for card in group.entries %}
-        <a href="/series/{{ card.id }}" class="relation-card">
+        <a href="/series/{{ card.id }}{% if !card.tracked %}?by=anilist{% endif %}" class="relation-card">
             <div class="relation-card-cover-wrap">
                 <div class="relation-card-cover">
                     {% if !card.cover_url.is_empty() %}

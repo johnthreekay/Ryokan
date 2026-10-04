@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use askama::Template;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::{Html, IntoResponse},
 };
 use sqlx::SqlitePool;
@@ -24,7 +24,7 @@ use crate::services::{
 };
 
 use super::reconcile::{
-    force_kitsu_fallback_enabled, populate_series_cover_urls, resolve_series_context,
+    force_kitsu_fallback_enabled, populate_series_cover_urls, resolve_series_context_by,
 };
 use super::{Episode, ErrorTemplate, IndexTemplate, RelationCard, RelationGroup, SeriesTemplate};
 
@@ -415,13 +415,14 @@ pub async fn needs_review_page(
 pub async fn series_detail(
     State(state): State<AppState>,
     Path(request_id): Path<i64>,
+    Query(kind): Query<super::SeriesIdKind>,
 ) -> Html<String> {
     // Fetch config alongside the metadata resolve so both the error
     // and success paths can reuse it. resolve_series_context typically
     // dominates (network round trip to AniList on cold cache), so the
     // cfg fetch overlaps with it for free.
     let (resolve_res, cfg_res) = tokio::join!(
-        resolve_series_context(&state.db, request_id),
+        resolve_series_context_by(&state.db, request_id, kind.by_anilist()),
         config::get_config(&state.db),
     );
     let cfg = cfg_res.ok().flatten();
@@ -1349,26 +1350,32 @@ fn relation_identity_key(provider_id: i64, mal_id: Option<i64>) -> String {
 /// so the link always navigates to `/series/<db_id>`.  Otherwise fall back to
 /// the provider ID (which may be negative for MAL-sourced entries, but the
 /// detail resolver in `resolve_series_context` knows how to handle that).
-async fn resolve_relation_card_id(db: &SqlitePool, provider_id: i64, mal_id: Option<i64>) -> i64 {
+/// The relation card's link id and whether it is in the library: the
+/// series id when tracked, else the provider (AniList) id.
+async fn resolve_relation_card_id(
+    db: &SqlitePool,
+    provider_id: i64,
+    mal_id: Option<i64>,
+) -> (i64, bool) {
     // Try AniList ID first (positive IDs).
     if provider_id > 0
         && let Ok(Some(row)) = series::get_by_anilist_id(db, provider_id).await
     {
-        return row.id;
+        return (row.id, true);
     }
     // Try MAL ID.
     if let Some(mid) = mal_id
         && let Ok(Some(row)) = series::get_by_mal_id(db, mid).await
     {
-        return row.id;
+        return (row.id, true);
     }
     // For MAL-sourced entries, the anilist_id column stores -mal_id.
     if provider_id < 0
         && let Ok(Some(row)) = series::get_by_anilist_id(db, provider_id).await
     {
-        return row.id;
+        return (row.id, true);
     }
-    provider_id
+    (provider_id, false)
 }
 
 fn relation_richness(rel: &anilist::RelatedEntry) -> i32 {
@@ -1552,7 +1559,8 @@ async fn build_relation_groups(
     ];
 
     // Resolve the per-relation card_id + cover_url concurrently.
-    let mut join_set: tokio::task::JoinSet<(usize, i64, String)> = tokio::task::JoinSet::new();
+    let mut join_set: tokio::task::JoinSet<(usize, i64, bool, String)> =
+        tokio::task::JoinSet::new();
     for (idx, related) in relations.iter().enumerate() {
         if !matches!(related.media_type.as_str(), "ANIME" | "MUSIC") {
             continue;
@@ -1562,7 +1570,7 @@ async fn build_relation_groups(
         let rel_mal = related.id_mal;
         let rel_cover = related.cover_url.clone();
         join_set.spawn(async move {
-            let card_id = resolve_relation_card_id(&db, rel_id, rel_mal).await;
+            let (card_id, tracked) = resolve_relation_card_id(&db, rel_id, rel_mal).await;
             let cover_url = if let Some(series_id) = db_id {
                 artwork::first_cached_url(
                     &db,
@@ -1588,15 +1596,15 @@ async fn build_relation_groups(
             } else {
                 rel_cover
             };
-            (idx, card_id, cover_url)
+            (idx, card_id, tracked, cover_url)
         });
     }
 
-    let mut resolved: HashMap<usize, (i64, String)> = HashMap::new();
+    let mut resolved: HashMap<usize, (i64, bool, String)> = HashMap::new();
     while let Some(joined) = join_set.join_next().await {
         match joined {
-            Ok((idx, card_id, cover_url)) => {
-                resolved.insert(idx, (card_id, cover_url));
+            Ok((idx, card_id, tracked, cover_url)) => {
+                resolved.insert(idx, (card_id, tracked, cover_url));
             }
             Err(e) => {
                 tracing::warn!(
@@ -1613,7 +1621,7 @@ async fn build_relation_groups(
         if !matches!(related.media_type.as_str(), "ANIME" | "MUSIC") {
             continue;
         }
-        let Some((card_id, cover_url)) = resolved.remove(&idx) else {
+        let Some((card_id, tracked, cover_url)) = resolved.remove(&idx) else {
             continue;
         };
 
@@ -1623,6 +1631,7 @@ async fn build_relation_groups(
 
         cards.push(RelationCard {
             id: card_id,
+            tracked,
             title: preferred_title(
                 &related.title_english,
                 &related.title_romaji,

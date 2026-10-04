@@ -35,7 +35,7 @@
                     {% for entry in misgrab_entries %}
                     <tr id="misgrab-row-{{ entry.id }}" data-grab-id="{{ entry.id }}">
                         <td class="misgrab-when"><span data-ts="{{ entry.verified_at }}" data-ts-rendered="1" title="{{ entry.verified_at }} UTC">{{ crate::services::relative_time::humanize_sqlite_short_now(entry.verified_at) }}</span></td>
-                        <td class="misgrab-series">{% if entry.anilist_id > 0 %}<a href="/series/{{ entry.anilist_id }}">{{ entry.series_title }}</a>{% else %}{{ entry.series_title }}{% endif %}</td>
+                        <td class="misgrab-series">{% if entry.series_id > 0 %}<a href="/series/{{ entry.series_id }}">{{ entry.series_title }}</a>{% else %}{{ entry.series_title }}{% endif %}</td>
                         <td>
                             <div class="dl-torrent-name" title="{{ entry.torrent_name }}">{{ entry.torrent_name }}</div>
                             {% if !entry.episode_numbers.is_empty() %}<div class="rss-release-meta">Episode{% if entry.episode_numbers.len() != 1 %}s{% endif %} {% for ep in entry.episode_numbers %}{% if !loop.first %}, {% endif %}{{ ep }}{% endfor %}</div>{% endif %}
