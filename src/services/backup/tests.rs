@@ -499,3 +499,128 @@ fn sweep_work_dirs_clears_stranded_temp_files_only() {
     );
     cleanup(&paths);
 }
+
+#[tokio::test]
+async fn backups_are_owner_only_and_carry_no_live_sessions() {
+    let paths = temp_paths("private");
+    let db = pool_at(&paths).await;
+    crate::models::user::create_user(&db, "admin", "pw-pw-pw-pw")
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO sessions (token, user_id) VALUES ('live-session-token-0123456789', 1)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let out = paths.data_dir.join("out.tar.gz");
+    create_backup(&db, &paths, BackupOptions::default(), &out)
+        .await
+        .expect("backup");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(&out).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "the archive holds the key; owner only");
+    }
+    let entries = read_archive(&out);
+    let raw = String::from_utf8_lossy(&entries["ryokan.db"]).to_string();
+    assert!(
+        !raw.contains("live-session-token"),
+        "no session token in the snapshot bytes"
+    );
+    let extracted = paths.data_dir.join("extracted.db");
+    fs::write(&extracted, &entries["ryokan.db"]).unwrap();
+    let copy = open_file_db(&extracted).await;
+    assert_eq!(count(&copy, "SELECT COUNT(*) FROM sessions").await, 0);
+    assert_eq!(
+        count(&copy, "SELECT COUNT(*) FROM users").await,
+        1,
+        "the rest is a full backup"
+    );
+    copy.close().await;
+    cleanup(&paths);
+}
+
+#[tokio::test]
+async fn stage_restore_refuses_links_bad_keys_and_foreign_schema_objects() {
+    let paths = temp_paths("distrust");
+    let db = pool_at(&paths).await;
+    let backup_dir = paths.data_dir.join("backups");
+    let manifest = BackupManifest {
+        ryokan_version: env!("CARGO_PKG_VERSION").to_string(),
+        backup_timestamp: 1,
+        max_migration_id: 0,
+        includes_artwork: false,
+        includes_key: false,
+        sanitized: false,
+        hostname: None,
+        db_size_bytes: 0,
+        artwork_size_bytes: 0,
+    };
+    let invalid = |r: Result<StagedRestore, RestoreError>, needle: &str| match r {
+        Err(RestoreError::Invalid(msg)) => assert!(msg.contains(needle), "{msg}"),
+        Err(other) => panic!("expected Invalid({needle}), got {other}"),
+        Ok(_) => panic!("expected Invalid({needle}), got a staged restore"),
+    };
+
+    // 1. `ryokan.db` as a symlink (to the live database, say).
+    let linked = paths.data_dir.join("linked.tar.gz");
+    {
+        let file = fs::File::create(&linked).unwrap();
+        let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut tar = tar::Builder::new(gz);
+        let body = serde_json::to_vec(&manifest).unwrap();
+        let mut header = tar::Header::new_gnu();
+        header.set_size(body.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, "manifest.json", &body[..])
+            .unwrap();
+        let mut link = tar::Header::new_gnu();
+        link.set_entry_type(tar::EntryType::Symlink);
+        link.set_size(0);
+        tar.append_link(&mut link, "ryokan.db", "/data/ryokan.db")
+            .unwrap();
+        tar.into_inner().unwrap().finish().unwrap();
+    }
+    invalid(
+        stage_restore(&db, &paths, &backup_dir, &linked).await,
+        "link",
+    );
+
+    // 2. A key that isn't 32 bytes: it would stage, then fail every boot.
+    let snapshot = paths.data_dir.join("snap.db");
+    vacuum_into(&db, &snapshot).await.unwrap();
+    let short_key = paths.data_dir.join("short.key");
+    fs::write(&short_key, [7u8; 16]).unwrap();
+    let bad_key = paths.data_dir.join("bad-key.tar.gz");
+    write_archive(&bad_key, &manifest, &snapshot, Some(&short_key), None).unwrap();
+    invalid(
+        stage_restore(&db, &paths, &backup_dir, &bad_key).await,
+        "32 bytes",
+    );
+
+    // 3. A view or trigger, the shape that survived the session purge.
+    let crafted = paths.data_dir.join("crafted.db");
+    vacuum_into(&db, &crafted).await.unwrap();
+    {
+        let copy = open_file_db(&crafted).await;
+        sqlx::query("CREATE VIEW planted AS SELECT 1")
+            .execute(&copy)
+            .await
+            .unwrap();
+        copy.close().await;
+    }
+    let with_view = paths.data_dir.join("view.tar.gz");
+    write_archive(&with_view, &manifest, &crafted, None, None).unwrap();
+    invalid(
+        stage_restore(&db, &paths, &backup_dir, &with_view).await,
+        "views or triggers",
+    );
+
+    assert!(!paths.pending_dir().exists(), "nothing was staged");
+    cleanup(&paths);
+}

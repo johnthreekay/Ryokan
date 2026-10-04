@@ -135,7 +135,7 @@ impl RtorrentClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| format!("rtorrent request failed: {e}"))?;
+            .map_err(|e| format!("rtorrent request failed: {}", e.without_url()))?;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             return Err("rtorrent auth failed: check username/password".into());
         }
@@ -147,7 +147,7 @@ impl RtorrentClient {
         let text = resp
             .text()
             .await
-            .map_err(|e| format!("rtorrent response read failed: {e}"))?;
+            .map_err(|e| format!("rtorrent response read failed: {}", e.without_url()))?;
         decode_response(&text)
     }
 

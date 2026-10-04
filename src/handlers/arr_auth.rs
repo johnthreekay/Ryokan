@@ -50,7 +50,8 @@ where
     };
 
     let (enabled, expected) = extract(&cfg);
-    if !enabled || expected.is_empty() {
+    // A placeholder from a restored sanitized backup is "no key".
+    if !enabled || expected.is_empty() || crate::services::sanitize::is_placeholder(&expected) {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             format!("{} API compatibility layer is disabled", label),

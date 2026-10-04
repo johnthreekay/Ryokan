@@ -442,7 +442,8 @@ impl DownloadClient for QbitClient {
                 return Ok(AddOutcome::AlreadyPresent);
             }
             return Err(format!(
-                "qbit add rejected url={url}: qBit returned 'Fails.'"
+                "qbit add rejected url={}: qBit returned 'Fails.'",
+                crate::services::sanitize::redact_url(url)
             ));
         }
         self.invalidate_torrents_cache().await;

@@ -157,7 +157,7 @@ async fn fetch_feed(category: &str) -> Result<Vec<RssItem>, String> {
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("RSS request failed: {}", e))?;
+        .map_err(|e| format!("RSS request failed: {}", e.without_url()))?;
     // PR 112 review #A — cap Nyaa-direct fetch at the same 10 MB
     // ceiling as `fetch_user_feed`. Nyaa is "trusted" but a
     // reverse-proxy redirect / CF challenge / hijacked domain
@@ -190,7 +190,7 @@ pub(crate) async fn read_capped_body(resp: reqwest::Response) -> Result<String, 
     while let Some(chunk) = resp
         .chunk()
         .await
-        .map_err(|e| format!("RSS body read failed: {}", e))?
+        .map_err(|e| format!("RSS body read failed: {}", e.without_url()))?
     {
         if buf.len() + chunk.len() > RSS_BODY_CAP_BYTES {
             return Err(format!(
@@ -229,7 +229,7 @@ pub async fn fetch_user_feed(url: &str, source: RssSource) -> Result<Vec<RssItem
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("RSS request failed: {}", e))?;
+        .map_err(|e| format!("RSS request failed: {}", e.without_url()))?;
     let status = resp.status();
     let xml = read_capped_body(resp).await?;
     if !status.is_success() {

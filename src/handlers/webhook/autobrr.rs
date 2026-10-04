@@ -140,7 +140,8 @@ async fn check_api_key(
         }
     };
     let expected = cfg.autobrr_api_key.trim().to_string();
-    if expected.is_empty() {
+    // A placeholder from a restored sanitized backup is "no key".
+    if expected.is_empty() || crate::services::sanitize::is_placeholder(&expected) {
         return Err(err_json(
             StatusCode::SERVICE_UNAVAILABLE,
             "autobrr webhook is disabled — generate an API key in Settings → Connections",

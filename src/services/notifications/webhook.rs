@@ -245,7 +245,7 @@ impl NotificationProvider for WebhookProvider {
                     WEBHOOK_REQUEST_TIMEOUT.as_secs()
                 ));
             }
-            Err(e) => return Err(format!("transport error: {e}")),
+            Err(e) => return Err(format!("transport error: {}", e.without_url())),
         };
 
         let status = response.status();
@@ -387,7 +387,7 @@ pub async fn send_test(
                 WEBHOOK_REQUEST_TIMEOUT.as_secs()
             ));
         }
-        Err(e) => return Err(format!("transport error: {e}")),
+        Err(e) => return Err(format!("transport error: {}", e.without_url())),
     };
     let status = response.status().as_u16();
     let body_text = response.text().await.unwrap_or_default();

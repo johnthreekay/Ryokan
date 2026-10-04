@@ -72,7 +72,7 @@ impl TorznabIndexer {
             .user_agent("Ryokan/0.1")
             .timeout(Duration::from_secs(timeout_secs))
             .build()
-            .map_err(|e| format!("reqwest client build failed: {e}"))?;
+            .map_err(|e| format!("reqwest client build failed: {}", e.without_url()))?;
         Ok(Self {
             id: row.id,
             name: row.name.clone(),
@@ -133,7 +133,7 @@ impl TorznabIndexer {
             .get(url)
             .send()
             .await
-            .map_err(|e| format!("indexer request failed: {e}"))?;
+            .map_err(|e| format!("indexer request failed: {}", e.without_url()))?;
         let status = resp.status();
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             // Surface the upstream Retry-After so the caller can

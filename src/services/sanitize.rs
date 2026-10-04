@@ -159,30 +159,42 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
         .map_err(|e| format!("scrub api_keys: {e}"))?
         .rows_affected();
 
-    // URLs that carry credentials in their query string: a grab's
-    // recorded download link (`?apikey=` on every torznab/newznab
-    // release, kept so Restore can re-add it) and a direct feed's
-    // address (private trackers put the passkey there). The query
-    // string goes, the host and path stay so the dump still says
-    // where a grab came from.
-    let url_rows = sqlx::query(
-        "UPDATE grabbed_torrents \
-            SET source_url = substr(source_url, 1, instr(source_url, '?') - 1) || '?[REDACTED]' \
-          WHERE instr(source_url, '?') > 0",
+    // URLs that can carry credentials: a grab's recorded download link
+    // (`?apikey=` on every torznab/newznab release, kept so Restore can
+    // re-add it), a direct feed's address, and every link the RSS sync
+    // has seen. The passkey can sit in the path too (AnimeBytes-style
+    // `/feed/<passkey>`), so only scheme and host survive (`redact_url`).
+    let url_rows = redact_url_column(&pool, "grabbed_torrents", "source_url").await?
+        + redact_url_column(&pool, "direct_rss_feeds", "url").await?
+        + redact_url_column(&pool, "rss_seen", "link").await?;
+
+    // Notification providers: the Discord webhook URL carries its token,
+    // a generic webhook its URL, HMAC secret and custom headers
+    // (`Authorization: Bearer ...`). Restored, they simply can't send.
+    let notification_rows = sqlx::query(
+        "UPDATE notification_providers SET config_json = json_replace( \
+             config_json, '$.url', '[REDACTED]', '$.webhook_url', '[REDACTED]', \
+             '$.secret', '[REDACTED]', '$.headers', json('[]')) \
+          WHERE json_valid(config_json)",
     )
     .execute(&pool)
     .await
-    .map_err(|e| format!("scrub grabbed_torrents.source_url: {e}"))?
-    .rows_affected()
-        + sqlx::query(
-            "UPDATE direct_rss_feeds \
-                SET url = substr(url, 1, instr(url, '?') - 1) || '?[REDACTED]' \
-              WHERE instr(url, '?') > 0",
-        )
-        .execute(&pool)
-        .await
-        .map_err(|e| format!("scrub direct_rss_feeds.url: {e}"))?
-        .rows_affected();
+    .map_err(|e| format!("scrub notification_providers: {e}"))?
+    .rows_affected();
+
+    // The last poll errors quote the request that failed.
+    for sql in [
+        "UPDATE indexers SET rss_last_poll_error = ''",
+        "UPDATE direct_rss_feeds SET last_poll_error = ''",
+    ] {
+        sqlx::query(sql)
+            .execute(&pool)
+            .await
+            .map_err(|e| format!("clear poll errors: {e}"))?;
+    }
+
+    // Log text: any URL or `apikey=` value in a message or detail.
+    let log_rows = scrub_logs(&pool).await?;
 
     // `sessions.token` — cookie values double as DB session keys.
     // A sanitized DB handed to someone else shouldn't let them log
@@ -206,6 +218,13 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
         .map_err(|e| format!("scrub users: {e}"))?
         .rows_affected();
 
+    // UPDATE leaves the old values in free pages (the bundled SQLite is
+    // built without SECURE_DELETE), where anyone reading the file can
+    // still find them. VACUUM rewrites the file without the free pages.
+    sqlx::query("VACUUM")
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("vacuum sanitized copy: {e}"))?;
     pool.close().await;
 
     Ok(SanitizeSummary {
@@ -217,6 +236,8 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
         client_passwords: client_rows as usize,
         api_keys: api_key_rows as usize,
         credential_urls: url_rows as usize,
+        notification_configs: notification_rows as usize,
+        log_rows: log_rows as usize,
         output_path: output.to_path_buf(),
     })
 }
@@ -231,6 +252,8 @@ pub struct SanitizeSummary {
     pub client_passwords: usize,
     pub api_keys: usize,
     pub credential_urls: usize,
+    pub notification_configs: usize,
+    pub log_rows: usize,
     pub output_path: std::path::PathBuf,
 }
 
@@ -273,14 +296,263 @@ impl std::fmt::Display for SanitizeSummary {
             "  URLs with credentials scrubbed:  {}",
             self.credential_urls
         )?;
+        writeln!(
+            f,
+            "  notification configs scrubbed:   {}",
+            self.notification_configs
+        )?;
+        writeln!(f, "  log rows redacted:               {}", self.log_rows)?;
         write!(f, "Safe to share in bug reports.")
     }
+}
+
+/// `raw` with whatever could carry a credential removed, for log lines,
+/// error messages and notifications. An http(s) URL keeps its scheme
+/// and host (the path can hold a passkey, AnimeBytes-style, and the
+/// query an `apikey=`); a magnet keeps its info-hash (a `tr=` tracker URL
+/// can hold a passkey); anything else becomes `[redacted]`.
+pub fn redact_url(raw: &str) -> String {
+    let raw = raw.trim();
+    if let Ok(url) = reqwest::Url::parse(raw) {
+        match url.scheme() {
+            "http" | "https" => {
+                let host = url.host_str().unwrap_or("");
+                return match url.port() {
+                    Some(port) => format!("{}://{host}:{port}/[redacted]", url.scheme()),
+                    None => format!("{}://{host}/[redacted]", url.scheme()),
+                };
+            }
+            "magnet" => {
+                let hash = crate::services::nyaa::extract_hash(raw);
+                if !hash.is_empty() {
+                    return format!("magnet:?xt=urn:btih:{hash}");
+                }
+            }
+            _ => {}
+        }
+    }
+    "[redacted]".to_string()
+}
+
+/// Run [`redact_url`] over `table.column`, skipping rows already blank.
+/// A missing table (an old database) counts as nothing to do.
+async fn redact_url_column(pool: &SqlitePool, table: &str, column: &str) -> Result<u64, String> {
+    let (t, c) = (quote_ident(table), quote_ident(column));
+    let rows: Vec<(i64, String)> = match sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT rowid, {c} FROM {t} WHERE {c} != ''"
+    )))
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => return Ok(0),
+    };
+    let mut changed = 0;
+    for (rowid, url) in rows {
+        let redacted = redact_url(&url);
+        if redacted != url {
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "UPDATE {t} SET {c} = ? WHERE rowid = ?"
+            )))
+            .bind(&redacted)
+            .bind(rowid)
+            .execute(pool)
+            .await
+            .map_err(|e| format!("redact {table}.{column}: {e}"))?;
+            changed += 1;
+        }
+    }
+    Ok(changed)
+}
+
+/// URLs and `apikey=` values in free text.
+static RE_SECRETISH: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+    regex_lite::Regex::new(
+        r#"(?i)\b(?:https?|magnet):[^\s"'<>()\[\]]+|\b(?:api_?key|passkey|token)=[^&\s"']+"#,
+    )
+    .expect("secretish regex compiles")
+});
+
+/// `text` with every URL passed through [`redact_url`] and every bare
+/// `apikey=` / `passkey=` / `token=` value dropped.
+pub fn redact_text(text: &str) -> String {
+    RE_SECRETISH
+        .replace_all(text, |caps: &regex_lite::Captures<'_>| {
+            let hit = &caps[0];
+            if hit.contains("://") || hit.to_ascii_lowercase().starts_with("magnet:") {
+                redact_url(hit)
+            } else {
+                let key = hit.split('=').next().unwrap_or("key");
+                format!("{key}=[redacted]")
+            }
+        })
+        .into_owned()
+}
+
+/// Redact URLs and keys in every log row's message and detail.
+async fn scrub_logs(pool: &SqlitePool) -> Result<u64, String> {
+    let rows: Vec<(i64, String, String)> =
+        match sqlx::query_as("SELECT id, message, detail FROM logs")
+            .fetch_all(pool)
+            .await
+        {
+            Ok(rows) => rows,
+            Err(_) => return Ok(0),
+        };
+    let mut changed = 0;
+    for (id, message, detail) in rows {
+        let (m, d) = (redact_text(&message), redact_text(&detail));
+        if m != message || d != detail {
+            sqlx::query("UPDATE logs SET message = ?, detail = ? WHERE id = ?")
+                .bind(&m)
+                .bind(&d)
+                .bind(id)
+                .execute(pool)
+                .await
+                .map_err(|e| format!("scrub logs: {e}"))?;
+            changed += 1;
+        }
+    }
+    Ok(changed)
+}
+
+/// True for a value [`run_sanitize`] wrote in place of a secret
+/// (`[REDACTED]`, `[REDACTED-key-N]`, ...). Key checks treat it as "no
+/// key": restoring a sanitized backup used to leave `[REDACTED]` working
+/// as the Sonarr / Radarr / autobrr key.
+pub fn is_placeholder(value: &str) -> bool {
+    value.trim_start().starts_with("[REDACTED")
+}
+
+/// Take a sanitized backup's placeholders out of a database that is
+/// being restored, so none of them can act as a credential:
+/// - scoped API keys are deleted (`key` is UNIQUE, and new keys are
+///   needed anyway);
+/// - users are deleted, since their hash is gone and nobody could log
+///   in; with no user the first page load is `/setup`;
+/// - linked accounts holding the sanitize sentinel are deleted, since
+///   they can't be decrypted, shown, or unlinked;
+/// - sessions are deleted (restore does that for every archive);
+/// - every other text column still holding a placeholder becomes `""`.
+///
+/// Table and column names come from the archive, so they are quoted as
+/// identifiers, never spliced raw.
+pub(crate) async fn clear_placeholders(pool: &SqlitePool) -> Result<(), String> {
+    // Each of these tables may be missing from an old backup.
+    let _ = sqlx::query("DELETE FROM api_keys WHERE key LIKE '[REDACTED%'")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM users WHERE password_hash LIKE '[REDACTED%'")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM external_accounts WHERE access_token_encrypted = ?")
+        .bind(SANITIZED_SENTINEL)
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM sessions").execute(pool).await;
+
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("list tables: {e}"))?;
+    for table in tables {
+        let columns: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info(?)")
+            .bind(&table)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| format!("list columns of {table}: {e}"))?;
+        for column in columns {
+            let (t, c) = (quote_ident(&table), quote_ident(&column));
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "UPDATE {t} SET {c} = '' WHERE typeof({c}) = 'text' AND {c} LIKE '[REDACTED%'"
+            )))
+            .execute(pool)
+            .await
+            .map_err(|e| format!("clear placeholders in {table}.{column}: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// `name` as a quoted SQL identifier.
+fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn redact_url_keeps_only_what_carries_no_credential() {
+        assert_eq!(
+            redact_url("http://prowlarr:9696/1/download?apikey=secret&link=x"),
+            "http://prowlarr:9696/[redacted]"
+        );
+        assert_eq!(
+            redact_url("https://animebytes.tv/feed/rss_torrents_anime/0123passkey"),
+            "https://animebytes.tv/[redacted]"
+        );
+        assert_eq!(
+            redact_url(
+                "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd&tr=https://t.example/0123passkey/announce"
+            ),
+            "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd"
+        );
+        assert_eq!(redact_url("/local/path.torrent"), "[redacted]");
+    }
+
+    #[tokio::test]
+    async fn clear_placeholders_leaves_nothing_usable_as_a_credential() {
+        let pool = crate::test_support::in_memory_pool().await;
+        crate::test_support::seed_sonarr_enabled(&pool, "[REDACTED]").await;
+        sqlx::query("UPDATE config SET autobrr_api_key = '[REDACTED]', jellyfin_api_key = 'kept-real-value'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (i, key) in ["[REDACTED-key-1]", "[REDACTED-key-2]"].iter().enumerate() {
+            sqlx::query("INSERT INTO api_keys (name, key, scopes) VALUES (?, ?, 'calendar')")
+                .bind(format!("k{i}"))
+                .bind(key)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', '[REDACTED]')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        clear_placeholders(&pool).await.expect("clear");
+
+        let (sonarr, autobrr, jellyfin): (String, String, String) = sqlx::query_as(
+            "SELECT sonarr_api_key, autobrr_api_key, jellyfin_api_key FROM config WHERE id = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!((sonarr.as_str(), autobrr.as_str()), ("", ""));
+        assert_eq!(jellyfin, "kept-real-value", "real values are left alone");
+        let count = |sql: &'static str| {
+            let pool = pool.clone();
+            async move {
+                sqlx::query_scalar::<_, i64>(sql)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap()
+            }
+        };
+        assert_eq!(count("SELECT COUNT(*) FROM api_keys").await, 0);
+        assert_eq!(
+            count("SELECT COUNT(*) FROM users").await,
+            0,
+            "first load is /setup"
+        );
+        assert!(is_placeholder("[REDACTED-key-3]") && !is_placeholder("real-key"));
+    }
 
     fn tmpdir() -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!(
@@ -416,6 +688,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sanitize_scrubs_notifications_feed_history_logs_and_free_pages() {
+        let dir = tmpdir();
+        let live = dir.join("live.db");
+        seed_live_db(&live).await;
+        {
+            let url = format!("sqlite://{}?mode=rwc", live.display());
+            let pool = SqlitePool::connect(&url).await.unwrap();
+            for (kind, cfg) in [
+                (
+                    "discord",
+                    r#"{"webhook_url":"https://discord.com/api/webhooks/1/discord-token-sekrit"}"#,
+                ),
+                (
+                    "webhook",
+                    r#"{"url":"https://hooks.example/in?token=hook-sekrit","secret":"hmac-sekrit","headers":[["Authorization","Bearer header-sekrit"]]}"#,
+                ),
+            ] {
+                sqlx::query(
+                    "INSERT INTO notification_providers (name, kind, config_json) VALUES (?, ?, ?)",
+                )
+                .bind(kind)
+                .bind(kind)
+                .bind(cfg)
+                .execute(&pool)
+                .await
+                .unwrap();
+            }
+            sqlx::query("INSERT INTO rss_seen (item_key, link) VALUES ('k1', 'https://tracker.example/torrent/1/download/path-passkey-sekrit')")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("INSERT INTO logs (message, detail) VALUES ('Failed to query download client id=2', 'SAB request failed: error sending request for url (http://sab:8080/api?apikey=sab-sekrit&mode=queue)')")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("UPDATE indexers SET rss_last_poll_error = 'indexer request failed: for url (http://p/api?apikey=poll-sekrit)'")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
+        let out = dir.join("sanitized.db");
+        let summary = run_sanitize(&live, &out).await.unwrap();
+        assert_eq!(summary.notification_configs, 2);
+        assert!(summary.log_rows >= 1);
+
+        // Nothing secret is left anywhere in the file, free pages
+        // included: the bytes are read raw, not through SQLite.
+        let bytes = fs::read(&out).unwrap();
+        let haystack = String::from_utf8_lossy(&bytes);
+        for secret in [
+            "discord-token-sekrit",
+            "hook-sekrit",
+            "hmac-sekrit",
+            "header-sekrit",
+            "path-passkey-sekrit",
+            "sab-sekrit",
+            "poll-sekrit",
+            "topsecret-qbit",
+            "cookie-token-xyz",
+        ] {
+            assert!(!haystack.contains(secret), "{secret} survived in the file");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn redact_text_takes_urls_and_keys_out_of_free_text() {
+        assert_eq!(
+            redact_text("SAB request failed: for url (http://sab:8080/api?apikey=x&mode=queue)"),
+            "SAB request failed: for url (http://sab:8080/[redacted])"
+        );
+        assert_eq!(
+            redact_text("rejected apikey=abc123 token=zz"),
+            "rejected apikey=[redacted] token=[redacted]"
+        );
+        assert_eq!(redact_text("no secrets here"), "no secrets here");
+    }
+
+    #[tokio::test]
     async fn sanitize_blanks_all_known_secret_columns() {
         let dir = tmpdir();
         let live = dir.join("live.db");
@@ -460,12 +812,12 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(source_url, "http://prowlarr:9696/1/download?[REDACTED]");
+        assert_eq!(source_url, "http://prowlarr:9696/[redacted]");
         let feed_url: String = sqlx::query_scalar("SELECT url FROM direct_rss_feeds")
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(feed_url, "https://tracker.example/rss?[REDACTED]");
+        assert_eq!(feed_url, "https://tracker.example/[redacted]");
 
         let jf_key: String = sqlx::query_scalar("SELECT jellyfin_api_key FROM config WHERE id = 1")
             .fetch_one(&pool)

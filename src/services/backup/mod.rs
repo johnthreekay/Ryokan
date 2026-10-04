@@ -421,6 +421,7 @@ async fn build_backup(
 ) -> Result<BackupManifest, BackupError> {
     let snapshot = work.join("ryokan.db");
     vacuum_into(db, &snapshot).await?;
+    drop_sessions(&snapshot).await?;
 
     let db_for_archive = if opts.sanitize {
         let scrubbed = work.join("ryokan-sanitized.db");
@@ -468,6 +469,44 @@ async fn build_backup(
 
 /// Keep only the newest [`SANITIZED_LOG_ROWS`] log rows in a scrubbed
 /// copy, then compact it.
+/// Create `path` readable by its owner only (0600 on Unix). A full backup
+/// holds the encryption key and every credential, and the backup folder
+/// is user-configurable (a NAS share, a folder other containers mount),
+/// so the archive must not inherit a world-readable umask. A leftover
+/// file is removed first: the mode applies only when the file is created.
+fn create_private(path: &Path) -> std::io::Result<fs::File> {
+    let _ = fs::remove_file(path);
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
+/// Delete the snapshot's session rows. Each is a working admin cookie for
+/// up to 7 days to anyone who can read the archive, and restore deletes
+/// them anyway. `secure_delete` zeroes the freed rows, so the tokens
+/// don't linger in free pages either.
+async fn drop_sessions(db_path: &Path) -> Result<(), String> {
+    let url = format!("sqlite://{}?mode=rw", db_path.display());
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .map_err(|e| format!("open snapshot: {e}"))?;
+    sqlx::query("PRAGMA secure_delete = ON")
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("secure_delete: {e}"))?;
+    // An old database without the table has nothing to drop.
+    let _ = sqlx::query("DELETE FROM sessions").execute(&pool).await;
+    pool.close().await;
+    Ok(())
+}
+
 async fn trim_logs(db_path: &Path) -> Result<(), String> {
     let url = format!("sqlite://{}?mode=rw", db_path.display());
     let pool = SqlitePool::connect(&url)
@@ -502,7 +541,7 @@ fn write_archive(
 
     let result = (|| -> Result<(), String> {
         let file =
-            fs::File::create(&partial).map_err(|e| format!("create {}: {e}", partial.display()))?;
+            create_private(&partial).map_err(|e| format!("create {}: {e}", partial.display()))?;
         let encoder = GzEncoder::new(BufWriter::new(file), Compression::default());
         let mut archive = tar::Builder::new(encoder);
         archive.follow_symlinks(false);
@@ -720,7 +759,7 @@ async fn stage_into(
         )));
     }
 
-    prepare_staged_database(&staging.join("ryokan.db")).await?;
+    prepare_staged_database(&staging.join("ryokan.db"), manifest.sanitized).await?;
 
     let mut warnings = Vec::new();
     if !staging.join(".ryokan-key").is_file() {
@@ -731,7 +770,7 @@ async fn stage_into(
     }
     if manifest.sanitized {
         warnings.push(
-            "This is a sanitized backup. Passwords, API keys, and account tokens were blanked when it was made and will need to be entered again."
+            "This is a sanitized backup. Its passwords, API keys, and account tokens were removed when it was made. After the restore, create the admin account again on the first page load, enter the client passwords and API keys again, create new scoped API keys, and link AniList and MyAnimeList again."
                 .to_string(),
         );
     }
@@ -769,6 +808,12 @@ async fn stage_into(
 /// Unpack `archive` into `into`, accepting only the entries a Ryokan
 /// backup contains. `unpack_in` refuses anything that would land
 /// outside `into`.
+/// Most entries a restore unpacks (artwork blobs are most of them).
+const RESTORE_MAX_ENTRIES: usize = 500_000;
+/// Most bytes a restore unpacks: well past any real database plus
+/// artwork, short of filling a disk on a gzip bomb.
+const RESTORE_MAX_TOTAL_BYTES: u64 = 64 << 30;
+
 fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
     let file =
         fs::File::open(archive).map_err(|e| RestoreError::Other(format!("open upload: {e}")))?;
@@ -778,9 +823,31 @@ fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
         .entries()
         .map_err(|e| RestoreError::Invalid(format!("not a gzip tar archive ({e})")))?;
     let mut saw_any = false;
+    let (mut count, mut total) = (0usize, 0u64);
     for entry in entries {
         let mut entry =
             entry.map_err(|e| RestoreError::Invalid(format!("damaged archive ({e})")))?;
+        // Regular files and directories only: `unpack_in` creates a
+        // symlink entry with any target, so a `ryokan.db` symlink to the
+        // live database had the staging checks (and the session purge)
+        // run against the live file.
+        let kind = entry.header().entry_type();
+        if !(kind.is_file() || kind.is_dir()) {
+            return Err(RestoreError::Invalid(
+                "the archive holds a link or special file, which a Ryokan backup never has"
+                    .to_string(),
+            ));
+        }
+        // Size and count caps, so a crafted archive can't fill the
+        // filesystem the live database shares before any check runs.
+        let size = entry.header().size().unwrap_or(u64::MAX);
+        count += 1;
+        total = total.saturating_add(size);
+        if count > RESTORE_MAX_ENTRIES || total > RESTORE_MAX_TOTAL_BYTES {
+            return Err(RestoreError::Invalid(
+                "the archive is larger than any Ryokan backup".to_string(),
+            ));
+        }
         let path = entry
             .path()
             .map_err(|e| RestoreError::Invalid(format!("bad entry path ({e})")))?
@@ -813,6 +880,17 @@ fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
                 path.display()
             )));
         }
+        let entry_cap = match first.as_str() {
+            "manifest.json" => 1 << 20,
+            ".ryokan-key" => 64,
+            _ => u64::MAX,
+        };
+        if size > entry_cap {
+            return Err(RestoreError::Invalid(format!(
+                "'{}' is larger than a Ryokan backup's",
+                path.display()
+            )));
+        }
         let unpacked = entry.unpack_in(into).map_err(|e| {
             RestoreError::Invalid(format!("could not unpack '{}': {e}", path.display()))
         })?;
@@ -826,6 +904,14 @@ fn extract_archive(archive: &Path, into: &Path) -> Result<(), RestoreError> {
     }
     if !saw_any {
         return Err(RestoreError::Invalid("the archive is empty".to_string()));
+    }
+    // A key of any other length passed staging and then failed every
+    // boot (a key-load failure panics at startup by design).
+    let key = into.join(".ryokan-key");
+    if key.exists() && fs::metadata(&key).map(|m| m.len()).unwrap_or(0) != 32 {
+        return Err(RestoreError::Invalid(
+            "the archive's encryption key is not 32 bytes".to_string(),
+        ));
     }
     Ok(())
 }
@@ -854,7 +940,7 @@ fn check_database_file(path: &Path) -> Result<(), RestoreError> {
 
 /// Integrity-check the staged database and drop its sessions so a
 /// leaked backup can never hand out live logins on restore.
-async fn prepare_staged_database(path: &Path) -> Result<(), RestoreError> {
+async fn prepare_staged_database(path: &Path, sanitized: bool) -> Result<(), RestoreError> {
     let url = format!("sqlite://{}?mode=rw", path.display());
     let pool = SqlitePool::connect(&url)
         .await
@@ -880,6 +966,27 @@ async fn prepare_staged_database(path: &Path) -> Result<(), RestoreError> {
         return Err(RestoreError::Invalid(
             "ryokan.db has no config table, so it is not a Ryokan database".to_string(),
         ));
+    }
+    // Ryokan's schema has no views or triggers. A crafted database used
+    // one to survive the restore: `sessions` as a view over a hidden
+    // table with an INSTEAD OF trigger turned the purge below into a
+    // no-op and kept a planted login valid even past RYOKAN_RESET_AUTH.
+    let foreign_objects: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type IN ('view', 'trigger')")
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(1);
+    if foreign_objects > 0 {
+        pool.close().await;
+        return Err(RestoreError::Invalid(
+            "ryokan.db holds views or triggers, which a Ryokan database never has".to_string(),
+        ));
+    }
+    if sanitized && let Err(e) = crate::services::sanitize::clear_placeholders(&pool).await {
+        pool.close().await;
+        return Err(RestoreError::Invalid(format!(
+            "could not clear the sanitized backup's placeholders ({e})"
+        )));
     }
     // Ignore a missing table: a very old backup predates sessions.
     let _ = sqlx::query("DELETE FROM sessions").execute(&pool).await;
