@@ -26,7 +26,7 @@ Adjust `1000:1000` if your host user has different IDs (`id -u` and `id -g` to c
 
     ```sh
     sudo mkdir -p /srv/docker/{ryokan,jellyfin,qbittorrent}
-    sudo chown -R 1000:1000 /srv/docker
+    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,qbittorrent}
     ```
 
     ```yaml
@@ -83,7 +83,7 @@ Adjust `1000:1000` if your host user has different IDs (`id -u` and `id -g` to c
 
     ```sh
     sudo mkdir -p /srv/docker/{ryokan,jellyfin,deluge}
-    sudo chown -R 1000:1000 /srv/docker
+    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,deluge}
     ```
 
     ```yaml
@@ -139,7 +139,7 @@ Adjust `1000:1000` if your host user has different IDs (`id -u` and `id -g` to c
 
     ```sh
     sudo mkdir -p /srv/docker/{ryokan,jellyfin,transmission}
-    sudo chown -R 1000:1000 /srv/docker
+    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,transmission}
     ```
 
     ```yaml
@@ -197,7 +197,7 @@ Adjust `1000:1000` if your host user has different IDs (`id -u` and `id -g` to c
 
     ```sh
     sudo mkdir -p /srv/docker/{ryokan,jellyfin,rutorrent/passwd}
-    sudo chown -R 1000:1000 /srv/docker
+    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,rutorrent}
     ```
 
     ```yaml
@@ -269,7 +269,7 @@ Adjust `1000:1000` if your host user has different IDs (`id -u` and `id -g` to c
 
     ```sh
     sudo mkdir -p /srv/docker/{ryokan,jellyfin,sabnzbd/{config,incomplete}}
-    sudo chown -R 1000:1000 /srv/docker
+    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,sabnzbd}
     ```
 
     ```yaml
