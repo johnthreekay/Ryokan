@@ -13,7 +13,8 @@
   'use strict';
 
   // Per-client config matrix. The generator templates these into
-  // service blocks plus the Ryokan settings snippet.
+  // service blocks plus the Ryokan settings snippet. The URL Ryokan
+  // dials is built from the service name, `port` and `url_path`.
   const CLIENTS = {
     qbittorrent: {
       label: 'qBittorrent',
@@ -24,7 +25,6 @@
       // linuxserver image passes TORRENTING_PORT to qbittorrent-nox.
       peer_port: { udp_only: false, env: 'TORRENTING_PORT' },
       category: 'anime',
-      default_url: 'http://qbittorrent:8080',
       config_dir: 'qbittorrent',
       env: { WEBUI_PORT: '8080' },
       protocol: 'torrent',
@@ -38,7 +38,6 @@
       // settings snippet's Incoming Port step pins this one.
       peer_port: { udp_only: false, env: null },
       category: 'anime',
-      default_url: 'http://deluge:8112',
       config_dir: 'deluge',
       env: {},
       protocol: 'torrent',
@@ -49,7 +48,6 @@
       port: 9091,
       extra_ports: ['51413:51413', '51413:51413/udp'],
       category: 'anime',
-      default_url: 'http://transmission:9091',
       config_dir: 'transmission',
       env: {},
       protocol: 'torrent',
@@ -75,12 +73,22 @@
       // 8082:8080 host:container = ruTorrent web UI.
       // 50000 = inbound BT peer connections.
       extra_ports: ['8082:8080', '50000:50000'],
+      // Behind gluetun the client shares gluetun's network namespace,
+      // where gluetun's control server already listens on 8000 and
+      // qBittorrent's web UI on 8080, and the image also takes each
+      // port plus one for its health checks. The image's XMLRPC_PORT
+      // and RUTORRENT_PORT move both clear of them there.
+      vpn: {
+        port: 8010,
+        extra_ports: ['8082:8090', '50000:50000'],
+        env: { XMLRPC_PORT: '8010', RUTORRENT_PORT: '8090' },
+      },
       // DHT (udp) from the shared 6881+ range; the image reads
       // RT_DHT_PORT.
       peer_port: { udp_only: true, env: 'RT_DHT_PORT' },
       category: 'anime',
       // /RPC2 path is required; rTorrent's XML-RPC endpoint.
-      default_url: 'http://rutorrent:8000/RPC2',
+      url_path: '/RPC2',
       config_dir: 'rutorrent',
       // crazy-max image's config volume is /data (linuxserver was /config).
       config_mount_target: '/data',
@@ -98,7 +106,6 @@
       host_port: 8081,
       extra_ports: [],
       category: 'anime',
-      default_url: 'http://sabnzbd:8080',
       config_dir: 'sabnzbd',
       env: {},
       protocol: 'usenet',
@@ -167,10 +174,20 @@
     return ports;
   }
 
+  // A client's entry with its behind-the-VPN overrides (`vpn`)
+  // applied when it sits behind gluetun.
+  function clientSpec(kind, cfg) {
+    const c = CLIENTS[kind];
+    if (!c.vpn || !isBehindVpn(kind, cfg)) return c;
+    return Object.assign({}, c, c.vpn, {
+      env: Object.assign({}, c.env, c.vpn.env),
+    });
+  }
+
   // Every host port mapping a client publishes (on itself, or on
   // gluetun when it sits behind the VPN).
   function portMappings(kind, cfg) {
-    const c = CLIENTS[kind];
+    const c = clientSpec(kind, cfg);
     const out = [];
     if (c.expose_main_port !== false) out.push(`${c.host_port || c.port}:${c.port}`);
     out.push(...c.extra_ports);
@@ -195,27 +212,21 @@
   // The URL Ryokan should use to reach a given client. Behind gluetun
   // the client shares gluetun's network namespace — its container
   // name doesn't resolve on the user-defined media network, only
-  // `gluetun` does — so we rewrite the host part of `default_url` to
-  // target `gluetun` while preserving the port and path. Port works
-  // out: containers in a shared namespace see each other's listeners
-  // on localhost, so qBit's 8080 inside that namespace is reachable
-  // as gluetun:8080 from peer containers on `media`. Standalone (no
-  // VPN) clients keep their own container-name URL.
+  // `gluetun` does — so the host is `gluetun`. Port works out:
+  // containers in a shared namespace see each other's listeners on
+  // localhost, so qBit's 8080 inside that namespace is reachable as
+  // gluetun:8080 from peer containers on `media`. Standalone (no VPN)
+  // clients keep their own container name: service_name (compose-side)
+  // rather than kind (form-side), which differ only for rtorrent
+  // (kind=rtorrent, service=rutorrent).
   function urlForClient(kind, cfg) {
-    const c = CLIENTS[kind];
-    if (isBehindVpn(kind, cfg)) {
-      // Use service_name (compose-side) rather than kind (form-side)
-      // since the URL contains the container name, not the form value.
-      // Same difference for everyone except rtorrent (kind=rtorrent,
-      // service=rutorrent).
-      const serviceName = c.service_name || kind;
-      return c.default_url.replace(`://${serviceName}:`, '://gluetun:');
-    }
-    return c.default_url;
+    const c = clientSpec(kind, cfg);
+    const host = isBehindVpn(kind, cfg) ? 'gluetun' : c.service_name || kind;
+    return `http://${host}:${c.port}${c.url_path || ''}`;
   }
 
   function renderClient(kind, cfg) {
-    const c = CLIENTS[kind];
+    const c = clientSpec(kind, cfg);
     const behindVpn = isBehindVpn(kind, cfg);
 
     // When behind gluetun, the download client shares gluetun's
