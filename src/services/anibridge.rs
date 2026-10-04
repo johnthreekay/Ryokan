@@ -159,9 +159,11 @@ pub struct AnimeIds {
 
 #[derive(Debug)]
 struct MappingCache {
-    /// (TMDB show ID, season) → Vec of anime IDs. Season 0 = unscoped.
+    /// (TMDB show ID, season) → Vec of anime IDs. Every show key in the
+    /// mappings names a season, and season 0 is the show's Specials.
     tmdb_to_anime: HashMap<(i64, i32), Vec<AnimeIds>>,
-    /// (TVDB show ID, season) → Vec of anime IDs. Season 0 = unscoped.
+    /// (TVDB show ID, season) → Vec of anime IDs. Season 0 is Specials,
+    /// as on TMDB.
     tvdb_to_anime: HashMap<(i64, i32), Vec<AnimeIds>>,
     /// AniList ID → TMDB show ID (reverse lookup).
     anilist_to_tmdb: HashMap<i64, i64>,
@@ -187,7 +189,10 @@ struct MappingCache {
 }
 
 /// Record `tvdb` for `id`, keeping the first one seen unless that one
-/// was season 0 (unscoped) and this one names a season.
+/// was season 0 and this one is a numbered season. Season 0 is the
+/// show's Specials: an OVA or a minis entry listed only there stays
+/// season 0, while a TV entry the mappings also list under Specials (an
+/// episode 0, a recap) is the numbered season it airs in.
 fn note_tvdb(map: &mut HashMap<i64, (i64, i32)>, id: i64, tvdb: (i64, i32)) {
     match map.get(&id) {
         Some(&(_, season)) if season != 0 || tvdb.1 == 0 => {}
@@ -341,20 +346,17 @@ pub async fn lookup_by_tvdb(tvdb_id: i64, season: Option<i32>) -> Vec<AnimeIds> 
 
 /// Search a season-keyed show map. If a specific season is requested, return
 /// only that season's entries. Otherwise collect all seasons for the show.
+///
+/// A season the mappings lack has no entries. It used to fall back to
+/// season 0 as an "unscoped" catch-all, but season 0 is the show's
+/// Specials, so a request for an unmapped season added its OVAs.
 fn lookup_show(
     map: &HashMap<(i64, i32), Vec<AnimeIds>>,
     show_id: i64,
     season: Option<i32>,
 ) -> Vec<AnimeIds> {
     if let Some(s) = season {
-        // Try exact season first, fall back to unscoped (season 0).
-        if let Some(v) = map.get(&(show_id, s)) {
-            return v.clone();
-        }
-        if let Some(v) = map.get(&(show_id, 0)) {
-            return v.clone();
-        }
-        return Vec::new();
+        return map.get(&(show_id, s)).cloned().unwrap_or_default();
     }
     // No season requested — collect all entries for this show across all seasons.
     let mut result = Vec::new();
@@ -525,9 +527,9 @@ pub async fn clear_cache_for_tests() {
 /// reaching the network or disk-cache path.
 ///
 /// `tvdb` / `tmdb` entries are tuples of `(external_id, season,
-/// anilist_id, mal_id)`. Season `0` is the unscoped catch-all the
-/// real data uses for shows TMDB hasn't sub-divided. Pass `None` for
-/// `mal_id` when you only want the AL side mapped.
+/// anilist_id, mal_id)`. Season `0` is the show's Specials, as in the
+/// real data. Pass `None` for `mal_id` when you only want the AL side
+/// mapped.
 ///
 /// Distinct entry from `seed_mal_to_anilist_for_tests` because the
 /// `add_series` path doesn't go through the MAL→AL bridge — it asks
@@ -1225,15 +1227,31 @@ mod tests {
     }
 
     #[test]
-    fn lookup_show_falls_back_to_season_zero_on_miss() {
-        // Requesting a season that isn't present → falls through
-        // to season 0 (the "unscoped" entry). Covers the anime-film
-        // case where the mapping indexes the whole TMDB show under
-        // season 0 but the caller asks for season 99.
+    fn lookup_show_does_not_answer_a_missing_season_with_specials() {
+        // Season 0 is the show's Specials, not an unscoped catch-all:
+        // a request for a season the mappings lack used to fall back to
+        // it and add the show's OVAs as that season.
         let map = seed_map();
-        let results = lookup_show(&map, 100, Some(99));
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].anilist_id, Some(99));
+        assert!(lookup_show(&map, 100, Some(99)).is_empty());
+        let specials = lookup_show(&map, 100, Some(0));
+        assert_eq!(specials.len(), 1);
+        assert_eq!(specials[0].anilist_id, Some(99));
+    }
+
+    #[test]
+    fn a_specials_only_entry_keeps_season_zero_and_a_tv_entry_its_season() {
+        let mut map = HashMap::new();
+        // An OVA listed under Specials only.
+        note_tvdb(&mut map, 1, (500, 0));
+        // A TV entry listed under Specials (its episode 0) and season 2,
+        // in either order.
+        note_tvdb(&mut map, 2, (500, 0));
+        note_tvdb(&mut map, 2, (500, 2));
+        note_tvdb(&mut map, 3, (500, 2));
+        note_tvdb(&mut map, 3, (500, 0));
+        assert_eq!(map[&1], (500, 0));
+        assert_eq!(map[&2], (500, 2));
+        assert_eq!(map[&3], (500, 2));
     }
 
     #[test]

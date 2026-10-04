@@ -445,7 +445,7 @@ pub async fn add_series(
     // Remember the TVDB show Seerr knows these series by, so the shim
     // reports it even for a show the mappings don't have (the title
     // search above). The season is the one requested, else the
-    // mappings' season for the entry, else 1.
+    // mappings' season for the entry (0 for Specials), else 1.
     if tvdb_id > 0 {
         for s in &processed {
             let season = match requested_season {
@@ -456,7 +456,7 @@ pub async fn add_series(
                     .map(|(_, season)| season)
                     .unwrap_or(1),
             };
-            let _ = series::set_tvdb_ids(&state.db, s.id, tvdb_id, season.max(1)).await;
+            let _ = series::set_tvdb_ids(&state.db, s.id, tvdb_id, season).await;
         }
     }
 
