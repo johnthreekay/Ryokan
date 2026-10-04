@@ -137,19 +137,26 @@ impl ResolvedEpisode {
 }
 
 /// `claimed` is the grab's episode list for this series, or `&[]` when
-/// there is none to go by (a pack's preflight, a routed sibling); see
+/// there is none to go by (a pack's preflight, a routed sibling), and
+/// `episode_count` the series' known episode count (0 = unknown); see
 /// [`claimed_ep_offset`].
 fn resolve_episode(
     span: media::EpisodeSpan,
     route_offset: Option<i32>,
     cumulative_prior_episodes: i32,
     claimed: &[i32],
+    episode_count: i32,
 ) -> Result<ResolvedEpisode, String> {
     let episode_offset = route_offset.unwrap_or_else(|| {
         if span.season.is_some() {
             0
         } else {
-            claimed_ep_offset(span.first, cumulative_prior_episodes, claimed)
+            claimed_ep_offset(
+                span.first,
+                cumulative_prior_episodes,
+                claimed,
+                episode_count,
+            )
         }
     });
     let episode = span.first - episode_offset;
@@ -274,7 +281,7 @@ pub(crate) fn validate_batch_episode_map(
         let Some(span) = parsed else {
             continue;
         };
-        let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes, &[])
+        let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes, &[], 0)
         else {
             continue;
         };
@@ -521,16 +528,22 @@ pub(crate) fn files_share_inode(a: &Path, b: &Path) -> bool {
     a == b
 }
 
-/// The mode an import actually used, for its log line. Hardlink mode
-/// copies when the link fails (the download and the library on two
-/// filesystems, or on two Docker mounts of one disk), and the log used
-/// to say "hardlink" either way, so a user whose every import was a
-/// full copy had no way to tell.
-pub(crate) fn mode_used(mode: &str, src: &Path, dest: &Path) -> String {
-    if cfg!(unix) && mode == "hardlink" && !files_share_inode(src, dest) {
-        "copy (a hardlink wasn't possible: the download and the library are on different filesystems or Docker mounts)".to_string()
-    } else {
-        mode.to_string()
+/// The mode an import actually used, for its log line, given the error
+/// that made [`do_file_op_reporting`] copy instead of link. Hardlink
+/// mode copies when the link fails, and the log used to say "hardlink"
+/// either way, so a user whose every import was a full copy had no way
+/// to tell. The cause is named only when the error says it: `EXDEV` is
+/// the download and the library on two filesystems (or two Docker
+/// mounts of one disk); anything else, such as `EPERM` from
+/// `fs.protected_hardlinks` when Ryokan's user doesn't own the
+/// download, is quoted as the system reported it.
+pub(crate) fn mode_used(mode: &str, link_error: Option<&std::io::Error>) -> String {
+    match link_error {
+        Some(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+            "copy (a hardlink wasn't possible: the download and the library are on different filesystems or Docker mounts)".to_string()
+        }
+        Some(e) => format!("copy (a hardlink wasn't possible: {e})"),
+        None => mode.to_string(),
     }
 }
 
@@ -541,13 +554,38 @@ pub(crate) fn mode_used(mode: &str, src: &Path, dest: &Path) -> String {
 /// multiple seconds; doing that on a tokio worker starves the RSS sync,
 /// HTTP handlers, and other background tasks sharing the same runtime.
 pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::Result<()> {
+    do_file_op_reporting(mode, src, dst).await.map(|_| ())
+}
+
+/// [`do_file_op`], also returning the `hard_link` error when the file
+/// was copied because the link failed (`None` when nothing fell back),
+/// for [`mode_used`].
+pub(crate) async fn do_file_op_reporting(
+    mode: &str,
+    src: &Path,
+    dst: &Path,
+) -> std::io::Result<Option<std::io::Error>> {
     let mode = mode.to_string();
     let src = src.to_path_buf();
     let dst = dst.to_path_buf();
-    tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+    tokio::task::spawn_blocking(move || -> std::io::Result<Option<std::io::Error>> {
         if let Some(p) = dst.parent() {
             std::fs::create_dir_all(p)?;
         }
+        // A symlinked source is imported as the file it names, never as
+        // the link itself: `hard_link` links the symlink's own inode and
+        // `rename` moves the link, so the library got a symlink whose
+        // relative target resolves somewhere else from its new folder
+        // (`fs::copy` always followed it). The callers' containment
+        // checks canonicalize the same way, so the file that lands is
+        // the one they verified. A link that resolves to nothing fails
+        // here rather than landing dangling.
+        let (src, link) =
+            if std::fs::symlink_metadata(&src).is_ok_and(|m| m.file_type().is_symlink()) {
+                (std::fs::canonicalize(&src)?, Some(src))
+            } else {
+                (src, None)
+            };
         // No-op when src and dst already point at the same bytes — by
         // a prior hardlink import landing the same file twice, or by a
         // misconfiguration that resolves both to the same path. All
@@ -556,13 +594,32 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
         // and the move-mode cross-fs fallback's `remove_file(src)`
         // after the rename would delete the only surviving copy.
         if files_share_inode(&src, &dst) {
-            return Ok(());
+            return Ok(None);
         }
         match mode.as_str() {
+            "move" if link.is_some() => {
+                // Moving a link's target could take it from under
+                // whatever else uses it: it can sit outside what was
+                // handed over (a manual import with symlinks followed
+                // pointing at a seeding download). Place it the way
+                // hardlink mode does and consume only the link.
+                let link_error = link_or_copy(&src, &dst)?;
+                if let Some(link) = link
+                    && let Err(e) = std::fs::remove_file(&link)
+                {
+                    tracing::warn!(
+                        target: "ryokan::post_processing",
+                        src = %link.display(),
+                        error = %e,
+                        "removing the imported symlink failed; it remains at the source",
+                    );
+                }
+                Ok(link_error)
+            }
             "move" => {
                 // Same-fs rename is atomic and instant — the happy path.
                 if std::fs::rename(&src, &dst).is_ok() {
-                    return Ok(());
+                    return Ok(None);
                 }
                 // Cross-fs fallback: copy to a sibling tmp first then
                 // rename onto dst so a partially-copied file can't be
@@ -589,36 +646,41 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
                         "post-copy remove_file failed; file remains at source AND destination",
                     );
                 }
-                Ok(())
+                Ok(None)
             }
             "copy" => {
                 std::fs::copy(&src, &dst)?;
-                Ok(())
+                Ok(None)
             }
-            _ => {
-                // "hardlink" (default): hardlink preferred, copy on
-                // failure (cross-fs). `std::fs::hard_link` does NOT
-                // overwrite — it returns `EEXIST` if dst already exists.
-                // Clean any pre-existing dst first so a re-import
-                // doesn't fall through to the `fs::copy` fallback (which
-                // would silently degrade to a real copy, breaking the
-                // seed-safe-via-shared-inode property the user picked
-                // hardlink mode for). The same-inode short-circuit
-                // above already handled the "dst is the same file as
-                // src via prior hardlink" case; reaching here means
-                // dst is a different file we're free to replace.
-                if dst.exists() {
-                    let _ = std::fs::remove_file(&dst);
-                }
-                if std::fs::hard_link(&src, &dst).is_err() {
-                    std::fs::copy(&src, &dst)?;
-                }
-                Ok(())
-            }
+            // "hardlink" (default).
+            _ => link_or_copy(&src, &dst),
         }
     })
     .await
     .map_err(|e| std::io::Error::other(format!("join error: {}", e)))?
+}
+
+/// Hardlink preferred, copy on failure (cross-fs). `std::fs::hard_link`
+/// does NOT overwrite — it returns `EEXIST` if dst already exists.
+/// Clean any pre-existing dst first so a re-import doesn't fall through
+/// to the `fs::copy` fallback (which would silently degrade to a real
+/// copy, breaking the seed-safe-via-shared-inode property the user
+/// picked hardlink mode for). `do_file_op`'s same-inode short-circuit
+/// already handled the "dst is the same file as src via prior hardlink"
+/// case; reaching here means dst is a different file we're free to
+/// replace. Returns the link error when it copied. Blocking;
+/// `do_file_op` runs it under `spawn_blocking`.
+fn link_or_copy(src: &Path, dst: &Path) -> std::io::Result<Option<std::io::Error>> {
+    if dst.exists() {
+        let _ = std::fs::remove_file(dst);
+    }
+    match std::fs::hard_link(src, dst) {
+        Ok(()) => Ok(None),
+        Err(link_error) => {
+            std::fs::copy(src, dst)?;
+            Ok(Some(link_error))
+        }
+    }
 }
 
 /// Whether `path` resolves (symlinks followed) to a regular file inside
@@ -626,7 +688,8 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
 /// torrent can carry a symlink, and a `.srt` linking to the database
 /// or the key file would otherwise be copied into the library, where
 /// Jellyfin serves it. Strict, unlike the video loop's check: a file
-/// that can't be resolved is skipped.
+/// that can't be resolved is skipped. A link that passes is imported as
+/// the file it resolves to (`do_file_op`).
 fn resolves_to_file_inside(path: &Path, base: &Path) -> bool {
     match (path.canonicalize(), base.canonicalize()) {
         (Ok(real), Ok(real_base)) => real.starts_with(&real_base) && real.is_file(),
@@ -984,6 +1047,27 @@ struct SeriesImportCtx {
     existing_tags: HashMap<i32, episode_tags::EpisodeQualityTag>,
 }
 
+impl SeriesImportCtx {
+    /// The series' episode count from what the context already holds,
+    /// in the order `monitoring::effective_episode_count` reads it (the
+    /// row, the cached detail with its aired bound, the episode map),
+    /// so the import and the search agree on which episodes exist.
+    /// 0 when none of them knows.
+    fn known_episode_count(&self) -> i32 {
+        let plausible = |n: i32| crate::services::anilist::plausible_episode_count(n.into());
+        self.series
+            .episodes
+            .and_then(plausible)
+            .or_else(|| {
+                self.cached_detail
+                    .as_ref()
+                    .and_then(|d| plausible(d.effective_episode_count()))
+            })
+            .or_else(|| self.ep_meta.keys().copied().filter_map(plausible).max())
+            .unwrap_or(0)
+    }
+}
+
 /// Resolve the [`SeriesImportCtx`] for `series_id`: loads the series
 /// row, materializes its folder name + season directory, and warms up
 /// the episode metadata and AniList detail caches. Split out of
@@ -1016,6 +1100,14 @@ async fn load_series_import_ctx(
             &cfg.title_language,
             &naming::SeriesNames::from_series(&series),
         );
+        // The uniqueness rule a new row gets (`series::upsert`): two
+        // dots-only titles both render `Unknown Series`, and a remake
+        // shares its original's title, so the plain name can be another
+        // series' folder.
+        let generated =
+            series::unique_series_folder(&state.db, generated, series.season_year, Some(series.id))
+                .await
+                .map_err(|e| e.to_string())?;
         // Persist it so future imports skip this path.
         let _ = series::update_folder(&state.db, series.id, &generated).await;
         generated
@@ -1603,7 +1695,9 @@ async fn import_torrent(
         // confirm the resolved source still lives under the resolved
         // base. Catches symlink games (a `legit.mkv` entry that resolves
         // to a symlink pointing at `/etc/passwd`) and any string-level
-        // oversight the validator above might miss. Permissive on
+        // oversight the validator above might miss. A symlink that
+        // passes is imported as the file it resolves to (`do_file_op`
+        // canonicalizes it the same way), never as the link. Permissive on
         // canonicalize errors — the file may not yet exist on this
         // node's view, in which case `do_file_op` surfaces the real I/O
         // error downstream and there's nothing for an attacker to
@@ -1793,6 +1887,7 @@ async fn import_torrent(
                 routes_by_file.get(file_idx).map(|(_, offset)| *offset),
                 ctx.series.cumulative_prior_episodes,
                 claimed,
+                ctx.known_episode_count(),
             ) {
                 Ok(resolved) => resolved,
                 Err(reason) => {
@@ -2052,7 +2147,7 @@ async fn import_torrent(
         } else {
             dest_video.clone()
         };
-        let placed = do_file_op(&cfg.post_processing_mode, &src, &landing).await;
+        let placed = do_file_op_reporting(&cfg.post_processing_mode, &src, &landing).await;
 
         if placed.is_ok() && is_upgrade {
             // Check if this is an upgrade replacing a previously imported file.
@@ -2305,7 +2400,7 @@ async fn import_torrent(
         }
 
         match placed {
-            Ok(()) => {
+            Ok(link_error) => {
                 let _ = nfo::write_multi_episode_nfo(
                     &dest_nfo,
                     &ctx.series_title,
@@ -2436,7 +2531,7 @@ async fn import_torrent(
                     &format!("Imported {} of '{}'", slot, ctx.series.title),
                     &format!(
                         "mode={} dest={}",
-                        mode_used(&cfg.post_processing_mode, &src, &dest_video),
+                        mode_used(&cfg.post_processing_mode, link_error.as_ref()),
                         dest_video.display()
                     ),
                 )
@@ -2900,8 +2995,9 @@ pub async fn write_series_sidecars(state: &AppState, series_id: i64) -> Result<(
         .await
         .map_err(|e| format!("series lookup failed: {e}"))?
         .ok_or_else(|| format!("series {series_id} not found"))?;
-    if series_row.folder_name.is_empty() {
-        return Err(format!("series {series_id} has no folder name"));
+    // `.` / `..` would put the sidecars in the media root or above it.
+    if !media::usable_folder_name(&series_row.folder_name) {
+        return Err(format!("series {series_id} has no usable folder name"));
     }
     let cached_detail = metadata_cache::get_by_series_id(&state.db, series_id)
         .await

@@ -762,6 +762,7 @@
 <div id="series-data" hidden
     data-recycle-enabled="{% if recycle_enabled %}true{% else %}false{% endif %}"
     data-id="{{ route_id }}"
+    data-id-kind="{% if db_id.is_none() %}anilist{% endif %}"
     data-title-romaji="{{ detail.title_romaji }}"
     data-title-english="{{ detail.title_english }}"
     data-title-native="{{ detail.title_native }}"

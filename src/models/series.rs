@@ -271,16 +271,20 @@ pub struct SeriesCore<'a> {
     pub end_year: Option<i32>,
 }
 
-/// Whether another series already uses `name` as its folder. Compared
-/// case-insensitively: on a case-folding filesystem (macOS, an SMB
+/// Every series' folder name except row `except`'s, lowercased the way
+/// SQLite's `lower()` does (ASCII only; compare with
+/// `to_ascii_lowercase`): on a case-folding filesystem (macOS, an SMB
 /// share) `Show` and `show` are one folder.
-async fn folder_taken(db: &SqlitePool, name: &str) -> Result<bool, sqlx::Error> {
-    let hit: Option<i64> =
-        sqlx::query_scalar("SELECT 1 FROM series WHERE lower(folder_name) = lower(?) LIMIT 1")
-            .bind(name)
-            .fetch_optional(db)
+async fn taken_folders(
+    db: &SqlitePool,
+    except: Option<i64>,
+) -> Result<std::collections::HashSet<String>, sqlx::Error> {
+    let names: Vec<String> =
+        sqlx::query_scalar("SELECT lower(folder_name) FROM series WHERE id IS NOT ?")
+            .bind(except)
+            .fetch_all(db)
             .await?;
-    Ok(hit.is_some())
+    Ok(names.into_iter().collect())
 }
 
 /// `base` with `suffix`, the base cut at a character boundary so the
@@ -299,33 +303,47 @@ fn with_suffix(base: &str, suffix: &str) -> String {
 /// under the default `{series.title}` template) used to share a folder:
 /// each scan read the other's files as its own, and a delete or upgrade
 /// of one could recycle the other's episodes. Only rows count, not the
-/// disk, so a series added back finds its old folder.
-async fn unique_series_folder(
+/// disk, so a series added back finds its old folder. `except` is a row
+/// whose own stored name is being replaced (empty or unusable) and so
+/// doesn't count; `None` for a new row.
+pub async fn unique_series_folder(
     db: &SqlitePool,
     base: String,
     year: Option<i32>,
+    except: Option<i64>,
 ) -> Result<String, sqlx::Error> {
-    if !folder_taken(db, &base).await? {
-        return Ok(base);
+    let taken = taken_folders(db, except).await?;
+    Ok(unique_folder_among(base, year, |name| {
+        taken.contains(&name.to_ascii_lowercase())
+    }))
+}
+
+/// The rule behind [`unique_series_folder`] over any notion of taken,
+/// for a caller that already holds the library's folder names (the
+/// manual-import preview shows the name a new row will get).
+pub fn unique_folder_among(
+    base: String,
+    year: Option<i32>,
+    taken: impl Fn(&str) -> bool,
+) -> String {
+    if !taken(&base) {
+        return base;
     }
     if let Some(y) = year.filter(|y| *y > 0)
         && !base.ends_with(&format!("({y})"))
     {
         let candidate = with_suffix(&base, &format!(" ({y})"));
-        if !folder_taken(db, &candidate).await? {
-            return Ok(candidate);
+        if !taken(&candidate) {
+            return candidate;
         }
     }
     for n in 2..1000 {
         let candidate = with_suffix(&base, &format!(" ({n})"));
-        if !folder_taken(db, &candidate).await? {
-            return Ok(candidate);
+        if !taken(&candidate) {
+            return candidate;
         }
     }
-    Ok(with_suffix(
-        &base,
-        &format!(" ({})", chrono::Utc::now().timestamp()),
-    ))
+    with_suffix(&base, &format!(" ({})", chrono::Utc::now().timestamp()))
 }
 
 /// Insert or update a series based on AniList/MAL provider identity.
@@ -426,7 +444,7 @@ pub async fn upsert(db: &SqlitePool, core: SeriesCore<'_>) -> Result<(i64, bool)
             &names,
         )
     };
-    let folder = unique_series_folder(db, folder, core.season_year).await?;
+    let folder = unique_series_folder(db, folder, core.season_year, None).await?;
 
     let result = sqlx::query(
         r#"
@@ -544,6 +562,25 @@ pub async fn remove(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
         .execute(db)
         .await?;
     Ok(())
+}
+
+/// The title of another series stored with the same folder name as row
+/// `id` (case-insensitively, as [`unique_series_folder`] compares), if
+/// any. New rows get their own folder, but rows written before that
+/// rule can share one.
+pub async fn other_series_in_folder(
+    db: &SqlitePool,
+    id: i64,
+    folder_name: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT title FROM series WHERE lower(folder_name) = lower(?) AND id != ? \
+         ORDER BY id LIMIT 1",
+    )
+    .bind(folder_name)
+    .bind(id)
+    .fetch_optional(db)
+    .await
 }
 
 /// Update the folder name mapping for a series.
@@ -926,6 +963,25 @@ mod tests {
         // Re-upserting an existing series keeps its folder.
         upsert(&db, core(11061, 2011)).await.unwrap();
         assert_eq!(folder(new).await, "Hunter x Hunter (2011)");
+    }
+
+    #[tokio::test]
+    async fn a_regenerated_folder_skips_other_rows_but_not_its_own() {
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let other = crate::test_support::seed_series(&db, 1, "Unknown Series").await;
+        let own = crate::test_support::seed_series(&db, 2, "Own").await;
+        update_folder(&db, own, "..").await.unwrap();
+        // Another row has the name, compared case-insensitively.
+        let name = unique_series_folder(&db, "unknown series".into(), None, Some(own))
+            .await
+            .unwrap();
+        assert_eq!(name, "unknown series (2)");
+        // The row being renamed doesn't block its own name.
+        let name = unique_series_folder(&db, "Unknown Series".into(), None, Some(other))
+            .await
+            .unwrap();
+        assert_eq!(name, "Unknown Series");
     }
 
     #[test]

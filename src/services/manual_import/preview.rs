@@ -178,8 +178,9 @@ pub struct GroupView {
     /// Folder under the media root the files would land in. For a new
     /// series this is the auto-generated name (suffixed on collision).
     pub folder_name: String,
-    /// A folder of the plain name already exists under the media root
-    /// and no series row owns it, so the import would suffix.
+    /// The plain name is taken, by another series row or by a folder
+    /// under the media root that no series row owns, so the import
+    /// would suffix.
     pub folder_collision: bool,
     pub files: Vec<FileView>,
     pub counts: GroupCounts,
@@ -306,6 +307,32 @@ pub fn unique_folder_name(base: &str, ctx: &ProjectionContext<'_>) -> (String, b
     (format!("{base} ({})", ctx.disk_folders.len() + 2), true)
 }
 
+/// The folder a new series' files land in, as the import picks it:
+/// `series::upsert` first gives the row a name no other series row has
+/// (`base (year)`, `base (2)`, ...), then [`unique_folder_name`] steps
+/// around a stranger folder on disk. [`unique_folder_name`] alone reads
+/// another row's folder as a merge target, so the preview showed (and
+/// ran its "Already on disk" checks in) that series' folder while the
+/// files went to the suffixed one. Returns whether either step suffixed.
+fn new_series_folder_name(
+    entry: &crate::services::anilist::AnimeEntry,
+    ctx: &ProjectionContext<'_>,
+) -> (String, bool) {
+    let base = default_folder_name(entry, ctx);
+    let owned: HashSet<String> = ctx
+        .owned_folders
+        .iter()
+        .map(|f| f.to_ascii_lowercase())
+        .collect();
+    let row_name =
+        crate::models::series::unique_folder_among(base.clone(), entry.season_year, |n| {
+            owned.contains(&n.to_ascii_lowercase())
+        });
+    let (folder, disk_suffixed) = unique_folder_name(&row_name, ctx);
+    let suffixed = disk_suffixed || row_name != base;
+    (folder, suffixed)
+}
+
 /// `E18`, `E05-E06` for a file holding several episodes (issue #246),
 /// or `-` with no episode number. No season in the label: each AniList
 /// season is its own series in Ryokan with its own E1..En, and the
@@ -342,7 +369,7 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
 
     let (folder_name, folder_collision) = match (&group.existing, picked) {
         (Some(existing), _) => (existing.folder_name.clone(), false),
-        (None, Some(entry)) => unique_folder_name(&default_folder_name(entry, ctx), ctx),
+        (None, Some(entry)) => new_series_folder_name(entry, ctx),
         (None, None) => (String::new(), false),
     };
     let season_folder = season_folder_name(group, ctx);
@@ -738,6 +765,28 @@ mod tests {
         let (name, collided) = unique_folder_name("Show", &ctx(&owned, &disk));
         assert_eq!(name, "Show");
         assert!(!collided);
+    }
+
+    #[test]
+    fn a_new_series_never_lands_in_another_series_folder() {
+        // Another series row owns `Show` (a remake sharing the title).
+        // `series::upsert` gives the new row `Show (2020)`, so that is
+        // where the files go and where "Already on disk" must look.
+        let owned: HashSet<String> = ["show".to_string()].into_iter().collect();
+        let disk: HashSet<String> = ["Show".to_string()].into_iter().collect();
+        let g = group(
+            vec![file("[G] Show - 01 [1080p].mkv", Some(1))],
+            vec![entry(1, "Show", "Show")],
+            Some(0),
+        );
+        let v = project_group(&g, &ctx(&owned, &disk));
+        assert_eq!(v.kind, GroupKind::New);
+        assert_eq!(v.folder_name, "Show (2020)");
+        assert!(v.folder_collision);
+        assert_eq!(
+            v.files[0].dest,
+            "Show (2020)/Season 01/[G] Show - 01 [1080p].mkv"
+        );
     }
 
     #[test]

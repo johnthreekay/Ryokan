@@ -396,14 +396,37 @@ pub async fn run_import(
         // Folder: a created series keeps the upsert's generated name
         // unless an unowned folder of that name already exists (the
         // preview showed the suffixed name); a tracked series with no
-        // folder yet gets one the same way.
-        if created || row.folder_name.is_empty() {
-            let base = if row.folder_name.is_empty() {
-                naming::series_folder(
+        // folder yet gets one the same way, as does one whose stored
+        // name is unusable (`.` / `..` from a title written before
+        // `sanitize_folder_name` handled dots), which would otherwise
+        // put the files in the media root or above it.
+        let usable = media::usable_folder_name(&row.folder_name);
+        if created || !usable {
+            let base = if !usable {
+                let generated = naming::series_folder(
                     &cfg.series_folder_format,
                     &cfg.title_language,
                     &naming::SeriesNames::from_series(&row),
+                );
+                // Never another series' folder: the rule a new row
+                // gets in `series::upsert`.
+                match series::unique_series_folder(
+                    &state.db,
+                    generated,
+                    row.season_year,
+                    Some(row.id),
                 )
+                .await
+                {
+                    Ok(name) => name,
+                    Err(e) => {
+                        gr.errors.push(format!("could not set folder name: {e}"));
+                        report.series_skipped += 1;
+                        gr.skipped = group.files.len();
+                        report.groups.push(gr);
+                        continue;
+                    }
+                }
             } else {
                 row.folder_name.clone()
             };
@@ -1311,6 +1334,36 @@ mod tests {
         assert!(
             !f.media.join("Show/Season 01").exists(),
             "the stranger's folder is untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_series_stored_with_a_dots_folder_gets_a_real_one() {
+        // A row written before `sanitize_folder_name` handled dots can
+        // hold `.`: joined onto the media root, that is the root itself.
+        let f = fixture("copy", false).await;
+        let sid = seed_series(&f.state.db, 100, "Show").await;
+        sqlx::query("UPDATE series SET folder_name = '.' WHERE id = ?")
+            .bind(sid)
+            .execute(&f.state.db)
+            .await
+            .unwrap();
+        let mut g = group(
+            vec![candidate(&f.src, "Show/Show - 01.mkv", Some(1))],
+            entry(100, "Show"),
+        );
+        crate::services::manual_import::resolve_existing(&f.state.db, &mut g).await;
+        assert!(g.existing.is_some(), "merges into the tracked row");
+        let id = ready_session(&f.state, &f.src, ImportMode::Copy, vec![g]);
+
+        let report = run_import(f.state.clone(), id, OPTS).await.unwrap();
+        assert_eq!(report.files_written, 1, "{report:?}");
+        let row = series::get_by_id(&f.state.db, sid).await.unwrap().unwrap();
+        assert_eq!(row.folder_name, "Show");
+        assert!(f.media.join("Show/Season 01/Show - 01.mkv").exists());
+        assert!(
+            !f.media.join("Season 01").exists() && !f.media.join("tvshow.nfo").exists(),
+            "nothing lands in the media root"
         );
     }
 

@@ -458,6 +458,7 @@ pub async fn remove_series(
         "torrents_removed": torrents_removed,
         "torrent_errors": torrent_failures,
         "folder": folder_status,
+        "folder_detail": folder_detail,
         "jellyfin": jellyfin_status,
     })))
 }
