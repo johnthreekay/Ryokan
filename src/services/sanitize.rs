@@ -16,6 +16,7 @@
 use std::path::Path;
 
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 use crate::services::crypto::SANITIZED_SENTINEL;
 
@@ -84,8 +85,19 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
         )
     })?;
 
-    let url = format!("sqlite://{}?mode=rwc", output.display());
-    let pool = SqlitePool::connect(&url)
+    // `filename` rather than a formatted URL: sqlx percent-decodes a
+    // URL's path, so a data dir holding `%` or `?` opened the wrong file.
+    // The copy is thrown away if anything fails, so it needs no journal
+    // on disk and no fsync. With both, and a commit per changed row, a
+    // database holding 30k RSS rows took minutes to scrub, with the
+    // backup lock held the whole time.
+    let options = SqliteConnectOptions::new()
+        .filename(output)
+        .journal_mode(SqliteJournalMode::Memory)
+        .synchronous(SqliteSynchronous::Off);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
         .await
         .map_err(|e| format!("open sanitized copy: {e}"))?;
 
@@ -357,6 +369,11 @@ async fn redact_url_column(
         Ok(rows) => rows,
         Err(_) => return Ok(0),
     };
+    // One transaction: a commit per row is most of the run's time.
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("redact {table}.{column}: {e}"))?;
     let mut changed = 0;
     for (rowid, url) in rows {
         let mut redacted = redact_url(&url);
@@ -369,12 +386,15 @@ async fn redact_url_column(
             )))
             .bind(&redacted)
             .bind(rowid)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| format!("redact {table}.{column}: {e}"))?;
             changed += 1;
         }
     }
+    tx.commit()
+        .await
+        .map_err(|e| format!("redact {table}.{column}: {e}"))?;
     Ok(changed)
 }
 
@@ -400,6 +420,11 @@ async fn redact_item_keys(pool: &SqlitePool) -> Result<u64, String> {
         Ok(rows) => rows,
         Err(_) => return Ok(0),
     };
+    // One transaction: a commit per row is most of the run's time.
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("redact rss_seen.item_key: {e}"))?;
     let mut changed = 0;
     for (rowid, key) in rows {
         let (prefix, value) = key.split_at(5);
@@ -416,11 +441,14 @@ async fn redact_item_keys(pool: &SqlitePool) -> Result<u64, String> {
         sqlx::query("UPDATE rss_seen SET item_key = ? WHERE rowid = ?")
             .bind(format!("{prefix}{}", row_tagged(&redacted, rowid)))
             .bind(rowid)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| format!("redact rss_seen.item_key: {e}"))?;
         changed += 1;
     }
+    tx.commit()
+        .await
+        .map_err(|e| format!("redact rss_seen.item_key: {e}"))?;
     Ok(changed)
 }
 
@@ -458,6 +486,8 @@ async fn scrub_logs(pool: &SqlitePool) -> Result<u64, String> {
             Ok(rows) => rows,
             Err(_) => return Ok(0),
         };
+    // One transaction: a commit per row is most of the run's time.
+    let mut tx = pool.begin().await.map_err(|e| format!("scrub logs: {e}"))?;
     let mut changed = 0;
     for (id, message, detail) in rows {
         let (m, d) = (redact_text(&message), redact_text(&detail));
@@ -466,12 +496,13 @@ async fn scrub_logs(pool: &SqlitePool) -> Result<u64, String> {
                 .bind(&m)
                 .bind(&d)
                 .bind(id)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await
                 .map_err(|e| format!("scrub logs: {e}"))?;
             changed += 1;
         }
     }
+    tx.commit().await.map_err(|e| format!("scrub logs: {e}"))?;
     Ok(changed)
 }
 
