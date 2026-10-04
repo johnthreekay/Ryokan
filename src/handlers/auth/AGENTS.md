@@ -30,7 +30,7 @@ Two layers run the check:
 
 **Missing both Origin and Referer → reject.**
 
-**Ports count when the Host header names one.** `SameSite` ignores ports, so another app on the same machine (`:8080` posting to Ryokan on `:8978`) gets the cookie sent; the Origin check is the only thing that tells them apart. `origin_matches` requires the Origin's port (the scheme default when omitted) to equal the Host header's. A Host header without a port (a reverse proxy forwarding `$host`) and `X-Forwarded-Host` entries (proxies disagree on whether they carry their own port) compare hosts only. IPv6 literals are parsed by `split_authority`; splitting at the first `:` used to turn every one into `[`.
+**Ports count when the Host header names one.** `SameSite` ignores ports, so another app on the same machine (`:8080` posting to Ryokan on `:8978`) gets the cookie sent; the Origin check is the only thing that tells them apart. `origin_matches` requires the Origin's port (the scheme default when omitted) to equal the Host header's, except that 80 and 443 match each other: browsers never write a default port into Host, so an explicit one comes from a proxy appending its listen port (`$host:$server_port`, :80 behind a TLS edge whose origin is 443), and it admits nothing a portless Host doesn't. A Host header without a port (a reverse proxy forwarding `$host`) and `X-Forwarded-Host` entries (proxies disagree on whether they carry their own port) compare hosts only. IPv6 literals are parsed by `split_authority`; splitting at the first `:` used to turn every one into `[`.
 
 `handlers::security_headers` sends `Referrer-Policy: same-origin`. Keep it that way: under `no-referrer` browsers send `Origin: null` on every POST, and this check would reject all of them.
 

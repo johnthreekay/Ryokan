@@ -558,11 +558,22 @@ fn hosts_from_headers(headers: &HeaderMap, trust: bool) -> Vec<Authority> {
 /// and `SameSite` ignores ports, so the session cookie went along. A
 /// Host header without a port (a reverse proxy that forwards `$host`)
 /// says nothing about the port, so only the host is compared there.
+///
+/// 80 and 443 match each other. A browser never writes a default port
+/// into Host, so `example.com:80` comes from a proxy appending its own
+/// listen port (`$host:$server_port`), and behind a TLS edge that is
+/// :80 while the browser's `https://example.com` origin is 443: every
+/// POST was refused. Letting the two default ports stand for each other
+/// admits nothing a portless Host doesn't already, and any other port
+/// (the `:8080` sibling app) still has to match exactly.
 fn origin_matches(origin: &Authority, hosts: &[Authority]) -> bool {
+    let is_default = |port: u16| port == 80 || port == 443;
     hosts.iter().any(|(host, port)| {
         host == &origin.0
             && match (port, origin.1) {
-                (Some(port), Some(origin_port)) => *port == origin_port,
+                (Some(port), Some(origin_port)) => {
+                    *port == origin_port || (is_default(*port) && is_default(origin_port))
+                }
                 _ => true,
             }
     })
