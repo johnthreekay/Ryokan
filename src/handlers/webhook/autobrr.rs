@@ -368,6 +368,23 @@ pub async fn webhook_autobrr(
             );
         }
     };
+    // A misgrab blocks its hash for the series it was misgrabbed for
+    // only, so that check waits for the match (the one above covers
+    // every other failure).
+    if !info_hash_lc.is_empty()
+        && grabbed_torrents::is_blocklisted_for(&state.db, &info_hash_lc, Some(series.id))
+            .await
+            .unwrap_or(false)
+    {
+        logger::info(
+            &state.db,
+            LogCategory::Grab,
+            &format!("autobrr: skipping {safe_release}: hash is blocklisted"),
+            &info_hash_lc,
+        )
+        .await;
+        return skipped("hash is blocklisted");
+    }
     // `add_torrent_returning_id` returns the canonical client-
     // side id alongside the outcome. For BT clients the returned id
     // equals the input info_hash; for SAB it's the `nzo_id` SAB

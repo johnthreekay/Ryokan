@@ -530,9 +530,13 @@ pub async fn grab_preview_status(
     // SELECT on an indexed hash; keeps the modal's "previously
     // blocklisted" banner accurate even if the user unblocks the
     // release from Downloads mid-poll.
-    let blocklisted = crate::models::grabbed_torrents::is_blocklisted(&state.db, &row.info_hash)
-        .await
-        .unwrap_or(false);
+    let blocklisted = crate::models::grabbed_torrents::is_blocklisted_for(
+        &state.db,
+        &row.info_hash,
+        row.series_id,
+    )
+    .await
+    .unwrap_or(false);
 
     // Error takes precedence over fetching/ready. If the spawned
     // metadata-fetch task marked an error, surface it immediately so

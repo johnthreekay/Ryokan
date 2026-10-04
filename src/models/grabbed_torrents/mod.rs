@@ -1023,18 +1023,34 @@ pub async fn get_blocked(
         .collect())
 }
 
-/// Is this infohash currently blocklisted? True when at least one
-/// `grabbed_torrents` row exists for the hash with `state = 'failed'`.
-/// Checked by the interactive file-picker preview endpoint so the
-/// modal can render the inline-unblock warning (plan decision #12).
+/// Is this infohash blocklisted for every series? True when a
+/// `grabbed_torrents` row for the hash is `failed` for a reason other
+/// than a misgrab (see [`is_blocklisted_for`]).
 pub async fn is_blocklisted(db: &SqlitePool, hash: &str) -> Result<bool, sqlx::Error> {
+    is_blocklisted_for(db, hash, None).await
+}
+
+/// Is this infohash blocklisted for `series_id`? A misgrab verdict
+/// means "not this series", so its failed row blocks the hash for the
+/// series it was grabbed for only; it used to block the release for
+/// the series it really is. Every other failure blocks it everywhere.
+/// Checked by the interactive file-picker preview endpoint so the
+/// modal can render the inline-unblock warning (plan decision #12),
+/// and by autobrr.
+pub async fn is_blocklisted_for(
+    db: &SqlitePool,
+    hash: &str,
+    series_id: Option<i64>,
+) -> Result<bool, sqlx::Error> {
     if hash.is_empty() {
         return Ok(false);
     }
     let existing: Option<i64> = sqlx::query_scalar(
-        "SELECT id FROM grabbed_torrents WHERE hash = ? AND state = 'failed' LIMIT 1",
+        "SELECT id FROM grabbed_torrents WHERE hash = ? AND state = 'failed' \
+           AND (COALESCE(failure_reason, '') != 'misgrab' OR series_id = ?) LIMIT 1",
     )
     .bind(hash)
+    .bind(series_id)
     .fetch_optional(db)
     .await?;
     Ok(existing.is_some())
@@ -1682,9 +1698,10 @@ pub async fn set_source_url(db: &SqlitePool, id: i64, url: &str) -> Result<(), s
     Ok(())
 }
 
-/// Blocklist check by hash (any series) or by exact release title for
-/// this series. The failed row written by a misgrab, an import
-/// failure, or the user's "mark failed" is the blocklist entry.
+/// Blocklist check by hash (any series, except a misgrab's, which is
+/// this series only: see [`is_blocklisted_for`]) or by exact release
+/// title for this series. The failed row written by a misgrab, an
+/// import failure, or the user's "mark failed" is the blocklist entry.
 pub async fn is_blocklisted_release(
     db: &SqlitePool,
     series_id: i64,
@@ -1694,10 +1711,13 @@ pub async fn is_blocklisted_release(
     sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM grabbed_torrents \
          WHERE state = 'failed' \
-           AND ((? != '' AND hash = ?) OR (series_id = ? AND torrent_name = ?))",
+           AND ((? != '' AND hash = ? \
+                 AND (COALESCE(failure_reason, '') != 'misgrab' OR series_id = ?)) \
+                OR (series_id = ? AND torrent_name = ?))",
     )
     .bind(hash)
     .bind(hash)
+    .bind(series_id)
     .bind(series_id)
     .bind(title)
     .fetch_one(db)
@@ -1731,9 +1751,13 @@ pub async fn blocklist_snapshot(db: &SqlitePool, anilist_id: i64) -> BlocklistSn
     // off `idx_grabbed_torrents_state`, and the titles only for the
     // series being searched through the partial
     // `(series_id, torrent_name) WHERE state = 'failed'` index.
+    // A misgrab's hash counts only for the series it was misgrabbed for.
     if let Ok(hashes) = sqlx::query_scalar::<_, String>(
-        "SELECT DISTINCT hash FROM grabbed_torrents WHERE state = 'failed' AND hash != ''",
+        "SELECT DISTINCT hash FROM grabbed_torrents WHERE state = 'failed' AND hash != '' \
+           AND (COALESCE(failure_reason, '') != 'misgrab' \
+                OR series_id IN (SELECT id FROM series WHERE anilist_id = ?))",
     )
+    .bind(anilist_id)
     .fetch_all(db)
     .await
     {

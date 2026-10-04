@@ -816,8 +816,12 @@ async fn is_blocklisted_release_matches_hash_or_series_title() {
         1
     );
     assert!(
-        is_blocklisted_release(&db, other, "bbbb", "anything").await,
-        "hash blocks globally"
+        is_blocklisted_release(&db, sid, "bbbb", "anything").await,
+        "a misgrab's hash blocks its own series"
+    );
+    assert!(
+        !is_blocklisted_release(&db, other, "bbbb", "anything").await,
+        "a misgrab means 'not this series', so the release stays open to the others"
     );
     assert!(
         is_blocklisted_release(&db, sid, "", "[G] Show - 02").await,
@@ -848,6 +852,25 @@ async fn is_blocklisted_release_matches_hash_or_series_title() {
             .await
             .rejects("", "[G] Show - 02")
     );
+    assert!(
+        !blocklist_snapshot(&db, 2).await.rejects("bbbb", "x"),
+        "a misgrab's hash is not blocked for another series"
+    );
+    assert!(is_blocklisted_for(&db, "bbbb", Some(sid)).await.unwrap());
+    assert!(!is_blocklisted_for(&db, "bbbb", Some(other)).await.unwrap());
+    assert!(!is_blocklisted(&db, "bbbb").await.unwrap());
+
+    // Any other failure blocks the hash for every series.
+    record_grab(&db, "dddd", "[G] Show - 03", sid, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    mark_failed_by_hash_with_reason(&db, "dddd", "client_error")
+        .await
+        .unwrap();
+    assert!(is_blocklisted_release(&db, other, "dddd", "anything").await);
+    assert!(blocklist_snapshot(&db, 2).await.rejects("dddd", "x"));
+    assert!(is_blocklisted(&db, "dddd").await.unwrap());
 }
 
 #[tokio::test]
