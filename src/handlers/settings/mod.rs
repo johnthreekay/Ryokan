@@ -27,7 +27,7 @@ pub mod setup_library;
 use custom_formats::ImportReviewView;
 
 /// Shortest Sonarr / Radarr shim API key a save accepts.
-const MIN_SHIM_KEY_CHARS: usize = 20;
+pub(crate) const MIN_SHIM_KEY_CHARS: usize = 20;
 
 /// Process-wide serializer for `config` row read-modify-write across
 /// every Settings save handler — the per-tab subforms
@@ -1065,17 +1065,37 @@ pub async fn settings_page(
 /// The Sonarr / Radarr keys are whatever the user types; a short one
 /// ("seerr") could be guessed. Checked by every handler that writes
 /// them: the Integrations tab and the legacy bulk `POST /settings`.
-fn shim_key_error(sonarr: Option<&str>, radarr: Option<&str>) -> Option<String> {
-    [("Sonarr", sonarr), ("Radarr", radarr)]
-        .into_iter()
-        .find_map(|(label, key)| {
-            let key = key.unwrap_or("").trim();
-            (!key.is_empty() && key.chars().count() < MIN_SHIM_KEY_CHARS).then(|| {
-                format!(
-                    "The {label} API key must be at least {MIN_SHIM_KEY_CHARS} characters. Use Generate for a random one."
-                )
-            })
+///
+/// Only a new or changed key is checked. A short key saved before the
+/// minimum existed is what Seerr holds, and refusing it made every save
+/// of the tab fail until the user rotated it, Jellyfin edits included.
+/// The tab warns about it instead (`shim_key_is_short`).
+fn shim_key_error(
+    sonarr: Option<&str>,
+    radarr: Option<&str>,
+    stored: Option<&config::Config>,
+) -> Option<String> {
+    let kept = |pick: fn(&config::Config) -> &str| stored.map(|c| pick(c).trim()).unwrap_or("");
+    [
+        ("Sonarr", sonarr, kept(|c| c.sonarr_api_key.as_str())),
+        ("Radarr", radarr, kept(|c| c.radarr_api_key.as_str())),
+    ]
+    .into_iter()
+    .find_map(|(label, key, kept)| {
+        let key = key.unwrap_or("").trim();
+        (!key.is_empty() && key != kept && shim_key_is_short(key)).then(|| {
+            format!(
+                "The {label} API key must be at least {MIN_SHIM_KEY_CHARS} characters. Use Generate for a random one."
+            )
         })
+    })
+}
+
+/// A stored shim key under the minimum, which the Integrations tab
+/// warns about.
+pub(crate) fn shim_key_is_short(key: &str) -> bool {
+    let key = key.trim();
+    !key.is_empty() && key.chars().count() < MIN_SHIM_KEY_CHARS
 }
 
 pub async fn settings_submit(
@@ -1090,18 +1110,6 @@ pub async fn settings_submit(
     // posting to `/settings` would race with a concurrent per-tab
     // save without this lock.
     let _guard = CONFIG_WRITE_LOCK.lock().await;
-    // This handler writes the shim keys too (Integrations or no tab).
-    if matches!(form.tab.as_deref(), Some("integrations") | None)
-        && let Some(err) = shim_key_error(
-            form.sonarr_api_key.as_deref(),
-            form.radarr_api_key.as_deref(),
-        )
-    {
-        let template =
-            build_settings_template(&state, form.tab.clone(), None, None, Some(err), None, None)
-                .await;
-        return Html(template.render().unwrap_or_default());
-    }
     // Load the existing config row once and derive every non-form
     // field from it. The previous code fetched it twice back-to-back
     // (once for force_mal_fallback, once for the rest), which was
@@ -1110,6 +1118,19 @@ pub async fn settings_submit(
     // `force_kitsu_fallback`, the legacy quality tier columns, and
     // `auto_grab_on_add` / `allow_non_english` below.
     let existing_cfg = config::get_config(&state.db).await.ok().flatten();
+    // This handler writes the shim keys too (Integrations or no tab).
+    if matches!(form.tab.as_deref(), Some("integrations") | None)
+        && let Some(err) = shim_key_error(
+            form.sonarr_api_key.as_deref(),
+            form.radarr_api_key.as_deref(),
+            existing_cfg.as_ref(),
+        )
+    {
+        let template =
+            build_settings_template(&state, form.tab.clone(), None, None, Some(err), None, None)
+                .await;
+        return Html(template.render().unwrap_or_default());
+    }
 
     // The Jellyfin key is write-only here too (`handlers::secret_field`).
     let bulk_jellyfin_key = match crate::handlers::secret_field::resolve(
@@ -2392,6 +2413,7 @@ pub async fn settings_integrations_submit(
     if let Some(err) = shim_key_error(
         form.sonarr_api_key.as_deref(),
         form.radarr_api_key.as_deref(),
+        Some(&existing_cfg),
     ) {
         return integrations_response(&state, None, None, Some(err), is_htmx).await;
     }

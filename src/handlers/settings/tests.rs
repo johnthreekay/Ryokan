@@ -2055,23 +2055,93 @@ mod sync_exclusions_list {
 
 #[test]
 fn a_short_shim_key_is_refused_by_name() {
-    assert_eq!(shim_key_error(None, None), None);
+    assert_eq!(shim_key_error(None, None, None), None);
     assert_eq!(
-        shim_key_error(Some(""), Some("   ")),
+        shim_key_error(Some(""), Some("   "), None),
         None,
         "blank clears the key"
     );
     let long = "k".repeat(MIN_SHIM_KEY_CHARS);
-    assert_eq!(shim_key_error(Some(&long), Some(&long)), None);
+    assert_eq!(shim_key_error(Some(&long), Some(&long), None), None);
     assert!(
-        shim_key_error(Some("seerr"), None)
+        shim_key_error(Some("seerr"), None, None)
             .unwrap()
             .contains("Sonarr")
     );
     assert!(
-        shim_key_error(Some(&long), Some("seerr"))
+        shim_key_error(Some(&long), Some("seerr"), None)
             .unwrap()
             .contains("Radarr")
+    );
+}
+
+#[test]
+fn a_stored_short_shim_key_is_kept_but_a_new_one_is_checked() {
+    let stored = config::Config {
+        sonarr_api_key: "seerr-key-12345".to_string(),
+        ..config::Config::default()
+    };
+    assert_eq!(
+        shim_key_error(Some("seerr-key-12345"), None, Some(&stored)),
+        None,
+        "the key Seerr already holds still saves"
+    );
+    assert!(
+        shim_key_error(Some("seerr-key-99999"), None, Some(&stored)).is_some(),
+        "a changed short key is refused"
+    );
+    assert!(
+        shim_key_error(None, Some("seerr-key-12345"), Some(&stored)).is_some(),
+        "each shim is compared with its own stored key"
+    );
+    assert!(shim_key_is_short("seerr-key-12345"));
+    assert!(!shim_key_is_short(""));
+    assert!(!shim_key_is_short(&"k".repeat(MIN_SHIM_KEY_CHARS)));
+}
+
+#[tokio::test]
+async fn an_install_with_a_short_shim_key_still_saves_the_tab_and_is_warned() {
+    // 2.1.2 accepted any key. After the minimum arrived, an upgraded
+    // install with a short one couldn't save Connections at all (a
+    // Jellyfin edit included) until it rotated the key Seerr holds.
+    use axum::extract::FromRequest;
+    let db = crate::test_support::in_memory_pool().await;
+    let cfg = config::Config {
+        sonarr_enabled: true,
+        sonarr_api_key: "seerr-key-12345".to_string(),
+        external_sync_interval_minutes: 60,
+        ..config::Config::default()
+    };
+    config::save_config(&db, &cfg).await.unwrap();
+    let state = crate::test_support::build_test_app_state(db.clone(), None);
+    let req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/settings/integrations")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(axum::body::Body::from(
+            "sonarr_enabled=on&sonarr_api_key=seerr-key-12345&external_sync_interval_minutes=90",
+        ))
+        .unwrap();
+    let form = Form::<IntegrationsForm>::from_request(req, &())
+        .await
+        .unwrap();
+    let resp = settings_integrations_submit(State(state), HxRequest(false), form)
+        .await
+        .into_response();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let page = String::from_utf8_lossy(&bytes);
+    assert!(
+        !page.contains("must be at least"),
+        "the save is not refused"
+    );
+    let saved = config::get_config(&db).await.unwrap().unwrap();
+    assert_eq!(saved.external_sync_interval_minutes, 90, "the edit saved");
+    assert_eq!(saved.sonarr_api_key, "seerr-key-12345");
+    assert!(
+        page.contains("shorter than 20 characters"),
+        "the tab says to replace the short key"
     );
 }
 
