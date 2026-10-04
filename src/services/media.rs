@@ -275,6 +275,15 @@ pub struct EpisodeFile {
 }
 
 impl EpisodeFile {
+    /// Whether the file is in Ryokan's own numbering: no season in its
+    /// name, or season 1 (every import names files `S01Exx`). A merged
+    /// Sonarr-style folder can also hold `Season 02/Show - S02E05.mkv`,
+    /// which reads as episode 5 too; a delete or replace of episode 5
+    /// picks the own-season file when there is one.
+    pub fn is_own_season(&self) -> bool {
+        self.season_number.is_none_or(|n| n == 1)
+    }
+
     /// Every episode number the file holds, first to last.
     pub fn episodes(&self) -> std::ops::RangeInclusive<i32> {
         self.episode_number..=self.episode_last

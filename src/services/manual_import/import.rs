@@ -176,10 +176,18 @@ async fn existing_files_for_episode(
     count: i32,
 ) -> Vec<(PathBuf, media::EpisodeSpan)> {
     let last = episode + count.max(1) - 1;
-    media::scan_series_folder(media_root, folder)
+    let mut matching: Vec<media::EpisodeFile> = media::scan_series_folder(media_root, folder)
         .await
         .into_iter()
         .filter(|f| f.episode_number <= last && f.episode_last >= episode)
+        .collect();
+    // Another season's file numbered the same is not this episode's
+    // old file when this season has one (see `is_own_season`).
+    if matching.iter().any(|f| f.is_own_season()) {
+        matching.retain(|f| f.is_own_season());
+    }
+    matching
+        .into_iter()
         .map(|f| {
             let span = f.span();
             (Path::new(media_root).join(folder).join(f.filename), span)
@@ -795,6 +803,33 @@ mod tests {
     use crate::services::source;
     use crate::test_support::{build_test_app_state, in_memory_pool, seed_series};
     use std::fs;
+
+    #[tokio::test]
+    async fn replace_takes_this_seasons_file_over_another_seasons_namesake() {
+        // A merged Sonarr-style folder: `S02E05` used to be recycled
+        // along with the real episode 5 on a replace.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let s1 = root.join("Show/Season 01");
+        let s2 = root.join("Show/Season 02");
+        std::fs::create_dir_all(&s1).unwrap();
+        std::fs::create_dir_all(&s2).unwrap();
+        std::fs::write(s1.join("Show - S01E05.mkv"), b"x").unwrap();
+        std::fs::write(s2.join("Show - S02E05.mkv"), b"x").unwrap();
+        let root_s = root.to_str().unwrap();
+        let found = existing_files_for_episode(root_s, "Show", 5, 1).await;
+        let names: Vec<_> = found
+            .iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, vec!["Show - S01E05.mkv"]);
+
+        // With no season-1 file, the other season's still counts, as it
+        // does on the series page.
+        std::fs::remove_file(s1.join("Show - S01E05.mkv")).unwrap();
+        let found = existing_files_for_episode(root_s, "Show", 5, 1).await;
+        assert_eq!(found.len(), 1);
+    }
 
     fn entry(id: i64, english: &str) -> AnimeEntry {
         AnimeEntry {

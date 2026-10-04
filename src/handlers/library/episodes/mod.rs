@@ -204,7 +204,12 @@ pub async fn delete_episode_file(
     let files = media::scan_series_folder(&cfg.media_root, &tracked.folder_name).await;
     // `holds`: a multi-episode file (issue #246) is the file for every
     // episode in its span, and deleting it clears all of them.
-    let target = files.iter().find(|f| f.holds(episode_number));
+    // The own-season file first, so a merged folder's `S02E05` is not
+    // taken for episode 5 while `S01E05` is on disk.
+    let target = files
+        .iter()
+        .find(|f| f.holds(episode_number) && f.is_own_season())
+        .or_else(|| files.iter().find(|f| f.holds(episode_number)));
 
     match target {
         None => json_err(
