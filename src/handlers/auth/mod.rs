@@ -673,19 +673,26 @@ pub async fn require_auth(
 /// Refuse a cross-site navigation to a GET that does something: builds
 /// a backup, starts an OAuth attempt. `SameSite=Lax` sends the session
 /// cookie on a top-level GET, so a link on another site could set these
-/// off, and the CSRF check covers unsafe methods only. Browsers mark such
-/// a request `Sec-Fetch-Site: cross-site`; one without the header (curl,
-/// a script) or from the same origin passes.
+/// off, and the CSRF check covers unsafe methods only. Only
+/// `Sec-Fetch-Site: same-origin`, `none` (typed, bookmarked) or no header
+/// at all (curl, a script) passes. `same-site` is refused too: it ignores
+/// the port, so every other service on the same host (and every sibling
+/// subdomain) counts as same-site.
 pub(crate) fn refuse_cross_site_get(headers: &HeaderMap) -> Option<Response> {
-    match headers.get("sec-fetch-site").and_then(|v| v.to_str().ok()) {
-        Some(site) if site.eq_ignore_ascii_case("cross-site") => Some(
+    match headers.get("sec-fetch-site").map(|v| v.to_str()) {
+        None => None,
+        Some(Ok(site))
+            if site.eq_ignore_ascii_case("same-origin") || site.eq_ignore_ascii_case("none") =>
+        {
+            None
+        }
+        Some(_) => Some(
             (
                 StatusCode::FORBIDDEN,
                 "Open this from Ryokan, not from a link on another site.",
             )
                 .into_response(),
         ),
-        _ => None,
     }
 }
 

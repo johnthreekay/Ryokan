@@ -279,6 +279,12 @@ fn a_cross_site_navigation_to_a_side_effect_get_is_refused() {
         with(Some("cross-site")),
         Some(axum::http::StatusCode::FORBIDDEN)
     );
+    assert_eq!(
+        with(Some("same-site")),
+        Some(axum::http::StatusCode::FORBIDDEN),
+        "same-site ignores the port: another service on the same host"
+    );
+    assert_eq!(with(Some("bogus")), Some(axum::http::StatusCode::FORBIDDEN));
     assert_eq!(with(Some("same-origin")), None);
     assert_eq!(with(Some("none")), None, "typed into the address bar");
     assert_eq!(with(None), None, "curl and scripts send no header");

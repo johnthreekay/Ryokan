@@ -50,7 +50,7 @@ Usernames are passed through `sanitize_for_log()` (strip control chars, cap at 6
 
 **API keys** share the map: `api_key_throttled` / `api_key_failed` keep a `key:<ip>` bucket for wrong Sonarr / Radarr shim keys (`arr_auth::check_api_key`), with the login window and soft cap; only failures count, and a throttled client gets 429 + `Retry-After: 60`. Those keys are whatever the user typed, so Settings refuses one under 20 characters (`MIN_SHIM_KEY_CHARS`). Log lines an unauthenticated client can repeat (a throttled login, a wrong scoped key) go through `logger::first_in_window`, one row per client per minute, since each is a database row.
 
-**Cross-site GETs**: `refuse_cross_site_get` 403s a `Sec-Fetch-Site: cross-site` request to a GET that does something (`/api/backup/download`, the OAuth `/start` routes), which `SameSite=Lax` would otherwise send the session cookie with; no header (curl) or same-origin passes.
+**Cross-site GETs**: `refuse_cross_site_get` 403s a GET that does something (`/api/backup/download`, the OAuth `/start` routes) unless `Sec-Fetch-Site` is `same-origin` or `none` (typed, bookmarked) or absent (curl), since `SameSite=Lax` sends the session cookie on a top-level navigation. `same-site` is refused like `cross-site`: it ignores the port, so another app on the same host counts as same-site.
 
 `LOGIN_FAILURES` deliberately uses `.lock().unwrap()` — security-adjacent state should crash-loop on programmer error, not silently continue with half-mutated state.
 
