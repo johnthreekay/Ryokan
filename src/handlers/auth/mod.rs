@@ -887,14 +887,22 @@ pub async fn setup_submit(
             // never wrote a config row; the user opened Settings →
             // Connections, edited Jellyfin, hit Save, and got a
             // mysterious self-contradicting error since they HAD
-            // just run /setup. `INSERT OR IGNORE` so a re-run of
-            // setup somehow (shouldn't happen — has_users gate above
-            // catches it) doesn't clobber an already-saved config.
-            // Failure is non-fatal: the legacy bulk save handler at
-            // POST /settings still works without a row, and a noisy
-            // log is better than blocking account creation on a
-            // config write.
-            if let Err(e) = config::save_config(&state.db, &config::Config::default()).await {
+            // just run /setup. Only when no row exists: `save_config`
+            // is an upsert, and setup runs again with the settings in
+            // place after `RYOKAN_RESET_AUTH` wiped the account, which
+            // must not reset them all to defaults. A failed read seeds
+            // nothing for the same reason. Failure is non-fatal: the
+            // legacy bulk save handler at POST /settings still works
+            // without a row, and a noisy log is better than blocking
+            // account creation on a config write.
+            let seeded = match config::get_config(&state.db).await {
+                Ok(Some(_)) => Ok(()),
+                Ok(None) => config::save_config(&state.db, &config::Config::default())
+                    .await
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            if let Err(e) = seeded {
                 tracing::warn!(
                     "setup_submit: failed to seed default config row: {e} \
                      (subform saves will fail until a row exists; \
