@@ -23,6 +23,7 @@ pub mod direct_rss_feeds;
 pub mod download_clients;
 pub mod indexers;
 pub mod naming;
+pub mod setup_library;
 use custom_formats::ImportReviewView;
 
 /// Shortest Sonarr / Radarr shim API key a save accepts.

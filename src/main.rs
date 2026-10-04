@@ -996,6 +996,12 @@ async fn main() {
         // the legacy `/settings` POST above is the no-UI fallback for
         // any external bookmark or script still hitting the bulk
         // endpoint.
+        // First-run library step; `/setup` sends a new account here.
+        .route(
+            "/setup/library",
+            get(handlers::settings::setup_library::setup_library_page)
+                .post(handlers::settings::setup_library::setup_library_submit),
+        )
         .route(
             "/settings/general",
             post(handlers::settings::settings_general_submit),

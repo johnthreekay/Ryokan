@@ -254,6 +254,11 @@ pub fn handler_router(state: AppState) -> Router {
 
     let protected_routes = Router::new()
         .route("/api/health", get(handlers::settings::api_health))
+        .route(
+            "/setup/library",
+            get(handlers::settings::setup_library::setup_library_page)
+                .post(handlers::settings::setup_library::setup_library_submit),
+        )
         .route("/logout", axum::routing::post(handlers::auth::logout))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -746,6 +751,13 @@ window.addEventListener('DOMContentLoaded', function () {
             // up each page's distinct `{% block page_css %}` link.
             // Phase D pentagon-nav test exercises every route here.
             .route("/", get(crate::handlers::library::pages::index))
+            // First-run library step
+            // (`tests/htmx_browser_e2e_setup_library.rs`).
+            .route(
+                "/setup/library",
+                get(crate::handlers::settings::setup_library::setup_library_page)
+                    .post(crate::handlers::settings::setup_library::setup_library_submit),
+            )
             // The library's add-series Monitor Episodes dialog posts
             // here (`tests/htmx_browser_e2e_add_series_monitor.rs`).
             .route(

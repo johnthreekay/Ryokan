@@ -227,6 +227,14 @@ async fn setup_submit_seeds_default_config_row() {
         StatusCode::SEE_OTHER,
         "setup POST should redirect after success"
     );
+    assert_eq!(
+        response
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok()),
+        Some("/setup/library"),
+        "a new account goes on to the library step"
+    );
 
     // Post-condition: the config row exists. We don't pin specific
     // field values — `Config::default()` is the contract; this test
@@ -293,8 +301,8 @@ async fn concurrent_setup_posts_create_exactly_one_account() {
     locations.sort();
     assert_eq!(
         locations,
-        ["/".to_string(), "/login".to_string()],
-        "the winner lands on the app, the loser on the login page"
+        ["/login".to_string(), "/setup/library".to_string()],
+        "the winner goes on to the library step, the loser to the login page"
     );
 }
 

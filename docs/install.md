@@ -63,7 +63,7 @@ volumes:
 The colon in volume mounts means: left side is your host filesystem path, right side is the path inside the container. Ryokan only sees the right side. So:
 
 - Inside the container, "complete downloads" live at `/downloads`. Configure your download client to put its completed files here.
-- Inside the container, "the library" lives at `/media/anime`. Set Settings → General → Media Root Path to `/media/anime`.
+- Inside the container, "the library" lives at `/media/anime`. Enter `/media/anime` when first-run setup asks for the media library, or later under Settings → General → Media Root Path.
 
 These paths must match what your download client sees. If qBittorrent thinks files are at `/downloads/movies/foo.mkv` but Ryokan thinks they're at `/srv/downloads/foo.mkv`, post-processing fails. The [Stack builder](stack-builder.md) generates compose files with matching paths automatically.
 

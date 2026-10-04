@@ -865,7 +865,10 @@ pub async fn setup_submit(
 
             let mut response = Response::builder()
                 .status(StatusCode::SEE_OTHER)
-                .header(header::LOCATION, "/")
+                // The new account's first stop is the library step
+                // (`handlers::settings::setup_library`), which can be
+                // skipped.
+                .header(header::LOCATION, "/setup/library")
                 .header(header::SET_COOKIE, set_session_cookie(&token, &headers));
             if let Some(device) = new_device_cookie(&state.db, user_id, &headers).await {
                 response = response.header(header::SET_COOKIE, device);

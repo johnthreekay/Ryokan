@@ -264,6 +264,8 @@ Six route groups in `main.rs`, each with a different auth layer — pick the rig
 
 **Boot order matters for #126**: `services::backup::apply_pending_restore` runs in `main.rs` before `SqlitePoolOptions::connect`, so a staged restore is swapped in with no connection open; the post-migration `logger::info` line is the only DB write it makes.
 
+**First-run setup is two steps.** `/setup` creates the account and sends it to `/setup/library` (a protected route, `handlers::settings::setup_library`): media root (refused unless Ryokan can see and write to it, the usual Docker mistake being a host path), import mode, and an optional Jellyfin connection. Saving turns post-processing on, which defaults off; Skip is a plain link and changes nothing. The page stays reachable afterwards and shares Settings' write-only Jellyfin key rules.
+
 There is no `/healthz`. **The Docker healthcheck deliberately probes `/login`** (200 with no auth, no config dependency, no side effects) rather than the auth-gated `/api/health`.
 
 ## Docker

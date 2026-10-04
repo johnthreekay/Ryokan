@@ -346,7 +346,12 @@ Ryokan is now on port 8978, Jellyfin on 8096, your download client on its defaul
 
 Open <http://localhost:8978> in a browser. You'll be redirected to a setup page. Pick a username and a password of 8 to 72 characters, type it twice, and submit. That account is your admin account; Ryokan is single-user, so this is the only one you'll create.
 
-Once you're logged in you'll see an empty library page. That's expected; we haven't told Ryokan about any shows yet.
+Ryokan then asks where to put finished episodes. Set **Media Root Path** to `/media/anime`. That's the path inside Ryokan's container; it maps to `/srv/media/anime` on your host, the same folder Jellyfin reads from. Leave the file operation mode on Hardlink and the Jellyfin fields empty for now (step 5 connects it), and click **Save and continue**. Saving turns on post-processing, which renames each finished download and places it in that folder. **Skip for now** leaves post-processing off, and Settings → General has the same settings for later.
+
+!!! warning "PUID and PGID matter for shared folders"
+    The `1000:1000` defaults work for most homelabs but not all. If files Ryokan writes show up with the wrong owner and Jellyfin can't read them, run `id -u` and `id -g` on your media-owning user and update both services' `PUID` / `PGID`. [Installation → PUID and PGID](install.md#puid-and-pgid) explains why.
+
+After that you'll see an empty library page. That's expected; we haven't told Ryokan about any shows yet.
 
 ## 3. Set up Jellyfin
 
@@ -445,12 +450,9 @@ Click **Test connection** in Ryokan. You should see "Connected" with a version n
 
 Save the row.
 
-## 5. Set the media root
+## 5. (Optional) Connect Jellyfin to Ryokan
 
-In Ryokan, go to **Settings → General → Media Root Path** and set it to `/media/anime`. That's the path inside Ryokan's container; it maps to `/srv/media/anime` on your host (the same folder Jellyfin reads from).
-
-!!! warning "PUID and PGID matter for shared folders"
-    The `1000:1000` defaults work for most homelabs but not all. If files Ryokan writes show up with the wrong owner and Jellyfin can't read them, run `id -u` and `id -g` on your media-owning user and update both services' `PUID` / `PGID`. [Installation → PUID and PGID](install.md#puid-and-pgid) explains why.
+In Jellyfin, open **Dashboard → API Keys**, add a key named Ryokan, and copy it. In Ryokan, open **Settings → Connections**, set the Jellyfin **URL** to `http://jellyfin:8096`, paste the key into **API Key**, click **Test**, then **Save**. From then on Ryokan asks Jellyfin to rescan after each import, so a new episode shows up without waiting for the scheduled scan.
 
 ## 6. (Optional) Add an indexer
 
@@ -469,7 +471,7 @@ When the series page opens, each episode row has two icon buttons: **Interactive
 The grab fires off to your download client. When it finishes:
 
 1. Post-processing places the file at `/srv/media/anime/<show name>/Season 01/<episode>.mkv` on your host. These composes mount downloads and the library separately, and a hardlink can't cross mounts, so it's a copy. The shared `/data` layout in [Docker](docker.md#moving-ryokans-data-folder) keeps hardlinks.
-2. Jellyfin picks it up on its next library scan (or immediately if you click **Scan All Libraries**).
+2. Jellyfin shows it right away if you connected it in step 5. Otherwise it appears after Jellyfin's next library scan (or immediately if you click **Scan All Libraries**).
 3. The episode is now playable from any Jellyfin client (web, mobile, TV).
 
 ## 8. (Optional) Link AniList or MAL
