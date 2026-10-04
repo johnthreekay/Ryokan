@@ -733,7 +733,8 @@ mod tests {
     // ── trash-guides anime fixture set (plan §9, Gap E) ──────────────────
     //
     // Twenty-eight real trash-guides anime CF JSON files are vendored at
-    // `tests/fixtures/trash-guides-anime/`. Each fixture is pulled into the
+    // `tests/fixtures/trash-guides-anime/`, last synced with TRaSH-Guides
+    // `e7c97a67` (2026-09-28) from `docs/json/sonarr/cf/`. Each fixture is pulled into the
     // binary via `include_str!` so the test needs no filesystem access
     // and no network at build time. These are the **actual** JSON shapes
     // trash-guides ships (object-form `fields`, `trash_id`, `trash_scores`,
