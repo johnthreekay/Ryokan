@@ -2987,8 +2987,9 @@ pub async fn write_series_sidecars(state: &AppState, series_id: i64) -> Result<(
         .await
         .map_err(|e| format!("series lookup failed: {e}"))?
         .ok_or_else(|| format!("series {series_id} not found"))?;
-    if series_row.folder_name.is_empty() {
-        return Err(format!("series {series_id} has no folder name"));
+    // `.` / `..` would put the sidecars in the media root or above it.
+    if !media::usable_folder_name(&series_row.folder_name) {
+        return Err(format!("series {series_id} has no usable folder name"));
     }
     let cached_detail = metadata_cache::get_by_series_id(&state.db, series_id)
         .await
