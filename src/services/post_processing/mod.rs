@@ -555,6 +555,20 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
         if let Some(p) = dst.parent() {
             std::fs::create_dir_all(p)?;
         }
+        // A symlinked source is imported as the file it names, never as
+        // the link itself: `hard_link` links the symlink's own inode and
+        // `rename` moves the link, so the library got a symlink whose
+        // relative target resolves somewhere else from its new folder
+        // (`fs::copy` always followed it). The callers' containment
+        // checks canonicalize the same way, so the file that lands is
+        // the one they verified. A link that resolves to nothing fails
+        // here rather than landing dangling.
+        let (src, link) =
+            if std::fs::symlink_metadata(&src).is_ok_and(|m| m.file_type().is_symlink()) {
+                (std::fs::canonicalize(&src)?, Some(src))
+            } else {
+                (src, None)
+            };
         // No-op when src and dst already point at the same bytes — by
         // a prior hardlink import landing the same file twice, or by a
         // misconfiguration that resolves both to the same path. All
@@ -566,6 +580,25 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
             return Ok(());
         }
         match mode.as_str() {
+            "move" if link.is_some() => {
+                // Moving a link's target could take it from under
+                // whatever else uses it: it can sit outside what was
+                // handed over (a manual import with symlinks followed
+                // pointing at a seeding download). Place it the way
+                // hardlink mode does and consume only the link.
+                link_or_copy(&src, &dst)?;
+                if let Some(link) = link
+                    && let Err(e) = std::fs::remove_file(&link)
+                {
+                    tracing::warn!(
+                        target: "ryokan::post_processing",
+                        src = %link.display(),
+                        error = %e,
+                        "removing the imported symlink failed; it remains at the source",
+                    );
+                }
+                Ok(())
+            }
             "move" => {
                 // Same-fs rename is atomic and instant — the happy path.
                 if std::fs::rename(&src, &dst).is_ok() {
@@ -602,30 +635,31 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
                 std::fs::copy(&src, &dst)?;
                 Ok(())
             }
-            _ => {
-                // "hardlink" (default): hardlink preferred, copy on
-                // failure (cross-fs). `std::fs::hard_link` does NOT
-                // overwrite — it returns `EEXIST` if dst already exists.
-                // Clean any pre-existing dst first so a re-import
-                // doesn't fall through to the `fs::copy` fallback (which
-                // would silently degrade to a real copy, breaking the
-                // seed-safe-via-shared-inode property the user picked
-                // hardlink mode for). The same-inode short-circuit
-                // above already handled the "dst is the same file as
-                // src via prior hardlink" case; reaching here means
-                // dst is a different file we're free to replace.
-                if dst.exists() {
-                    let _ = std::fs::remove_file(&dst);
-                }
-                if std::fs::hard_link(&src, &dst).is_err() {
-                    std::fs::copy(&src, &dst)?;
-                }
-                Ok(())
-            }
+            // "hardlink" (default).
+            _ => link_or_copy(&src, &dst),
         }
     })
     .await
     .map_err(|e| std::io::Error::other(format!("join error: {}", e)))?
+}
+
+/// Hardlink preferred, copy on failure (cross-fs). `std::fs::hard_link`
+/// does NOT overwrite — it returns `EEXIST` if dst already exists.
+/// Clean any pre-existing dst first so a re-import doesn't fall through
+/// to the `fs::copy` fallback (which would silently degrade to a real
+/// copy, breaking the seed-safe-via-shared-inode property the user
+/// picked hardlink mode for). `do_file_op`'s same-inode short-circuit
+/// already handled the "dst is the same file as src via prior hardlink"
+/// case; reaching here means dst is a different file we're free to
+/// replace. Blocking; `do_file_op` runs it under `spawn_blocking`.
+fn link_or_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if dst.exists() {
+        let _ = std::fs::remove_file(dst);
+    }
+    if std::fs::hard_link(src, dst).is_err() {
+        std::fs::copy(src, dst)?;
+    }
+    Ok(())
 }
 
 /// Whether `path` resolves (symlinks followed) to a regular file inside
@@ -633,7 +667,8 @@ pub(crate) async fn do_file_op(mode: &str, src: &Path, dst: &Path) -> std::io::R
 /// torrent can carry a symlink, and a `.srt` linking to the database
 /// or the key file would otherwise be copied into the library, where
 /// Jellyfin serves it. Strict, unlike the video loop's check: a file
-/// that can't be resolved is skipped.
+/// that can't be resolved is skipped. A link that passes is imported as
+/// the file it resolves to (`do_file_op`).
 fn resolves_to_file_inside(path: &Path, base: &Path) -> bool {
     match (path.canonicalize(), base.canonicalize()) {
         (Ok(real), Ok(real_base)) => real.starts_with(&real_base) && real.is_file(),
@@ -1631,7 +1666,9 @@ async fn import_torrent(
         // confirm the resolved source still lives under the resolved
         // base. Catches symlink games (a `legit.mkv` entry that resolves
         // to a symlink pointing at `/etc/passwd`) and any string-level
-        // oversight the validator above might miss. Permissive on
+        // oversight the validator above might miss. A symlink that
+        // passes is imported as the file it resolves to (`do_file_op`
+        // canonicalizes it the same way), never as the link. Permissive on
         // canonicalize errors — the file may not yet exist on this
         // node's view, in which case `do_file_op` surfaces the real I/O
         // error downstream and there's nothing for an attacker to

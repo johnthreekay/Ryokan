@@ -325,6 +325,73 @@ async fn hardlink_mode_replaces_unrelated_preexisting_dst() {
     );
 }
 
+// ─── Symlinked sources ─────────────────────────────────────────────
+
+/// A download holding `Show/real/ep.mkv` and `Show/ep.mkv`, a relative
+/// symlink to it, plus a library folder. Returns (tempdir, real file,
+/// link, destination).
+fn download_with_symlinked_episode() -> (TempDir, PathBuf, PathBuf, PathBuf) {
+    let dir = TempDir::new().unwrap();
+    let show = dir.path().join("downloads/Show");
+    fs::create_dir_all(show.join("real")).unwrap();
+    let real = show.join("real/ep.mkv");
+    fs::write(&real, b"payload").unwrap();
+    let link = show.join("ep.mkv");
+    std::os::unix::fs::symlink("real/ep.mkv", &link).unwrap();
+    let dst = dir.path().join("library/Show/Season 01/Show - S01E01.mkv");
+    (dir, real, link, dst)
+}
+
+#[tokio::test]
+async fn a_symlinked_source_lands_as_the_file_it_names() {
+    // `hard_link` links a symlink's own inode and `rename` moves the
+    // link, so the library used to get `real/ep.mkv` as a relative
+    // link that resolves to nothing from the season folder.
+    for mode in ["hardlink", "copy", "move"] {
+        let (_dir, real, link, dst) = download_with_symlinked_episode();
+        do_file_op(mode, &link, &dst).await.expect(mode);
+        let meta = fs::symlink_metadata(&dst).unwrap();
+        assert!(meta.is_file(), "{mode}: a regular file, not a link");
+        assert_eq!(fs::read(&dst).unwrap(), b"payload", "{mode}");
+        assert_eq!(
+            fs::read(&real).unwrap(),
+            b"payload",
+            "{mode}: the link's target stays in place"
+        );
+        match mode {
+            "hardlink" => {
+                assert_eq!(
+                    meta.ino(),
+                    fs::metadata(&real).unwrap().ino(),
+                    "hardlink: shares the target's inode, so seeding is safe"
+                );
+                assert!(
+                    fs::symlink_metadata(&link).is_ok(),
+                    "hardlink keeps the link"
+                );
+            }
+            "move" => assert!(
+                fs::symlink_metadata(&link).is_err(),
+                "move consumes the link"
+            ),
+            _ => {}
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_dangling_symlinked_source_fails_without_landing() {
+    for mode in ["hardlink", "copy", "move"] {
+        let (_dir, real, link, dst) = download_with_symlinked_episode();
+        fs::remove_file(&real).unwrap();
+        assert!(do_file_op(mode, &link, &dst).await.is_err(), "{mode}");
+        assert!(
+            fs::symlink_metadata(&dst).is_err(),
+            "{mode}: nothing lands at the destination"
+        );
+    }
+}
+
 // ─── files_same_content ────────────────────────────────────────────
 
 #[test]
