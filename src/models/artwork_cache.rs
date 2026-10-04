@@ -232,16 +232,16 @@ pub async fn cleanup_orphans(
     let blobs_deleted = deleted_rows.len() as u64;
     for row in &deleted_rows {
         let local_path: String = row.get("local_path");
-        if !local_path.is_empty() {
+        // Only the cache's own copy, by file name, never the stored path
+        // itself: a restored database can name any file there (the key,
+        // the database, a video), and this unlinked it. The cache's copy
+        // is also the right file for a row written before the data dir
+        // moved (#259).
+        if let Some(blob) = crate::services::artwork::blob_path_in_cache(&local_path) {
             // Hourly task in an async path — match the rest of the
             // codebase's std::fs → tokio::fs migration so we don't
             // block the runtime executor on the unlink syscall.
-            if tokio::fs::remove_file(&local_path).await.is_err()
-                && let Some(moved) = crate::services::artwork::relocated_blob_path(&local_path)
-            {
-                // Row written before the data dir moved (#259).
-                let _ = tokio::fs::remove_file(moved).await;
-            }
+            let _ = tokio::fs::remove_file(blob).await;
         }
     }
 
@@ -447,11 +447,18 @@ mod tests {
     #[tokio::test]
     async fn cleanup_orphans_drops_aged_blobs_without_refs() {
         // Step 2: a blob with no ref AND created > min_age_days ago is
-        // pruned. Use a real on-disk file in a tempdir so we can
-        // verify the file is also removed.
+        // pruned. Use a real on-disk file so we can verify the file is
+        // also removed: the cache's own copy (the only file cleanup
+        // touches), named after this test's temp dir so parallel runs
+        // never share one.
         let db = in_memory_pool().await;
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("orphan.jpg");
+        let blobs = crate::services::artwork::media_cache_dir().join("blobs");
+        std::fs::create_dir_all(&blobs).unwrap();
+        let path = blobs.join(format!(
+            "{}.jpg",
+            dir.path().file_name().unwrap().to_string_lossy()
+        ));
         tokio::fs::write(&path, b"data").await.unwrap();
         let path_str = path.to_string_lossy().into_owned();
         upsert_blob(&db, "h-aged", &path_str, "image/jpeg", 4)
@@ -468,6 +475,33 @@ mod tests {
         assert!(!path.exists(), "on-disk file must be removed");
         // Blob row gone too.
         assert!(get_blob_path(&db, "h-aged").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn cleanup_orphans_never_unlinks_the_file_a_row_names_outside_the_cache() {
+        // A restored database can set `local_path` to any file, and an
+        // orphaned row's path used to be unlinked as stored.
+        let db = in_memory_pool().await;
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("ryokan.db");
+        tokio::fs::write(&outside, b"not artwork").await.unwrap();
+        upsert_blob(
+            &db,
+            "h-planted",
+            &outside.to_string_lossy(),
+            "image/jpeg",
+            11,
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE image_blobs SET created_at = datetime('now', '-60 days')")
+            .execute(&db)
+            .await
+            .unwrap();
+
+        let (_refs, blobs_deleted) = cleanup_orphans(&db, 30).await.unwrap();
+        assert_eq!(blobs_deleted, 1, "the row is still pruned");
+        assert!(outside.is_file(), "the file it named is left alone");
     }
 
     #[tokio::test]
