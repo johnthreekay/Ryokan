@@ -152,13 +152,91 @@
   // (no per-client path rewrite), and the Media Root the user types
   // is the host path they already know.
   function sharedPaths(raw, appdata) {
-    const shared = (raw || '').trim().replace(/\/+$/, '') || '/srv/media';
+    const typed = (raw || '').trim();
+    // An absolute path is cleaned (`//`, `.`, `..`, a trailing `/`) so
+    // sharedPathProblem judges the folder Docker will mount; anything
+    // else stays as typed for the error to quote.
+    let shared = '/srv/media';
+    if (typed) shared = typed.startsWith('/') ? cleanPath(typed) : typed;
     return {
       shared,
       downloads: `${shared}/downloads`,
       media: `${shared}/anime`,
       appdata,
     };
+  }
+
+  function cleanPath(path) {
+    const parts = [];
+    path.split('/').forEach((part) => {
+      if (part === '..') parts.pop();
+      else if (part && part !== '.') parts.push(part);
+    });
+    return `/${parts.join('/')}`;
+  }
+
+  function isSameOrInside(path, dir) {
+    return path === dir || path.startsWith(dir === '/' ? '/' : `${dir}/`);
+  }
+
+  // Container folders a mount at the same path would hide.
+  const SYSTEM_DIRS = ['/', '/bin', '/boot', '/dev', '/etc', '/lib', '/lib64',
+    '/proc', '/root', '/run', '/sbin', '/sys', '/tmp', '/usr', '/var'];
+
+  // Container folders the shared one may not be or sit inside, in the
+  // services that mount it: their own config mounts, and /app, where
+  // the Ryokan image keeps its program.
+  function reservedTargets(cfg) {
+    const out = [
+      { path: '/config', why: 'Ryokan and the other apps keep their settings at /config inside their containers' },
+      { path: '/app', why: 'the Ryokan image keeps its program in /app' },
+    ];
+    cfg.dlclients.forEach((kind) => {
+      const c = CLIENTS[kind];
+      const target = c.config_mount_target;
+      if (target) out.push({ path: target, why: `${c.label} keeps its settings at ${target} inside its container` });
+    });
+    if (cfg.dlclients.includes('rtorrent')) {
+      out.push({ path: '/passwd', why: 'rTorrent reads its passwords from /passwd inside its container' });
+    }
+    return out;
+  }
+
+  // Why the shared folder can't work as typed, or null. Every container
+  // that mounts it does so at its host path, so it has to be a valid
+  // container path as well (absolute, no `:`); a second mount at a
+  // service's own config path (`/data` beside rTorrent's /data) is
+  // refused by `docker run` as a duplicate mount point and silently
+  // replaces the config mount under Compose (the later line wins); and
+  // a library inside a config folder is re-owned along with it
+  // (Ryokan's entrypoint takes ownership of everything in its data dir).
+  function sharedPathProblem(cfg) {
+    const shared = cfg.paths.shared;
+    const pick = 'Pick a folder such as /srv/media.';
+    if (shared.includes(':')) {
+      return "The shared media folder can't contain a colon. Docker reads a colon in a volume line as a separator.";
+    }
+    if (!shared.startsWith('/')) {
+      return 'The shared media folder has to be a full path that starts with /, such as /srv/media. Every container mounts it at that same path.';
+    }
+    if (SYSTEM_DIRS.includes(shared)) {
+      return `The shared media folder can't be ${shared}. Every container mounts it at that same path, where it would hide the container's own ${shared}. ${pick}`;
+    }
+    const reserved = reservedTargets(cfg).find((r) => isSameOrInside(shared, r.path));
+    if (reserved) {
+      return `The shared media folder can't be ${reserved.path} or a folder inside it, because ${reserved.why}. ${pick}`;
+    }
+    const appdata = (cfg.paths.appdata || '').trim();
+    if (appdata.startsWith('/')) {
+      const root = cleanPath(appdata);
+      const dir = serviceDirs(cfg)
+        .map((d) => (root === '/' ? `/${d}` : `${root}/${d}`))
+        .find((d) => isSameOrInside(shared, d));
+      if (dir) {
+        return `The shared media folder can't be ${dir} or a folder inside it. That folder holds an app's settings, and apps such as Ryokan take ownership of everything in their settings folder when they start. ${pick}`;
+      }
+    }
+    return null;
   }
 
   // Host ports from 6881 up for the torrent clients that take one
@@ -332,12 +410,15 @@
     ports:
       - "8978:8978"
     volumes:
-      - ${cfg.paths.appdata}/ryokan:/data
+      - ${cfg.paths.appdata}/ryokan:/config
       - ${cfg.paths.shared}:${cfg.paths.shared}
     environment:
       PUID: "${cfg.puid}"
       PGID: "${cfg.pgid}"
       TZ: "${cfg.tz}"
+      # Ryokan's own files live at /config, which leaves /data free
+      # for a shared media folder there.
+      RYOKAN_DATA_DIR: /config
       RUST_LOG: ryokan=info${hardening}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8978/login"]
@@ -560,10 +641,25 @@ ${portsBlock}    volumes:
     return null;
   }
 
+  // Per-service appdata subdirectories, one per service the stack runs.
+  function serviceDirs(cfg) {
+    const dirs = ['ryokan'];
+    cfg.dlclients.forEach((k) => dirs.push(CLIENTS[k].config_dir));
+    if (cfg.media_server === 'jellyfin') dirs.push('jellyfin');
+    if (cfg.requests === 'seerr') dirs.push('seerr');
+    if (cfg.vpn === 'gluetun') dirs.push('gluetun');
+    if (cfg.proxy === 'caddy') dirs.push('caddy');
+    if (cfg.proxy === 'traefik') dirs.push('traefik');
+    if (cfg.proxy === 'nginx') dirs.push('nginx');
+    return dirs;
+  }
+
   function renderCompose(cfg) {
     if (cfg.dlclients.length === 0) {
       return '# Pick at least one download client.\n';
     }
+    const problem = sharedPathProblem(cfg);
+    if (problem) return `# ${problem.replace(/\. /g, '.\n# ')}\n`;
 
     const services = [];
     services.push(renderRyokan(cfg));
@@ -581,15 +677,7 @@ ${portsBlock}    volumes:
     // to write to its own config volume. The chown takes these and
     // nothing else: the config root itself often holds other stacks'
     // folders, and a recursive chown of it re-owned all of them.
-    const serviceDirs = ['ryokan'];
-    cfg.dlclients.forEach((k) => serviceDirs.push(CLIENTS[k].config_dir));
-    if (cfg.media_server === 'jellyfin') serviceDirs.push('jellyfin');
-    if (cfg.requests === 'seerr') serviceDirs.push('seerr');
-    if (cfg.vpn === 'gluetun') serviceDirs.push('gluetun');
-    if (cfg.proxy === 'caddy') serviceDirs.push('caddy');
-    if (cfg.proxy === 'traefik') serviceDirs.push('traefik');
-    if (cfg.proxy === 'nginx') serviceDirs.push('nginx');
-    const appdataPaths = serviceDirs
+    const appdataPaths = serviceDirs(cfg)
       .map((d) => `${cfg.paths.appdata}/${d}`)
       .join(' ');
 
@@ -653,6 +741,8 @@ services:
   }
 
   function renderSettings(cfg) {
+    const problem = sharedPathProblem(cfg);
+    if (problem) return problem.replace(/\. /g, '.\n');
     const lines = [];
     // First: setup asks for these before anything else.
     lines.push("--- Ryokan's first-run setup (\"Set up your library\") ---");

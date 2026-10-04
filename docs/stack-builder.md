@@ -70,7 +70,7 @@ This is opinionated. Sane defaults beat a config matrix. If you need something t
 
 <fieldset>
   <legend>Host paths</legend>
-  <p class="hint">Where on your host the data lives. The shared folder holds <code>downloads/</code> and the library, <code>anime/</code>, and every container mounts it at the same path it has on the host, so imports hardlink and the paths you type in Ryokan are the ones you see on the host. Per-service config goes under <code>/srv/docker/&lt;service&gt;/</code>.</p>
+  <p class="hint">Where on your host the data lives. The shared folder holds <code>downloads/</code> and the library, <code>anime/</code>, and every container mounts it at the same path it has on the host, so imports hardlink and the paths you type in Ryokan are the ones you see on the host. It has to be a full path, such as <code>/srv/media</code> or <code>/data</code>. If a folder can't work, for example because an app keeps its own settings there, the output below says why instead of showing a compose file. Per-service config goes under <code>/srv/docker/&lt;service&gt;/</code>.</p>
   <label>Shared media folder <input type="text" name="shared_path" value="/srv/media"></label>
   <label>Per-service config root <input type="text" name="appdata_path" value="/srv/docker"></label>
 </fieldset>
