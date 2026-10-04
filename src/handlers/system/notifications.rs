@@ -460,8 +460,10 @@ fn build_webhook_config(
     webhook::validate_url(url)?;
 
     // Headers: parse, put the saved value back for a masked one, validate.
-    let saved = existing
-        .and_then(|r| serde_json::from_str::<webhook::WebhookConfig>(&r.config_json).ok())
+    let stored =
+        existing.and_then(|r| serde_json::from_str::<webhook::WebhookConfig>(&r.config_json).ok());
+    let saved = stored
+        .clone()
         .filter(|c| crate::handlers::secret_field::same_destination(&c.url, url));
     let mut headers = parse_webhook_headers(&form.webhook_headers)?;
     for (name, value) in headers.iter_mut() {
@@ -485,11 +487,20 @@ fn build_webhook_config(
     }
     webhook::validate_headers(&headers)?;
 
-    // Secret: three-way decode.
+    // Secret: three-way decode. Blank keeps the saved secret only while
+    // the URL keeps its host, like the header values above: deliveries
+    // signed with it would otherwise go to whatever host the form names.
     let secret: Option<String> = match form.webhook_secret.as_str() {
-        "" => existing
-            .and_then(|r| serde_json::from_str::<webhook::WebhookConfig>(&r.config_json).ok())
-            .and_then(|c| c.secret),
+        "" => match stored.and_then(|c| c.secret).filter(|s| !s.is_empty()) {
+            None => None,
+            Some(_) if saved.is_none() => {
+                return Err(
+                    "HMAC secret: the saved secret isn't used for a new address. Type it again, or press Clear secret."
+                        .to_string(),
+                );
+            }
+            Some(secret) => Some(secret),
+        },
         CLEAR_SENTINEL => None,
         v => Some(v.to_string()),
     };
@@ -900,6 +911,37 @@ mod tests {
         let json = build_webhook_config(&form, Some(&existing)).unwrap();
         let cfg: webhook::WebhookConfig = serde_json::from_str(&json).unwrap();
         assert!(cfg.secret.is_none());
+    }
+
+    #[test]
+    fn a_blank_secret_keeps_the_saved_one_only_for_the_same_host() {
+        // The masked header values were gated on the URL's host, the
+        // HMAC secret was not.
+        let existing = store::ProviderRow {
+            config_json: r#"{"url":"https://hooks.lan/x","secret":"shh"}"#.into(),
+            ..webhook_row("https://hooks.lan/x")
+        };
+        let json = build_webhook_config(&webhook_form("https://hooks.lan/y", ""), Some(&existing))
+            .unwrap();
+        let cfg: webhook::WebhookConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg.secret.as_deref(), Some("shh"));
+        let err =
+            build_webhook_config(&webhook_form("https://evil.example/x", ""), Some(&existing))
+                .unwrap_err();
+        assert!(err.contains("HMAC secret"), "{err}");
+        // A new secret, or Clear, still works for a new host.
+        let typed = UpsertForm {
+            webhook_secret: "new-secret".into(),
+            ..webhook_form("https://evil.example/x", "")
+        };
+        let json = build_webhook_config(&typed, Some(&existing)).unwrap();
+        let cfg: webhook::WebhookConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg.secret.as_deref(), Some("new-secret"));
+        let cleared = UpsertForm {
+            webhook_secret: CLEAR_SENTINEL.into(),
+            ..webhook_form("https://evil.example/x", "")
+        };
+        assert!(build_webhook_config(&cleared, Some(&existing)).is_ok());
     }
 
     #[test]
