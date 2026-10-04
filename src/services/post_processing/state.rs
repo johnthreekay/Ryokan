@@ -29,6 +29,30 @@ pub fn grab_is_stale(grabbed_at: &str, max_age_secs: i64) -> bool {
     sqlite_age_secs(grabbed_at).is_some_and(|elapsed| elapsed > max_age_secs)
 }
 
+/// [`fallback_ep_offset`], except when the grab's own episode list
+/// settles a number that could be read both ways. A sequel longer than
+/// everything before it makes the numbers past `cumulative_prior_episodes`
+/// ambiguous: after an 11-episode first season, `- 12` is either the
+/// sequel's own E12 or absolute 12 (its E01). Auto-search grabs it as
+/// E12 (`auto_search::episode_match` accepts the relative number), so
+/// reading it as absolute filed it over E01, recycling the real E01,
+/// and E12 stayed wanted to be grabbed again. When the grab claims the
+/// relative reading and not the absolute one, the relative one wins;
+/// with no claim, or both, the absolute rule stands as before.
+pub(crate) fn claimed_ep_offset(
+    raw_ep_num: i32,
+    cumulative_prior_episodes: i32,
+    claimed: &[i32],
+) -> i32 {
+    let absolute = fallback_ep_offset(raw_ep_num, cumulative_prior_episodes);
+    if absolute > 0 && claimed.contains(&raw_ep_num) && !claimed.contains(&(raw_ep_num - absolute))
+    {
+        0
+    } else {
+        absolute
+    }
+}
+
 pub(crate) fn fallback_ep_offset(raw_ep_num: i32, cumulative_prior_episodes: i32) -> i32 {
     if cumulative_prior_episodes > 0 && raw_ep_num > cumulative_prior_episodes {
         cumulative_prior_episodes
@@ -510,6 +534,23 @@ mod tests {
         // (offset = cumulative) would silently map legitimate E47
         // releases of a 48-episode show to E0.
         assert_eq!(fallback_ep_offset(47, 47), 0);
+    }
+
+    #[test]
+    fn claimed_offset_follows_the_grab_when_a_number_reads_both_ways() {
+        // 11-episode first season, 13-episode sequel: `- 12`.
+        assert_eq!(claimed_ep_offset(12, 11, &[12]), 0, "grabbed as E12");
+        assert_eq!(claimed_ep_offset(12, 11, &[1]), 11, "grabbed as E01");
+        assert_eq!(claimed_ep_offset(12, 11, &[]), 11, "no claim keeps #30");
+        assert_eq!(
+            claimed_ep_offset(12, 11, &[1, 12]),
+            11,
+            "both claimed keeps #30"
+        );
+        // JJK S3 `- 56`: only the absolute reading is a real episode.
+        assert_eq!(claimed_ep_offset(56, 47, &[9]), 47);
+        // Nothing to settle at or below the prior count.
+        assert_eq!(claimed_ep_offset(9, 47, &[9]), 0);
     }
 
     // ── grab_is_stale ────────────────────────────────────────────────

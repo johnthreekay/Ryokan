@@ -22,7 +22,7 @@ use artwork_copy::{copy_series_and_season_poster, copy_series_banner_and_backdro
 pub use client_cleanup::{
     remove_stamped_source_paths, sweep_finished_seeds, sweep_finished_seeds_now,
 };
-pub(crate) use state::fallback_ep_offset;
+pub(crate) use state::{claimed_ep_offset, fallback_ep_offset};
 pub use state::{grab_is_stale, scan_library_for_unclassified, scan_series_for_unclassified};
 
 /// `grabbed_torrents.failure_reason` written by the #205 stall timer, so
@@ -136,16 +136,20 @@ impl ResolvedEpisode {
     }
 }
 
+/// `claimed` is the grab's episode list for this series, or `&[]` when
+/// there is none to go by (a pack's preflight, a routed sibling); see
+/// [`claimed_ep_offset`].
 fn resolve_episode(
     span: media::EpisodeSpan,
     route_offset: Option<i32>,
     cumulative_prior_episodes: i32,
+    claimed: &[i32],
 ) -> Result<ResolvedEpisode, String> {
     let episode_offset = route_offset.unwrap_or_else(|| {
         if span.season.is_some() {
             0
         } else {
-            fallback_ep_offset(span.first, cumulative_prior_episodes)
+            claimed_ep_offset(span.first, cumulative_prior_episodes, claimed)
         }
     });
     let episode = span.first - episode_offset;
@@ -270,7 +274,8 @@ pub(crate) fn validate_batch_episode_map(
         let Some(span) = parsed else {
             continue;
         };
-        let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes) else {
+        let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes, &[])
+        else {
             continue;
         };
         // No version token reads as v1 so `E05` + `E05v2` compare 1 vs 2.
@@ -1739,10 +1744,18 @@ async fn import_torrent(
                 .await;
                 continue;
             };
+            // The grab's list is in this series' numbering only when the
+            // file belongs to the grab's own series.
+            let claimed: &[i32] = if ctx.series.id == grab.series_id {
+                &grab.episode_numbers
+            } else {
+                &[]
+            };
             match resolve_episode(
                 span,
                 routes_by_file.get(file_idx).map(|(_, offset)| *offset),
                 ctx.series.cumulative_prior_episodes,
+                claimed,
             ) {
                 Ok(resolved) => resolved,
                 Err(reason) => {

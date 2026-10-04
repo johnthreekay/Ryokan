@@ -3031,3 +3031,111 @@ async fn run_once_counts_a_byte_identical_special_as_already_there() {
     let second = import_second_special_over_first(b"ova").await;
     assert_eq!(second.state, "imported");
 }
+
+#[tokio::test]
+async fn run_once_files_an_ambiguous_sequel_number_where_the_grab_put_it() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // An 11-episode first season and a longer sequel: `- 12` is either
+    // the sequel's E12 or absolute 12 (its E01). Auto-search grabbed it
+    // as E12; importing it as E01 went after the real E01 and left E12
+    // wanted, to be grabbed again.
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let source_dir = tempfile::TempDir::new().expect("source tempdir");
+    let media_root_path = media_root.path().to_string_lossy().to_string();
+    let source_path = source_dir.path().to_string_lossy().to_string();
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode) \
+         VALUES (1, 1, ?, 'hardlink')",
+    )
+    .bind(&media_root_path)
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Long Sequel").await;
+    sqlx::query("UPDATE series SET format = 'TV', cumulative_prior_episodes = 11 WHERE id = ?")
+        .bind(series_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let season_dir = media_root.path().join("Long Sequel").join("Season 01");
+    std::fs::create_dir_all(&season_dir).unwrap();
+    let existing_e01 = season_dir.join("Long Sequel - S01E01.mkv");
+    std::fs::write(&existing_e01, b"the real e01").unwrap();
+
+    let title = "[Group] Long Sequel 2nd Season - 12 (1080p)";
+    let video = "[Group] Long Sequel 2nd Season - 12 (1080p).mkv";
+    std::fs::write(source_dir.path().join(video), b"e12").unwrap();
+    let g = grabbed_torrents::record_grab(&db, "seq12", title, series_id, &[12], false)
+        .await
+        .unwrap()
+        .unwrap();
+    grabbed_torrents::set_download_client(&db, g, Some(1))
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+    let torrent = DownloadItem {
+        hash: "seq12".into(),
+        name: title.into(),
+        size: 3,
+        progress: 1.0,
+        dlspeed: 0,
+        state: "seeding".into(),
+        category: "anime".into(),
+        eta: 0,
+        save_path: source_path.clone(),
+        content_path: source_path.clone(),
+        state_kind: DownloadItemState::Seeding,
+        seeding_done: false,
+    };
+    let files = vec![DownloadFile {
+        name: video.to_string(),
+        size: 3,
+        progress: 1.0,
+        wanted: true,
+    }];
+    let state = build_test_app_state(db.clone(), None);
+    let client = Arc::new(ImportingClient { torrent, files });
+    install_pool(
+        &state,
+        vec![(1, client.clone() as Arc<dyn DownloadClient>, true)],
+    )
+    .await;
+    post_processing::run_once(&state).await;
+
+    let final_state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(g)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(final_state, "imported");
+    let names: Vec<String> = std::fs::read_dir(&season_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    assert!(
+        names.iter().any(|n| n.contains("S01E12")),
+        "filed as E12: {names:?}"
+    );
+    assert_eq!(
+        std::fs::read(&existing_e01).unwrap(),
+        b"the real e01",
+        "E01 is untouched"
+    );
+}
