@@ -5,7 +5,7 @@
 //! mark-failed, progress poll, JSON snapshot) and depend only on a small
 //! set of resolver + builder helpers in the parent module.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axum::{
     Json,
@@ -1125,12 +1125,14 @@ pub async fn episode_download_progress(
         return Ok(Json(Vec::new()));
     }
     let mut all_torrents: Vec<crate::services::download_client::DownloadItem> = Vec::new();
+    let mut failed_clients: HashSet<i64> = HashSet::new();
     for (client_id, client) in pool.clients.iter() {
         match client.list_scoped().await {
             Ok(t) => all_torrents.extend(t),
             Err(err) => {
                 // One client unreachable shouldn't blank the progress
                 // surface for grabs on other clients. Log + continue.
+                failed_clients.insert(*client_id);
                 tracing::debug!(
                     "episode-progress poll: list_scoped failed for client #{}: {}",
                     client_id,
@@ -1201,7 +1203,21 @@ pub async fn episode_download_progress(
         };
 
         let Some(t) = torrent else {
-            if crate::services::post_processing::grab_is_stale(&grab.grabbed_at, 30) {
+            // Missing only means removed when the listing it would be in
+            // came back. A failed `list_scoped` (client restarting, auth
+            // hiccup) used to read as "every grab on it is gone", and a
+            // series page open through a qBittorrent restart marked them
+            // all removed, so they finished downloading and were never
+            // imported. Post-processing keeps a failed client's grabs
+            // pending the same way. A grab whose client row is gone (or
+            // a legacy grab with no stamp) waits for a fully clean poll.
+            let listing_came_back = match grab.download_client_id {
+                Some(id) if pool.clients.contains_key(&id) => !failed_clients.contains(&id),
+                _ => failed_clients.is_empty(),
+            };
+            if listing_came_back
+                && crate::services::post_processing::grab_is_stale(&grab.grabbed_at, 30)
+            {
                 logger::info(
                     &state.db,
                     LogCategory::DownloadClient,
