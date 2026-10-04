@@ -323,7 +323,7 @@ pub(super) fn parse_feed(xml: &str, source: RssSource) -> Vec<RssItem> {
     for caps in RE_ITEM.captures_iter(xml) {
         let block = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let title = decode_xml(&extract_tag(block, "title")).trim().to_string();
-        if title.is_empty() {
+        if title.is_empty() || title.len() > crate::services::media::MAX_RELEASE_TITLE_BYTES {
             continue;
         }
 
@@ -693,6 +693,18 @@ mod parser_tests {
     //! input range is real.
     use super::*;
 
+    #[test]
+    fn a_title_over_the_release_title_cap_is_dropped() {
+        let long = "1".repeat(crate::services::media::MAX_RELEASE_TITLE_BYTES + 1);
+        let xml = format!(
+            "<rss><channel><item><title>{long}</title><link>https://x/1</link></item>\
+             <item><title>[G] Show - 01</title><link>https://x/2</link></item></channel></rss>"
+        );
+        let items = parse_feed(&xml, RssSource::Nyaa);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "[G] Show - 01");
+    }
+
     // ── decode_xml ────────────────────────────────────────────────────
 
     #[test]
@@ -1030,14 +1042,13 @@ mod parser_tests {
 
     #[test]
     fn parse_feed_handles_huge_title_without_panic() {
-        // 100 KB title — well past anything Nyaa would emit, but no
-        // input-size cap exists in the regex. Test confirms there's
-        // no quadratic-blowup or slicing panic.
+        // 100 KB title, well past anything Nyaa would emit: no
+        // quadratic blowup or slicing panic, and the item is dropped at
+        // the release-title cap rather than handed to the parsers.
         let huge = "X".repeat(100_000);
         let xml = format!("<rss><channel><item><title>{huge}</title></item></channel></rss>");
         let items = parse_feed(&xml, RssSource::Nyaa);
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].title.len(), 100_000);
+        assert!(items.is_empty());
     }
 
     #[test]

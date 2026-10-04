@@ -215,6 +215,9 @@ pub async fn webhook_autobrr(
     if payload.torrent_name.trim().is_empty() {
         return err_json(StatusCode::BAD_REQUEST, "torrent_name is required");
     }
+    if payload.torrent_name.len() > crate::services::media::MAX_RELEASE_TITLE_BYTES {
+        return err_json(StatusCode::BAD_REQUEST, "torrent_name is too long");
+    }
     if payload.indexer.trim().is_empty() {
         return err_json(StatusCode::BAD_REQUEST, "indexer is required");
     }

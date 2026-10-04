@@ -14,7 +14,7 @@
 use std::path::Path;
 use std::sync::LazyLock;
 
-use anitomy::{Anitomy, ElementCategory};
+use anitomy::ElementCategory;
 use regex_lite::Regex;
 
 use crate::services::{library_link, media};
@@ -297,16 +297,7 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
     // One anitomy pass for the title/year/group trio. The project's
     // tuned episode parser (`media::parse_episode_number`) owns the
     // episode/season decision, not anitomy's EpisodeNumber.
-    let clean = if file_name.contains('\0') {
-        file_name.replace('\0', "")
-    } else {
-        file_name.clone()
-    };
-    let mut ani = Anitomy::new();
-    let elements = match ani.parse(&clean) {
-        Ok(e) => e,
-        Err(e) => e,
-    };
+    let elements = crate::services::media::anitomy_parse(&file_name);
     let mut title = elements
         .get(ElementCategory::AnimeTitle)
         .map(|s| s.trim().to_string())

@@ -369,3 +369,22 @@ async fn a_magnet_push_without_a_hash_takes_the_magnets() {
         .unwrap();
     assert_eq!(hash, "c12fe1c06bba254a9dc9f519b335aa7c1367a88a");
 }
+
+#[tokio::test]
+async fn a_torrent_name_over_the_title_cap_is_refused() {
+    // A huge title only exists to stress the parsers behind it
+    // (anitomy aborted the process on an ~8,000-character token).
+    let db = in_memory_pool().await;
+    seed_autobrr_enabled(&db, KEY).await;
+    let app = autobrr_webhook_router(build_test_app_state(db, None));
+    let name = "1".repeat(crate::services::media::MAX_RELEASE_TITLE_BYTES + 1);
+    let body = serde_json::json!({
+        "torrent_name": name,
+        "magnet_uri": "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a",
+        "indexer": "Nyaa",
+    })
+    .to_string();
+    let (status, body) = post_payload(app, &body).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("too long"), "{body}");
+}

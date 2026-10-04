@@ -248,6 +248,45 @@ pub fn sanitize_folder_name(s: &str) -> String {
         .to_string()
 }
 
+/// Longest input handed to anitomy. Its number parser runs a C++
+/// `std::regex` that recurses once per character of a token; with GCC 14
+/// (the Docker builder) a token of about 8,000 characters overflows the
+/// thread stack and aborts the process, and a release title from an
+/// indexer, an RSS feed or autobrr can be that long. Real titles stay
+/// under 300 bytes, so nothing real is cut.
+pub(crate) const ANITOMY_MAX_INPUT: usize = 1024;
+
+/// Longest release title Ryokan accepts from an indexer, a feed or an
+/// autobrr push; longer ones are dropped (or refused) where they enter.
+/// Real titles stay under 300 bytes, and a megabyte "title" only exists
+/// to stress the parsers behind it.
+pub(crate) const MAX_RELEASE_TITLE_BYTES: usize = 1024;
+
+/// Every anitomy parse goes through here: NUL bytes (anitomy rejects
+/// them) removed and the input cut to [`ANITOMY_MAX_INPUT`] bytes on a
+/// char boundary. anitomy reports `Err` when it finds no title but
+/// fills the elements either way, so both are returned.
+pub(crate) fn anitomy_parse(input: &str) -> anitomy::Elements {
+    match Anitomy::new().parse(anitomy_input(input)) {
+        Ok(elements) | Err(elements) => elements,
+    }
+}
+
+/// What [`anitomy_parse`] hands anitomy: at most [`ANITOMY_MAX_INPUT`]
+/// bytes, cut on a char boundary, with NUL bytes removed.
+fn anitomy_input(input: &str) -> std::borrow::Cow<'_, str> {
+    let mut end = input.len().min(ANITOMY_MAX_INPUT);
+    while !input.is_char_boundary(end) {
+        end -= 1;
+    }
+    let bounded = &input[..end];
+    if bounded.contains('\0') {
+        std::borrow::Cow::Owned(bounded.replace('\0', ""))
+    } else {
+        std::borrow::Cow::Borrowed(bounded)
+    }
+}
+
 /// Whether a stored `series.folder_name` can be joined onto the media
 /// root: one non-empty path component that isn't `.` or `..`. A folder
 /// name of `.` is the media root itself: its scan reads every series'
@@ -886,11 +925,7 @@ fn is_non_episodic_extra(lower: &str) -> bool {
     if lower.contains('\0') {
         return false;
     }
-    let mut ani = Anitomy::new();
-    let elements = match ani.parse(lower) {
-        Ok(e) => e,
-        Err(e) => e,
-    };
+    let elements = anitomy_parse(lower);
     let title_start = elements
         .get(ElementCategory::AnimeTitle)
         .and_then(|t| lower.find(&t.to_ascii_lowercase()))
@@ -1057,7 +1092,26 @@ fn format_size(bytes: u64) -> String {
 
 #[cfg(test)]
 mod folder_name_tests {
-    use super::{sanitize_folder_name, usable_folder_name};
+    use super::{
+        ANITOMY_MAX_INPUT, anitomy_input, anitomy_parse, sanitize_folder_name, usable_folder_name,
+    };
+
+    #[test]
+    fn anitomy_never_sees_more_than_its_bound() {
+        // A ~8,000-character token overflowed anitomy's recursive
+        // std::regex (GCC 14) and aborted the process.
+        let digits = "1".repeat(20_000) + "x";
+        assert_eq!(anitomy_input(&digits).len(), ANITOMY_MAX_INPUT);
+        let _ = anitomy_parse(&digits);
+        // Cut on a char boundary, NULs removed.
+        let wide = "\u{3042}".repeat(1_000);
+        let cut = anitomy_input(&wide);
+        assert!(cut.len() <= ANITOMY_MAX_INPUT && cut.chars().all(|c| c == '\u{3042}'));
+        assert_eq!(anitomy_input("[G] Show\0 - 01.mkv"), "[G] Show - 01.mkv");
+        // Real titles pass through untouched.
+        let real = "[Group] Show Title - 28 (1080p) [ABCD1234].mkv";
+        assert_eq!(anitomy_input(real), real);
+    }
 
     #[test]
     fn dots_and_spaces_never_survive_at_the_edges() {
