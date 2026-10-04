@@ -659,8 +659,8 @@ pub const SPECIALS_FOLDER: &str = "Specials";
 enum SpecialOutcome {
     Imported,
     /// The destination already holds this file (the same inode, or a
-    /// copy of the same length from an earlier pass). Counts as done
-    /// for the grab.
+    /// byte-identical copy from an earlier pass). Counts as done for
+    /// the grab.
     AlreadyThere,
     /// The destination holds a different file. A special is never
     /// replaced, since no quality row exists to judge an upgrade by,
@@ -669,12 +669,50 @@ enum SpecialOutcome {
     Occupied,
 }
 
-/// True when both paths exist with the same length; the copy-mode
-/// twin of `files_share_inode` for "already placed".
-fn files_same_len(a: &Path, b: &Path) -> bool {
-    match (std::fs::metadata(a), std::fs::metadata(b)) {
-        (Ok(am), Ok(bm)) => am.len() == bm.len(),
-        _ => false,
+/// Read size for [`files_same_content`].
+const CONTENT_COMPARE_CHUNK: u64 = 1 << 20;
+
+/// True when both paths exist and hold the same bytes; the copy-mode
+/// twin of `files_share_inode` for "already placed". Length alone was
+/// not enough: another release of the same special at the same size
+/// (a v2 that only fixes a subtitle typo) read as placed, the grab
+/// counted as imported, and client cleanup could delete a download
+/// that never landed.
+///
+/// Compares lengths first, then the contents a chunk at a time,
+/// stopping at the first difference. Two different releases nearly
+/// always differ in the first chunk (mkvmerge writes a random segment
+/// UID on every mux), so only a real earlier copy is read to the end.
+/// A direct compare beats hashing here: both files are local, a hash
+/// would read both in full every time, and nothing stores a hash of
+/// the placed file to reuse. Any read error counts as different, which
+/// leaves the download in the client. Blocking: call it from
+/// `spawn_blocking`.
+fn files_same_content(a: &Path, b: &Path) -> bool {
+    use std::io::Read;
+
+    let (Ok(am), Ok(bm)) = (std::fs::metadata(a), std::fs::metadata(b)) else {
+        return false;
+    };
+    if am.len() != bm.len() {
+        return false;
+    }
+    let (Ok(mut fa), Ok(mut fb)) = (std::fs::File::open(a), std::fs::File::open(b)) else {
+        return false;
+    };
+    let mut ba = Vec::with_capacity(CONTENT_COMPARE_CHUNK as usize);
+    let mut bb = Vec::with_capacity(CONTENT_COMPARE_CHUNK as usize);
+    loop {
+        ba.clear();
+        bb.clear();
+        let read_a = fa.by_ref().take(CONTENT_COMPARE_CHUNK).read_to_end(&mut ba);
+        let read_b = fb.by_ref().take(CONTENT_COMPARE_CHUNK).read_to_end(&mut bb);
+        match (read_a, read_b) {
+            (Ok(_), Ok(_)) if ba != bb => return false,
+            (Ok(0), Ok(0)) => return true,
+            (Ok(_), Ok(_)) => {}
+            _ => return false,
+        }
     }
 }
 
@@ -746,7 +784,13 @@ async fn import_special_file(
             taken.insert(dest);
             return Ok(SpecialOutcome::AlreadyThere);
         }
-        if files_same_len(src, &dest) {
+        let same_content = {
+            let (a, b) = (src.to_path_buf(), dest.clone());
+            tokio::task::spawn_blocking(move || files_same_content(&a, &b))
+                .await
+                .unwrap_or(false)
+        };
+        if same_content {
             logger::info(
                 &state.db,
                 LogCategory::PostProcess,

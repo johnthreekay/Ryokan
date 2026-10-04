@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use crate::services::post_processing::do_file_op;
+use crate::services::post_processing::{CONTENT_COMPARE_CHUNK, do_file_op, files_same_content};
 
 fn write_src(dir: &TempDir, name: &str, body: &[u8]) -> PathBuf {
     let path = dir.path().join(name);
@@ -321,4 +321,50 @@ async fn hardlink_mode_replaces_unrelated_preexisting_dst() {
         fs::metadata(&dst).unwrap().ino(),
         "dst must share src's inode after the relink, not be a copy"
     );
+}
+
+// ─── files_same_content ────────────────────────────────────────────
+
+#[test]
+fn same_content_accepts_a_byte_identical_copy() {
+    let dir = TempDir::new().unwrap();
+    let a = write_src(&dir, "a.mkv", b"same bytes");
+    let b = write_src(&dir, "b.mkv", b"same bytes");
+    assert!(files_same_content(&a, &b));
+}
+
+#[test]
+fn same_content_rejects_another_file_of_the_same_length() {
+    // The case the old length-only check let through.
+    let dir = TempDir::new().unwrap();
+    let a = write_src(&dir, "a.mkv", b"ova");
+    let b = write_src(&dir, "b.mkv", b"OVA");
+    assert!(!files_same_content(&a, &b));
+}
+
+#[test]
+fn same_content_rejects_a_difference_past_the_first_chunk() {
+    let dir = TempDir::new().unwrap();
+    let mut body = vec![7_u8; CONTENT_COMPARE_CHUNK as usize + 10];
+    let a = write_src(&dir, "a.mkv", &body);
+    *body.last_mut().unwrap() = 8;
+    let b = write_src(&dir, "b.mkv", &body);
+    assert!(!files_same_content(&a, &b));
+}
+
+#[test]
+fn same_content_rejects_a_length_mismatch_and_a_missing_file() {
+    let dir = TempDir::new().unwrap();
+    let a = write_src(&dir, "a.mkv", b"ova");
+    let b = write_src(&dir, "b.mkv", b"ova-two");
+    assert!(!files_same_content(&a, &b));
+    assert!(!files_same_content(&a, &dir.path().join("missing.mkv")));
+}
+
+#[test]
+fn same_content_accepts_two_empty_files() {
+    let dir = TempDir::new().unwrap();
+    let a = write_src(&dir, "a.mkv", b"");
+    let b = write_src(&dir, "b.mkv", b"");
+    assert!(files_same_content(&a, &b));
 }
