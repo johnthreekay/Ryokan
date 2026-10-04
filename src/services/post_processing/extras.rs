@@ -177,10 +177,15 @@ pub fn walk_extras(dir: &Path, extensions: &[String]) -> Vec<PathBuf> {
 }
 
 /// True when `name` (a file stem or a folder name) names the video:
-/// it starts with the video's stem, or parses to the same span.
+/// it is the video's stem or starts with it followed by a separator
+/// (`.en`, ` [CC]`), or parses to the same span. A bare prefix let
+/// `Show - 01` claim `Show - 010.en.ass`.
 fn names_video(name: &str, video_stem: &str, video_span: Option<media::EpisodeSpan>) -> bool {
     let lower = name.to_ascii_lowercase();
-    if !video_stem.is_empty() && lower.starts_with(video_stem) {
+    if !video_stem.is_empty()
+        && let Some(rest) = lower.strip_prefix(video_stem)
+        && rest.chars().next().is_none_or(|c| !c.is_alphanumeric())
+    {
         return true;
     }
     match (video_span, media::parse_episode_span(&lower)) {
@@ -368,6 +373,23 @@ mod tests {
         // Erai-raws' per-episode folder: the file is just the language.
         let (lang, _) = language_and_tags("eng", "[Erai-raws] Show - 01 [1080p]");
         assert_eq!(lang, Some("en"));
+    }
+
+    #[test]
+    fn a_longer_episode_number_is_not_the_videos_subtitle() {
+        // `Show - 01` used to claim `Show - 010` by bare prefix.
+        let root = Path::new("/downloads/pack");
+        let video = root.join("Show - 01.mkv");
+        let span = media::parse_episode_span("show - 01.mkv");
+        let candidates: Vec<PathBuf> = ["Show - 01.en.ass", "Show - 010.en.ass", "Show - 01v2.ass"]
+            .iter()
+            .map(|n| root.join(n))
+            .collect();
+        let found = find_subtitles(&video, span, &candidates, 3);
+        assert_eq!(
+            found,
+            vec![root.join("Show - 01.en.ass"), root.join("Show - 01v2.ass")]
+        );
     }
 
     #[test]
