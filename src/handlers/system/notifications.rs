@@ -319,8 +319,18 @@ pub async fn notifications_upsert(
     // Build the kind-specific config_json. Resolve the existing row's
     // sensitive fields (URL, secret) for the empty-means-no-change
     // path before constructing the new config blob.
+    // A failed lookup is an error, not "no saved row": read as none, the
+    // blank write-only fields resolved to nothing and the save wiped them.
     let existing_row = match form.id {
-        Some(id) => store::get_provider(&state.db, id).await.ok().flatten(),
+        Some(id) => match store::get_provider(&state.db, id).await {
+            Ok(row) => row,
+            Err(e) => {
+                return redirect_with_err(
+                    is_htmx,
+                    &format!("Couldn't read the saved provider, so nothing was saved: {e}"),
+                );
+            }
+        },
         None => None,
     };
     let config_json = match form.kind.as_str() {
@@ -876,6 +886,43 @@ mod tests {
         .unwrap();
         assert!(cards.contains("https://hooks.lan"), "{cards}");
         assert!(!secrets.iter().any(|s| cards.contains(s)), "{cards}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_lookup_never_wipes_the_saved_secret() {
+        // The lookup error read as "no saved row", so a blank secret
+        // field resolved to none and the save wrote that.
+        let db = in_memory_pool().await;
+        // Stored as a BLOB, the row reads back as an error while the
+        // UPDATE the save runs would still go through.
+        sqlx::query(
+            "INSERT INTO notification_providers (id, name, kind, enabled, config_json) \
+             VALUES (1, 'hook', 'webhook', 1, CAST(? AS BLOB))",
+        )
+        .bind(r#"{"url":"https://hooks.lan/x","secret":"shh"}"#)
+        .execute(&db)
+        .await
+        .unwrap();
+        let state = crate::test_support::build_test_app_state(db.clone(), None);
+        let resp = notifications_upsert(
+            State(state),
+            axum::http::HeaderMap::new(),
+            Form(webhook_form("https://hooks.lan/x", "")),
+        )
+        .await;
+        let location = resp
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(location.contains("error="), "{location}");
+        let stored: String =
+            sqlx::query_scalar("SELECT CAST(config_json AS TEXT) FROM notification_providers")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert!(stored.contains("shh"), "{stored}");
     }
 
     #[test]
