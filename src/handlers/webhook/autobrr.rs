@@ -122,6 +122,13 @@ fn err_json(code: StatusCode, message: impl Into<String>) -> (StatusCode, Json<A
     )
 }
 
+/// autobrr's identifier for Nyaa, which Ryokan has built in rather than
+/// as an indexer row.
+fn is_builtin_nyaa(indexer: &str) -> bool {
+    let name = indexer.trim();
+    name.eq_ignore_ascii_case("nyaa") || name.eq_ignore_ascii_case("nyaa.si")
+}
+
 /// API-key auth using the same constant-time-compare shape as
 /// the arr-shim middleware. Returns `Ok(())` when authorized,
 /// `Err(response)` to short-circuit the handler.
@@ -294,11 +301,13 @@ pub async fn webhook_autobrr(
         return skipped("duplicate hash already grabbed");
     }
 
-    // Match the indexer name (case-insensitive) so seed rules
-    // apply at grab time. autobrr's `indexer` field carries the
-    // tracker name (e.g., "AnimeBytes") and Ryokan's indexer row
-    // for the corresponding torznab feed should match by name —
-    // the user picks the row's name when adding via Settings.
+    // Match the indexer name (case-insensitive) so its seed rules and
+    // client pin apply at grab time. autobrr sends its own identifier
+    // ("nyaa", "animebytes") while a Ryokan indexer is named by the
+    // user ("Prowlarr Nyaa"), so a push often matches nothing. It is
+    // grabbed anyway, the way Sonarr's push API takes any release:
+    // "nyaa" follows the built-in Nyaa's client setting, anything else
+    // goes to the default torrent client with no seed rules.
     //
     // Reads the cached `Vec<Arc<dyn Indexer>>` rather than
     // hitting the DB so a high-rate autobrr push doesn't
@@ -312,24 +321,7 @@ pub async fn webhook_autobrr(
             .map(|i| i.id())
     };
     let safe_indexer = sanitize_for_log_capped(&payload.indexer, 256);
-    if indexer_id.is_none() {
-        // Per the plan: "If autobrr names a release from an
-        // unconfigured indexer, surface it as an error in logs +
-        // skip rather than grab with default rules." A user who
-        // really wants the grab can add the indexer to Ryokan
-        // first. Surfacing the gap in logs is the only signal —
-        // a 200 with status=skipped keeps autobrr from retrying.
-        logger::warn(
-            &state.db,
-            LogCategory::Grab,
-            &format!(
-                "autobrr: '{safe_indexer}' refers to an indexer Ryokan doesn't have configured — skipping {safe_release}"
-            ),
-            &safe_indexer,
-        )
-        .await;
-        return skipped("indexer not configured in Ryokan");
-    }
+    let as_builtin_nyaa = indexer_id.is_none() && is_builtin_nyaa(&payload.indexer);
 
     // Match the release to a tracked series. autobrr filters are
     // configured per series (or per group of series), so a push
@@ -350,12 +342,20 @@ pub async fn webhook_autobrr(
     };
     let (series, ep_nums) = matched;
 
-    // Hand off to the download client. Multi-client routing —
-    // resolve via the matched indexer's pin first, then fall through
-    // to the default. `indexer_id` is `Some(_)` here because the
-    // earlier guard returned `skipped()` if the indexer wasn't
-    // configured.
-    let (client, dispatch_client_id) = match state.client_for_indexer_with_id(indexer_id).await {
+    // Hand off to the download client. Multi-client routing: the
+    // matched indexer's pin, else the Nyaa client for a built-in Nyaa
+    // push, else the default.
+    let resolved = if as_builtin_nyaa {
+        let nyaa_pin = config::get_config(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|c| c.nyaa_download_client_id);
+        state.client_for_nyaa_with_id(nyaa_pin).await
+    } else {
+        state.client_for_indexer_with_id(indexer_id).await
+    };
+    let (client, dispatch_client_id) = match resolved {
         Some(t) => t,
         None => {
             logger::error(
@@ -489,8 +489,9 @@ pub async fn webhook_autobrr(
         // scoring pass runs (autobrr already filtered upstream), so
         // `score = None`. Indexer resolves from the autobrr-supplied
         // tracker → `indexers` row mapping in `indexer_id`.
-        let indexer =
-            crate::services::notifications::resolve_indexer_name(&state, indexer_id).await;
+        let indexer = crate::services::notifications::resolve_indexer_name(&state, indexer_id)
+            .await
+            .or_else(|| Some(safe_indexer.clone()).filter(|name| !name.is_empty()));
         crate::services::notifications::emit_grabbed(
             &state,
             series.id,
@@ -513,11 +514,18 @@ pub async fn webhook_autobrr(
     } else {
         String::new()
     };
+    let routing = if indexer_id.is_some() {
+        String::new()
+    } else if as_builtin_nyaa {
+        " (built-in Nyaa)".to_string()
+    } else {
+        format!(" ('{safe_indexer}' matches no indexer in Ryokan: default client, no seed rules)")
+    };
     logger::info(
         &state.db,
         LogCategory::Grab,
         &format!(
-            "autobrr push: '{}' → series #{} ({}) [{}]",
+            "autobrr push: '{}' → series #{} ({}) [{}]{routing}",
             safe_release, series.id, series.title, outcome_label
         ),
         &format!("indexer={safe_indexer}, filter={safe_filter}{size_label}"),

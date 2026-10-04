@@ -125,23 +125,6 @@ async fn malformed_json_returns_400() {
 }
 
 #[tokio::test]
-async fn unknown_indexer_skips_with_200() {
-    // autobrr push for an indexer Ryokan doesn't have configured.
-    // Per the plan: log + skip rather than grab with default rules.
-    // 200 with status=skipped so autobrr doesn't retry.
-    let db = in_memory_pool().await;
-    seed_autobrr_enabled(&db, KEY).await;
-    let state = build_test_app_state(db, None);
-    let app = autobrr_webhook_router(state);
-
-    let body = r#"{"torrent_name": "Show", "info_hash": "aabbccddeeff00112233445566778899aabbccdd", "magnet_uri": "magnet:m", "indexer": "UnknownIndexer"}"#;
-    let (status, body) = post_payload(app, body).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("\"status\":\"skipped\""), "body: {body}");
-    assert!(body.contains("indexer not configured"), "body: {body}");
-}
-
-#[tokio::test]
 async fn no_tracked_series_skips_with_200() {
     // Indexer matches but no series in the library matches the
     // release title. Skip with 200, log it.
@@ -387,4 +370,73 @@ async fn a_torrent_name_over_the_title_cap_is_refused() {
     let (status, body) = post_payload(app, &body).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("too long"), "{body}");
+}
+
+#[tokio::test]
+async fn an_unknown_indexer_grabs_through_the_default_client() {
+    // autobrr sends its own identifier ("animebytes"), the user named
+    // the Ryokan row something else. The push used to be skipped as
+    // "indexer not configured"; it is grabbed with the default client
+    // and no seed rules, the way Sonarr's push API takes any release.
+    let db = in_memory_pool().await;
+    seed_autobrr_enabled(&db, KEY).await;
+    seed_indexer(&db, "Prowlarr AnimeBytes").await;
+    seed_series(&db).await;
+    let state = build_test_app_state(db.clone(), Some(std::sync::Arc::new(AcceptingClient)));
+    rebuild_indexer_cache(&state).await;
+    let app = autobrr_webhook_router(state);
+
+    let body = r#"{"torrent_name": "Test Show - 03 [1080p]", "magnet_uri": "magnet:?xt=urn:btih:D12FE1C06BBA254A9DC9F519B335AA7C1367A88A", "indexer": "animebytes"}"#;
+    let (status, body) = post_payload(app, body).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("grabbed"), "body: {body}");
+    let (indexer_id, client_id, seed_rules): (Option<i64>, Option<i64>, bool) = sqlx::query_as(
+        "SELECT indexer_id, download_client_id, respect_seed_rules FROM grabbed_torrents",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(indexer_id, None);
+    assert_eq!(client_id, Some(1), "the default torrent client");
+    assert!(!seed_rules, "no indexer, no seed rules");
+}
+
+#[tokio::test]
+async fn a_nyaa_push_follows_the_built_in_nyaa_client() {
+    // Nyaa is built in, not an indexer row, so autobrr's "nyaa" never
+    // matched one. It now routes like a Nyaa grab: the Nyaa client
+    // setting first.
+    let db = in_memory_pool().await;
+    seed_autobrr_enabled(&db, KEY).await;
+    // Only the Nyaa card's own save writes this column.
+    sqlx::query("UPDATE config SET nyaa_download_client_id = 2 WHERE id = 1")
+        .execute(&db)
+        .await
+        .unwrap();
+    seed_series(&db).await;
+    let state = build_test_app_state(db.clone(), None);
+    {
+        let mut clients: std::collections::HashMap<
+            i64,
+            std::sync::Arc<dyn crate::services::download_client::DownloadClient>,
+        > = std::collections::HashMap::new();
+        clients.insert(1, std::sync::Arc::new(AcceptingClient));
+        clients.insert(2, std::sync::Arc::new(AcceptingClient));
+        *state.download_clients.write().await = std::sync::Arc::new(crate::DownloadClientPool {
+            clients,
+            default_torrent_id: Some(1),
+            default_usenet_id: None,
+        });
+    }
+    let app = autobrr_webhook_router(state);
+
+    let body = r#"{"torrent_name": "Test Show - 04 [1080p]", "magnet_uri": "magnet:?xt=urn:btih:E12FE1C06BBA254A9DC9F519B335AA7C1367A88A", "indexer": "nyaa"}"#;
+    let (status, body) = post_payload(app, body).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let client_id: Option<i64> =
+        sqlx::query_scalar("SELECT download_client_id FROM grabbed_torrents")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(client_id, Some(2), "the client pinned for Nyaa");
 }

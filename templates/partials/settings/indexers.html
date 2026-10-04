@@ -130,7 +130,7 @@
        sit flush against each other. #}
     <div class="cf-section settings-form">
         <h3>autobrr push webhook</h3>
-        <p class="cf-section-desc">Receive announces from <a href="https://autobrr.com/" target="_blank" rel="noopener noreferrer">autobrr</a>'s Webhook action. Seed rules apply when autobrr's indexer name matches one configured above.</p>
+        <p class="cf-section-desc">Receive announces from <a href="https://autobrr.com/" target="_blank" rel="noopener noreferrer">autobrr</a>'s Webhook action. A push whose indexer has the name of one configured above (autobrr sends its identifier, such as <code>animebytes</code>) uses that indexer's download client and seed rules. <code>nyaa</code> uses the built-in Nyaa's client. Any other push goes to the default torrent client without seed rules.</p>
         <div class="form-group">
             <label>API Key</label>
             <div style="display: flex; gap: 8px; align-items: center;">
@@ -153,7 +153,7 @@
                     {% if config.autobrr_api_key.is_empty() %}Generate{% else %}Regenerate{% endif %}
                 </button>
             </div>
-            <span class="form-hint">Paste this key into autobrr's Webhook action under Authentication. No key means the webhook is off.</span>
+            <span class="form-hint">autobrr sends it in an <code>X-Api-Key</code> header (see the body template below). No key means the webhook is off.</span>
         </div>
         <div class="form-group">
             <label>Webhook URL Path</label>
@@ -173,7 +173,7 @@
                         onclick="copyApiKey('autobrr_webhook_url', this)"
                         style="white-space:nowrap">Copy</button>
             </div>
-            <span class="form-hint">Prefix it with the address autobrr can reach Ryokan at, for example <code>http://host.docker.internal:8978</code> when both run in Docker.</span>
+            <span class="form-hint">Prefix it with the address autobrr can reach Ryokan at: <code>http://ryokan:8978</code> when both containers share a Docker network, otherwise the host's LAN address, such as <code>http://192.168.1.10:8978</code>.</span>
         </div>
         <div class="form-group">
             <label>autobrr Webhook Body Template</label>
