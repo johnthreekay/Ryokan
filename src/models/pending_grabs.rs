@@ -150,7 +150,7 @@ const SELECT_COLUMNS: &str = "preview_id, info_hash, client_kind, indexer_id, se
 /// add, then insert: a second click or tab in that window made a second
 /// row, its heartbeat went unanswered, and the walkaway sweep committed
 /// it with every file wanted, overriding the subset the user picked.
-/// `we_added_torrent` starts false and is set by [`set_we_added`] once
+/// `we_added_torrent` starts false and is set by [`finish_add`] once
 /// the add has answered.
 #[allow(clippy::too_many_arguments)]
 pub async fn reserve(
@@ -189,15 +189,24 @@ pub async fn reserve(
     Ok(res.rows_affected() == 1)
 }
 
-/// Record that this preview's add created the torrent, so a cancel
-/// deletes it (see [`reserve`]).
-pub async fn set_we_added(db: &SqlitePool, preview_id: &str) -> Result<(), String> {
-    sqlx::query("UPDATE pending_grabs SET we_added_torrent = 1 WHERE preview_id = ?")
-        .bind(preview_id)
-        .execute(db)
-        .await
-        .map_err(|e| format!("failed to mark pending grab as ours: {}", e))?;
-    Ok(())
+/// Record the add's answer on the row [`reserve`] made: whether this
+/// preview's add created the torrent (so a cancel deletes it), and a
+/// fresh heartbeat. The reserve stamped the heartbeat before the add,
+/// and an add can outlast the TTL (rTorrent waits up to 60 s for
+/// metadata), so without it the walkaway sweep could drop the row
+/// before the modal's first heartbeat. Returns `false` when the row is
+/// already gone.
+pub async fn finish_add(db: &SqlitePool, preview_id: &str, we_added: bool) -> Result<bool, String> {
+    let result = sqlx::query(
+        "UPDATE pending_grabs SET we_added_torrent = ?, heartbeat_at = ? WHERE preview_id = ?",
+    )
+    .bind(if we_added { 1_i64 } else { 0_i64 })
+    .bind(now_unix())
+    .bind(preview_id)
+    .execute(db)
+    .await
+    .map_err(|e| format!("failed to record the pending grab's add: {}", e))?;
+    Ok(result.rows_affected() > 0)
 }
 
 pub async fn get(db: &SqlitePool, preview_id: &str) -> Result<Option<PendingGrab>, String> {
