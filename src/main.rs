@@ -1494,19 +1494,32 @@ async fn main() {
     );
     let static_service = ServeDir::new("static");
 
-    let app = Router::new()
+    let mut browser_routes = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
-        .merge(sonarr_routes)
-        .merge(radarr_routes)
-        .merge(calendar_routes)
-        .merge(webhook_routes)
         .nest_service(
             "/static",
             tower::ServiceBuilder::new()
                 .layer(static_cache_control)
                 .service(static_service),
-        )
+        );
+    // Opt-in DNS-rebinding defense (`handlers::host_check`), off unless
+    // `RYOKAN_HOST_CHECK` / `RYOKAN_ALLOWED_HOSTS` is set. Browser
+    // routes only: the API-key routes merged below are called by other
+    // services by name and carry a key a rebinding page doesn't have.
+    if let Some(check) = handlers::host_check::HostCheck::from_env() {
+        browser_routes = browser_routes.layer(axum::middleware::from_fn_with_state(
+            check,
+            handlers::host_check::apply,
+        ));
+    }
+
+    let app = Router::new()
+        .merge(browser_routes)
+        .merge(sonarr_routes)
+        .merge(radarr_routes)
+        .merge(calendar_routes)
+        .merge(webhook_routes)
         .layer(compression)
         .layer(axum::middleware::from_fn_with_state(
             handlers::security_headers::SecurityHeaders::from_env(),
