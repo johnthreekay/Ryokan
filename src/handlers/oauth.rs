@@ -43,7 +43,7 @@ use axum::{
     Json,
     extract::State,
     http::StatusCode,
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Redirect, Response},
 };
 use serde::{Deserialize, Serialize};
 
@@ -89,7 +89,13 @@ const PKCE_VERIFIER_LEN: usize = 43;
 
 // ── AniList start ────────────────────────────────────────────────────
 
-pub async fn anilist_start(State(state): State<AppState>) -> Redirect {
+pub async fn anilist_start(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if let Some(refused) = crate::handlers::auth::refuse_cross_site_get(&headers) {
+        return refused;
+    }
     // Generate a CSRF state nonce and stash it. The verifier slot
     // stays empty for AL (implicit grant has no PKCE step), but we
     // reuse the OAuthAttempt shape so both providers go through the
@@ -120,12 +126,15 @@ pub async fn anilist_start(State(state): State<AppState>) -> Redirect {
         ANILIST_CLIENT_ID,
         urlencoding::encode(&csrf_state),
     );
-    Redirect::temporary(&url)
+    Redirect::temporary(&url).into_response()
 }
 
 // ── MAL start ────────────────────────────────────────────────────────
 
-pub async fn mal_start(State(state): State<AppState>) -> Redirect {
+pub async fn mal_start(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
+    if let Some(refused) = crate::handlers::auth::refuse_cross_site_get(&headers) {
+        return refused;
+    }
     // Fresh PKCE verifier + CSRF state nonce per /start call.
     // Overwrites any prior pending MAL attempt (decision matched in
     // services::oauth_state — second stash wins, first is discarded).
@@ -149,7 +158,7 @@ pub async fn mal_start(State(state): State<AppState>) -> Redirect {
         urlencoding::encode(MAL_REDIRECT_URI),
         urlencoding::encode(&csrf_state),
     );
-    Redirect::temporary(&url)
+    Redirect::temporary(&url).into_response()
 }
 
 // ── AniList submit ───────────────────────────────────────────────────
@@ -889,7 +898,7 @@ mod tests {
         crate::models::migrate(&db).await.unwrap();
         let app_state = crate::test_support::build_test_app_state(db, None);
 
-        let redirect = anilist_start(State(app_state.clone())).await;
+        let redirect = anilist_start(State(app_state.clone()), axum::http::HeaderMap::new()).await;
         let resp = redirect.into_response();
         assert_eq!(resp.status(), axum::http::StatusCode::TEMPORARY_REDIRECT);
         let location = resp
@@ -942,7 +951,7 @@ mod tests {
         crate::models::migrate(&db).await.unwrap();
         let state = crate::test_support::build_test_app_state(db, None);
 
-        let redirect = mal_start(State(state.clone())).await;
+        let redirect = mal_start(State(state.clone()), axum::http::HeaderMap::new()).await;
         let resp = redirect.into_response();
         let location = resp
             .headers()

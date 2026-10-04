@@ -245,8 +245,12 @@ pub struct DownloadQuery {
 )]
 pub async fn api_backup_download(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Query(q): Query<DownloadQuery>,
 ) -> Response {
+    if let Some(refused) = crate::handlers::auth::refuse_cross_site_get(&headers) {
+        return refused;
+    }
     let opts = BackupOptions {
         include_artwork: flag(&q.include_artwork),
         sanitize: flag(&q.sanitize),

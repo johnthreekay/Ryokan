@@ -264,3 +264,22 @@ fn ipv6_hosts_are_told_apart() {
         "every IPv6 host used to compare as \"[\""
     );
 }
+
+#[test]
+fn a_cross_site_navigation_to_a_side_effect_get_is_refused() {
+    use crate::handlers::auth::refuse_cross_site_get;
+    let with = |site: Option<&str>| {
+        let mut headers = axum::http::HeaderMap::new();
+        if let Some(site) = site {
+            headers.insert("sec-fetch-site", site.parse().unwrap());
+        }
+        refuse_cross_site_get(&headers).map(|r| r.status())
+    };
+    assert_eq!(
+        with(Some("cross-site")),
+        Some(axum::http::StatusCode::FORBIDDEN)
+    );
+    assert_eq!(with(Some("same-origin")), None);
+    assert_eq!(with(Some("none")), None, "typed into the address bar");
+    assert_eq!(with(None), None, "curl and scripts send no header");
+}
