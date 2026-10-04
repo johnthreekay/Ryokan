@@ -15,6 +15,19 @@ set -e
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
 
+# Numeric ids only: anything else would reach useradd / groupmod as an
+# option or a name. 0 runs Ryokan as root, which works but drops the
+# privilege separation this entrypoint exists for, so say so.
+case "$PUID$PGID" in
+    *[!0-9]*|'')
+        echo "Error: PUID and PGID must be numeric (got PUID=$PUID PGID=$PGID)." >&2
+        exit 1
+        ;;
+esac
+if [ "$PUID" = "0" ] || [ "$PGID" = "0" ]; then
+    echo "Warning: PUID or PGID is 0, so Ryokan runs as root. Set them to the owner of your media and download folders instead." >&2
+fi
+
 is_blank() {
     [ -z "$(printf '%s' "$1" | tr -d '[:space:]')" ]
 }
@@ -108,6 +121,10 @@ fi
 # alone — those belong to the host. A fresh named volume at a path the
 # image doesn't ship (e.g. /config) arrives root-owned, hence the mkdir
 # above + chown rather than relying on the image's own /data.
-find "$DATA_DIR" \! -user ryokan -exec chown ryokan:ryokan {} + 2>/dev/null || true
+# `chown -h`: a symlink is re-owned itself, never its target. Plain
+# chown followed links, so a link planted in the data dir (a restored
+# archive, another container sharing the volume) had its target, say
+# /etc/passwd, chowned to ryokan by this root process on a PUID change.
+find "$DATA_DIR" \! -user ryokan -exec chown -h ryokan:ryokan {} + 2>/dev/null || true
 
 exec gosu ryokan "$@"
