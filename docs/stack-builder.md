@@ -55,9 +55,9 @@ This is opinionated. Sane defaults beat a config matrix. If you need something t
 
 <fieldset>
   <legend>Hardening</legend>
-  <p class="hint">The host check makes Ryokan's web UI answer only to the names you open it by, so a page on another site can't point its own name at Ryokan and use it (DNS rebinding). Off by default. IP addresses, <code>localhost</code> and the machine's hostname always work; list any other name, such as <code>ryokan.lan</code> or your reverse proxy's domain. Seerr, autobrr and calendar apps aren't affected. See <a href="docker.md#host-check">Host check</a>.</p>
+  <p class="hint">The host check makes Ryokan's web UI answer only to the names you open it by, so a page on another site can't point its own name at Ryokan and use it (DNS rebinding). Off by default. IP addresses and <code>localhost</code> always work. List every name you open Ryokan by, such as your server's name (<code>nas</code>), <code>ryokan.lan</code> or your reverse proxy's domain. Inside Docker, Ryokan doesn't know your server's name unless you list it. Seerr, autobrr and calendar apps aren't affected. See <a href="docker.md#host-check">Host check</a>.</p>
   <label><input type="checkbox" name="host_check"> Host check</label>
-  <label>Names you open Ryokan by <input type="text" name="allowed_hosts" value="" placeholder="e.g. ryokan.lan ryokan.example.com"></label>
+  <label>Names you open Ryokan by <input type="text" name="allowed_hosts" value="" placeholder="e.g. nas ryokan.lan ryokan.example.com"></label>
 </fieldset>
 
 <fieldset>
@@ -70,7 +70,7 @@ This is opinionated. Sane defaults beat a config matrix. If you need something t
 
 <fieldset>
   <legend>Host paths</legend>
-  <p class="hint">Where on your host the data lives. The shared folder holds <code>downloads/</code> and the library, <code>anime/</code>, and every container mounts it at the same path it has on the host, so imports hardlink and the paths you type in Ryokan are the ones you see on the host. Per-service config goes under <code>/srv/docker/&lt;service&gt;/</code>.</p>
+  <p class="hint">Where on your host the data lives. The shared folder holds <code>downloads/</code> and the library, <code>anime/</code>, and every container mounts it at the same path it has on the host, so imports hardlink and the paths you type in Ryokan are the ones you see on the host. It has to be a full path, such as <code>/srv/media</code> or <code>/data</code>. If a folder can't work, for example because an app keeps its own settings there, the output below says why instead of showing a compose file. Per-service config goes under <code>/srv/docker/&lt;service&gt;/</code>.</p>
   <label>Shared media folder <input type="text" name="shared_path" value="/srv/media"></label>
   <label>Per-service config root <input type="text" name="appdata_path" value="/srv/docker"></label>
 </fieldset>

@@ -92,11 +92,13 @@ jobs:
       # dependent ones (rss/mod.rs at 309 mutants, auto_search/mod.rs
       # at 300+) — those need their own session-sized runs.
       #
-      # Exit codes: 0 all caught, 2 missed mutants, 3 timeouts,
-      # 4 unviable; all of those mean the run completed and the
-      # output files are the result. 1 is a usage / harness error and
-      # must fail the shard so the merge job knows not to trust the
-      # week's numbers.
+      # Exit codes: 0 all caught, 2 missed mutants, 3 timeouts; those
+      # mean the run completed and the output files are the result
+      # (unviable mutants do not change the code). Anything else must
+      # fail the shard so the merge job knows not to trust the week's
+      # numbers: 1 is a usage error, 4 means the unmutated baseline
+      # tests failed and no mutant was tested, so the shard's files are
+      # empty rather than a result.
       - name: Run cargo-mutants shard ${{ matrix.shard }}/${{ env.SHARDS }}
         run: |
           set +e
@@ -115,7 +117,7 @@ jobs:
           code=$?
           echo "cargo-mutants exit code: $code"
           case "$code" in
-            0|2|3|4) ;;
+            0|2|3) ;;
             *) exit "$code" ;;
           esac
           for f in caught missed timeout unviable; do

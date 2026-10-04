@@ -76,8 +76,11 @@ jobs:
         # Without the flag those tests silently skip (via
         # `required-features` in Cargo.toml) and clippy wouldn't touch
         # them — running with the flag means the lint pass covers both
-        # unit and integration targets.
-        run: cargo clippy --workspace --all-targets --features test-support -- -D warnings
+        # unit and integration targets. `--locked` as in the build and
+        # test steps: clippy runs first, and without it a Cargo.lock
+        # that no longer matches Cargo.toml is rewritten here, after
+        # which the later `--locked` steps pass against the new file.
+        run: cargo clippy --workspace --all-targets --locked --features test-support -- -D warnings
       - name: Build
         run: cargo build --workspace --locked --verbose
       - name: Test

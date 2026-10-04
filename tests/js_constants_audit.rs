@@ -14,17 +14,72 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-/// Blank out comments and string literals so names inside them
-/// (`SQLite CURRENT_TIMESTAMP`, `URL_BASE set`) are not read as uses.
-/// Template literals are blanked whole, `${...}` included: no use of
-/// a constant hides there today, and the scanner stays simple.
+/// Whether a `/` written after `out` starts a regex literal rather than
+/// a division: it does after an operator or opening punctuator, after
+/// `return`, and at the start of a line. After a name, a number, `)`
+/// or `]` it divides.
+fn regex_can_start(out: &str) -> bool {
+    let before = out.trim_end_matches([' ', '\t', '\r']);
+    match before.as_bytes().last() {
+        None | Some(b'\n') => true,
+        Some(c) if b"(,=:[!&|?{};".contains(c) => true,
+        Some(_) => {
+            let word = before
+                .trim_end_matches(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+            &before[word.len()..] == "return"
+        }
+    }
+}
+
+/// The end (just past the flags) of the regex literal whose opening `/`
+/// is at `start`, or `None` when the line ends first and the `/` was
+/// not one after all. A `/` inside a `[...]` class does not close it.
+fn regex_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut i = start + 1;
+    let mut in_class = false;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' => return None,
+            b'\\' => i += 1,
+            b'[' => in_class = true,
+            b']' => in_class = false,
+            b'/' if !in_class => {
+                i += 1;
+                while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                return Some(i);
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Blank out comments, string literals and regex literals so names
+/// inside them (`SQLite CURRENT_TIMESTAMP`, `URL_BASE set`) are not read
+/// as uses, and so a quote inside a regex (`.replace(/"/g, ...)`) does
+/// not open a string that swallows the rest of the file. Template
+/// literals are blanked whole, `${...}` included: no use of a constant
+/// hides there today, and the scanner stays simple.
 fn code_only(src: &str) -> String {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
     let mut i = 0;
     while i < bytes.len() {
         let c = bytes[i];
-        if c == b'/' && bytes.get(i + 1) == Some(&b'/') {
+        let regex =
+            if c == b'/' && !matches!(bytes.get(i + 1), Some(b'/' | b'*')) && regex_can_start(&out)
+            {
+                regex_end(bytes, i)
+            } else {
+                None
+            };
+        if let Some(end) = regex {
+            i = end;
+            out.push_str("\"\"");
+        } else if c == b'/' && bytes.get(i + 1) == Some(&b'/') {
             while i < bytes.len() && bytes[i] != b'\n' {
                 i += 1;
             }
@@ -173,4 +228,46 @@ fn the_scanner_reads_code_not_comments_or_strings() {
     assert!(declarations(&code).contains("A_B"));
     assert!(declarations("window.E_F = 2;").contains("E_F"));
     assert!(!declarations("if (window.E_F == 2) {}").contains("E_F"));
+}
+
+#[test]
+fn a_quote_inside_a_regex_literal_does_not_open_a_string() {
+    let uses = |src: &str| {
+        upper_snake_uses(&code_only(src))
+            .into_iter()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(uses(".replace(/\"/g, '&quot;'); use(A_B)"), vec!["A_B"]);
+    assert_eq!(uses(".replace(/'/g, '&#39;'); use(A_B)"), vec!["A_B"]);
+    // A `/` or quote in a class or escaped does not end the literal, and
+    // a name inside the pattern is not a use.
+    assert_eq!(
+        uses("s.split(/[/\"]+/); t.match(/\\/'NOT_USED/i); use(A_B)"),
+        vec!["A_B"]
+    );
+    assert_eq!(
+        uses("function f(s) {\n  return /\"/.test(s) && A_B;\n}"),
+        vec!["A_B"]
+    );
+    assert_eq!(uses("var patterns = [\n  /\"/,\n  A_B,\n];"), vec!["A_B"]);
+    // Comments still read as comments.
+    assert_eq!(
+        uses("x = 1; // NOT_USED \"\nuse(A_B) /* C_D */"),
+        vec!["A_B"]
+    );
+}
+
+#[test]
+fn a_division_is_not_read_as_a_regex() {
+    let uses = |src: &str| {
+        upper_snake_uses(&code_only(src))
+            .into_iter()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        uses("w = A_B / 2 / C_D; h = (E_F) / G_H; i = arr[0] / I_J;"),
+        vec!["A_B", "C_D", "E_F", "G_H", "I_J"]
+    );
+    // An unclosed `/` that looked like a regex start leaves the line as code.
+    assert_eq!(uses("ratio = (\n/ A_B);"), vec!["A_B"]);
 }
