@@ -178,6 +178,23 @@ struct MappingCache {
     /// Composed at load time from the per-entry range maps the ID
     /// tables above ignore.
     tmdb_episode_spans: HashMap<(i64, i32), Vec<EpisodeSpan>>,
+    /// AniList ID → (TVDB show ID, TVDB season): what the Sonarr shim
+    /// reports as a series' `tvdbId`. Seerr resolves every series the
+    /// shim lists by TVDB id, so a TMDB id there named another show.
+    anilist_to_tvdb: HashMap<i64, (i64, i32)>,
+    /// MAL ID → (TVDB show ID, TVDB season), the same for MAL-only rows.
+    mal_to_tvdb: HashMap<i64, (i64, i32)>,
+}
+
+/// Record `tvdb` for `id`, keeping the first one seen unless that one
+/// was season 0 (unscoped) and this one names a season.
+fn note_tvdb(map: &mut HashMap<i64, (i64, i32)>, id: i64, tvdb: (i64, i32)) {
+    match map.get(&id) {
+        Some(&(_, season)) if season != 0 || tvdb.1 == 0 => {}
+        _ => {
+            map.insert(id, tvdb);
+        }
+    }
 }
 
 /// One contiguous run of a TMDB season's episodes and where they live
@@ -435,6 +452,23 @@ pub async fn lookup_tmdb_by_anilist(anilist_id: i64) -> Option<i64> {
         .copied()
 }
 
+/// The TVDB show and season an AniList or MAL entry belongs to, from
+/// the mappings. `None` when neither id names a TVDB show.
+pub async fn resolve_tvdb(anilist_id: i64, mal_id: impl Into<Option<i64>>) -> Option<(i64, i32)> {
+    let cache = CACHE.read().await;
+    let data = &cache.as_ref()?.data;
+    (anilist_id > 0)
+        .then(|| data.anilist_to_tvdb.get(&anilist_id))
+        .flatten()
+        .or_else(|| {
+            mal_id
+                .into()
+                .filter(|m| *m > 0)
+                .and_then(|m| data.mal_to_tvdb.get(&m))
+        })
+        .copied()
+}
+
 /// Look up AniList ID by MAL ID. The watch-list sync (#62) calls
 /// this to resolve MAL-list entries into AL IDs before merging into
 /// `series`; on miss the caller falls back to the negated-MAL-id
@@ -467,6 +501,8 @@ pub async fn seed_mal_to_anilist_for_tests(pairs: &[(i64, i64)]) {
         mal_to_tmdb: HashMap::new(),
         mal_to_anilist,
         tmdb_episode_spans: HashMap::new(),
+        anilist_to_tvdb: HashMap::new(),
+        mal_to_tvdb: HashMap::new(),
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -508,7 +544,15 @@ pub async fn seed_external_mappings_for_tests(
     let mut tmdb_to_anime: HashMap<(i64, i32), Vec<AnimeIds>> = HashMap::new();
     let mut anilist_to_tmdb: HashMap<i64, i64> = HashMap::new();
     let mut mal_to_tmdb: HashMap<i64, i64> = HashMap::new();
+    let mut anilist_to_tvdb: HashMap<i64, (i64, i32)> = HashMap::new();
+    let mut mal_to_tvdb: HashMap<i64, (i64, i32)> = HashMap::new();
     for &(tvdb_id, season, al, mal) in tvdb {
+        if let Some(al_id) = al {
+            note_tvdb(&mut anilist_to_tvdb, al_id, (tvdb_id, season));
+        }
+        if let Some(mid) = mal {
+            note_tvdb(&mut mal_to_tvdb, mid, (tvdb_id, season));
+        }
         tvdb_to_anime
             .entry((tvdb_id, season))
             .or_default()
@@ -539,6 +583,8 @@ pub async fn seed_external_mappings_for_tests(
         mal_to_tmdb,
         mal_to_anilist: HashMap::new(),
         tmdb_episode_spans: HashMap::new(),
+        anilist_to_tvdb,
+        mal_to_tvdb,
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -582,6 +628,8 @@ pub async fn seed_tmdb_episode_spans_for_tests(spans: &[(i64, i32, i32, i32, i64
         mal_to_tmdb: HashMap::new(),
         mal_to_anilist: HashMap::new(),
         tmdb_episode_spans,
+        anilist_to_tvdb: HashMap::new(),
+        mal_to_tvdb: HashMap::new(),
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -812,6 +860,8 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
     let mut mal_to_tmdb: HashMap<i64, i64> = HashMap::new();
     let mut mal_to_anilist: HashMap<i64, i64> = HashMap::new();
     let mut tmdb_episode_spans: HashMap<(i64, i32), Vec<EpisodeSpan>> = HashMap::new();
+    let mut anilist_to_tvdb: HashMap<i64, (i64, i32)> = HashMap::new();
+    let mut mal_to_tvdb: HashMap<i64, (i64, i32)> = HashMap::new();
 
     let obj = match data.as_object() {
         Some(o) => o,
@@ -823,6 +873,8 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
                 mal_to_tmdb,
                 mal_to_anilist,
                 tmdb_episode_spans,
+                anilist_to_tvdb,
+                mal_to_tvdb,
             };
         }
     };
@@ -916,6 +968,12 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
             let entry = tvdb_to_anime.entry((tvdb_id, season)).or_default();
             for ids in &anime_entries {
                 if let Some(al) = ids.anilist_id {
+                    note_tvdb(&mut anilist_to_tvdb, al, (tvdb_id, season));
+                }
+                if let Some(m) = ids.mal_id {
+                    note_tvdb(&mut mal_to_tvdb, m, (tvdb_id, season));
+                }
+                if let Some(al) = ids.anilist_id {
                     if entry.iter().any(|e| e.anilist_id == Some(al)) {
                         continue;
                     }
@@ -941,6 +999,8 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
         mal_to_tmdb,
         mal_to_anilist,
         tmdb_episode_spans,
+        anilist_to_tvdb,
+        mal_to_tvdb,
     }
 }
 

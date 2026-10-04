@@ -16,7 +16,7 @@ use crate::services::{anibridge, anilist, logger, monitoring as monitoring_servi
 
 use super::helpers::{
     build_sonarr_series_from_search, build_sonarr_series_from_tracked, cached_detail_for,
-    lookup_by_external_id,
+    lookup_by_external_id, shim_ids,
 };
 use super::types::{AddSeriesBody, CommandBody, SonarrSeries, UpdateSeriesBody};
 
@@ -31,7 +31,7 @@ pub async fn series_lookup(
         .unwrap_or_default();
 
     if let Some(tvdb_id_str) = params.term.strip_prefix("tvdb:") {
-        // TVDB ID lookup — try anibridge TVDB index first, then TMDB as fallback.
+        // TVDB ID lookup through the anibridge TVDB index.
         let tvdb_id: i64 = tvdb_id_str
             .trim()
             .parse()
@@ -57,23 +57,36 @@ pub async fn series_lookup(
     for r in results {
         let db_series = db_by_id.get(&r.id);
 
-        let tmdb_id = anibridge::resolve_tmdb_id(r.id, r.id_mal).await;
+        let stored = match db_series {
+            Some(s) => series::tvdb_ids(&state.db, s.id).await.ok().flatten(),
+            None => None,
+        };
+        let ids = shim_ids(stored, r.id, r.id_mal).await;
         let title = if !r.title_english.is_empty() {
             &r.title_english
         } else {
             &r.title_romaji
         };
 
-        sonarr_results
-            .push(build_sonarr_series_from_search(&r, title, tmdb_id, db_series, &cfg).await);
+        sonarr_results.push(build_sonarr_series_from_search(&r, title, ids, db_series, &cfg).await);
     }
 
     Ok(Json(sonarr_results))
 }
 
 /// GET /api/v3/series — list all tracked series.
+/// `GET /api/v3/series` query. Sonarr filters by `tvdbId`; Seerr asks
+/// with it before resetting a request whose series it didn't see in a
+/// scan, so a list that ignored it read as "not in Sonarr".
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct SeriesListQuery {
+    #[serde(rename = "tvdbId")]
+    pub tvdb_id: Option<i64>,
+}
+
 pub async fn list_series(
     State(state): State<AppState>,
+    Query(query): Query<SeriesListQuery>,
 ) -> Result<Json<Vec<SonarrSeries>>, (StatusCode, String)> {
     anibridge::ensure_loaded().await;
     let cfg = config::get_config(&state.db)
@@ -85,11 +98,15 @@ pub async fn list_series(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    let stored = series::all_tvdb_ids(&state.db).await.unwrap_or_default();
     let mut results = Vec::new();
     for s in &tracked {
-        let tmdb_id = anibridge::resolve_tmdb_id(s.anilist_id, s.mal_id).await;
+        let ids = shim_ids(stored.get(&s.id).copied(), s.anilist_id, s.mal_id).await;
+        if query.tvdb_id.is_some_and(|want| want != ids.tvdb_id) {
+            continue;
+        }
         let detail = cached_detail_for(&state.db, s.id).await;
-        results.push(build_sonarr_series_from_tracked(s, detail.as_ref(), tmdb_id, &cfg).await);
+        results.push(build_sonarr_series_from_tracked(s, detail.as_ref(), ids, &cfg).await);
     }
 
     Ok(Json(results))
@@ -111,10 +128,11 @@ pub async fn get_series(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Series not found".to_string()))?;
 
-    let tmdb_id = anibridge::resolve_tmdb_id(s.anilist_id, s.mal_id).await;
+    let stored = series::tvdb_ids(&state.db, s.id).await.ok().flatten();
+    let ids = shim_ids(stored, s.anilist_id, s.mal_id).await;
     let detail = cached_detail_for(&state.db, s.id).await;
     Ok(Json(
-        build_sonarr_series_from_tracked(&s, detail.as_ref(), tmdb_id, &cfg).await,
+        build_sonarr_series_from_tracked(&s, detail.as_ref(), ids, &cfg).await,
     ))
 }
 
@@ -148,10 +166,10 @@ pub async fn add_series(
 
     // Resolve TVDB + season → AniList/MAL IDs via anibridge.
     anibridge::ensure_loaded().await;
+    // No TMDB fallback: Seerr sends real TVDB ids, and one that equals
+    // some anime's TMDB id would add the wrong show. An unmapped id goes
+    // to the title search below.
     let mut anime_ids = anibridge::lookup_by_tvdb(tvdb_id, requested_season).await;
-    if anime_ids.is_empty() {
-        anime_ids = anibridge::lookup_by_tmdb(tvdb_id, requested_season).await;
-    }
 
     // #26 — TMDB often models multi-cour anime as one flat season
     // (JJK, Bleach TYBW, Demon Slayer) so Seerr requests "season 1"
@@ -424,6 +442,24 @@ pub async fn add_series(
         ));
     }
 
+    // Remember the TVDB show Seerr knows these series by, so the shim
+    // reports it even for a show the mappings don't have (the title
+    // search above). The season is the one requested, else the
+    // mappings' season for the entry, else 1.
+    if tvdb_id > 0 {
+        for s in &processed {
+            let season = match requested_season {
+                Some(season) => season,
+                None => anibridge::resolve_tvdb(s.anilist_id, s.mal_id)
+                    .await
+                    .filter(|(mapped, _)| *mapped == tvdb_id)
+                    .map(|(_, season)| season)
+                    .unwrap_or(1),
+            };
+            let _ = series::set_tvdb_ids(&state.db, s.id, tvdb_id, season.max(1)).await;
+        }
+    }
+
     // Set monitoring based on what Seerr requested. Applied to every
     // sibling in a fan-out — Seerr's "monitor this season" intent covers
     // the whole squashed merge, so each fanned-out cour inherits it.
@@ -507,8 +543,10 @@ pub async fn add_series(
     // Sonarr response shape.
     let primary = &processed[0];
     let detail = cached_detail_for(&state.db, primary.id).await;
+    let stored = series::tvdb_ids(&state.db, primary.id).await.ok().flatten();
+    let ids = shim_ids(stored, primary.anilist_id, primary.mal_id).await;
     Ok(Json(
-        build_sonarr_series_from_tracked(primary, detail.as_ref(), tvdb_id, &cfg).await,
+        build_sonarr_series_from_tracked(primary, detail.as_ref(), ids, &cfg).await,
     ))
 }
 
@@ -547,10 +585,11 @@ pub async fn update_series(
         .flatten()
         .unwrap_or_default();
 
-    let tmdb_id = anibridge::resolve_tmdb_id(s.anilist_id, s.mal_id).await;
+    let stored = series::tvdb_ids(&state.db, s.id).await.ok().flatten();
+    let ids = shim_ids(stored, s.anilist_id, s.mal_id).await;
     let detail = cached_detail_for(&state.db, s.id).await;
     Ok(Json(
-        build_sonarr_series_from_tracked(&s, detail.as_ref(), tmdb_id, &cfg).await,
+        build_sonarr_series_from_tracked(&s, detail.as_ref(), ids, &cfg).await,
     ))
 }
 

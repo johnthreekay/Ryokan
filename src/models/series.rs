@@ -454,6 +454,49 @@ pub async fn upsert(db: &SqlitePool, core: SeriesCore<'_>) -> Result<(i64, bool)
     Ok((result.last_insert_rowid(), true))
 }
 
+/// The TVDB show and season stored for a series (`set_tvdb_ids`), when
+/// it has one.
+pub async fn tvdb_ids(db: &SqlitePool, id: i64) -> Result<Option<(i64, i32)>, sqlx::Error> {
+    let row: Option<(Option<i64>, Option<i32>)> =
+        sqlx::query_as("SELECT tvdb_id, tvdb_season FROM series WHERE id = ?")
+            .bind(id)
+            .fetch_optional(db)
+            .await?;
+    Ok(row.and_then(|(tvdb, season)| tvdb.filter(|t| *t > 0).map(|t| (t, season.unwrap_or(1)))))
+}
+
+/// [`tvdb_ids`] for every series that has them, keyed by series id.
+pub async fn all_tvdb_ids(
+    db: &SqlitePool,
+) -> Result<std::collections::HashMap<i64, (i64, i32)>, sqlx::Error> {
+    let rows: Vec<(i64, i64, Option<i32>)> = sqlx::query_as(
+        "SELECT id, tvdb_id, tvdb_season FROM series WHERE tvdb_id IS NOT NULL AND tvdb_id > 0",
+    )
+    .fetch_all(db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, tvdb, season)| (id, (tvdb, season.unwrap_or(1))))
+        .collect())
+}
+
+/// Record the TVDB show and season a series was added under through the
+/// Sonarr shim, so the shim reports the id Seerr knows it by.
+pub async fn set_tvdb_ids(
+    db: &SqlitePool,
+    id: i64,
+    tvdb_id: i64,
+    season: i32,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE series SET tvdb_id = ?, tvdb_season = ? WHERE id = ?")
+        .bind(tvdb_id)
+        .bind(season)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
 /// Remove a series by its database ID.
 pub async fn remove(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM series_metadata_cache WHERE series_id = ?")

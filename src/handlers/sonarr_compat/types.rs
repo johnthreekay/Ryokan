@@ -32,6 +32,9 @@ pub struct SonarrSeries {
     pub use_scene_numbering: bool,
     pub runtime: i32,
     pub tvdb_id: i64,
+    /// Sonarr v4's `tmdbId`. Informational: Seerr keys series by
+    /// `tvdbId`, which must never carry this id.
+    pub tmdb_id: i64,
     pub tv_rage_id: i64,
     pub tv_maze_id: i64,
     pub first_aired: String,

@@ -2957,6 +2957,19 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .ok();
     }
 
+    // The TVDB show (and season) Seerr asked for when it added a series
+    // through the Sonarr shim. The shim reports it as `tvdbId`, the id
+    // Seerr's Sonarr scan resolves every series by; NULL falls back to
+    // the anibridge mappings.
+    sqlx::query("ALTER TABLE series ADD COLUMN tvdb_id INTEGER")
+        .execute(db)
+        .await
+        .ok();
+    sqlx::query("ALTER TABLE series ADD COLUMN tvdb_season INTEGER")
+        .execute(db)
+        .await
+        .ok();
+
     // Watch-list sync exclusions (Sonarr's import-list exclusions): a
     // series removed with "keep it off my watch-list sync" is not added
     // again by the AniList / MAL sync until the row is deleted.

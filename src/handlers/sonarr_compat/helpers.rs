@@ -53,8 +53,40 @@ pub(super) async fn cached_detail_for(
         .map(|c| c.detail)
 }
 
-/// Look up anime by external ID (TVDB or TMDB). Tries TVDB index first since
-/// Sonarr/Seerr sends real TVDB IDs, then falls back to TMDB index.
+/// The ids the shim reports for one series.
+pub(super) struct ShimIds {
+    pub tvdb_id: i64,
+    pub tvdb_season: i32,
+    pub tmdb_id: i64,
+}
+
+/// `tvdbId` is the TVDB show Seerr asked for when it added the series
+/// (`stored`, `series::tvdb_ids`), else the one the anibridge mappings
+/// give, else 0. Never a TMDB id: Seerr's Sonarr scan resolves every
+/// listed series by TVDB id, and the TMDB id reported here before named
+/// another show (or none), so the scan declined the request that had
+/// added the series.
+pub(super) async fn shim_ids(
+    stored: Option<(i64, i32)>,
+    anilist_id: i64,
+    mal_id: Option<i64>,
+) -> ShimIds {
+    let (tvdb_id, tvdb_season) = match stored {
+        Some(ids) => ids,
+        None => anibridge::resolve_tvdb(anilist_id, mal_id)
+            .await
+            .unwrap_or((0, 1)),
+    };
+    ShimIds {
+        tvdb_id,
+        tvdb_season: tvdb_season.max(1),
+        tmdb_id: anibridge::resolve_tmdb_id(anilist_id, mal_id).await,
+    }
+}
+
+/// Look up anime by TVDB ID through the anibridge TVDB index. Sonarr and
+/// Seerr send real TVDB IDs; there is no TMDB fallback, since a TVDB id
+/// that happens to equal some anime's TMDB id would add the wrong show.
 ///
 /// Returns a SINGLE series with multiple seasons (one per AniList entry) when
 /// the TVDB ID maps to multiple anibridge seasons. This matches how real Sonarr
@@ -66,10 +98,7 @@ pub(super) async fn lookup_by_external_id(
 ) -> Result<Json<Vec<SonarrSeries>>, (StatusCode, String)> {
     anibridge::ensure_loaded().await;
 
-    let mut season_entries = anibridge::lookup_tvdb_seasons(tvdb_id).await;
-    if season_entries.is_empty() {
-        season_entries = anibridge::lookup_tmdb_seasons(tvdb_id).await;
-    }
+    let season_entries = anibridge::lookup_tvdb_seasons(tvdb_id).await;
 
     if season_entries.is_empty() {
         tracing::warn!(
@@ -83,7 +112,12 @@ pub(super) async fn lookup_by_external_id(
     // Note: for multi-season shows (e.g. JoJo), this uses season 1's AniList entry
     // for the title and cover art. This is fine since Seerr keys on tvdb_id, not
     // the title — but a Jikan fallback may return a part-specific title here.
-    let first_ids = &season_entries[0].1;
+    // A numbered season's entry, not a season-0 special, as the face.
+    let first_ids = &season_entries
+        .iter()
+        .find(|(season, _)| *season > 0)
+        .unwrap_or(&season_entries[0])
+        .1;
     let show_detail = fetch_anime_detail(first_ids).await;
     let show_title = show_detail
         .as_ref()
@@ -169,6 +203,8 @@ pub(super) async fn lookup_by_external_id(
         use_scene_numbering: false,
         runtime: 24,
         tvdb_id,
+        tmdb_id: anibridge::resolve_tmdb_id(first_ids.anilist_id.unwrap_or(0), first_ids.mal_id)
+            .await,
         tv_rage_id: 0,
         tv_maze_id: 0,
         first_aired: String::new(),
@@ -222,7 +258,7 @@ pub(super) async fn fetch_anime_detail(ids: &anibridge::AnimeIds) -> Option<anil
 pub(super) async fn build_sonarr_series_from_search(
     r: &anilist::AnimeEntry,
     title: &str,
-    tmdb_id: i64,
+    ids: ShimIds,
     db_series: Option<&series::Series>,
     cfg: &config::Config,
 ) -> SonarrSeries {
@@ -274,7 +310,7 @@ pub(super) async fn build_sonarr_series_from_search(
         }],
         remote_poster: r.cover_url.clone(),
         seasons: vec![SonarrSeason {
-            season_number: 1,
+            season_number: ids.tvdb_season,
             monitored,
             statistics: SonarrSeasonStats {
                 episode_file_count: on_disk,
@@ -296,7 +332,8 @@ pub(super) async fn build_sonarr_series_from_search(
         monitored,
         use_scene_numbering: false,
         runtime: 24,
-        tvdb_id: tmdb_id,
+        tvdb_id: ids.tvdb_id,
+        tmdb_id: ids.tmdb_id,
         tv_rage_id: 0,
         tv_maze_id: 0,
         first_aired: String::new(),
@@ -331,7 +368,7 @@ pub(super) async fn build_sonarr_series_from_search(
 pub(super) async fn build_sonarr_series_from_tracked(
     s: &series::Series,
     detail: Option<&anilist::AnimeDetail>,
-    tmdb_id: i64,
+    ids: ShimIds,
     cfg: &config::Config,
 ) -> SonarrSeries {
     let total_eps = s.episodes.unwrap_or(0).max(0);
@@ -367,7 +404,7 @@ pub(super) async fn build_sonarr_series_from_tracked(
         }],
         remote_poster: s.cover_url.clone(),
         seasons: vec![SonarrSeason {
-            season_number: 1,
+            season_number: ids.tvdb_season,
             monitored,
             statistics: SonarrSeasonStats {
                 episode_file_count: on_disk,
@@ -389,7 +426,8 @@ pub(super) async fn build_sonarr_series_from_tracked(
         monitored,
         use_scene_numbering: false,
         runtime: 24,
-        tvdb_id: tmdb_id,
+        tvdb_id: ids.tvdb_id,
+        tmdb_id: ids.tmdb_id,
         tv_rage_id: 0,
         tv_maze_id: 0,
         first_aired: String::new(),
@@ -468,6 +506,7 @@ pub(super) fn build_stub_series(tvdb_id: i64, cfg: &config::Config) -> SonarrSer
         use_scene_numbering: false,
         runtime: 24,
         tvdb_id,
+        tmdb_id: 0,
         tv_rage_id: 0,
         tv_maze_id: 0,
         first_aired: String::new(),

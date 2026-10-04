@@ -275,6 +275,227 @@ async fn sonarr_add_series_pins_monitor_mode_to_none_when_seerr_unmonitors() {
     anibridge::clear_cache_for_tests().await;
 }
 
+async fn get_json(app: axum::Router, uri: &str, api_key: &str) -> serde_json::Value {
+    let req = Request::builder()
+        .uri(uri)
+        .header("x-api-key", api_key)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK, "{uri}");
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+#[tokio::test]
+async fn sonarr_series_report_the_tvdb_id_seerr_resolves_them_by() {
+    // Seerr's Sonarr scan resolves every listed series by `tvdbId`, and
+    // asks `GET /series?tvdbId=` before declining a request whose show
+    // it didn't see. The shim reported the TMDB id there and ignored the
+    // filter, so every request Seerr sent was declined on the next scan.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+    anibridge::seed_external_mappings_for_tests(
+        &[(4242, 2, Some(88888), None)],
+        &[(9191, 1, Some(88888), None)],
+    )
+    .await;
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("Media(id"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(media_detail_response(88888, "Seerr Add")),
+        )
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    let app = sonarr_router_with_series(build_test_app_state(db.clone(), None));
+    let (status, added) = post_json(
+        app.clone(),
+        "/api/v3/series",
+        SONARR_KEY,
+        json!({
+            "tvdbId": 4242,
+            "title": "Seerr Add",
+            "seasons": [{"seasonNumber": 2, "monitored": true}],
+            "monitored": true,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(added["tvdbId"], 4242);
+
+    let listed = get_json(app.clone(), "/api/v3/series", SONARR_KEY).await;
+    assert_eq!(listed[0]["tvdbId"], 4242, "the TVDB id, never the TMDB one");
+    assert_eq!(listed[0]["tmdbId"], 9191);
+    assert_eq!(
+        listed[0]["seasons"][0]["seasonNumber"], 2,
+        "the TVDB season"
+    );
+    let hit = get_json(app.clone(), "/api/v3/series?tvdbId=4242", SONARR_KEY).await;
+    assert_eq!(hit.as_array().unwrap().len(), 1);
+    let miss = get_json(app, "/api/v3/series?tvdbId=9191", SONARR_KEY).await;
+    assert_eq!(
+        miss.as_array().unwrap().len(),
+        0,
+        "a TMDB id is not a TVDB id"
+    );
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
+async fn a_series_added_in_ryokan_reports_its_mapped_tvdb_id() {
+    let _gate = ENV_LOCK.lock().await;
+    anibridge::clear_cache_for_tests().await;
+    anibridge::seed_external_mappings_for_tests(
+        &[(4242, 1, Some(88888), None)],
+        &[(9191, 1, Some(88888), None)],
+    )
+    .await;
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    series::upsert(
+        &db,
+        series::SeriesCore {
+            anilist_id: 88888,
+            mal_id: None,
+            title: "Added Here",
+            title_romaji: "Added Here",
+            title_english: "Added Here",
+            title_native: "",
+            cover_url: "",
+            format: "TV",
+            status: "FINISHED",
+            episodes: Some(12),
+            season_year: Some(2024),
+            end_year: None,
+        },
+    )
+    .await
+    .unwrap();
+    let app = sonarr_router_with_series(build_test_app_state(db, None));
+    let listed = get_json(app, "/api/v3/series", SONARR_KEY).await;
+    assert_eq!(listed[0]["tvdbId"], 4242);
+    assert_eq!(listed[0]["tmdbId"], 9191);
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
+async fn a_tvdb_id_that_only_matches_some_animes_tmdb_id_is_not_that_anime() {
+    // The TVDB-to-TMDB fallback read an unmapped TVDB id as a TMDB id,
+    // so a show the mappings don't know could add an unrelated anime.
+    let _gate = ENV_LOCK.lock().await;
+    anibridge::clear_cache_for_tests().await;
+    anibridge::seed_external_mappings_for_tests(&[], &[(7070, 1, Some(55555), None)]).await;
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    let app = sonarr_router_with_series(build_test_app_state(db.clone(), None));
+
+    let found = get_json(
+        app.clone(),
+        "/api/v3/series/lookup?term=tvdb:7070",
+        SONARR_KEY,
+    )
+    .await;
+    assert_eq!(found[0]["title"], "TVDB:7070", "the unmapped stub");
+    let (status, _) = post_json(
+        app,
+        "/api/v3/series",
+        SONARR_KEY,
+        json!({"tvdbId": 7070, "title": "", "seasons": []}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "no mapping and no title");
+    assert!(
+        series::get_by_anilist_id(&db, 55555)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
+async fn a_show_the_mappings_lack_keeps_the_tvdb_id_seerr_added_it_under() {
+    // No mapping: the add finds the series by title, and the shim has
+    // nothing to report as its TVDB id but the one Seerr sent, which it
+    // now stores. Reported as 0, Seerr declined the request on its scan.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+    anibridge::seed_external_mappings_for_tests(&[], &[]).await;
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("SEARCH_MATCH"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": { "Page": { "media": [{
+                "id": 33333,
+                "idMal": null,
+                "title": { "romaji": "Unmapped Show", "english": "Unmapped Show", "native": "" },
+                "coverImage": { "large": "https://example/cover.jpg" },
+                "format": "TV",
+                "status": "FINISHED",
+                "episodes": 12,
+                "seasonYear": 2024,
+                "averageScore": 80,
+            }] } }
+        })))
+        .mount(&mock)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("Media(id"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(media_detail_response(33333, "Unmapped Show")),
+        )
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    let app = sonarr_router_with_series(build_test_app_state(db, None));
+    let (status, body) = post_json(
+        app.clone(),
+        "/api/v3/series",
+        SONARR_KEY,
+        json!({
+            "tvdbId": 818181,
+            "title": "Unmapped Show",
+            "seasons": [{"seasonNumber": 3, "monitored": true}],
+            "monitored": true,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let found = get_json(app, "/api/v3/series?tvdbId=818181", SONARR_KEY).await;
+    assert_eq!(found.as_array().unwrap().len(), 1, "{found}");
+    assert_eq!(found[0]["seasons"][0]["seasonNumber"], 3);
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
 // ─── Radarr add_movie ──────────────────────────────────────────────
 
 #[tokio::test]
