@@ -3160,13 +3160,19 @@ async fn run_once_counts_a_byte_identical_special_as_already_there() {
     assert_eq!(second.state, "imported");
 }
 
-#[tokio::test]
-async fn run_once_files_an_ambiguous_sequel_number_where_the_grab_put_it() {
+/// One `- {raw}` release of "Long Sequel" (TV, `cumulative` prior
+/// episodes, `episodes` long) grabbed with `claimed` as its episode
+/// list and imported. With `real_e01` the library already holds E01.
+/// Returns the grab's final state, the season folder's file names, and
+/// E01's bytes afterwards.
+async fn import_sequel_number(
+    cumulative: i32,
+    episodes: Option<i32>,
+    raw: i32,
+    claimed: &[i32],
+    real_e01: bool,
+) -> (String, Vec<String>, Option<Vec<u8>>) {
     let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
-    // An 11-episode first season and a longer sequel: `- 12` is either
-    // the sequel's E12 or absolute 12 (its E01). Auto-search grabbed it
-    // as E12; importing it as E01 went after the real E01 and left E12
-    // wanted, to be grabbed again.
     let media_root = tempfile::TempDir::new().expect("media_root tempdir");
     let source_dir = tempfile::TempDir::new().expect("source tempdir");
     let media_root_path = media_root.path().to_string_lossy().to_string();
@@ -3181,20 +3187,27 @@ async fn run_once_files_an_ambiguous_sequel_number_where_the_grab_put_it() {
     .await
     .expect("seed config row");
     let series_id = seed_series(&db, 1, "Long Sequel").await;
-    sqlx::query("UPDATE series SET format = 'TV', cumulative_prior_episodes = 11 WHERE id = ?")
-        .bind(series_id)
-        .execute(&db)
-        .await
-        .unwrap();
+    sqlx::query(
+        "UPDATE series SET format = 'TV', cumulative_prior_episodes = ?, episodes = ? \
+         WHERE id = ?",
+    )
+    .bind(cumulative)
+    .bind(episodes)
+    .bind(series_id)
+    .execute(&db)
+    .await
+    .unwrap();
     let season_dir = media_root.path().join("Long Sequel").join("Season 01");
     std::fs::create_dir_all(&season_dir).unwrap();
     let existing_e01 = season_dir.join("Long Sequel - S01E01.mkv");
-    std::fs::write(&existing_e01, b"the real e01").unwrap();
+    if real_e01 {
+        std::fs::write(&existing_e01, b"the real e01").unwrap();
+    }
 
-    let title = "[Group] Long Sequel 2nd Season - 12 (1080p)";
-    let video = "[Group] Long Sequel 2nd Season - 12 (1080p).mkv";
-    std::fs::write(source_dir.path().join(video), b"e12").unwrap();
-    let g = grabbed_torrents::record_grab(&db, "seq12", title, series_id, &[12], false)
+    let title = format!("[Group] Long Sequel 2nd Season - {raw} (1080p)");
+    let video = format!("{title}.mkv");
+    std::fs::write(source_dir.path().join(&video), b"new").unwrap();
+    let g = grabbed_torrents::record_grab(&db, "seq12", &title, series_id, claimed, false)
         .await
         .unwrap()
         .unwrap();
@@ -3219,7 +3232,7 @@ async fn run_once_files_an_ambiguous_sequel_number_where_the_grab_put_it() {
     .unwrap();
     let torrent = DownloadItem {
         hash: "seq12".into(),
-        name: title.into(),
+        name: title.clone(),
         size: 3,
         progress: 1.0,
         dlspeed: 0,
@@ -3232,7 +3245,7 @@ async fn run_once_files_an_ambiguous_sequel_number_where_the_grab_put_it() {
         seeding_done: false,
     };
     let files = vec![DownloadFile {
-        name: video.to_string(),
+        name: video,
         size: 3,
         progress: 1.0,
         wanted: true,
@@ -3251,19 +3264,46 @@ async fn run_once_files_an_ambiguous_sequel_number_where_the_grab_put_it() {
         .fetch_one(&db)
         .await
         .unwrap();
-    assert_eq!(final_state, "imported");
     let names: Vec<String> = std::fs::read_dir(&season_dir)
         .unwrap()
         .filter_map(|e| e.ok())
         .filter_map(|e| e.file_name().into_string().ok())
         .collect();
+    (final_state, names, std::fs::read(&existing_e01).ok())
+}
+
+#[tokio::test]
+async fn run_once_files_an_ambiguous_sequel_number_where_the_grab_put_it() {
+    // An 11-episode first season and a 13-episode sequel: `- 12` is
+    // either the sequel's E12 or absolute 12 (its E01). Auto-search
+    // grabbed it as E12; importing it as E01 went after the real E01
+    // and left E12 wanted, to be grabbed again.
+    let (state, names, e01) = import_sequel_number(11, Some(13), 12, &[12], true).await;
+    assert_eq!(state, "imported");
     assert!(
         names.iter().any(|n| n.contains("S01E12")),
         "filed as E12: {names:?}"
     );
     assert_eq!(
-        std::fs::read(&existing_e01).unwrap(),
-        b"the real e01",
+        e01.as_deref(),
+        Some(&b"the real e01"[..]),
         "E01 is untouched"
+    );
+}
+
+#[tokio::test]
+async fn run_once_reads_a_title_claimed_number_past_the_series_as_absolute() {
+    // A Search-page grab records the title's own number, so `- 60`
+    // after 59 prior episodes is claimed as `[60]`. The sequel has 12
+    // episodes: 60 is absolute, its E01.
+    let (state, names, _) = import_sequel_number(59, Some(12), 60, &[60], false).await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E01")),
+        "filed as E01: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|n| n.contains("S01E60")),
+        "not filed as E60: {names:?}"
     );
 }

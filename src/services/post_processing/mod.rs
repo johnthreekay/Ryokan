@@ -137,19 +137,26 @@ impl ResolvedEpisode {
 }
 
 /// `claimed` is the grab's episode list for this series, or `&[]` when
-/// there is none to go by (a pack's preflight, a routed sibling); see
+/// there is none to go by (a pack's preflight, a routed sibling), and
+/// `episode_count` the series' known episode count (0 = unknown); see
 /// [`claimed_ep_offset`].
 fn resolve_episode(
     span: media::EpisodeSpan,
     route_offset: Option<i32>,
     cumulative_prior_episodes: i32,
     claimed: &[i32],
+    episode_count: i32,
 ) -> Result<ResolvedEpisode, String> {
     let episode_offset = route_offset.unwrap_or_else(|| {
         if span.season.is_some() {
             0
         } else {
-            claimed_ep_offset(span.first, cumulative_prior_episodes, claimed)
+            claimed_ep_offset(
+                span.first,
+                cumulative_prior_episodes,
+                claimed,
+                episode_count,
+            )
         }
     });
     let episode = span.first - episode_offset;
@@ -274,7 +281,7 @@ pub(crate) fn validate_batch_episode_map(
         let Some(span) = parsed else {
             continue;
         };
-        let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes, &[])
+        let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes, &[], 0)
         else {
             continue;
         };
@@ -982,6 +989,27 @@ struct SeriesImportCtx {
     /// each episode is written at most once, so later files can't
     /// depend on earlier files' writes landing in this map.
     existing_tags: HashMap<i32, episode_tags::EpisodeQualityTag>,
+}
+
+impl SeriesImportCtx {
+    /// The series' episode count from what the context already holds,
+    /// in the order `monitoring::effective_episode_count` reads it (the
+    /// row, the cached detail with its aired bound, the episode map),
+    /// so the import and the search agree on which episodes exist.
+    /// 0 when none of them knows.
+    fn known_episode_count(&self) -> i32 {
+        let plausible = |n: i32| crate::services::anilist::plausible_episode_count(n.into());
+        self.series
+            .episodes
+            .and_then(plausible)
+            .or_else(|| {
+                self.cached_detail
+                    .as_ref()
+                    .and_then(|d| plausible(d.effective_episode_count()))
+            })
+            .or_else(|| self.ep_meta.keys().copied().filter_map(plausible).max())
+            .unwrap_or(0)
+    }
 }
 
 /// Resolve the [`SeriesImportCtx`] for `series_id`: loads the series
@@ -1793,6 +1821,7 @@ async fn import_torrent(
                 routes_by_file.get(file_idx).map(|(_, offset)| *offset),
                 ctx.series.cumulative_prior_episodes,
                 claimed,
+                ctx.known_episode_count(),
             ) {
                 Ok(resolved) => resolved,
                 Err(reason) => {
