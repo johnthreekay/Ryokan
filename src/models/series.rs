@@ -271,6 +271,63 @@ pub struct SeriesCore<'a> {
     pub end_year: Option<i32>,
 }
 
+/// Whether another series already uses `name` as its folder. Compared
+/// case-insensitively: on a case-folding filesystem (macOS, an SMB
+/// share) `Show` and `show` are one folder.
+async fn folder_taken(db: &SqlitePool, name: &str) -> Result<bool, sqlx::Error> {
+    let hit: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM series WHERE lower(folder_name) = lower(?) LIMIT 1")
+            .bind(name)
+            .fetch_optional(db)
+            .await?;
+    Ok(hit.is_some())
+}
+
+/// `base` with `suffix`, the base cut at a character boundary so the
+/// name stays within NAME_MAX (255 bytes).
+fn with_suffix(base: &str, suffix: &str) -> String {
+    let mut end = base.len().min(255usize.saturating_sub(suffix.len()));
+    while !base.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{suffix}", base[..end].trim_end())
+}
+
+/// The series folder for a new row: `base`, or when another series has
+/// it, `base (year)`, then `base (2)`, `base (3)`. Two series rendering
+/// one name (a remake sharing its title, Hunter x Hunter 1999 and 2011,
+/// under the default `{series.title}` template) used to share a folder:
+/// each scan read the other's files as its own, and a delete or upgrade
+/// of one could recycle the other's episodes. Only rows count, not the
+/// disk, so a series added back finds its old folder.
+async fn unique_series_folder(
+    db: &SqlitePool,
+    base: String,
+    year: Option<i32>,
+) -> Result<String, sqlx::Error> {
+    if !folder_taken(db, &base).await? {
+        return Ok(base);
+    }
+    if let Some(y) = year.filter(|y| *y > 0)
+        && !base.ends_with(&format!("({y})"))
+    {
+        let candidate = with_suffix(&base, &format!(" ({y})"));
+        if !folder_taken(db, &candidate).await? {
+            return Ok(candidate);
+        }
+    }
+    for n in 2..1000 {
+        let candidate = with_suffix(&base, &format!(" ({n})"));
+        if !folder_taken(db, &candidate).await? {
+            return Ok(candidate);
+        }
+    }
+    Ok(with_suffix(
+        &base,
+        &format!(" ({})", chrono::Utc::now().timestamp()),
+    ))
+}
+
 /// Insert or update a series based on AniList/MAL provider identity.
 pub async fn upsert(db: &SqlitePool, core: SeriesCore<'_>) -> Result<(i64, bool), sqlx::Error> {
     if let Some(mid) = core.mal_id
@@ -369,6 +426,7 @@ pub async fn upsert(db: &SqlitePool, core: SeriesCore<'_>) -> Result<(i64, bool)
             &names,
         )
     };
+    let folder = unique_series_folder(db, folder, core.season_year).await?;
 
     let result = sqlx::query(
         r#"
@@ -787,6 +845,53 @@ impl Series {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_series_sharing_another_ones_title_gets_its_own_folder() {
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let core = |anilist_id, year| SeriesCore {
+            anilist_id,
+            mal_id: None,
+            title: "Hunter x Hunter",
+            title_romaji: "Hunter x Hunter",
+            title_english: "Hunter x Hunter",
+            title_native: "",
+            cover_url: "",
+            format: "TV",
+            status: "FINISHED",
+            episodes: Some(62),
+            season_year: Some(year),
+            end_year: None,
+        };
+        let folder = |id: i64| {
+            let db = db.clone();
+            async move {
+                sqlx::query_scalar::<_, String>("SELECT folder_name FROM series WHERE id = ?")
+                    .bind(id)
+                    .fetch_one(&db)
+                    .await
+                    .unwrap()
+            }
+        };
+        let (old, _) = upsert(&db, core(136, 1999)).await.unwrap();
+        let (new, _) = upsert(&db, core(11061, 2011)).await.unwrap();
+        let (third, _) = upsert(&db, core(99999, 2011)).await.unwrap();
+        assert_eq!(folder(old).await, "Hunter x Hunter");
+        assert_eq!(folder(new).await, "Hunter x Hunter (2011)");
+        assert_eq!(folder(third).await, "Hunter x Hunter (2)");
+        // Re-upserting an existing series keeps its folder.
+        upsert(&db, core(11061, 2011)).await.unwrap();
+        assert_eq!(folder(new).await, "Hunter x Hunter (2011)");
+    }
+
+    #[test]
+    fn a_suffixed_folder_stays_within_name_max() {
+        let long = "あ".repeat(85); // 255 bytes
+        let name = with_suffix(&long, " (2011)");
+        assert!(name.len() <= 255, "{}", name.len());
+        assert!(name.ends_with(" (2011)"));
+    }
 
     /// Regression test for the "Remove from Library → generic error, no
     /// log" bug. `rss_seen` is the only table referencing `series(id)`
