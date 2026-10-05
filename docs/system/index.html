@@ -1363,7 +1363,7 @@
 <h2 id="notifications">Notifications<a class="headerlink" href="#notifications" title="Anchor link">&para;</a></h2>
 <p>CRUD UI for outbound notification destinations. Two provider kinds:</p>
 <ul>
-<li><strong>Webhook</strong>: posts JSON to any HTTPS endpoint you configure (ntfy, Apprise, n8n, custom). Optional HMAC secret signs the body so receivers can verify it came from your Ryokan.</li>
+<li><strong>Webhook</strong>: posts JSON to any HTTPS endpoint you configure (ntfy, Apprise, n8n, custom). Optional HMAC secret signs the body so receivers can verify it came from your Ryokan. <code>X-Ryokan-Signature</code> is <code>sha256=</code> plus the HMAC-SHA256 of the body. <code>X-Ryokan-Signature-V2</code> is <code>t=&lt;timestamp&gt;,sha256=&lt;hex&gt;</code> over <code>&lt;timestamp&gt;.&lt;body&gt;</code>; verify that one and reject old timestamps to refuse replayed deliveries.</li>
 <li><strong>Discord</strong>: posts an embed to a Discord webhook URL you provide.</li>
 </ul>
 <p>Per-event opt-in matrix per provider: Grabbed, Imported, Import failed, Classifier needs review, Indexer down, Download client unreachable, Re-link required, Health (test).</p>

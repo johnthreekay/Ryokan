@@ -1173,6 +1173,13 @@
 </fieldset>
 
 <fieldset>
+  <legend>Hardening</legend>
+  <p class="hint">The host check makes Ryokan's web UI answer only to the names you open it by, so a page on another site can't point its own name at Ryokan and use it (DNS rebinding). Off by default. IP addresses and <code>localhost</code> always work. List every name you open Ryokan by, such as your server's name (<code>nas</code>), <code>ryokan.lan</code> or your reverse proxy's domain. Inside Docker, Ryokan doesn't know your server's name unless you list it. Seerr, autobrr and calendar apps aren't affected. See <a href="../docker/#host-check">Host check</a>.</p>
+  <label><input type="checkbox" name="host_check"> Host check</label>
+  <label>Names you open Ryokan by <input type="text" name="allowed_hosts" value="" placeholder="e.g. nas ryokan.lan ryokan.example.com"></label>
+</fieldset>
+
+<fieldset>
   <legend>User / group</legend>
   <p class="hint">Run <code>id -u</code> / <code>id -g</code> on the host to find these. Match the user that owns your media library so post-processed files land with the right ownership.</p>
   <label>PUID <input type="number" name="puid" value="1000" min="0"></label>
@@ -1182,9 +1189,8 @@
 
 <fieldset>
   <legend>Host paths</legend>
-  <p class="hint">Where on your host the data lives. Defaults follow the convention used by the <a href="../quick-start/">quick start</a>: media under <code>/srv/media/</code>, per-service config under <code>/srv/docker/&lt;service&gt;/</code>. Both downloads and the library should be on the same filesystem if you want post-processing to use hardlinks.</p>
-  <label>Downloads <input type="text" name="downloads_path" value="/srv/media/downloads"></label>
-  <label>Media library <input type="text" name="media_path" value="/srv/media/anime"></label>
+  <p class="hint">Where on your host the data lives. The shared folder holds <code>downloads/</code> and the library, <code>anime/</code>, and every container mounts it at the same path it has on the host, so imports hardlink and the paths you type in Ryokan are the ones you see on the host. It has to be a full path, such as <code>/srv/media</code> or <code>/data</code>. If a folder can't work, for example because an app keeps its own settings there, the output below says why instead of showing a compose file. Per-service config goes under <code>/srv/docker/&lt;service&gt;/</code>.</p>
+  <label>Shared media folder <input type="text" name="shared_path" value="/srv/media"></label>
   <label>Per-service config root <input type="text" name="appdata_path" value="/srv/docker"></label>
 </fieldset>
 
@@ -1195,19 +1201,20 @@
 <pre data-picker="compose" class="stack-output"><code class="language-yaml">Loading…</code></pre>
 
 <h2 id="ryokan-settings-to-paste-in">Ryokan settings to paste in<a class="headerlink" href="#ryokan-settings-to-paste-in" title="Anchor link">&para;</a></h2>
-<p>After the stack is up, log into Ryokan at <code>http://localhost:8978</code> and paste these values into the matching Settings panels.</p>
+<p>After the stack is up, set each download client's folders as listed, then open Ryokan at <code>http://localhost:8978</code>. Create your account, enter the library values when first-run setup asks for them, and paste the rest into the matching Settings panels.</p>
 <pre data-picker="settings" class="stack-output"><code>Loading…</code></pre>
 
 <h2 id="notes">Notes<a class="headerlink" href="#notes" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong>Hardlinks</strong>: post-processing defaults to hardlink mode. Both the downloads and media paths above are mounted at matching paths inside Ryokan's container, so qBit-reports <code>/downloads/foo.mkv</code> and Ryokan-sees <code>/downloads/foo.mkv</code> (no path translation needed). If you split downloads and media across different host filesystems, hardlinks will fall back to copy automatically.</li>
+<li><strong>Hardlinks</strong>: post-processing defaults to hardlink mode, and a hardlink needs the download and the library inside one mount. Every container mounts the shared folder at its host path, so the client reports <code>/srv/media/downloads/foo.mkv</code> and Ryokan opens that same path and links it into <code>/srv/media/anime</code>. That only works once each client saves into the shared folder, which is why the settings above list a download folder for every client. If a hardlink fails anyway (the folder spans two filesystems), Ryokan copies instead.</li>
 <li><strong>First-run</strong>: every container needs its <code>/srv/docker/&lt;service&gt;/</code> subdirectory pre-owned by the PUID/PGID you set above. The generated compose's header comment includes the exact <code>mkdir + chown</code> for the services you picked.</li>
 <li><strong>Reverse proxy</strong>: the generated config is a stub. You'll need to point a real domain (or Cloudflare Tunnel route) at the proxy and edit the proxy's config file with your actual hostname.</li>
 <li><strong>VPN</strong>: Gluetun expects WireGuard or OpenVPN credentials in its env. Wrong/missing credentials show up as connection failures on the download client (which can't reach trackers). The gluetun container's logs are the right place to debug.</li>
-<li><strong>qBit "Unauthorized" with correct credentials</strong>: qBittorrent 4.5+ enables Host header validation by default. When Ryokan-in-container POSTs to <code>http://qbittorrent:8080</code>, the <code>Host:</code> header it sends is <code>qbittorrent:8080</code>, which qBit refuses with 401 even when the username and password are right. Symptom in Ryokan: Settings → Download Clients shows the qBit card stuck on "qBittorrent Unauthorized" while the WebUI accessed from your browser works fine. Fix: in the qBit WebUI, <strong>Tools → Options → Web UI</strong>, uncheck <strong>"Enable Host header validation"</strong> (or add <code>qbittorrent</code> and your LAN IP to the allowlist if you'd rather keep it on). Save, then <code>docker compose restart qbittorrent</code>. SAB and Transmission don't do this check, which is why they connect without the same workaround.</li>
+<li><strong>SABnzbd "Access denied"</strong>: SABnzbd checks the hostname it is called by, and Ryokan calls it <code>sabnzbd</code>. Until that name is in <strong>Config → Special → host_whitelist</strong>, SAB answers Ryokan with "Access denied - Hostname verification failed" (a 403 in Settings → Download Clients). Add it, save, and restart SAB. qBittorrent's own host check accepts any name by default, so it needs nothing.</li>
+<li><strong>Torrent ports</strong>: each torrent client that listens for peers gets its own host port, starting at 6881, so picking several never publishes one port twice. Deluge starts on a random port until you set its Incoming Port to the one in its settings above.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-08-29.</em></p>
+<p><em>Last updated: 2026-10-04.</em></p>
 
   
 

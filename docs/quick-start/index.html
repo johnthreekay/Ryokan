@@ -542,10 +542,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-set-the-media-root" class="md-nav__link">
+  <a href="#5-optional-connect-jellyfin-to-ryokan" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        5. Set the media root
+        5. (Optional) Connect Jellyfin to Ryokan
       </span>
     </span>
   </a>
@@ -1203,10 +1203,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-set-the-media-root" class="md-nav__link">
+  <a href="#5-optional-connect-jellyfin-to-ryokan" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        5. Set the media root
+        5. (Optional) Connect Jellyfin to Ryokan
       </span>
     </span>
   </a>
@@ -1295,7 +1295,7 @@
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,qbittorrent<span class="o">}</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,qbittorrent<span class="o">}</span>
 </span></code></pre></div>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
@@ -1348,7 +1348,7 @@
 </div>
 <div class="tabbed-block">
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,deluge<span class="o">}</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,deluge<span class="o">}</span>
 </span></code></pre></div>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
@@ -1400,7 +1400,7 @@
 </div>
 <div class="tabbed-block">
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,transmission<span class="o">}</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,transmission<span class="o">}</span>
 </span></code></pre></div>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
@@ -1454,7 +1454,7 @@
 </div>
 <div class="tabbed-block">
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,rutorrent/passwd<span class="o">}</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,rutorrent<span class="o">}</span>
 </span></code></pre></div>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
@@ -1518,7 +1518,7 @@
 </div>
 <div class="tabbed-block">
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,sabnzbd/<span class="o">{</span>config,incomplete<span class="o">}}</span>
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,sabnzbd<span class="o">}</span>
 </span></code></pre></div>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
@@ -1592,8 +1592,13 @@
 <p>Drop the relevant service block from the compose and skip the corresponding setup step below. Make sure the existing instance can read <code>/srv/media/anime</code> (Jellyfin) or write to <code>/srv/media/downloads</code> (download client), or adjust paths accordingly.</p>
 </div>
 <h2 id="2-first-login-to-ryokan">2. First login to Ryokan<a class="headerlink" href="#2-first-login-to-ryokan" title="Anchor link">&para;</a></h2>
-<p>Open <a href="http://localhost:8978">http://localhost:8978</a> in a browser. You'll be redirected to a setup page; pick a username and password and submit. That account is your admin account; Ryokan is single-user, so this is the only one you'll create.</p>
-<p>Once you're logged in you'll see an empty library page. That's expected; we haven't told Ryokan about any shows yet.</p>
+<p>Open <a href="http://localhost:8978">http://localhost:8978</a> in a browser. You'll be redirected to a setup page. Pick a username and a password of at least 8 characters, type it twice, and submit. A password can be up to 72 characters long. Accented letters, Japanese characters and emoji count as two to four each toward that limit. That account is your admin account; Ryokan is single-user, so this is the only one you'll create.</p>
+<p>Ryokan then asks where to put finished episodes. Set <strong>Media Root Path</strong> to <code>/media/anime</code>. That's the path inside Ryokan's container; it maps to <code>/srv/media/anime</code> on your host, the same folder Jellyfin reads from. Leave the file operation mode on Hardlink and the Jellyfin fields empty for now (step 5 connects it), and click <strong>Save and continue</strong>. Saving turns on post-processing, which renames each finished download and places it in that folder. <strong>Skip for now</strong> leaves post-processing off, and Settings → General has the same settings for later.</p>
+<div class="admonition warning">
+<p class="admonition-title">PUID and PGID matter for shared folders</p>
+<p>The <code>1000:1000</code> defaults work for most homelabs but not all. If files Ryokan writes show up with the wrong owner and Jellyfin can't read them, run <code>id -u</code> and <code>id -g</code> on your media-owning user and update both services' <code>PUID</code> / <code>PGID</code>. <a href="../install/#puid-and-pgid">Installation → PUID and PGID</a> explains why.</p>
+</div>
+<p>After that you'll see an empty library page. That's expected; we haven't told Ryokan about any shows yet.</p>
 <h2 id="3-set-up-jellyfin">3. Set up Jellyfin<a class="headerlink" href="#3-set-up-jellyfin" title="Anchor link">&para;</a></h2>
 <p>Open <a href="http://localhost:8096">http://localhost:8096</a> in another tab. Walk through Jellyfin's first-run wizard:</p>
 <ol>
@@ -1683,23 +1688,19 @@
 <p>The URLs above (<code>http://qbittorrent:8080</code>, <code>http://sabnzbd:8080</code>, etc.) rely on Docker's per-compose DNS so containers can reach each other by service name. If you've split Ryokan and your download client into separate compose files, run them on different hosts, or have a network plugin that interferes with Docker DNS, swap the service name for your <strong>host's LAN IP and the host-mapped port</strong>. For example: instead of <code>http://qbittorrent:8080</code>, use <code>http://192.168.1.100:8080</code> (or whatever your host's IP is). It works because every container in the bundled compose publishes its port to the host, so anything that can reach the host can also reach those ports.</p>
 </div>
 <p>Save the row.</p>
-<h2 id="5-set-the-media-root">5. Set the media root<a class="headerlink" href="#5-set-the-media-root" title="Anchor link">&para;</a></h2>
-<p>In Ryokan, go to <strong>Settings → General → Media Root Path</strong> and set it to <code>/media/anime</code>. That's the path inside Ryokan's container; it maps to <code>/srv/media/anime</code> on your host (the same folder Jellyfin reads from).</p>
-<div class="admonition warning">
-<p class="admonition-title">PUID and PGID matter for shared folders</p>
-<p>The <code>1000:1000</code> defaults work for most homelabs but not all. If files Ryokan writes show up with the wrong owner and Jellyfin can't read them, run <code>id -u</code> and <code>id -g</code> on your media-owning user and update both services' <code>PUID</code> / <code>PGID</code>. <a href="../install/#puid-and-pgid">Installation → PUID and PGID</a> explains why.</p>
-</div>
+<h2 id="5-optional-connect-jellyfin-to-ryokan">5. (Optional) Connect Jellyfin to Ryokan<a class="headerlink" href="#5-optional-connect-jellyfin-to-ryokan" title="Anchor link">&para;</a></h2>
+<p>In Jellyfin, open <strong>Dashboard → API Keys</strong>, add a key named Ryokan, and copy it. In Ryokan, open <strong>Settings → Connections</strong>, set the Jellyfin <strong>URL</strong> to <code>http://jellyfin:8096</code>, paste the key into <strong>API Key</strong>, click <strong>Test</strong>, then <strong>Save</strong>. From then on Ryokan asks Jellyfin to rescan after each import, so a new episode shows up without waiting for the scheduled scan.</p>
 <h2 id="6-optional-add-an-indexer">6. (Optional) Add an indexer<a class="headerlink" href="#6-optional-add-an-indexer" title="Anchor link">&para;</a></h2>
 <p>Skip this for now if you want; Nyaa is built in and works out of the box. But if you have a Prowlarr or Jackett set up with private trackers, this is the moment to wire those in.</p>
 <p><strong>Settings → Indexers → Add indexer</strong>. Paste the URL Prowlarr or Jackett gave you (it ends in <code>/api</code>), the API key, and pick a name. The defaults handle the rest.</p>
-<p>Click <strong>Test connection</strong> to confirm Ryokan can reach it.</p>
+<p>Click <strong>Test</strong> to confirm Ryokan can reach it.</p>
 <h2 id="7-add-a-show-and-watch-it-land">7. Add a show and watch it land<a class="headerlink" href="#7-add-a-show-and-watch-it-land" title="Anchor link">&para;</a></h2>
 <p>Go back to the library page, click <strong>+ Add Series</strong>, type the name of an anime you want, and pick the right one from the dropdown. Ryokan fetches metadata from AniList by default.</p>
 <p>When the series page opens, each episode row has two icon buttons: <strong>Interactive search</strong> lists the releases ranked by Ryokan's scoring so you can click <strong>Grab</strong> on one, and <strong>Auto search</strong> lets Ryokan grab the highest-scored release for you. <strong>Search Monitored Episodes</strong> at the top runs the automatic version for every monitored episode.</p>
 <p>The grab fires off to your download client. When it finishes:</p>
 <ol>
-<li>Post-processing hardlinks the file into <code>/srv/media/anime/&lt;show name&gt;/Season 01/&lt;episode&gt;.mkv</code> on your host.</li>
-<li>Jellyfin picks it up on its next library scan (or immediately if you click <strong>Scan All Libraries</strong>).</li>
+<li>Post-processing places the file at <code>/srv/media/anime/&lt;show name&gt;/Season 01/&lt;episode&gt;.mkv</code> on your host. These composes mount downloads and the library separately, and a hardlink can't cross mounts, so it's a copy. The shared <code>/data</code> layout in <a href="../docker/#moving-ryokans-data-folder">Docker</a> keeps hardlinks.</li>
+<li>Jellyfin shows it right away if you connected it in step 5. Otherwise it appears after Jellyfin's next library scan (or immediately if you click <strong>Scan All Libraries</strong>).</li>
 <li>The episode is now playable from any Jellyfin client (web, mobile, TV).</li>
 </ol>
 <h2 id="8-optional-link-anilist-or-mal">8. (Optional) Link AniList or MAL<a class="headerlink" href="#8-optional-link-anilist-or-mal" title="Anchor link">&para;</a></h2>
@@ -1712,7 +1713,7 @@
 <li><strong><a href="../troubleshooting/">Troubleshooting</a></strong> has the most common stumbles and their fixes.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-08-29.</em></p>
+<p><em>Last updated: 2026-10-04.</em></p>
 
 
 

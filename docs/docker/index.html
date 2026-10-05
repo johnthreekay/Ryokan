@@ -710,6 +710,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#host-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Host check
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#running-behind-a-reverse-proxy" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1215,6 +1226,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#host-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Host check
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#running-behind-a-reverse-proxy" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1286,6 +1308,21 @@
 <td><code>RYOKAN_COOKIE_SECURE</code></td>
 <td>unset (off)</td>
 <td>Force the <code>Secure</code> flag onto the login cookie. Usually unnecessary: with <code>RYOKAN_TRUSTED_PROXY=1</code>, Ryokan sets the flag on its own whenever the proxy reports HTTPS. Set this only for an HTTPS proxy that doesn't send <code>X-Forwarded-Proto</code>. Leave it off for plain HTTP or you won't be able to stay logged in.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_FRAME_ANCESTORS</code></td>
+<td>unset (any site may embed Ryokan)</td>
+<td>Limit which pages may show Ryokan inside a frame. <code>self</code> allows only Ryokan itself, <code>none</code> allows nothing, and an origin like <code>https://dash.example.com</code> allows that page; separate several with spaces or commas. If you embed Ryokan in a dashboard such as Organizr or Homarr, leave this unset or list the dashboard's origin. Entries Ryokan can't read are skipped with a warning in the log, and if none are left only Ryokan itself may frame it.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_HOST_CHECK</code></td>
+<td>unset (off)</td>
+<td>Turn on the host check: the web UI answers only when you open it by an IP address, <code>localhost</code>, or a name in <code>RYOKAN_ALLOWED_HOSTS</code>. Other names get an error page, including your server's own name until you list it. Any value except <code>0</code>, <code>false</code>, <code>no</code> or <code>off</code> turns it on. See <a href="#host-check">Host check</a>.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_ALLOWED_HOSTS</code></td>
+<td>unset</td>
+<td>Extra names the host check accepts, separated by spaces or commas: <code>ryokan.lan</code>, <code>*.example.com</code> (any name ending in <code>.example.com</code>). Setting it turns the host check on by itself.</td>
 </tr>
 <tr>
 <td><code>RYOKAN_DATA_DIR</code></td>
@@ -1389,12 +1426,19 @@
 </ol>
 <p>Restart the container. On boot, Ryokan deletes both tables, removes the sentinel, and <code>/setup</code> opens for a fresh admin account. Remove <code>RYOKAN_RESET_AUTH</code> from your compose file afterwards.</p>
 <p>OAuth tokens, library state, scoring history, and Custom Formats are preserved. Only authentication state is wiped.</p>
+<h2 id="host-check">Host check<a class="headerlink" href="#host-check" title="Anchor link">&para;</a></h2>
+<p>A web page on another site can point its own name at your Ryokan's address and then use Ryokan as if it were that site. Before the first account exists, that is enough to create the admin account. The host check (off by default, like Transmission's host whitelist) stops it: with <code>RYOKAN_HOST_CHECK=1</code>, the web UI answers only when you open it by an IP address (<code>http://192.168.1.20:8978</code>), <code>localhost</code>, or a name you list in <code>RYOKAN_ALLOWED_HOSTS</code>. Anything else gets a "421" page naming the setting.</p>
+<ul>
+<li>If you open Ryokan by a name, such as your server's name (<code>http://nas:8978</code>), <code>ryokan.lan</code> or a domain on your reverse proxy, add that name to <code>RYOKAN_ALLOWED_HOSTS</code>. Ryokan also accepts the name of the machine it runs on, but inside Docker that is the container's own name. Docker makes it a random ID unless the compose file sets <code>hostname:</code>, so your server's name still has to be listed.</li>
+<li>Behind a reverse proxy with <code>RYOKAN_TRUSTED_PROXY=1</code>, the name in <code>X-Forwarded-Host</code> has to pass too, and so does the name the proxy uses to reach Ryokan, unless the proxy passes the original one through (nginx: <code>proxy_set_header Host $host;</code>).</li>
+<li>Seerr, autobrr and calendar apps are not affected: the Sonarr / Radarr API, the autobrr webhook and the iCal feed check their API key instead, so other containers can keep calling Ryokan by its service name.</li>
+</ul>
 <h2 id="running-behind-a-reverse-proxy">Running behind a reverse proxy<a class="headerlink" href="#running-behind-a-reverse-proxy" title="Anchor link">&para;</a></h2>
 <p>If you put Ryokan behind nginx, Caddy, Traefik, or similar, set <code>RYOKAN_TRUSTED_PROXY=1</code> so the per-IP login throttle reads <code>X-Forwarded-For</code> from the proxy instead of the proxy's own IP. The proxy must overwrite these headers on ingress (don't pass through whatever the client sent), or you've just added a header-spoofing bypass.</p>
 <p>With that set, the login cookie is marked <code>Secure</code> automatically whenever the proxy reports HTTPS (<code>X-Forwarded-Proto: https</code>), the same way Sonarr does it. <code>RYOKAN_COOKIE_SECURE=1</code> forces the flag for a proxy that doesn't send that header.</p>
 <p>The <a href="../stack-builder/">Stack builder</a> generates Caddy / Traefik / nginx config with the right header rewrites and env-var combinations.</p>
 <hr />
-<p><em>Last updated: 2026-10-03.</em></p>
+<p><em>Last updated: 2026-10-04.</em></p>
 
 
 

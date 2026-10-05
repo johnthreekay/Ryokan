@@ -1281,6 +1281,7 @@
 <p>Changes apply on save; no restart needed.</p>
 <h2 id="connections">Connections<a class="headerlink" href="#connections" title="Anchor link">&para;</a></h2>
 <p>Third-party services Ryokan talks to.</p>
+<p>Saved passwords and keys for other services (download clients, indexers, Jellyfin, a Discord webhook URL, a webhook's URL, signing secret and header values) are never shown again once saved. The field stays empty and reads <strong>[set; leave blank to keep]</strong>. Leave it blank to keep the saved value, type a new one to replace it, or press <strong>Clear</strong> to remove it. A saved webhook header shows its name with <code>********</code> in place of the value, and a saved webhook URL shows only its host on the provider card. If you change where a service's address points, such as its host or port, or switch between http and https, type the password or key again. Ryokan doesn't send a saved secret to a new address, on Save or on Test.</p>
 <ul>
 <li><strong>AniList / MyAnimeList accounts</strong>: OAuth-linked for watch-list sync. When linked, anime you mark "watching" (or "planning", "completed", etc.) on AniList or MAL get auto-added to your Ryokan library on the next sync tick. Setup walkthrough: <a href="../external-accounts/">External accounts</a>.</li>
 <li><strong>Sync interval (minutes)</strong>: how often the watch-list sync runs. Default 30 minutes; minimum 15, maximum 10080 (7 days). The form won't let you type anything below 15. If a value somehow ends up outside that range, it falls back to 30.</li>
@@ -1297,7 +1298,7 @@
 <p>Each indexer row has an optional <strong>download client pin</strong> that overrides the per-protocol default for grabs from that indexer. Useful when you want one private tracker's grabs going to a specific qBit instance with stricter seed rules.</p>
 <p>Two more things live on this tab:</p>
 <ul>
-<li><strong>autobrr webhook</strong>: accepts inbound webhooks at <code>/api/webhook/autobrr</code>. <a href="https://autobrr.com">autobrr</a> is a separate self-hosted tool that watches IRC announce channels for new releases and pushes matches as HTTP webhooks; this is the receiving side. The webhook has its own API key with a dedicated regenerate button, so an accidental tab POST can't silently rotate or wipe it.</li>
+<li><strong>autobrr webhook</strong>: accepts inbound webhooks at <code>/api/webhook/autobrr</code>. <a href="https://autobrr.com">autobrr</a> is a separate self-hosted tool that watches IRC announce channels for new releases and pushes matches as HTTP webhooks; this is the receiving side. The webhook has its own API key with a dedicated regenerate button, so an accidental tab POST can't silently rotate or wipe it. A push whose indexer has the name of an indexer configured in Ryokan (autobrr sends its identifier, such as <code>animebytes</code>) uses that indexer's download client and seed rules. <code>nyaa</code> uses the built-in Nyaa's client. Any other torrent push is still grabbed, through the default torrent client and without seed rules, and its log line says which indexer matched nothing. A push Ryokan can't tell is a torrent, such as a Usenet release, is skipped instead. Give the indexer in Ryokan the name autobrr uses so those pushes go to its download client.</li>
 <li><strong>Nyaa</strong>: the built-in search is the first card, marked built-in, and cannot be removed. Click it to turn it off, switch its RSS feed on or off, choose English-translated or every anime category for automatic grabs, pin it to a torrent client (<strong>use default</strong> routes Nyaa grabs to the default torrent client), or restrict it to one uploader by default. Off skips Nyaa in automatic and interactive searches and stops its feed; the Search page keeps working. A series can override the uploader restriction on its own page.</li>
 </ul>
 <h2 id="quality-releases">Quality &amp; Releases<a class="headerlink" href="#quality-releases" title="Anchor link">&para;</a></h2>
@@ -1421,7 +1422,7 @@
 <li><strong>Reset auth only</strong>: when you've forgotten your admin password but want to keep your library and OAuth tokens intact. See <a href="../docker/#reset-auth">Docker reference → Reset auth</a> for the two-step gate.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-08-29.</em></p>
+<p><em>Last updated: 2026-10-04.</em></p>
 
 
 

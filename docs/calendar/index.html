@@ -1189,12 +1189,12 @@
 
 
 <h1 id="calendar">Calendar<a class="headerlink" href="#calendar" title="Anchor link">&para;</a></h1>
-<p>Ryokan's calendar shows what's airing for the shows in your library. It lives at <code>/calendar</code> from the top nav, between Library and Search. There's also a subscription feed if you'd rather see new episodes inside Apple Calendar, Google Calendar, or Thunderbird alongside the rest of your week.</p>
+<p>Ryokan's calendar shows what's airing for the shows in your library. It lives at <code>/calendar</code> in the top nav, between Library and Wanted. There's also a subscription feed if you'd rather see new episodes inside Apple Calendar, Google Calendar, or Thunderbird alongside the rest of your week.</p>
 <h2 id="views">Views<a class="headerlink" href="#views" title="Anchor link">&para;</a></h2>
 <p>Three quick toggles at the top of the page:</p>
 <ul>
 <li><strong>This week</strong>: list view. Each day is a sticky header with the episodes airing that day stacked beneath. Today gets a colored stripe so your eye lands there.</li>
-<li><strong>Next week</strong>: same shape, but the next seven days.</li>
+<li><strong>Next week</strong>: same shape, for the seven days after that (days 8 to 14 from now).</li>
 <li><strong>This month</strong>: calendar grid view. Sun-to-Sat rows for the current month; each cell holds the episodes for that day.</li>
 </ul>
 <h2 id="what-youll-see-on-each-episode">What you'll see on each episode<a class="headerlink" href="#what-youll-see-on-each-episode" title="Anchor link">&para;</a></h2>
@@ -1223,7 +1223,7 @@
 <li><strong>Google Calendar</strong>: Other calendars → + → From URL, paste the URL.</li>
 <li><strong>Thunderbird</strong>: New Calendar → On the Network → iCalendar (ICS), paste the URL.</li>
 </ul>
-<p>The feed defaults to the next 30 days. If you want a wider or narrower window, append <code>?days=N</code> to the URL (capped at 90). Append <code>?monitored=true</code> to only see monitored series.</p>
+<p>The feed defaults to the next 30 days. The URL you copy already ends in <code>?apikey=...</code>, so add options with <code>&amp;</code>: <code>&amp;days=N</code> for a wider or narrower window (capped at 90), <code>&amp;monitored=true</code> to only see monitored series.</p>
 <h2 id="how-fresh-is-the-data">How fresh is the data?<a class="headerlink" href="#how-fresh-is-the-data" title="Anchor link">&para;</a></h2>
 <p>Air times come from AniList. Ryokan refreshes them every 12 hours and stores its own copy, so the calendar page doesn't have to call AniList every time you load it. Two things to know:</p>
 <ul>
@@ -1233,7 +1233,7 @@
 <h2 id="series-ryokan-adds-via-mal">Series Ryokan adds via MAL<a class="headerlink" href="#series-ryokan-adds-via-mal" title="Anchor link">&para;</a></h2>
 <p>A few series in your library may have come from MAL instead of AniList. These are usually older or obscure titles that AniList doesn't have a record for. Those won't show up on the calendar, because the calendar's air-time data only comes from AniList. Most shows are on AniList and won't be affected.</p>
 <hr />
-<p><em>Last updated: 2026-08-29.</em></p>
+<p><em>Last updated: 2026-10-04.</em></p>
 
 
 
