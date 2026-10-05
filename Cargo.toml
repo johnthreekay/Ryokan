@@ -1,6 +1,6 @@
 [package]
 name = "ryokan"
-version = "2.1.2"
+version = "2.2.0"
 edition = "2024"
 authors = ["John K"]
 license = "GPL-3.0-or-later"
