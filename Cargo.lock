@@ -2627,7 +2627,7 @@ dependencies = [
 
 [[package]]
 name = "ryokan"
-version = "2.1.2"
+version = "2.2.0"
 dependencies = [
  "ammonia",
  "anitomy",
