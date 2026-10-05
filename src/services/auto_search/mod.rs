@@ -48,8 +48,9 @@ use scoring::{
     apply_cf_seadex_overlay, apply_cf_seadex_overlay_with_breakdown, rescore_for_auto_search,
     rescore_for_auto_search_with_breakdown,
 };
-use seadex_lookup::{fetch_seadex_payload, is_seadex_match, seadex_gates};
+use seadex_lookup::{fetch_seadex_payload, is_seadex_match};
 pub use seadex_lookup::{prewarm_seadex_negative, seadex_warm_cache_from_db};
+pub(crate) use seadex_lookup::{seadex_gates, seadex_hashes_for_rss};
 pub use search_target::{
     SearchTarget, build_missing_targets, build_monitored_targets, build_upgrade_targets,
 };

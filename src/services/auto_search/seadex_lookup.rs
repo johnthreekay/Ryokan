@@ -564,7 +564,7 @@ pub(super) async fn fetch_seadex_payload(
 /// serves both paths. Returns the gate flag plus the "hardcoded boost
 /// active" flag (suppressed whenever the user has a SeaDex CF, to
 /// avoid double-counting).
-pub(super) fn seadex_gates(
+pub(crate) fn seadex_gates(
     config: &Config,
     cfs: &[CompiledCustomFormat],
 ) -> (bool /* needs_lookup */, bool /* boost_enabled */) {
@@ -574,6 +574,106 @@ pub(super) fn seadex_gates(
     let needs_lookup = config.nyaa_enabled && (config.seadex_enabled || has_cf);
     let boost_enabled = config.seadex_enabled && !has_cf;
     (needs_lookup, boost_enabled)
+}
+
+/// Hash sets RSS fetched itself, keyed by AniList id, with the same
+/// success and error TTLs as [`SEADEX_CACHE`]. Kept apart from that
+/// cache because a payload there has to carry the seeded candidates a
+/// search merges into its pool; a hashes-only entry would hide them
+/// from the next search for a day. In memory only, for the same
+/// reason: the persisted table warms [`SEADEX_CACHE`] at boot.
+static SEADEX_HASH_CACHE: LazyLock<StdMutex<HashMap<i64, HashCacheEntry>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+/// Expiry and hash set, as [`SEADEX_CACHE`] keeps an expiry per payload.
+type HashCacheEntry = (Instant, HashSet<String>);
+
+fn seadex_hash_cache_get(anilist_id: i64) -> Option<HashSet<String>> {
+    let cache = SEADEX_HASH_CACHE.lock().ok()?;
+    let (expires_at, hashes) = cache.get(&anilist_id)?;
+    (Instant::now() < *expires_at).then(|| hashes.clone())
+}
+
+fn seadex_hash_cache_put(anilist_id: i64, hashes: HashSet<String>, ttl: Duration) {
+    if let Ok(mut cache) = SEADEX_HASH_CACHE.lock() {
+        let now = Instant::now();
+        cache.insert(anilist_id, (now + ttl, hashes));
+        if cache.len() > SEADEX_CACHE_MAX_ENTRIES {
+            cache.retain(|_, (expires_at, _)| *expires_at > now);
+        }
+    }
+}
+
+/// The SeaDex "best" hashes for the series RSS is about to score, keyed
+/// by AniList id; an id with no entry, no AniList id (the negative MAL
+/// sentinel) or a failed lookup is absent. RSS scores feed items and
+/// never searches, so it needs only the hashes, which come in the
+/// releases.moe entry itself: a search's cached payload is used when
+/// there is one, and every other id goes into one batched request
+/// ([`seadex::lookup_batch`], 50 ids each) with none of the Nyaa view
+/// page fetches a search's lookup makes for its seed candidates. A
+/// "no entry" answer is complete without candidates, so it goes into
+/// the shared cache and the table as the prewarm writes it.
+pub(crate) async fn seadex_hashes_for_rss(
+    db: &SqlitePool,
+    needs_lookup: bool,
+    anilist_ids: &[i64],
+) -> HashMap<i64, HashSet<String>> {
+    let mut out: HashMap<i64, HashSet<String>> = HashMap::new();
+    if !needs_lookup {
+        return out;
+    }
+    let mut missing: Vec<i64> = Vec::new();
+    for &id in anilist_ids {
+        if id <= 0 || out.contains_key(&id) || missing.contains(&id) {
+            continue;
+        }
+        if let Some(payload) = seadex_cache_get(id) {
+            out.insert(id, payload.hashes);
+        } else if let Some(hashes) = seadex_hash_cache_get(id) {
+            out.insert(id, hashes);
+        } else {
+            missing.push(id);
+        }
+    }
+    if missing.is_empty() {
+        return out;
+    }
+    tracing::debug!(
+        "seadex: RSS looking up {} anilist_id(s) in one batch",
+        missing.len()
+    );
+    match seadex::lookup_batch(&missing).await {
+        Ok(results) => {
+            for (id, entry) in results {
+                match entry {
+                    Some(entry) => {
+                        let hashes = seadex::best_hashes(&entry);
+                        seadex_hash_cache_put(id, hashes.clone(), SEADEX_CACHE_TTL);
+                        out.insert(id, hashes);
+                    }
+                    None => {
+                        let payload = SeaDexPayload::default();
+                        seadex_cache_put(id, payload.clone());
+                        seadex_persist_to_db(db, id, &payload).await;
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            for id in &missing {
+                seadex_hash_cache_put(*id, HashSet::new(), SEADEX_ERROR_TTL);
+            }
+            logger::warn(
+                db,
+                LogCategory::Rss,
+                "SeaDex lookup failed; RSS scored this sync without it",
+                &format!("{} series, error={e}", missing.len()),
+            )
+            .await;
+        }
+    }
+    out
 }
 
 /// True if `info_hash` (non-empty) is in the SeaDex best-hashes set.
@@ -668,6 +768,75 @@ mod tests {
                 .unwrap();
         assert_eq!(count.0, 0);
         assert!(seadex_cache_get(anilist_id).is_none());
+    }
+
+    // ── RSS hash lookup ──────────────────────────────────────────────
+    //
+    // Every id below is cached before the call, so none of these tests
+    // reaches releases.moe: a miss would be a live request.
+
+    fn one_hash(hash: &str) -> HashSet<String> {
+        HashSet::from([hash.to_string()])
+    }
+
+    #[tokio::test]
+    async fn rss_hashes_come_from_either_cache_without_a_request() {
+        let db = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let from_search = 990_000_101;
+        let from_rss = 990_000_102;
+        seadex_cache_put(
+            from_search,
+            SeaDexPayload {
+                hashes: one_hash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                candidates: vec![],
+            },
+        );
+        seadex_hash_cache_put(
+            from_rss,
+            one_hash("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+            SEADEX_CACHE_TTL,
+        );
+
+        // A repeated id and the MAL-fallback sentinel cost nothing.
+        let got =
+            seadex_hashes_for_rss(&db, true, &[from_search, from_rss, from_search, -42]).await;
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert_eq!(
+            got[&from_search],
+            one_hash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        assert_eq!(
+            got[&from_rss],
+            one_hash("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        );
+        // A hashes-only result never lands in the search cache, where it
+        // would stand in for a payload with seed candidates.
+        assert!(seadex_cache_get(from_rss).is_none());
+    }
+
+    #[tokio::test]
+    async fn rss_hashes_are_empty_when_the_gate_is_off() {
+        let db = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let id = 990_000_103;
+        seadex_hash_cache_put(
+            id,
+            one_hash("cccccccccccccccccccccccccccccccccccccccc"),
+            SEADEX_CACHE_TTL,
+        );
+        assert!(seadex_hashes_for_rss(&db, false, &[id]).await.is_empty());
+    }
+
+    #[test]
+    fn an_expired_rss_hash_entry_reads_as_missing() {
+        let id = 990_000_104;
+        seadex_hash_cache_put(
+            id,
+            one_hash("dddddddddddddddddddddddddddddddddddddddd"),
+            Duration::ZERO,
+        );
+        assert!(seadex_hash_cache_get(id).is_none());
     }
 
     #[tokio::test]

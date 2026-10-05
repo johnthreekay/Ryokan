@@ -45,7 +45,7 @@ The resolution and source you prefer, the cutoffs, and the finished-series rule 
 
 Custom Format scores are added on top ([Configuration](configuration.md#custom-formats)). Every format that matches a release contributes its score, so the total is what separates releases that fit the episode equally well. **Minimum Score** on the same tab drops automatic candidates below a floor; interactive search still shows them.
 
-A release that [SeaDex](https://releases.moe) lists as best gets +10,000, through either the SeaDex toggle on Quality & Releases or the SeaDex Best Custom Format, never both. That is large enough to beat every other part combined, which is the point: when the community has a settled answer, Ryokan takes it.
+A release that [SeaDex](https://releases.moe) lists as best gets +10,000, through either the SeaDex toggle on Quality & Releases or the SeaDex Best Custom Format, never both. That is large enough to beat every other part combined, which is the point: when the community has a settled answer, Ryokan takes it. RSS gives the same bonus, so when a feed carries the pick and another release of the same episode, the pick is the one grabbed.
 
 Releases on the blocklist (Downloads → Blocklist) are skipped before any of this runs.
 

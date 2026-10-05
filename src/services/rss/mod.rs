@@ -476,6 +476,7 @@ async fn fetch_all_sources(
     state: &AppState,
     cfg: &config::Config,
     has_music_series: bool,
+    indexer_categories: &[i32],
 ) -> Vec<RssItem> {
     let mut items: Vec<RssItem> = Vec::new();
 
@@ -501,9 +502,12 @@ async fn fetch_all_sources(
 
     // 2. Indexer-RSS — every torznab/newznab indexer with
     //    `rss_enabled = 1`. Each fetch runs `Indexer::search()`
-    //    with empty `q` against `?t=tvsearch&cat=5070`, which
-    //    short-circuits on the existing rate-limit cooldown
-    //    state machine in `services/indexers/torznab/client.rs`.
+    //    with empty `q` against `?t=tvsearch&cat=<what the library
+    //    needs>` (`indexers::rss_categories`: anime, plus Movies or
+    //    XXX when a tracked series would search them), narrowed by
+    //    the caps or replaced by the row's override inside the
+    //    client, and short-circuits on the existing rate-limit
+    //    cooldown state machine in `services/indexers/torznab/client.rs`.
     let indexer_rows = crate::models::indexers::list_rss_enabled(&state.db)
         .await
         .unwrap_or_default();
@@ -526,7 +530,7 @@ async fn fetch_all_sources(
             .await;
             continue;
         };
-        match crate::services::indexers::fetch_indexer_rss(&*indexer).await {
+        match crate::services::indexers::fetch_indexer_rss(&*indexer, indexer_categories).await {
             Ok(fetched) => {
                 let count = fetched.len() as i32;
                 items.extend(fetched);
@@ -634,7 +638,10 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         .await
         .map_err(|e| e.to_string())?;
     let has_music_series = tracked.iter().any(|s| s.format == "MUSIC");
-    let items = fetch_all_sources(state, &cfg, has_music_series).await;
+    let indexer_categories = crate::services::indexers::rss_categories(
+        tracked.iter().map(|s| (s.format.as_str(), s.is_adult)),
+    );
+    let items = fetch_all_sources(state, &cfg, has_music_series, &indexer_categories).await;
     for row in &tracked {
         let _ = monitoring_service::ensure_series_monitoring_rows(&state.db, row).await;
     }
@@ -659,12 +666,21 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
     // bypassed them — a 10-bit/x265/FLAC release the user explicitly
     // boosted via CF would tie or lose to a plain release on the
     // every-60s auto-grab path while ranking correctly in the manual
-    // search UI. SeaDex hashes are passed empty for now: per-series
-    // SeaDex lookups would add N round-trips per cycle and the
-    // hardcoded `seadex_enabled` toggle bonus only matters when SeaDex
-    // is consulted, which only the auto/upgrade paths do today.
+    // search UI.
     let cfs = state.custom_formats.read().await.clone();
-    let empty_seadex_hashes: HashSet<String> = HashSet::new();
+    // SeaDex, gated as the searches gate it: looked up only when the
+    // `seadex_enabled` switch or a SeaDex Custom Format asks for it,
+    // and the built-in bonus only when no such CF owns that number.
+    // Scoring waits until every item has been through the gates, so
+    // the lookup covers only series with an item about to be scored
+    // and is one batched request for all of them
+    // (`auto_search::seadex_hashes_for_rss`).
+    let (seadex_needs_lookup, seadex_boost_enabled) = auto_search::seadex_gates(&cfg, &cfs);
+    // The upgrade gate scores both sides without SeaDex, as the sweep
+    // does (`upgrade::judge_release_for_episode`): the file on disk
+    // carries no hash to look up, so a pick on the incoming side only
+    // would tilt every comparison.
+    let no_seadex_hashes: HashSet<String> = HashSet::new();
 
     // PR 112 review #5 — pre-load every direct feed's
     // `download_client_id` pin into a HashMap so the per-item
@@ -981,12 +997,11 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             &item.group,
             0,
             &item.info_hash,
-            &empty_seadex_hashes,
+            &no_seadex_hashes,
         );
         let gate = UpgradeGate {
             policy: &policy,
             cfs: &cfs,
-            seadex_hashes: &empty_seadex_hashes,
             now_secs,
             incoming_revision: media::parse_release_revision(&item.title),
             incoming_group: &item.group,
@@ -1065,27 +1080,44 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             continue;
         }
 
-        let score = score_candidate(
-            &state.db,
-            &cfg,
-            &item,
-            &found.series,
-            &found.resolved_eps,
-            found.alias_score,
-            found.parsed.parse_mode,
-            &cfs,
-            &empty_seadex_hashes,
-        )
-        .await;
         pending.push(PendingCandidate {
             item,
             item_key,
             found,
-            score,
+            // Scored below, once the SeaDex hashes are in.
+            score: 0,
             new_episode_count: decision.new_episode_count,
             is_upgrade: decision.is_upgrade,
             classification: incoming_classification,
         });
+    }
+
+    let pending_anilist_ids: Vec<i64> = pending
+        .iter()
+        .map(|cand| cand.found.series.anilist_id)
+        .collect();
+    let seadex_hashes =
+        auto_search::seadex_hashes_for_rss(&state.db, seadex_needs_lookup, &pending_anilist_ids)
+            .await;
+    for cand in &mut pending {
+        let hashes = seadex_hashes
+            .get(&cand.found.series.anilist_id)
+            .unwrap_or(&no_seadex_hashes);
+        cand.score = score_candidate(
+            &state.db,
+            &cfg,
+            &cand.item,
+            &cand.found.series,
+            &cand.found.resolved_eps,
+            cand.found.alias_score,
+            cand.found.parsed.parse_mode,
+            &cfs,
+            SeaDexScoring {
+                hashes,
+                boost_enabled: seadex_boost_enabled,
+            },
+        )
+        .await;
     }
 
     let mut bucket_best: HashMap<String, usize> = HashMap::new();
@@ -1725,6 +1757,15 @@ fn logical_episode_key(found: &MatchResult, is_batch: bool) -> String {
     )
 }
 
+/// The series' SeaDex picks for scoring one item: `hashes` feed the
+/// SeaDex Custom Format spec, and `boost_enabled` (the second half of
+/// `auto_search::seadex_gates`) adds the built-in SeaDex bonus when no
+/// such CF owns that number.
+struct SeaDexScoring<'a> {
+    hashes: &'a HashSet<String>,
+    boost_enabled: bool,
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn score_candidate(
     db: &sqlx::SqlitePool,
@@ -1735,7 +1776,7 @@ async fn score_candidate(
     alias_score: f32,
     parse_mode: &str,
     cfs: &[crate::services::custom_formats::CompiledCustomFormat],
-    seadex_hashes: &HashSet<String>,
+    seadex: SeaDexScoring<'_>,
 ) -> i32 {
     let preferred_source = Source::from_str(&cfg.preferred_source);
     let preferred_resolution = Resolution::from_str(&cfg.preferred_resolution);
@@ -1826,8 +1867,16 @@ async fn score_candidate(
         &item.group,
         0,
         &item.info_hash,
-        seadex_hashes,
+        seadex.hashes,
     ));
+    // The searches' SeaDex bonus (`apply_cf_seadex_overlay`), so a
+    // curated pick wins its episode's bucket here as it wins a search.
+    if seadex.boost_enabled
+        && !item.info_hash.is_empty()
+        && seadex.hashes.contains(&item.info_hash.to_ascii_lowercase())
+    {
+        score = score.saturating_add(crate::services::seadex::SEADEX_SCORE_BOOST);
+    }
 
     score
 }
@@ -1855,11 +1904,11 @@ fn resolution_rank(value: &str) -> i32 {
 /// Everything the on-disk upgrade gate needs beyond the item's
 /// classification: the user's policy, the compiled Custom Formats
 /// (to score the file on disk), and the release's own revision, group
-/// and CF total.
+/// and CF total. No SeaDex hashes: both sides are scored without them
+/// (`incoming_cf_score` included), as the upgrade sweep scores them.
 pub(crate) struct UpgradeGate<'a> {
     pub policy: &'a source::UpgradePolicy,
     pub cfs: &'a [crate::services::custom_formats::CompiledCustomFormat],
-    pub seadex_hashes: &'a HashSet<String>,
     /// Unix seconds "now", for the file-age window.
     pub now_secs: i64,
     pub incoming_revision: media::ReleaseRevision,
@@ -2092,7 +2141,7 @@ fn episode_is_upgradeable(
             release_group,
             0,
             "",
-            gate.seadex_hashes,
+            &HashSet::new(),
         )
     });
     let existing_file = source::ExistingFile {

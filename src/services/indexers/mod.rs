@@ -179,6 +179,33 @@ pub fn search_categories(format: &str, is_adult: bool) -> Vec<i32> {
     cats
 }
 
+/// The categories an RSS poll asks an indexer for. A poll is not for
+/// one series, so it asks for every category a search for some
+/// tracked series would ([`search_categories`]): a library with a
+/// film also hears about new Movies releases, one with an adult title
+/// about XXX. Anime is always asked for, even with an empty library.
+/// `series` is each tracked series' `(format, is_adult)`.
+pub fn rss_categories<'a>(series: impl IntoIterator<Item = (&'a str, bool)>) -> Vec<i32> {
+    let mut cats = vec![TORZNAB_CAT_ANIME];
+    for (format, is_adult) in series {
+        for cat in search_categories(format, is_adult) {
+            if !cats.contains(&cat) {
+                cats.push(cat);
+            }
+        }
+    }
+    cats.sort_unstable();
+    cats
+}
+
+/// [`rss_categories`] for the library as it stands, for a caller that
+/// has not loaded the series (the Settings test buttons, which fetch
+/// what the next poll would). A failed read asks for anime only.
+pub async fn rss_categories_for_library(db: &sqlx::SqlitePool) -> Vec<i32> {
+    let series = crate::models::series::get_all(db).await.unwrap_or_default();
+    rss_categories(series.iter().map(|s| (s.format.as_str(), s.is_adult)))
+}
+
 /// Default per-indexer search timeout when the row's
 /// `request_timeout_secs` is NULL. Decision #7 — tighter than
 /// Sonarr's 100s default because Ryokan's interactive search
@@ -813,18 +840,19 @@ fn format_publish_date(unix_ts: i64) -> String {
 /// sync tick actually needs but consistent with existing search
 /// behavior).
 ///
-/// `categories` is empty — both `torznab/client.rs` and the
-/// newznab path fall through to `[TORZNAB_CAT_ANIME]` (5070) on
-/// an empty list. The 5070 category id is shared between the two
-/// protocols (newznab's anime category is also 5070 in mainline
-/// schemas); no protocol-aware branching needed here.
+/// `categories` is what the library needs ([`rss_categories`]). The
+/// client treats it as it treats a search's: the indexer's own
+/// Categories override wins when set, otherwise the list is narrowed
+/// to what the caps report. The ids are the same for torznab and
+/// newznab, so no protocol-aware branching is needed here.
 pub async fn fetch_indexer_rss(
     indexer: &dyn Indexer,
+    categories: &[i32],
 ) -> Result<Vec<crate::services::rss::RssItem>, String> {
     let releases = indexer
         .search(&SearchQuery {
             q: String::new(),
-            categories: Vec::new(),
+            categories: categories.to_vec(),
             limit: None,
             offset: None,
         })
@@ -1183,6 +1211,23 @@ mod search_categories_tests {
         assert!(known_category_ids("").is_empty());
         let json = r#"{"categories":[{"id":2000,"name":"Movies","subcategories":[{"id":2040,"name":"HD","subcategories":[]}]},{"id":6000,"name":"XXX","subcategories":[]}],"search_modes":[],"max_limit":null,"default_limit":null}"#;
         assert_eq!(known_category_ids(json), vec![2000, 2040, 6000]);
+    }
+
+    #[test]
+    fn rss_asks_for_every_category_the_library_needs() {
+        assert_eq!(rss_categories([]), vec![5070]);
+        assert_eq!(rss_categories([("TV", false), ("OVA", false)]), vec![5070]);
+        assert_eq!(
+            rss_categories([("TV", false), ("MOVIE", false)]),
+            vec![2000, 5070]
+        );
+        assert_eq!(rss_categories([("TV", true)]), vec![5070, 6000]);
+        // One entry per category however many series need it, in one
+        // order whatever order the library lists them in.
+        assert_eq!(
+            rss_categories([("TV", true), ("MOVIE", false), ("MOVIE", true)]),
+            vec![2000, 5070, 6000]
+        );
     }
 
     #[test]

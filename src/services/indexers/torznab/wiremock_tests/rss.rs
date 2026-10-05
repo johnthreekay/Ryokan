@@ -6,6 +6,8 @@
 //!
 //! What's pinned here:
 //!   * Fetch issues `?t=tvsearch&cat=5070&apikey=…&q=` (empty q).
+//!   * The categories the library needs reach the wire, narrowed by
+//!     the caps and replaced by the row's override like a search's.
 //!   * Each release converts to an `RssItem` with
 //!     `RssSource::Indexer { id, name, kind }` attribution.
 //!   * `Release::link` becomes the item's `torrent` URL.
@@ -18,7 +20,7 @@ use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, ResponseTemplate};
 
 use super::fixture::{TEST_API_KEY, new_fixture};
-use crate::services::indexers::fetch_indexer_rss;
+use crate::services::indexers::{TORZNAB_CAT_ANIME, fetch_indexer_rss};
 use crate::services::rss::RssSource;
 
 /// Single-item torznab response. Same shape as the search-path
@@ -56,7 +58,7 @@ async fn fetch_indexer_rss_polls_tvsearch_with_empty_q_and_anime_cat() {
         .mount(&server)
         .await;
 
-    let items = fetch_indexer_rss(&client)
+    let items = fetch_indexer_rss(&client, &[TORZNAB_CAT_ANIME])
         .await
         .expect("rss fetch must succeed");
     assert_eq!(items.len(), 1);
@@ -88,7 +90,9 @@ async fn fetch_indexer_rss_stamps_indexer_source_attribution() {
         .mount(&server)
         .await;
 
-    let items = fetch_indexer_rss(&client).await.unwrap();
+    let items = fetch_indexer_rss(&client, &[TORZNAB_CAT_ANIME])
+        .await
+        .unwrap();
     assert_eq!(items.len(), 1);
     match &items[0].source {
         RssSource::Indexer { id, name, kind } => {
@@ -114,7 +118,7 @@ async fn fetch_indexer_rss_returns_empty_for_zero_items_in_response() {
         .mount(&server)
         .await;
 
-    let items = fetch_indexer_rss(&client)
+    let items = fetch_indexer_rss(&client, &[TORZNAB_CAT_ANIME])
         .await
         .expect("empty channel is not an error");
     assert!(items.is_empty());
@@ -132,11 +136,65 @@ async fn fetch_indexer_rss_propagates_indexer_5xx_error() {
         .mount(&server)
         .await;
 
-    let err = fetch_indexer_rss(&client)
+    let err = fetch_indexer_rss(&client, &[TORZNAB_CAT_ANIME])
         .await
         .expect_err("503 must surface as Err");
     assert!(
         err.contains("503") || err.to_lowercase().contains("http"),
         "error message must include the status code, got: {err}"
     );
+}
+
+/// A library with a film and an adult title polls for Movies and XXX
+/// too, so a release an indexer files there is seen by RSS.
+#[tokio::test]
+async fn fetch_indexer_rss_asks_for_the_library_categories() {
+    let (server, client) = new_fixture().await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("t", "tvsearch"))
+        .and(query_param("cat", "2000,5070,6000"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(RSS_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let items = fetch_indexer_rss(&client, &[2000, 5070, 6000])
+        .await
+        .expect("rss fetch must succeed");
+    assert_eq!(items.len(), 1);
+}
+
+/// The poll goes through the same category rules as a search: an
+/// indexer whose caps report anime and XXX but not Movies is not
+/// asked for Movies, and a row with a Categories override is asked
+/// for exactly that.
+#[tokio::test]
+async fn fetch_indexer_rss_categories_follow_the_caps_and_the_override() {
+    use super::fixture::new_fixture_with_row;
+
+    let caps = r#"{"categories":[{"id":5000,"name":"TV","subcategories":[{"id":5070,"name":"Anime","subcategories":[]}]},{"id":6000,"name":"XXX","subcategories":[]}],"search_modes":[],"max_limit":null,"default_limit":null}"#;
+    let (server, client) = new_fixture_with_row(|row| row.caps_json = caps.to_string()).await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("cat", "5070,6000"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(RSS_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    fetch_indexer_rss(&client, &[2000, 5070, 6000])
+        .await
+        .expect("caps-narrowed poll must succeed");
+
+    let (server, client) = new_fixture_with_row(|row| row.categories = "5080".to_string()).await;
+    Mock::given(method("GET"))
+        .and(path("/api"))
+        .and(query_param("cat", "5080"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(RSS_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    fetch_indexer_rss(&client, &[2000, 5070, 6000])
+        .await
+        .expect("override poll must succeed");
 }
