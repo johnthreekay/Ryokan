@@ -54,7 +54,13 @@ pub async fn grab_batch_result(
     let title = body["title"].as_str().unwrap_or("").to_string();
     let group = body["group"].as_str().unwrap_or("").to_string();
     let resolution = body["resolution"].as_str().unwrap_or("").to_string();
-    let info_hash = body["info_hash"].as_str().unwrap_or("").to_string();
+    let info_hash = match body["info_hash"].as_str().unwrap_or("").trim() {
+        "" => String::new(),
+        raw => crate::services::download_client::normalize_info_hash(raw).ok_or((
+            axum::http::StatusCode::BAD_REQUEST,
+            "info_hash must be a 40- or 64-character hex info-hash".to_string(),
+        ))?,
+    };
     let size_bytes = body["size_bytes"].as_i64().unwrap_or(0);
     // Multi-client routing — the search-result row carries `indexer_id`
     // (None for Nyaa-direct, Some for torznab/newznab fan-out). The
@@ -333,7 +339,13 @@ pub async fn grab_interactive_result(
     let title = body["title"].as_str().unwrap_or("").to_string();
     let group = body["group"].as_str().unwrap_or("").to_string();
     let resolution = body["resolution"].as_str().unwrap_or("").to_string();
-    let info_hash = body["info_hash"].as_str().unwrap_or("").to_string();
+    let info_hash = match body["info_hash"].as_str().unwrap_or("").trim() {
+        "" => String::new(),
+        raw => crate::services::download_client::normalize_info_hash(raw).ok_or((
+            axum::http::StatusCode::BAD_REQUEST,
+            "info_hash must be a 40- or 64-character hex info-hash".to_string(),
+        ))?,
+    };
     let size_bytes = body["size_bytes"].as_i64().unwrap_or(0);
     // Multi-client routing — the search-result row carries `indexer_id`
     // (None for Nyaa-direct, Some for torznab/newznab fan-out). The

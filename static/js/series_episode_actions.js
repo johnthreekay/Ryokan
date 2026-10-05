@@ -238,7 +238,7 @@ function autoSearchEpisode(episodeNumber, btn) {
         body: seriesTitle,
     });
 
-    fetch(`/api/series/${SD.id}/auto-search/${episodeNumber}?progress_id=${encodeURIComponent(pid)}`, {
+    fetch(`/api/series/${SD.id}/auto-search/${episodeNumber}?progress_id=${encodeURIComponent(pid)}${seriesIdKindParam()}`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'}
     })
@@ -280,7 +280,7 @@ function autoSearchSeries(btn) {
         body: seriesTitle,
     });
 
-    fetch(`/api/series/${SD.id}/auto-search?progress_id=${encodeURIComponent(pid)}`, {
+    fetch(`/api/series/${SD.id}/auto-search?progress_id=${encodeURIComponent(pid)}${seriesIdKindParam()}`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'}
     })

@@ -51,7 +51,8 @@
     gap: 8px;
 }
 
-.nav-links a {
+.nav-links a,
+.nav-links button {
     color: var(--text-dim);
     text-decoration: none;
     padding: 6px 14px;
@@ -60,6 +61,16 @@
     font-weight: 500;
     transition: color 0.15s, background 0.15s;
     white-space: nowrap;
+}
+
+/* The Logout buttons submit a POST form; drop the native button
+   chrome so they read as the links beside them. */
+.nav-links button {
+    background: none;
+    border: 0;
+    font-family: inherit;
+    line-height: inherit;
+    cursor: pointer;
 }
 
 /* The 641-900px band: too narrow for the full-size nav (7 links at
@@ -79,13 +90,15 @@
     .nav-links {
         gap: 2px;
     }
-    .nav-links a {
+    .nav-links a,
+    .nav-links button {
         padding: 6px 8px;
         font-size: 13px;
     }
 }
 
-.nav-links a:hover { color: var(--text); background: var(--bg-elevated); }
+.nav-links a:hover,
+.nav-links button:hover { color: var(--text); background: var(--bg-elevated); }
 
 .nav-links a.active { color: var(--accent); background: rgba(var(--accent-rgb), 0.08); }
 
@@ -223,7 +236,8 @@
     }
     .nav { padding: 0 16px; }
     .nav-links { gap: 4px; }
-    .nav-links a { padding: 6px 10px; font-size: 13px; }
+    .nav-links a,
+    .nav-links button { padding: 6px 10px; font-size: 13px; }
 }
 
 .nav-links-right {

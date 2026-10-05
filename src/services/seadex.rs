@@ -31,6 +31,7 @@
 use std::sync::LazyLock;
 use std::time::Duration;
 
+use crate::services::http_body::CappedBody;
 use serde::Deserialize;
 
 const SEADEX_API: &str = "https://releases.moe/api/collections/entries/records";
@@ -226,7 +227,7 @@ pub async fn lookup(anilist_id: i64) -> Result<Option<SeaDexEntry>, String> {
     }
 
     let body = response
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("SeaDex read body failed: {e}"))?;
 
@@ -321,7 +322,7 @@ pub async fn lookup_batch(
                 ));
             }
             let body = response
-                .text()
+                .text_capped()
                 .await
                 .map_err(|e| format!("SeaDex batch read body failed: {e}"))?;
             parse_list_response_multi(&body)
@@ -456,8 +457,9 @@ pub fn is_unmuxed(torrent: &SeaDexTorrent, notes: &str) -> bool {
 /// weirdness where the tracker field says Nyaa but the URL doesn't
 /// actually point there.
 fn looks_like_nyaa_url(url: &str) -> bool {
-    let lower = url.to_ascii_lowercase();
-    lower.contains("nyaa.si/view/") || lower.contains("nyaa.si/torrent/")
+    // A substring test passed `https://evil.example/?nyaa.si/view/1`, which
+    // the Nyaa client then fetched.
+    crate::services::nyaa::view_page_url(url).is_some()
 }
 
 /// Full usability gate. A torrent is usable by Ryokan iff:
@@ -620,6 +622,20 @@ pub fn to_nyaa_view_url(torrent: &SeaDexTorrent) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_real_nyaa_listing_counts_as_a_nyaa_url() {
+        assert!(looks_like_nyaa_url("https://nyaa.si/view/1446994"));
+        for url in [
+            "https://evil.example/?nyaa.si/view/1",
+            "http://127.0.0.1:8080/nyaa.si/torrent/1",
+            "https://nyaa.si.evil.example/view/1",
+            "Chihiro",
+            "/torrents.php?id=1",
+        ] {
+            assert!(!looks_like_nyaa_url(url), "{url}");
+        }
+    }
 
     fn torrent(
         group: &str,

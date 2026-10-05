@@ -288,14 +288,14 @@ impl DownloadClient for SabClient {
             .query(&self.make_query(&[("mode", "version")]))
             .send()
             .await
-            .map_err(|e| format!("SAB request failed: {e}"))?;
+            .map_err(|e| format!("SAB request failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             return Err(format!("SAB returned HTTP {}", resp.status()));
         }
         let body: VersionResponse = resp
             .json()
             .await
-            .map_err(|e| format!("SAB version parse failed: {e}"))?;
+            .map_err(|e| format!("SAB version parse failed: {}", e.without_url()))?;
         let version = body.version;
 
         // Auth probe — fail with a clear message when the API key is
@@ -307,7 +307,7 @@ impl DownloadClient for SabClient {
             .query(&self.make_query(&[("mode", "queue"), ("start", "0"), ("limit", "1")]))
             .send()
             .await
-            .map_err(|e| format!("SAB queue probe failed: {e}"))?;
+            .map_err(|e| format!("SAB queue probe failed: {}", e.without_url()))?;
         if auth_resp.status().as_u16() == 401 || auth_resp.status().as_u16() == 403 {
             // SAB returns plain text on 403 ("API Key Required" /
             // "API Key Incorrect"); surface it so the user knows
@@ -356,6 +356,7 @@ impl DownloadClient for SabClient {
     }
 
     async fn add_torrent(&self, url: &str, _info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
         // BT-shape callers that don't read the returned id still need
         // a working add path. Drop the captured id; the caller's
         // `info_hash` was a synthetic one or empty — neither is
@@ -371,6 +372,7 @@ impl DownloadClient for SabClient {
         url: &str,
         _info_hash: &str,
     ) -> Result<(AddOutcome, String), String> {
+        super::check_release_url(url)?;
         // First-grab safety net: ensure the configured category
         // exists in SAB before issuing addurl. Without this, a user
         // who saved their SAB row in Settings without clicking Test
@@ -393,7 +395,7 @@ impl DownloadClient for SabClient {
             ]))
             .send()
             .await
-            .map_err(|e| format!("SAB request failed: {e}"))?;
+            .map_err(|e| format!("SAB request failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             // 401/403 specifically — capture SAB's plain-text body so
             // the user sees `API Key Required` / `API Key Incorrect`
@@ -427,7 +429,7 @@ impl DownloadClient for SabClient {
         let body_bytes = resp
             .bytes()
             .await
-            .map_err(|e| format!("SAB addurl read body failed: {e}"))?;
+            .map_err(|e| format!("SAB addurl read body failed: {}", e.without_url()))?;
         let body: AddUrlResponse = match serde_json::from_slice(&body_bytes) {
             Ok(b) => b,
             Err(e) => {
@@ -489,6 +491,7 @@ impl DownloadClient for SabClient {
     }
 
     async fn add_torrent_paused(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
         let (outcome, _id) = self.add_torrent_paused_returning_id(url, info_hash).await?;
         Ok(outcome)
     }
@@ -499,6 +502,7 @@ impl DownloadClient for SabClient {
         info_hash: &str,
         _pick: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
     ) -> Result<SelectiveOutcome, String> {
+        super::check_release_url(url)?;
         // SAB has no per-file API for in-flight downloads — file
         // selection is done at extraction time post-download via
         // SAB's own scripting hooks, outside Ryokan's reach. Dispatch
@@ -668,7 +672,7 @@ impl DownloadClient for SabClient {
             .query(&self.make_query(&[("mode", "get_files"), ("value", info_hash)]))
             .send()
             .await
-            .map_err(|e| format!("SAB request failed: {e}"))?;
+            .map_err(|e| format!("SAB request failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             return Err(format!("SAB get_files HTTP {}", resp.status()));
         }
@@ -816,6 +820,7 @@ impl SabClient {
         url: &str,
         _info_hash: &str,
     ) -> Result<(AddOutcome, String), String> {
+        super::check_release_url(url)?;
         // Same first-grab category safety net as the unpaused add
         // path. The picker flow goes through here too; without this
         // the picker's first interactive grab against a fresh SAB
@@ -834,7 +839,7 @@ impl SabClient {
             ]))
             .send()
             .await
-            .map_err(|e| format!("SAB request failed: {e}"))?;
+            .map_err(|e| format!("SAB request failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             return Err(format!("SAB add returned HTTP {}", resp.status()));
         }
@@ -849,7 +854,7 @@ impl SabClient {
         let body_bytes = resp
             .bytes()
             .await
-            .map_err(|e| format!("SAB addurl read body failed: {e}"))?;
+            .map_err(|e| format!("SAB addurl read body failed: {}", e.without_url()))?;
         let body: AddUrlResponse = match serde_json::from_slice(&body_bytes) {
             Ok(b) => b,
             Err(e) => {
@@ -893,14 +898,14 @@ impl SabClient {
             .query(&self.make_query(&[("mode", "queue")]))
             .send()
             .await
-            .map_err(|e| format!("SAB request failed: {e}"))?;
+            .map_err(|e| format!("SAB request failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             return Err(format!("SAB queue HTTP {}", resp.status()));
         }
         let body: QueueResponse = resp
             .json()
             .await
-            .map_err(|e| format!("SAB queue parse failed: {e}"))?;
+            .map_err(|e| format!("SAB queue parse failed: {}", e.without_url()))?;
         Ok(body.queue)
     }
 
@@ -911,14 +916,14 @@ impl SabClient {
             .query(&self.make_query(&[("mode", "history")]))
             .send()
             .await
-            .map_err(|e| format!("SAB request failed: {e}"))?;
+            .map_err(|e| format!("SAB request failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             return Err(format!("SAB history HTTP {}", resp.status()));
         }
         let body: HistoryResponse = resp
             .json()
             .await
-            .map_err(|e| format!("SAB history parse failed: {e}"))?;
+            .map_err(|e| format!("SAB history parse failed: {}", e.without_url()))?;
         Ok(body.history)
     }
 
@@ -961,7 +966,7 @@ impl SabClient {
             .query(&self.make_query(params))
             .send()
             .await
-            .map_err(|e| format!("SAB request failed: {e}"))?;
+            .map_err(|e| format!("SAB request failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             let status = resp.status();
             let detail = if matches!(status.as_u16(), 401 | 403) {
@@ -985,7 +990,7 @@ impl SabClient {
             .query(&self.make_query(&[("mode", "queue"), ("name", name), ("value", nzo_id)]))
             .send()
             .await
-            .map_err(|e| format!("SAB request failed: {e}"))?;
+            .map_err(|e| format!("SAB request failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             return Err(format!("SAB queue {name} HTTP {}", resp.status()));
         }
@@ -1015,14 +1020,14 @@ impl SabClient {
             .query(&self.make_query(&[("mode", "get_cats")]))
             .send()
             .await
-            .map_err(|e| format!("SAB get_cats failed: {e}"))?;
+            .map_err(|e| format!("SAB get_cats failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             return Err(format!("SAB get_cats HTTP {}", resp.status()));
         }
         let body: GetCatsResponse = resp
             .json()
             .await
-            .map_err(|e| format!("SAB get_cats parse failed: {e}"))?;
+            .map_err(|e| format!("SAB get_cats parse failed: {}", e.without_url()))?;
         if body.categories.is_empty() {
             return Err(
                 "SAB get_cats returned an empty list — likely a proxy stripping the apikey or a malformed response"
@@ -1091,7 +1096,7 @@ impl SabClient {
             ]))
             .send()
             .await
-            .map_err(|e| format!("SAB set_config failed: {e}"))?;
+            .map_err(|e| format!("SAB set_config failed: {}", e.without_url()))?;
         let status = resp.status();
         if matches!(status.as_u16(), 401 | 403) {
             let detail = resp.text().await.unwrap_or_default();
@@ -1210,7 +1215,7 @@ impl SabClient {
             .query(&self.make_query(&[("mode", "change_cat"), ("value", nzo_id), ("value2", cat)]))
             .send()
             .await
-            .map_err(|e| format!("SAB change_cat failed: {e}"))?;
+            .map_err(|e| format!("SAB change_cat failed: {}", e.without_url()))?;
         if !resp.status().is_success() {
             return Err(format!("SAB change_cat HTTP {}", resp.status()));
         }

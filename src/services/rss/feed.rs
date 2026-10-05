@@ -157,7 +157,7 @@ async fn fetch_feed(category: &str) -> Result<Vec<RssItem>, String> {
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("RSS request failed: {}", e))?;
+        .map_err(|e| format!("RSS request failed: {}", e.without_url()))?;
     // PR 112 review #A — cap Nyaa-direct fetch at the same 10 MB
     // ceiling as `fetch_user_feed`. Nyaa is "trusted" but a
     // reverse-proxy redirect / CF challenge / hijacked domain
@@ -190,7 +190,7 @@ pub(crate) async fn read_capped_body(resp: reqwest::Response) -> Result<String, 
     while let Some(chunk) = resp
         .chunk()
         .await
-        .map_err(|e| format!("RSS body read failed: {}", e))?
+        .map_err(|e| format!("RSS body read failed: {}", e.without_url()))?
     {
         if buf.len() + chunk.len() > RSS_BODY_CAP_BYTES {
             return Err(format!(
@@ -229,7 +229,7 @@ pub async fn fetch_user_feed(url: &str, source: RssSource) -> Result<Vec<RssItem
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("RSS request failed: {}", e))?;
+        .map_err(|e| format!("RSS request failed: {}", e.without_url()))?;
     let status = resp.status();
     let xml = read_capped_body(resp).await?;
     if !status.is_success() {
@@ -323,7 +323,7 @@ pub(super) fn parse_feed(xml: &str, source: RssSource) -> Vec<RssItem> {
     for caps in RE_ITEM.captures_iter(xml) {
         let block = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let title = decode_xml(&extract_tag(block, "title")).trim().to_string();
-        if title.is_empty() {
+        if title.is_empty() || title.len() > crate::services::media::MAX_RELEASE_TITLE_BYTES {
             continue;
         }
 
@@ -335,9 +335,10 @@ pub(super) fn parse_feed(xml: &str, source: RssSource) -> Vec<RssItem> {
         let magnet = decode_xml(&extract_tag(block, "nyaa:magneturi"))
             .trim()
             .to_string();
-        let info_hash = decode_xml(&extract_tag(block, "nyaa:infohash"))
-            .trim()
-            .to_lowercase();
+        let info_hash = crate::services::download_client::normalize_info_hash(&decode_xml(
+            &extract_tag(block, "nyaa:infohash"),
+        ))
+        .unwrap_or_default();
         let group = extract_group(&title);
         let resolution = extract_resolution(&title);
         let is_batch = detect_batch(&title);
@@ -692,6 +693,18 @@ mod parser_tests {
     //! input range is real.
     use super::*;
 
+    #[test]
+    fn a_title_over_the_release_title_cap_is_dropped() {
+        let long = "1".repeat(crate::services::media::MAX_RELEASE_TITLE_BYTES + 1);
+        let xml = format!(
+            "<rss><channel><item><title>{long}</title><link>https://x/1</link></item>\
+             <item><title>[G] Show - 01</title><link>https://x/2</link></item></channel></rss>"
+        );
+        let items = parse_feed(&xml, RssSource::Nyaa);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "[G] Show - 01");
+    }
+
     // ── decode_xml ────────────────────────────────────────────────────
 
     #[test]
@@ -931,7 +944,7 @@ mod parser_tests {
                 <guid>https://nyaa.si/view/1</guid>
                 <nyaa:downloadurl>https://nyaa.si/download/1.torrent</nyaa:downloadurl>
                 <nyaa:magneturi>magnet:?xt=urn:btih:abc</nyaa:magneturi>
-                <nyaa:infohash>ABC</nyaa:infohash>
+                <nyaa:infohash>ABCDEF0123ABCDEF0123ABCDEF0123ABCDEF0123</nyaa:infohash>
             </item>"#,
         );
         let items = parse_feed(&xml, RssSource::Nyaa);
@@ -946,7 +959,7 @@ mod parser_tests {
         assert_eq!(item.torrent, "https://nyaa.si/download/1.torrent");
         assert_eq!(item.magnet, "magnet:?xt=urn:btih:abc");
         // info_hash is lowercased even though the feed emitted uppercase.
-        assert_eq!(item.info_hash, "abc");
+        assert_eq!(item.info_hash, "abcdef0123abcdef0123abcdef0123abcdef0123");
         assert_eq!(item.group, "SubsPlease");
         assert_eq!(item.resolution, "1080");
         assert!(!item.is_batch);
@@ -1029,14 +1042,13 @@ mod parser_tests {
 
     #[test]
     fn parse_feed_handles_huge_title_without_panic() {
-        // 100 KB title — well past anything Nyaa would emit, but no
-        // input-size cap exists in the regex. Test confirms there's
-        // no quadratic-blowup or slicing panic.
+        // 100 KB title, well past anything Nyaa would emit: no
+        // quadratic blowup or slicing panic, and the item is dropped at
+        // the release-title cap rather than handed to the parsers.
         let huge = "X".repeat(100_000);
         let xml = format!("<rss><channel><item><title>{huge}</title></item></channel></rss>");
         let items = parse_feed(&xml, RssSource::Nyaa);
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].title.len(), 100_000);
+        assert!(items.is_empty());
     }
 
     #[test]

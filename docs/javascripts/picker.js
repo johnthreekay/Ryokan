@@ -13,16 +13,18 @@
   'use strict';
 
   // Per-client config matrix. The generator templates these into
-  // service blocks plus the Ryokan settings snippet.
+  // service blocks plus the Ryokan settings snippet. The URL Ryokan
+  // dials is built from the service name, `port` and `url_path`.
   const CLIENTS = {
     qbittorrent: {
       label: 'qBittorrent',
       image: 'lscr.io/linuxserver/qbittorrent:latest',
       port: 8080,
-      extra_ports: ['6881:6881', '6881:6881/udp'],
+      extra_ports: [],
+      // Peer port from the shared 6881+ range (see peerPorts); the
+      // linuxserver image passes TORRENTING_PORT to qbittorrent-nox.
+      peer_port: { udp_only: false, env: 'TORRENTING_PORT' },
       category: 'anime',
-      download_path: '/downloads',
-      default_url: 'http://qbittorrent:8080',
       config_dir: 'qbittorrent',
       env: { WEBUI_PORT: '8080' },
       protocol: 'torrent',
@@ -31,10 +33,11 @@
       label: 'Deluge',
       image: 'lscr.io/linuxserver/deluge:latest',
       port: 8112,
-      extra_ports: ['6881:6881', '6881:6881/udp'],
+      extra_ports: [],
+      // No env for it: Deluge starts on a random port until the
+      // settings snippet's Incoming Port step pins this one.
+      peer_port: { udp_only: false, env: null },
       category: 'anime',
-      download_path: '/downloads',
-      default_url: 'http://deluge:8112',
       config_dir: 'deluge',
       env: {},
       protocol: 'torrent',
@@ -45,8 +48,6 @@
       port: 9091,
       extra_ports: ['51413:51413', '51413:51413/udp'],
       category: 'anime',
-      download_path: '/downloads',
-      default_url: 'http://transmission:9091',
       config_dir: 'transmission',
       env: {},
       protocol: 'torrent',
@@ -71,12 +72,23 @@
       expose_main_port: false,
       // 8082:8080 host:container = ruTorrent web UI.
       // 50000 = inbound BT peer connections.
-      // 6881/udp = DHT.
-      extra_ports: ['8082:8080', '50000:50000', '6881:6881/udp'],
+      extra_ports: ['8082:8080', '50000:50000'],
+      // Behind gluetun the client shares gluetun's network namespace,
+      // where gluetun's control server already listens on 8000 and
+      // qBittorrent's web UI on 8080, and the image also takes each
+      // port plus one for its health checks. The image's XMLRPC_PORT
+      // and RUTORRENT_PORT move both clear of them there.
+      vpn: {
+        port: 8010,
+        extra_ports: ['8082:8090', '50000:50000'],
+        env: { XMLRPC_PORT: '8010', RUTORRENT_PORT: '8090' },
+      },
+      // DHT (udp) from the shared 6881+ range; the image reads
+      // RT_DHT_PORT.
+      peer_port: { udp_only: true, env: 'RT_DHT_PORT' },
       category: 'anime',
-      download_path: '/downloads',
       // /RPC2 path is required; rTorrent's XML-RPC endpoint.
-      default_url: 'http://rutorrent:8000/RPC2',
+      url_path: '/RPC2',
       config_dir: 'rutorrent',
       // crazy-max image's config volume is /data (linuxserver was /config).
       config_mount_target: '/data',
@@ -94,8 +106,6 @@
       host_port: 8081,
       extra_ports: [],
       category: 'anime',
-      download_path: '/downloads',
-      default_url: 'http://sabnzbd:8080',
       config_dir: 'sabnzbd',
       env: {},
       protocol: 'usenet',
@@ -117,15 +127,154 @@
       requests: radio('requests'),
       vpn: radio('vpn'),
       proxy: radio('proxy'),
+      host_check: get('host_check').checked,
+      // Host-name characters only, space-separated: the value lands in
+      // a double-quoted YAML string.
+      allowed_hosts: get('allowed_hosts')
+        .value.replace(/[^A-Za-z0-9.*,\- ]/g, ' ')
+        .split(/[\s,]+/)
+        .filter(Boolean)
+        .join(' '),
       puid: get('puid').value || '1000',
       pgid: get('pgid').value || '1000',
       tz: get('tz').value || 'UTC',
-      paths: {
-        downloads: get('downloads_path').value || '/srv/media/downloads',
-        media: get('media_path').value || '/srv/media/anime',
-        appdata: get('appdata_path').value || '/srv/docker',
-      },
+      paths: sharedPaths(
+        get('shared_path').value,
+        get('appdata_path').value || '/srv/docker'
+      ),
     };
+  }
+
+  // One host folder holds the downloads and the library, and every
+  // container mounts it at the same path it has on the host. A
+  // hardlink needs both ends inside one mount, and with identical
+  // paths the clients report locations Ryokan can open as they are
+  // (no per-client path rewrite), and the Media Root the user types
+  // is the host path they already know.
+  function sharedPaths(raw, appdata) {
+    const typed = (raw || '').trim();
+    // An absolute path is cleaned (`//`, `.`, `..`, a trailing `/`) so
+    // sharedPathProblem judges the folder Docker will mount; anything
+    // else stays as typed for the error to quote.
+    let shared = '/srv/media';
+    if (typed) shared = typed.startsWith('/') ? cleanPath(typed) : typed;
+    return {
+      shared,
+      downloads: `${shared}/downloads`,
+      media: `${shared}/anime`,
+      appdata,
+    };
+  }
+
+  function cleanPath(path) {
+    const parts = [];
+    path.split('/').forEach((part) => {
+      if (part === '..') parts.pop();
+      else if (part && part !== '.') parts.push(part);
+    });
+    return `/${parts.join('/')}`;
+  }
+
+  function isSameOrInside(path, dir) {
+    return path === dir || path.startsWith(dir === '/' ? '/' : `${dir}/`);
+  }
+
+  // Container folders a mount at the same path would hide.
+  const SYSTEM_DIRS = ['/', '/bin', '/boot', '/dev', '/etc', '/lib', '/lib64',
+    '/proc', '/root', '/run', '/sbin', '/sys', '/tmp', '/usr', '/var'];
+
+  // Container folders the shared one may not be or sit inside, in the
+  // services that mount it: their own config mounts, and /app, where
+  // the Ryokan image keeps its program.
+  function reservedTargets(cfg) {
+    const out = [
+      { path: '/config', why: 'Ryokan and the other apps keep their settings at /config inside their containers' },
+      { path: '/app', why: 'the Ryokan image keeps its program in /app' },
+    ];
+    cfg.dlclients.forEach((kind) => {
+      const c = CLIENTS[kind];
+      const target = c.config_mount_target;
+      if (target) out.push({ path: target, why: `${c.label} keeps its settings at ${target} inside its container` });
+    });
+    if (cfg.dlclients.includes('rtorrent')) {
+      out.push({ path: '/passwd', why: 'rTorrent reads its passwords from /passwd inside its container' });
+    }
+    return out;
+  }
+
+  // Why the shared folder can't work as typed, or null. Every container
+  // that mounts it does so at its host path, so it has to be a valid
+  // container path as well (absolute, no `:`); a second mount at a
+  // service's own config path (`/data` beside rTorrent's /data) is
+  // refused by `docker run` as a duplicate mount point and silently
+  // replaces the config mount under Compose (the later line wins); and
+  // a library inside a config folder is re-owned along with it
+  // (Ryokan's entrypoint takes ownership of everything in its data dir).
+  function sharedPathProblem(cfg) {
+    const shared = cfg.paths.shared;
+    const pick = 'Pick a folder such as /srv/media.';
+    if (shared.includes(':')) {
+      return "The shared media folder can't contain a colon. Docker reads a colon in a volume line as a separator.";
+    }
+    if (!shared.startsWith('/')) {
+      return 'The shared media folder has to be a full path that starts with /, such as /srv/media. Every container mounts it at that same path.';
+    }
+    if (SYSTEM_DIRS.includes(shared)) {
+      return `The shared media folder can't be ${shared}. Every container mounts it at that same path, where it would hide the container's own ${shared}. ${pick}`;
+    }
+    const reserved = reservedTargets(cfg).find((r) => isSameOrInside(shared, r.path));
+    if (reserved) {
+      return `The shared media folder can't be ${reserved.path} or a folder inside it, because ${reserved.why}. ${pick}`;
+    }
+    const appdata = (cfg.paths.appdata || '').trim();
+    if (appdata.startsWith('/')) {
+      const root = cleanPath(appdata);
+      const dir = serviceDirs(cfg)
+        .map((d) => (root === '/' ? `/${d}` : `${root}/${d}`))
+        .find((d) => isSameOrInside(shared, d));
+      if (dir) {
+        return `The shared media folder can't be ${dir} or a folder inside it. That folder holds an app's settings, and apps such as Ryokan take ownership of everything in their settings folder when they start. ${pick}`;
+      }
+    }
+    return null;
+  }
+
+  // Host ports from 6881 up for the torrent clients that take one
+  // (peer_port), in the order they were picked, so two clients never
+  // publish the same port: that made `docker compose up` fail with
+  // "port is already allocated".
+  function peerPorts(cfg) {
+    const ports = {};
+    let next = 6881;
+    cfg.dlclients.forEach((kind) => {
+      if (CLIENTS[kind].peer_port) ports[kind] = next++;
+    });
+    return ports;
+  }
+
+  // A client's entry with its behind-the-VPN overrides (`vpn`)
+  // applied when it sits behind gluetun.
+  function clientSpec(kind, cfg) {
+    const c = CLIENTS[kind];
+    if (!c.vpn || !isBehindVpn(kind, cfg)) return c;
+    return Object.assign({}, c, c.vpn, {
+      env: Object.assign({}, c.env, c.vpn.env),
+    });
+  }
+
+  // Every host port mapping a client publishes (on itself, or on
+  // gluetun when it sits behind the VPN).
+  function portMappings(kind, cfg) {
+    const c = clientSpec(kind, cfg);
+    const out = [];
+    if (c.expose_main_port !== false) out.push(`${c.host_port || c.port}:${c.port}`);
+    out.push(...c.extra_ports);
+    const peer = peerPorts(cfg)[kind];
+    if (peer) {
+      if (!c.peer_port.udp_only) out.push(`${peer}:${peer}`);
+      out.push(`${peer}:${peer}/udp`);
+    }
+    return out;
   }
 
   // Whether a given download client should sit behind the VPN.
@@ -141,27 +290,21 @@
   // The URL Ryokan should use to reach a given client. Behind gluetun
   // the client shares gluetun's network namespace — its container
   // name doesn't resolve on the user-defined media network, only
-  // `gluetun` does — so we rewrite the host part of `default_url` to
-  // target `gluetun` while preserving the port and path. Port works
-  // out: containers in a shared namespace see each other's listeners
-  // on localhost, so qBit's 8080 inside that namespace is reachable
-  // as gluetun:8080 from peer containers on `media`. Standalone (no
-  // VPN) clients keep their own container-name URL.
+  // `gluetun` does — so the host is `gluetun`. Port works out:
+  // containers in a shared namespace see each other's listeners on
+  // localhost, so qBit's 8080 inside that namespace is reachable as
+  // gluetun:8080 from peer containers on `media`. Standalone (no VPN)
+  // clients keep their own container name: service_name (compose-side)
+  // rather than kind (form-side), which differ only for rtorrent
+  // (kind=rtorrent, service=rutorrent).
   function urlForClient(kind, cfg) {
-    const c = CLIENTS[kind];
-    if (isBehindVpn(kind, cfg)) {
-      // Use service_name (compose-side) rather than kind (form-side)
-      // since the URL contains the container name, not the form value.
-      // Same difference for everyone except rtorrent (kind=rtorrent,
-      // service=rutorrent).
-      const serviceName = c.service_name || kind;
-      return c.default_url.replace(`://${serviceName}:`, '://gluetun:');
-    }
-    return c.default_url;
+    const c = clientSpec(kind, cfg);
+    const host = isBehindVpn(kind, cfg) ? 'gluetun' : c.service_name || kind;
+    return `http://${host}:${c.port}${c.url_path || ''}`;
   }
 
   function renderClient(kind, cfg) {
-    const c = CLIENTS[kind];
+    const c = clientSpec(kind, cfg);
     const behindVpn = isBehindVpn(kind, cfg);
 
     // When behind gluetun, the download client shares gluetun's
@@ -175,23 +318,19 @@
     // inside but is mapped to 8081 outside). `expose_main_port:
     // false` skips the main mapping entirely (rTorrent's XML-RPC
     // is reachable via Docker DNS only; no host expose needed).
-    const mainMapping =
-      c.expose_main_port === false
-        ? null
-        : `"${c.host_port || c.port}:${c.port}"`;
     const portsList = behindVpn
       ? null
-      : [
-          ...(mainMapping ? [mainMapping] : []),
-          ...c.extra_ports.map((p) => `"${p}"`),
-        ];
+      : portMappings(kind, cfg).map((p) => `"${p}"`);
 
     const baseEnv = [
       `      PUID: "${cfg.puid}"`,
       `      PGID: "${cfg.pgid}"`,
       `      TZ: "${cfg.tz}"`,
     ];
-    const extraEnv = Object.entries(c.env).map(
+    const envVars = Object.assign({}, c.env);
+    const peer = peerPorts(cfg)[kind];
+    if (peer && c.peer_port.env) envVars[c.peer_port.env] = String(peer);
+    const extraEnv = Object.entries(envVars).map(
       ([k, v]) => `      ${k}: "${v}"`
     );
     const envBlock = baseEnv.concat(extraEnv).join('\n');
@@ -217,14 +356,6 @@
     lines.push('    volumes:');
     const configTarget = c.config_mount_target || '/config';
     lines.push(`      - ${cfg.paths.appdata}/${c.config_dir}:${configTarget}`);
-    // SAB splits in-progress (`/incomplete-downloads`) from completed
-    // (`/downloads`); without a mount for the incomplete side, SAB
-    // falls back to writing it under /config which clutters the
-    // config volume and makes pause/resume across container restarts
-    // unreliable.
-    if (kind === 'sabnzbd') {
-      lines.push(`      - ${cfg.paths.appdata}/sabnzbd/incomplete:/incomplete-downloads`);
-    }
     // rTorrent's crazy-max image looks for htpasswd files at /passwd
     // (rutorrent.htpasswd for the web UI, rpc.htpasswd for XML-RPC).
     // Mount the folder unconditionally so users can drop files in to
@@ -238,7 +369,7 @@
       // docs/quick-start does the same layering.
       lines.push(`      - ${cfg.paths.appdata}/rutorrent/passwd:/passwd`);
     }
-    lines.push(`      - ${cfg.paths.downloads}:${c.download_path}`);
+    lines.push(`      - ${cfg.paths.shared}:${cfg.paths.shared}`);
     lines.push('    environment:');
     lines.push(envBlock);
     lines.push('    restart: unless-stopped');
@@ -253,9 +384,29 @@
       // Keeping the explicit list makes startup ordering visible
       // in `docker compose ps`.
     }
+    // Service names, not form values: rTorrent's service is rutorrent,
+    // and naming `rtorrent` here made the whole compose invalid.
     const dependsList = deps.length
-      ? `    depends_on:\n${deps.map((k) => `      - ${k}`).join('\n')}\n`
+      ? `    depends_on:\n${deps
+          .map((k) => `      - ${CLIENTS[k].service_name || k}`)
+          .join('\n')}\n`
       : '';
+    // Opt-in DNS-rebinding defense (docs/docker.md#host-check). A proxy
+    // passes the public domain through as the Host, so it has to be
+    // listed.
+    let hardening = '';
+    if (cfg.host_check) {
+      hardening += '\n      RYOKAN_HOST_CHECK: "1"';
+      if (cfg.allowed_hosts) {
+        hardening += `\n      RYOKAN_ALLOWED_HOSTS: "${cfg.allowed_hosts}"`;
+      } else if (cfg.proxy !== 'none') {
+        hardening += '\n      # Add the domain your proxy serves Ryokan on:\n      # RYOKAN_ALLOWED_HOSTS: "ryokan.example.com"';
+      } else {
+        // The container's hostname is a random ID, not the server's, so
+        // http://nas:8978 is refused until "nas" is listed.
+        hardening += "\n      # Add your server's name if you open Ryokan by it (IP addresses\n      # and localhost always work):\n      # RYOKAN_ALLOWED_HOSTS: \"nas\"";
+      }
+    }
     return `  ryokan:
     image: ghcr.io/johnthreekay/ryokan:latest
     container_name: ryokan
@@ -263,14 +414,16 @@
     ports:
       - "8978:8978"
     volumes:
-      - ${cfg.paths.appdata}/ryokan:/data
-      - ${cfg.paths.downloads}:/downloads
-      - ${cfg.paths.media}:/media/anime
+      - ${cfg.paths.appdata}/ryokan:/config
+      - ${cfg.paths.shared}:${cfg.paths.shared}
     environment:
       PUID: "${cfg.puid}"
       PGID: "${cfg.pgid}"
       TZ: "${cfg.tz}"
-      RUST_LOG: ryokan=info
+      # Ryokan's own files live at /config, which leaves /data free
+      # for a shared media folder there.
+      RYOKAN_DATA_DIR: /config
+      RUST_LOG: ryokan=info${hardening}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8978/login"]
       interval: 30s
@@ -293,7 +446,7 @@ ${dependsList}    restart: unless-stopped`;
       - /dev/dri:/dev/dri
     volumes:
       - ${cfg.paths.appdata}/jellyfin:/config
-      - ${cfg.paths.media}:/data/media:ro
+      - ${cfg.paths.media}:${cfg.paths.media}:ro
     environment:
       PUID: "${cfg.puid}"
       PGID: "${cfg.pgid}"
@@ -334,17 +487,7 @@ ${deps.map((d) => `      - ${d}`).join('\n')}
     // stays consistent.
     const portForwards = cfg.dlclients
       .filter((k) => isBehindVpn(k, cfg))
-      .flatMap((k) => {
-        const c = CLIENTS[k];
-        const mainMapping =
-          c.expose_main_port === false
-            ? null
-            : `      - "${c.host_port || c.port}:${c.port}"`;
-        return [
-          ...(mainMapping ? [mainMapping] : []),
-          ...c.extra_ports.map((p) => `      - "${p}"`),
-        ];
-      });
+      .flatMap((k) => portMappings(k, cfg).map((p) => `      - "${p}"`));
     const portsBlock = portForwards.length
       ? `    ports:\n${portForwards.join('\n')}\n`
       : '';
@@ -427,7 +570,9 @@ ${portsBlock}    volumes:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"  # dashboard; remove for prod
+      # Dashboard on host port 8090: qBittorrent's web UI has 8080.
+      # Remove for prod.
+      - "8090:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${cfg.paths.appdata}/traefik/traefik.yml:/etc/traefik/traefik.yml
@@ -500,10 +645,25 @@ ${portsBlock}    volumes:
     return null;
   }
 
+  // Per-service appdata subdirectories, one per service the stack runs.
+  function serviceDirs(cfg) {
+    const dirs = ['ryokan'];
+    cfg.dlclients.forEach((k) => dirs.push(CLIENTS[k].config_dir));
+    if (cfg.media_server === 'jellyfin') dirs.push('jellyfin');
+    if (cfg.requests === 'seerr') dirs.push('seerr');
+    if (cfg.vpn === 'gluetun') dirs.push('gluetun');
+    if (cfg.proxy === 'caddy') dirs.push('caddy');
+    if (cfg.proxy === 'traefik') dirs.push('traefik');
+    if (cfg.proxy === 'nginx') dirs.push('nginx');
+    return dirs;
+  }
+
   function renderCompose(cfg) {
     if (cfg.dlclients.length === 0) {
       return '# Pick at least one download client.\n';
     }
+    const problem = sharedPathProblem(cfg);
+    if (problem) return `# ${problem.replace(/\. /g, '.\n# ')}\n`;
 
     const services = [];
     services.push(renderRyokan(cfg));
@@ -518,16 +678,10 @@ ${portsBlock}    volumes:
     // pre-creates each one with the right ownership. Without this,
     // Docker creates lazy bind-mount targets as root on first up
     // and a Jellyfin / Seerr / non-linuxserver container can fail
-    // to write to its own config volume.
-    const serviceDirs = ['ryokan'];
-    cfg.dlclients.forEach((k) => serviceDirs.push(CLIENTS[k].config_dir));
-    if (cfg.media_server === 'jellyfin') serviceDirs.push('jellyfin');
-    if (cfg.requests === 'seerr') serviceDirs.push('seerr');
-    if (cfg.vpn === 'gluetun') serviceDirs.push('gluetun');
-    if (cfg.proxy === 'caddy') serviceDirs.push('caddy');
-    if (cfg.proxy === 'traefik') serviceDirs.push('traefik');
-    if (cfg.proxy === 'nginx') serviceDirs.push('nginx');
-    const appdataPaths = serviceDirs
+    // to write to its own config volume. The chown takes these and
+    // nothing else: the config root itself often holds other stacks'
+    // folders, and a recursive chown of it re-owned all of them.
+    const appdataPaths = serviceDirs(cfg)
       .map((d) => `${cfg.paths.appdata}/${d}`)
       .join(' ');
 
@@ -537,13 +691,14 @@ ${portsBlock}    volumes:
 #
 # Before first \`docker compose up\`:
 #   sudo mkdir -p ${cfg.paths.downloads} ${cfg.paths.media} ${appdataPaths}
-#   sudo chown -R ${cfg.puid}:${cfg.pgid} ${cfg.paths.downloads} ${cfg.paths.media} ${cfg.paths.appdata}
+#   sudo chown -R ${cfg.puid}:${cfg.pgid} ${cfg.paths.downloads} ${cfg.paths.media} ${appdataPaths}
 #
-# Path layout: ${cfg.paths.downloads} (downloads) and ${cfg.paths.media}
-# (library) should be on the same filesystem so post-processing can
-# hardlink instead of copying. Both are mounted into Ryokan AND the
-# download client(s) at matching paths inside the container, so no
-# per-client \`download_path\` translation is needed in Settings.
+# Path layout: ${cfg.paths.shared} holds downloads/ and anime/ (the
+# library), and every container mounts it at that same path. A hardlink
+# needs both ends inside one mount, so this is what lets post-processing
+# hardlink instead of copy, and the clients report paths Ryokan can open
+# as they are. Point each client's download folder at
+# ${cfg.paths.downloads} (the settings below say where).
 #
 # =============================================================================
 
@@ -556,8 +711,57 @@ services:
     return header + services.join('\n\n') + '\n';
   }
 
+  // What to change inside a client once it's up: its download folder
+  // (inside the shared mount, which no image uses by default) and, for
+  // Deluge and SAB, the port and hostname settings Ryokan needs.
+  function clientSteps(kind, cfg) {
+    const dl = cfg.paths.downloads;
+    const peer = peerPorts(cfg)[kind];
+    const out = ['  In the client:'];
+    if (kind === 'qbittorrent') {
+      out.push(`    Tools → Options → Downloads → Default Save Path: ${dl}`);
+    } else if (kind === 'deluge') {
+      out.push(`    Preferences → Downloads → Download to: ${dl}`);
+      out.push(`    Preferences → Network → Incoming Port: uncheck "Use Random Port", set ${peer}`);
+      out.push('    (the port the compose publishes; Deluge picks a random one until then)');
+    } else if (kind === 'transmission') {
+      out.push(`    Edit preferences → Torrents → Download to: ${dl}`);
+      out.push(`    and Use temporary folder: ${dl}/incomplete`);
+    } else if (kind === 'rtorrent') {
+      out.push(`    The image hardcodes /downloads. After the first start, edit`);
+      out.push(`    ${cfg.paths.appdata}/rutorrent/rtorrent/.rtorrent.rc:`);
+      out.push(`      add:     directory.default.set = ${dl}/temp`);
+      out.push('      change the d.get_finished_dir line to:');
+      out.push(`               method.insert = d.get_finished_dir, simple, "cat=${dl}/complete/,$d.custom1="`);
+      out.push('    then `docker compose restart rutorrent`.');
+    } else if (kind === 'sabnzbd') {
+      out.push(`    Config → Folders → Temporary Download Folder: ${dl}/incomplete`);
+      out.push(`    Config → Folders → Completed Download Folder: ${dl}/complete`);
+      out.push('    Config → Special → host_whitelist: add  sabnzbd  (the name Ryokan calls it by),');
+      out.push('    Save, and restart SAB. Until then SAB answers Ryokan with');
+      out.push('    "Access denied - Hostname verification failed".');
+    }
+    return out;
+  }
+
   function renderSettings(cfg) {
+    const problem = sharedPathProblem(cfg);
+    if (problem) return problem.replace(/\. /g, '.\n');
     const lines = [];
+    // First: setup asks for these before anything else.
+    lines.push("--- Ryokan's first-run setup (\"Set up your library\") ---");
+    lines.push('');
+    lines.push('Right after you create your account, Ryokan asks for these. Saving turns on');
+    lines.push('post-processing, which places finished downloads in the library.');
+    lines.push('');
+    lines.push(`  Media Root Path:      ${cfg.paths.media}`);
+    lines.push('  File operation mode:  Hardlink');
+    if (cfg.media_server === 'jellyfin') {
+      lines.push('  Jellyfin:             the URL and API key below, or leave it empty there and');
+      lines.push('                        add it later under Settings → Connections');
+    }
+    lines.push('');
+
     lines.push('--- Settings → Download Clients ---');
     lines.push('');
     if (cfg.dlclients.length === 0) {
@@ -580,17 +784,6 @@ services:
           lines.push('                 Find it with:  docker logs qbittorrent | grep -i "temporary password"');
           lines.push('                 Log in with that, set a permanent password under');
           lines.push('                 Tools → Options → Web UI → Authentication, then paste it here.');
-          // qBit 4.5+ enables Host header validation by default. The
-          // Host header on requests from Ryokan-in-container is
-          // `qbittorrent:8080`, which qBit rejects with 401 even when
-          // the credentials are correct. Symptom: Ryokan shows the
-          // row stuck on "qBittorrent Unauthorized" while the WebUI
-          // works fine from a browser. Standard homelab workaround
-          // is to disable the check entirely.
-          lines.push('  Heads-up:      Settings → Connections will say "qBittorrent Unauthorized" even with');
-          lines.push('                 correct credentials until you turn off Host header validation.');
-          lines.push('                 Tools → Options → Web UI → uncheck "Enable Host header validation",');
-          lines.push('                 Save, then `docker compose restart qbittorrent`.');
         } else if (kind === 'rtorrent') {
           // crazy-max image looks for /passwd/rutorrent.htpasswd (web UI)
           // and /passwd/rpc.htpasswd (XML-RPC). Without files, both are
@@ -603,7 +796,7 @@ services:
           lines.push('  API Key:       (paste from SAB → Config → General → API Key)');
         }
         lines.push(`  Category:      ${c.category}`);
-        lines.push(`  Download path: ${c.download_path}    # what Ryokan sees inside its container`);
+        lines.push('  Download path: (leave empty; the client and Ryokan see the same paths)');
         // First client of each protocol becomes the default for that
         // protocol. Walk the list in order; first qbit/deluge/trans/
         // rtorrent → torrent default; first sabnzbd → usenet default.
@@ -614,6 +807,7 @@ services:
         lines.push(
           `  Default for ${c.protocol}: ${isFirstOfProtocol ? 'YES' : 'no'}`
         );
+        clientSteps(kind, cfg).forEach((l) => lines.push(l));
         lines.push('');
       });
 
@@ -660,11 +854,6 @@ services:
       lines.push('');
     }
 
-    lines.push('--- Settings → General ---');
-    lines.push('');
-    lines.push('Media Root Path:  /media/anime');
-    lines.push('File operation:   hardlink   (default; works because downloads and media share a filesystem)');
-    lines.push('');
 
     if (cfg.requests === 'seerr') {
       // Both shims live on the same Ryokan host:port — Sonarr at the
@@ -679,8 +868,8 @@ services:
       lines.push('  Port:            8978');
       lines.push('  API Key:         (Ryokan → Settings → Connections → Sonarr API → API Key)');
       lines.push('  Use SSL:         no');
-      lines.push('  Quality Profile: HD-1080p');
-      lines.push('  Root Folder:     /media/anime');
+      lines.push('  Quality Profile: Default');
+      lines.push(`  Root Folder:     ${cfg.paths.media}`);
       lines.push('');
       lines.push('Add Radarr server (anibridge shim, for anime films; note the /radarr URL base):');
       lines.push('  Hostname:        ryokan');
@@ -688,8 +877,8 @@ services:
       lines.push('  URL Base:        /radarr');
       lines.push('  API Key:         (Ryokan → Settings → Connections → Radarr API → API Key)');
       lines.push('  Use SSL:         no');
-      lines.push('  Quality Profile: HD-1080p');
-      lines.push('  Root Folder:     /media/anime');
+      lines.push('  Quality Profile: Default');
+      lines.push(`  Root Folder:     ${cfg.paths.media}`);
       lines.push('');
     }
 
@@ -804,6 +993,11 @@ services:
         lines.push(`Drop your real domain into the ${cfg.proxy} config (see comments in the compose).`);
         lines.push("Set RYOKAN_TRUSTED_PROXY=1 in Ryokan's env once HTTPS is working; the login cookie");
         lines.push("turns Secure on its own from the proxy's X-Forwarded-Proto header.");
+      }
+      if (cfg.host_check && !cfg.allowed_hosts) {
+        lines.push('');
+        lines.push("Host check is on: add your proxy's domain to RYOKAN_ALLOWED_HOSTS, or every page");
+        lines.push('opened through the proxy gets a "421" error.');
       }
     }
 

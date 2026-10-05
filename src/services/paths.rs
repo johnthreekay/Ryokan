@@ -171,3 +171,114 @@ mod tests {
         );
     }
 }
+
+/// Whether opening the database creates a missing file: always for the
+/// default path (`main.rs` sets `create_if_missing`), and for an
+/// explicit `DATABASE_URL` only when it asks with `mode=rwc`, as sqlx
+/// reads it. Without that, a missing database (an unmounted volume, a
+/// typo) fails the boot instead of starting empty with `/setup` open.
+pub fn opening_creates_db(database_url: Option<&str>) -> bool {
+    let Some(url) = database_url else {
+        return true;
+    };
+    url.split_once('?')
+        .is_some_and(|(_, query)| query.split('&').any(|pair| pair == "mode=rwc"))
+}
+
+/// Keep the database and its `-wal` / `-shm` files private to Ryokan's
+/// user (0600). SQLite created them with the umask's mode (0644 on most
+/// systems), and they hold session hashes, download-client passwords,
+/// indexer and *arr keys: anyone else on a shared host could read them.
+/// When opening will create the database anyway (`create`, see
+/// [`opening_creates_db`]), a missing one is created 0600 here first so
+/// SQLite inherits the mode for its WAL files; existing ones are
+/// tightened either way. Best effort: a failure is logged and boot
+/// continues.
+#[cfg(unix)]
+pub fn make_db_private(db_path: &Path, create: bool) {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    if create
+        && !db_path.exists()
+        && let Err(e) = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(db_path)
+        && e.kind() != std::io::ErrorKind::AlreadyExists
+    {
+        tracing::warn!("Couldn't pre-create {} as 0600: {e}", db_path.display());
+    }
+    let mut paths = vec![db_path.to_path_buf()];
+    for suffix in ["-wal", "-shm"] {
+        let mut name = db_path.as_os_str().to_owned();
+        name.push(suffix);
+        paths.push(PathBuf::from(name));
+    }
+    for path in paths {
+        let Ok(meta) = std::fs::metadata(&path) else {
+            continue;
+        };
+        if meta.permissions().mode() & 0o077 != 0
+            && let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+        {
+            tracing::warn!("Couldn't make {} private: {e}", path.display());
+        }
+    }
+}
+
+#[cfg(not(unix))]
+pub fn make_db_private(_db_path: &Path, _create: bool) {}
+
+#[cfg(all(test, unix))]
+mod db_private_tests {
+    use super::{make_db_private, opening_creates_db};
+    use std::os::unix::fs::PermissionsExt;
+
+    fn mode(p: &std::path::Path) -> u32 {
+        std::fs::metadata(p).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn the_database_and_its_wal_are_private() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("ryokan.db");
+        // A fresh install: created 0600 before SQLite opens it.
+        make_db_private(&db, true);
+        assert_eq!(mode(&db), 0o600);
+        // An existing install: 0644 files are tightened.
+        let wal = tmp.path().join("ryokan.db-wal");
+        std::fs::write(&wal, b"").unwrap();
+        std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::set_permissions(&wal, std::fs::Permissions::from_mode(0o644)).unwrap();
+        make_db_private(&db, false);
+        assert_eq!(mode(&db), 0o600);
+        assert_eq!(mode(&wal), 0o600);
+    }
+
+    #[test]
+    fn a_database_url_that_does_not_create_gets_no_file() {
+        // Pre-creating it booted an explicit `DATABASE_URL` on a fresh
+        // empty database (with `/setup` open) where sqlx would have
+        // refused a missing file.
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("ryokan.db");
+        make_db_private(&db, false);
+        assert!(!db.exists());
+
+        assert!(opening_creates_db(None), "the default path is created");
+        assert!(opening_creates_db(Some(
+            "sqlite:///data/ryokan.db?mode=rwc"
+        )));
+        assert!(opening_creates_db(Some(
+            "sqlite:///data/ryokan.db?cache=shared&mode=rwc"
+        )));
+        for url in [
+            "sqlite:///data/ryokan.db",
+            "sqlite:///data/ryokan.db?mode=rw",
+            "sqlite::memory:",
+            "sqlite://?mode=memory",
+        ] {
+            assert!(!opening_creates_db(Some(url)), "{url}");
+        }
+    }
+}

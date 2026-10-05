@@ -37,7 +37,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 # Don't queue overlapping runs. If the previous run hasn't finished
 # (rare, given weekly cadence), the new one waits.
@@ -63,9 +62,11 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+        with:
+          toolchain: stable
 
       # mold + clang are the linker config in `.cargo/config.toml`;
       # without them every link step fails. Same install pattern as
@@ -73,7 +74,7 @@ jobs:
       - name: Install mold + clang
         run: sudo apt-get update && sudo apt-get install -y mold clang
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           # Distinct cache key from rust.yml so the test profile
           # (opt-level=1 deps) doesn't fight with verify-pass cache.
@@ -81,7 +82,7 @@ jobs:
           key: mutants-weekly
 
       # Both binaries via prebuilt-action (avoids the ~2 min build).
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
           tool: cargo-nextest,cargo-mutants
 
@@ -91,11 +92,13 @@ jobs:
       # dependent ones (rss/mod.rs at 309 mutants, auto_search/mod.rs
       # at 300+) — those need their own session-sized runs.
       #
-      # Exit codes: 0 all caught, 2 missed mutants, 3 timeouts,
-      # 4 unviable; all of those mean the run completed and the
-      # output files are the result. 1 is a usage / harness error and
-      # must fail the shard so the merge job knows not to trust the
-      # week's numbers.
+      # Exit codes: 0 all caught, 2 missed mutants, 3 timeouts; those
+      # mean the run completed and the output files are the result
+      # (unviable mutants do not change the code). Anything else must
+      # fail the shard so the merge job knows not to trust the week's
+      # numbers: 1 is a usage error, 4 means the unmutated baseline
+      # tests failed and no mutant was tested, so the shard's files are
+      # empty rather than a result.
       - name: Run cargo-mutants shard ${{ matrix.shard }}/${{ env.SHARDS }}
         run: |
           set +e
@@ -114,7 +117,7 @@ jobs:
           code=$?
           echo "cargo-mutants exit code: $code"
           case "$code" in
-            0|2|3|4) ;;
+            0|2|3) ;;
             *) exit "$code" ;;
           esac
           for f in caught missed timeout unviable; do
@@ -127,7 +130,7 @@ jobs:
       # withholds the baseline save in that case.
       - name: Upload shard output
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutants-shard-${{ matrix.shard }}
           path: |
@@ -146,11 +149,16 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Only this job opens issues; the shards run third-party actions
+    # (toolchain, cache, tool installs) and keep a read-only token.
+    permissions:
+      contents: read
+      issues: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download shard outputs
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: mutants-shard-*
           path: shards
@@ -176,7 +184,7 @@ jobs:
       # nothing and the script handles the missing-baseline case.
       - name: Restore previous baseline
         id: restore-baseline
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mutants.baseline.json
           key: mutants-baseline-v1-
@@ -219,29 +227,30 @@ jobs:
         if: steps.report.outputs.regression == '1' && needs.shard.result == 'success'
         run: |
           gh issue create \
-            --title "Mutation regression — $(date -u +%F)" \
+            --title "Mutation regression, $(date -u +%F)" \
             --body-file mutants-report.md \
             --label "test-quality"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Save the new baseline, but only from a complete run: a
-      # partial snapshot would make every unfinished mutant look
-      # "new" next week. Unique key per run so we never miss the save
+      # Save the new baseline, but only from a complete run whose
+      # report finished (the script exits 0 or 1): a partial snapshot
+      # would make every unfinished mutant look "new" next week, and an
+      # empty run (3) or a crash leaves last week's baseline in place. Unique key per run so we never miss the save
       # (cache@v4 doesn't overwrite on key-hit). Restoration on the
       # next run uses the prefix `mutants-baseline-v1-` to match
       # whichever entry is most recent. GH evicts unmatched-prefix
       # cache entries after 7 days of no access.
       - name: Save baseline for next run
-        if: needs.shard.result == 'success' && steps.report.outputs.regression != ''
-        uses: actions/cache/save@v6
+        if: needs.shard.result == 'success' && (steps.report.outputs.regression == '0' || steps.report.outputs.regression == '1')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mutants.baseline.json
           key: mutants-baseline-v1-${{ github.run_id }}
 
       - name: Upload report as artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutants-report
           path: |

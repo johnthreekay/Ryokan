@@ -14,7 +14,9 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use crate::services::post_processing::do_file_op;
+use crate::services::post_processing::{
+    CONTENT_COMPARE_CHUNK, do_file_op, do_file_op_reporting, files_same_content, mode_used,
+};
 
 fn write_src(dir: &TempDir, name: &str, body: &[u8]) -> PathBuf {
     let path = dir.path().join(name);
@@ -321,4 +323,169 @@ async fn hardlink_mode_replaces_unrelated_preexisting_dst() {
         fs::metadata(&dst).unwrap().ino(),
         "dst must share src's inode after the relink, not be a copy"
     );
+}
+
+// ─── Symlinked sources ─────────────────────────────────────────────
+
+/// A download holding `Show/real/ep.mkv` and `Show/ep.mkv`, a relative
+/// symlink to it, plus a library folder. Returns (tempdir, real file,
+/// link, destination).
+fn download_with_symlinked_episode() -> (TempDir, PathBuf, PathBuf, PathBuf) {
+    let dir = TempDir::new().unwrap();
+    let show = dir.path().join("downloads/Show");
+    fs::create_dir_all(show.join("real")).unwrap();
+    let real = show.join("real/ep.mkv");
+    fs::write(&real, b"payload").unwrap();
+    let link = show.join("ep.mkv");
+    std::os::unix::fs::symlink("real/ep.mkv", &link).unwrap();
+    let dst = dir.path().join("library/Show/Season 01/Show - S01E01.mkv");
+    (dir, real, link, dst)
+}
+
+#[tokio::test]
+async fn a_symlinked_source_lands_as_the_file_it_names() {
+    // `hard_link` links a symlink's own inode and `rename` moves the
+    // link, so the library used to get `real/ep.mkv` as a relative
+    // link that resolves to nothing from the season folder.
+    for mode in ["hardlink", "copy", "move"] {
+        let (_dir, real, link, dst) = download_with_symlinked_episode();
+        do_file_op(mode, &link, &dst).await.expect(mode);
+        let meta = fs::symlink_metadata(&dst).unwrap();
+        assert!(meta.is_file(), "{mode}: a regular file, not a link");
+        assert_eq!(fs::read(&dst).unwrap(), b"payload", "{mode}");
+        assert_eq!(
+            fs::read(&real).unwrap(),
+            b"payload",
+            "{mode}: the link's target stays in place"
+        );
+        match mode {
+            "hardlink" => {
+                assert_eq!(
+                    meta.ino(),
+                    fs::metadata(&real).unwrap().ino(),
+                    "hardlink: shares the target's inode, so seeding is safe"
+                );
+                assert!(
+                    fs::symlink_metadata(&link).is_ok(),
+                    "hardlink keeps the link"
+                );
+            }
+            "move" => assert!(
+                fs::symlink_metadata(&link).is_err(),
+                "move consumes the link"
+            ),
+            _ => {}
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_dangling_symlinked_source_fails_without_landing() {
+    for mode in ["hardlink", "copy", "move"] {
+        let (_dir, real, link, dst) = download_with_symlinked_episode();
+        fs::remove_file(&real).unwrap();
+        assert!(do_file_op(mode, &link, &dst).await.is_err(), "{mode}");
+        assert!(
+            fs::symlink_metadata(&dst).is_err(),
+            "{mode}: nothing lands at the destination"
+        );
+    }
+}
+
+// ─── files_same_content ────────────────────────────────────────────
+
+#[test]
+fn same_content_accepts_a_byte_identical_copy() {
+    let dir = TempDir::new().unwrap();
+    let a = write_src(&dir, "a.mkv", b"same bytes");
+    let b = write_src(&dir, "b.mkv", b"same bytes");
+    assert!(files_same_content(&a, &b));
+}
+
+#[test]
+fn same_content_rejects_another_file_of_the_same_length() {
+    // The case the old length-only check let through.
+    let dir = TempDir::new().unwrap();
+    let a = write_src(&dir, "a.mkv", b"ova");
+    let b = write_src(&dir, "b.mkv", b"OVA");
+    assert!(!files_same_content(&a, &b));
+}
+
+#[test]
+fn same_content_rejects_a_difference_past_the_first_chunk() {
+    let dir = TempDir::new().unwrap();
+    let mut body = vec![7_u8; CONTENT_COMPARE_CHUNK as usize + 10];
+    let a = write_src(&dir, "a.mkv", &body);
+    *body.last_mut().unwrap() = 8;
+    let b = write_src(&dir, "b.mkv", &body);
+    assert!(!files_same_content(&a, &b));
+}
+
+#[test]
+fn same_content_rejects_a_length_mismatch_and_a_missing_file() {
+    let dir = TempDir::new().unwrap();
+    let a = write_src(&dir, "a.mkv", b"ova");
+    let b = write_src(&dir, "b.mkv", b"ova-two");
+    assert!(!files_same_content(&a, &b));
+    assert!(!files_same_content(&a, &dir.path().join("missing.mkv")));
+}
+
+#[test]
+fn same_content_accepts_two_empty_files() {
+    let dir = TempDir::new().unwrap();
+    let a = write_src(&dir, "a.mkv", b"");
+    let b = write_src(&dir, "b.mkv", b"");
+    assert!(files_same_content(&a, &b));
+}
+
+#[test]
+fn the_import_log_says_copy_when_a_hardlink_fell_back() {
+    assert_eq!(mode_used("hardlink", None), "hardlink");
+    let cross_device = std::io::Error::from(std::io::ErrorKind::CrossesDevices);
+    let msg = mode_used("hardlink", Some(&cross_device));
+    assert!(msg.starts_with("copy"), "{msg}");
+    assert!(msg.contains("different filesystems"), "{msg}");
+    // Any other failure is quoted, not explained: EPERM is also what
+    // `fs.protected_hardlinks` returns for a file Ryokan's user
+    // doesn't own, which says nothing about filesystems.
+    let eperm = std::io::Error::from_raw_os_error(1);
+    let msg = mode_used("hardlink", Some(&eperm));
+    assert!(msg.starts_with("copy"), "{msg}");
+    assert!(msg.contains("os error 1"), "{msg}");
+    assert!(!msg.contains("filesystems"), "{msg}");
+    // Other modes are reported as configured.
+    assert_eq!(mode_used("copy", None), "copy");
+}
+
+#[tokio::test]
+async fn a_hardlink_on_one_filesystem_reports_no_fallback() {
+    let dir = TempDir::new().unwrap();
+    let src = write_src(&dir, "src.mkv", b"payload");
+    let dst = dir.path().join("dst.mkv");
+    let link_error = do_file_op_reporting("hardlink", &src, &dst)
+        .await
+        .expect("hardlink");
+    assert!(link_error.is_none(), "{link_error:?}");
+}
+
+#[tokio::test]
+async fn a_hardlink_across_filesystems_reports_why_it_copied() {
+    // `/dev/shm` is its own tmpfs on Linux; skip where it is missing or
+    // shares the temp dir's filesystem.
+    let Ok(other_fs) = TempDir::new_in("/dev/shm") else {
+        return;
+    };
+    let dir = TempDir::new().unwrap();
+    if fs::metadata(other_fs.path()).unwrap().dev() == fs::metadata(dir.path()).unwrap().dev() {
+        return;
+    }
+    let src = write_src(&other_fs, "src.mkv", b"payload");
+    let dst = dir.path().join("dst.mkv");
+    let link_error = do_file_op_reporting("hardlink", &src, &dst)
+        .await
+        .expect("copied");
+    assert_eq!(fs::read(&dst).unwrap(), b"payload");
+    let link_error = link_error.expect("the link failed, so it copied");
+    assert_eq!(link_error.kind(), std::io::ErrorKind::CrossesDevices);
+    assert!(mode_used("hardlink", Some(&link_error)).contains("different filesystems"));
 }

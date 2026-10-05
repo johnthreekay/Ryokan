@@ -613,17 +613,24 @@ pub(super) fn sibling_match_rejects(
 /// Only used as a fallback when primary aliases don't find results.
 pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
     let primary = collect_aliases(detail);
+    let related = related_anime_titles(detail);
     let mut extra = Vec::new();
 
-    // Add AniList synonyms.
-    extra.extend(detail.synonyms.iter().cloned());
+    // Add AniList synonyms, except one that is a related entry's title.
+    extra.extend(
+        detail
+            .synonyms
+            .iter()
+            .filter(|s| !related.contains(&normalize_title(s)))
+            .cloned(),
+    );
 
     // Decompose all titles (primary + synonyms) into sub-phrases.
     // Nyaa releases often use just the subtitle portion
     // (e.g. "Steel Ball Run" from "JoJo's Bizarre Adventure: Part 7–Steel Ball Run").
     let all_titles: Vec<String> = primary.iter().chain(extra.iter()).cloned().collect();
     for title in &all_titles {
-        for segment in split_title_segments(title) {
+        for segment in split_title_segments(title, &related) {
             extra.push(segment);
         }
     }
@@ -636,9 +643,34 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
         .collect()
 }
 
+/// Every related anime entry's titles, normalized. A head segment that
+/// is one of these names that entry, not the series.
+fn related_anime_titles(detail: &AnimeDetail) -> HashSet<String> {
+    detail
+        .relations
+        .iter()
+        .filter(|rel| rel.media_type.eq_ignore_ascii_case("ANIME"))
+        .flat_map(|rel| [&rel.title_romaji, &rel.title_english, &rel.title_native])
+        .map(|title| normalize_title(title))
+        .filter(|title| !title.is_empty())
+        .collect()
+}
+
 /// Split a compound title on common delimiters and return meaningful segments.
 /// Filters out segments that are too short or too generic to be useful search
 /// terms.
+///
+/// The leading segments that together spell a related entry's title
+/// (`related_titles`, normalized) are skipped: they name that entry.
+/// "Sousou no Frieren: ●● no Mahou" is the mini anime of "Sousou no
+/// Frieren", and that head as an alias grabbed the parent's 16 GiB BD
+/// batch for the minis. A head can span several delimiters ("Frieren:
+/// Beyond Journey's End: Magic of ??" carries the parent's English
+/// title), so the longest such run goes. A head no related entry is
+/// titled ("Mushoku Tensei") stays. A later segment that is a related
+/// entry's title goes too: "Hagane no Renkinjutsushi: FULLMETAL
+/// ALCHEMIST" is Brotherhood's romaji, and its tail is the English
+/// title of the 2003 series.
 ///
 /// Segments are used both as Nyaa search queries AND as matching aliases
 /// inside `matches_target`, which means an over-generic segment can
@@ -654,21 +686,28 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
 /// they can't be trusted to uniquely identify a show. Segments with 2+
 /// tokens remain — those are specific enough that substring-matching them
 /// against an unrelated release is vanishingly unlikely.
-fn split_title_segments(title: &str) -> Vec<String> {
+fn split_title_segments(title: &str, related_titles: &HashSet<String>) -> Vec<String> {
     // Normalize various dash types to a common delimiter for splitting.
     let normalized = title
         .replace(['–', '—'], "|") // en dash and em dash
         .replace(": ", "|") // colon+space (keep "Re:Zero" intact)
         .replace(" - ", "|");
+    let parts: Vec<&str> = normalized.split('|').map(str::trim).collect();
+    let related_head = (1..parts.len())
+        .rev()
+        .find(|&k| related_titles.contains(&normalize_title(&parts[..k].join(" "))))
+        .unwrap_or(0);
 
     let mut segments = Vec::new();
-    for part in normalized.split('|') {
-        let trimmed = part.trim();
+    for &trimmed in &parts[related_head..] {
         // Skip segments that are too short or just "Part N" / "Season N".
         if trimmed.len() < 5 {
             continue;
         }
         if trimmed.eq_ignore_ascii_case(title.trim()) {
+            continue;
+        }
+        if related_titles.contains(&normalize_title(trimmed)) {
             continue;
         }
         // Require at least 2 whitespace-separated tokens. Single-word
@@ -1160,7 +1199,7 @@ mod tests {
 
     #[test]
     fn split_segments_keeps_three_token_subtitle() {
-        let segments = split_title_segments("Main Title: Sub One Two Three");
+        let segments = split_title_segments("Main Title: Sub One Two Three", &HashSet::new());
         assert!(
             segments.iter().any(|s| s == "Sub One Two Three"),
             "multi-word subtitle should be kept as a segment, got {:?}",
@@ -1171,7 +1210,7 @@ mod tests {
     #[test]
     fn split_segments_keeps_two_token_subtitle() {
         // Two whitespace-separated tokens is the minimum.
-        let segments = split_title_segments("Main Title: Alpha Beta");
+        let segments = split_title_segments("Main Title: Alpha Beta", &HashSet::new());
         assert!(
             segments.iter().any(|s| s == "Alpha Beta"),
             "two-token subtitle should be kept, got {:?}",
@@ -1181,7 +1220,7 @@ mod tests {
 
     #[test]
     fn split_segments_rejects_single_word_subtitle() {
-        let segments = split_title_segments("Main Title: Singleword");
+        let segments = split_title_segments("Main Title: Singleword", &HashSet::new());
         assert!(
             !segments.iter().any(|s| s == "Singleword"),
             "single-word subtitle should be rejected, got {:?}",
@@ -1195,7 +1234,7 @@ mod tests {
         // under the rule — important because hyphenated English phrases
         // like "Iron-Blooded" are common enough to substring-match many
         // unrelated titles.
-        let segments = split_title_segments("Main Title: Hyphen-Word");
+        let segments = split_title_segments("Main Title: Hyphen-Word", &HashSet::new());
         assert!(
             !segments.iter().any(|s| s == "Hyphen-Word"),
             "hyphenated single-word segment should be rejected, got {:?}",
@@ -1207,7 +1246,7 @@ mod tests {
     fn split_segments_keeps_multi_word_main_portion() {
         // Even when the subtitle is rejected, the leading multi-word
         // portion of a compound title remains usable.
-        let segments = split_title_segments("Main Title Two: Singleword");
+        let segments = split_title_segments("Main Title Two: Singleword", &HashSet::new());
         assert!(
             segments.iter().any(|s| s == "Main Title Two"),
             "multi-word leading portion should be kept, got {:?}",
@@ -1818,7 +1857,7 @@ mod tests {
         // segment). `the` + `animation` used to be 2 of the segment's
         // 3 tokens, clearing the 0.6 gate for every "The Animation"
         // release an indexer returned.
-        let segments = split_title_segments("Kowaremono: Risa THE ANIMATION");
+        let segments = split_title_segments("Kowaremono: Risa THE ANIMATION", &HashSet::new());
         assert_eq!(segments, vec!["Risa THE ANIMATION".to_string()]);
         let aliases = vec![
             "Kowaremono: Risa THE ANIMATION".to_string(),

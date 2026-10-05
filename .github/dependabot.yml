@@ -6,6 +6,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    cooldown:
+      default-days: 7
     groups:
       # utoipa and utoipa-swagger-ui share the OpenApi type, so a major
       # bump of one without the other does not compile (#257 / #258).
@@ -27,6 +29,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         update-types:
@@ -46,6 +50,9 @@ updates:
     # Rust release). Ignore the dependency entirely; MSRV bumps go
     # through a manual edit of both `rust-version` and the workflow
     # together.
+    # dtolnay/rust-toolchain has no releases to track: the workflows pin a
+    # commit of its `master` branch and pass `toolchain:`. Bump that SHA
+    # by hand (git ls-remote https://github.com/dtolnay/rust-toolchain).
     ignore:
       - dependency-name: "dtolnay/rust-toolchain"
     commit-message:
@@ -58,6 +65,21 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: chore(docker)
+      include: scope
+  # docs-requirements.txt: pinned and hash-checked, compiled from
+  # docs-requirements.in by `uv pip compile` (command in the .in file).
+  - package-ecosystem: pip
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(docs)
       include: scope

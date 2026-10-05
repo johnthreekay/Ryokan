@@ -76,10 +76,58 @@ pub async fn info(db: &SqlitePool, category: LogCategory, message: &str, detail:
     log(db, LogLevel::Info, category, message, detail).await;
 }
 
+/// True the first time `key` is seen in each `window`, false otherwise.
+/// For log lines an unauthenticated client can trigger in a loop (a
+/// wrong scoped API key, a throttled login): each is a database row, so
+/// a loop of requests grew the database by gigabytes a day. Bounded:
+/// past 4096 keys the expired ones go, then everything.
+pub fn first_in_window(key: &str, window: std::time::Duration) -> bool {
+    use std::collections::HashMap;
+    use std::sync::{LazyLock, Mutex};
+    use std::time::Instant;
+    static SEEN: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Default::default);
+    let mut seen = SEEN.lock().unwrap();
+    let now = Instant::now();
+    if seen.len() > 4096 {
+        seen.retain(|_, at| now.duration_since(*at) < window);
+        if seen.len() > 4096 {
+            seen.clear();
+        }
+    }
+    match seen.get(key) {
+        Some(at) if now.duration_since(*at) < window => false,
+        _ => {
+            seen.insert(key.to_string(), now);
+            true
+        }
+    }
+}
+
 pub async fn warn(db: &SqlitePool, category: LogCategory, message: &str, detail: &str) {
     log(db, LogLevel::Warn, category, message, detail).await;
 }
 
 pub async fn error(db: &SqlitePool, category: LogCategory, message: &str, detail: &str) {
     log(db, LogLevel::Error, category, message, detail).await;
+}
+
+#[cfg(test)]
+mod first_in_window_tests {
+    use super::*;
+
+    #[test]
+    fn first_in_window_admits_one_line_per_key_per_window() {
+        let w = std::time::Duration::from_secs(60);
+        assert!(first_in_window("test:window:a", w));
+        assert!(!first_in_window("test:window:a", w));
+        assert!(first_in_window("test:window:b", w), "keys are separate");
+        assert!(first_in_window(
+            "test:window:zero",
+            std::time::Duration::ZERO
+        ));
+        assert!(
+            first_in_window("test:window:zero", std::time::Duration::ZERO),
+            "an elapsed window admits again"
+        );
+    }
 }

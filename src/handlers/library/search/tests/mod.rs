@@ -1113,9 +1113,13 @@ mod handler_endpoints {
             .unwrap();
 
         let state = build_test_app_state(db, None);
-        let AxumJson(returned) = api_series_detail(State(state), Path(anilist_id))
-            .await
-            .expect("cache-hit path must succeed without network");
+        let AxumJson(returned) = api_series_detail(
+            State(state),
+            Path(anilist_id),
+            axum::extract::Query(crate::handlers::library::SeriesIdKind::default()),
+        )
+        .await
+        .expect("cache-hit path must succeed without network");
         assert_eq!(returned.id, anilist_id);
         assert_eq!(returned.title_english, "Cached Detail Show");
         assert_eq!(returned.episodes, Some(26));

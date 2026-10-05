@@ -133,12 +133,8 @@ pub(crate) async fn upload_torrent_file_qbit(
     panic!("uploaded torrent {expected} never registered in qBit");
 }
 
-/// Compute the v1 infohash of a `.torrent` by SHA1'ing the raw
-/// bencoded `info` dict. Minimal hand-parse — finds the `4:info`
-/// key at the top level, then slices the bencoded dict that
-/// follows. Doesn't validate the rest of the `.torrent` structure;
-/// assumes well-formed input from `transmission-create` (which all
-/// test helpers in this module produce).
+/// Compute the v1 infohash of a `.torrent` (the SHA-1 of its top-level
+/// bencoded `info` dict), through `services::torrent_file`.
 ///
 /// Shared between the rtorrent smoke (where `load.raw_start_verbose`
 /// returns 0 rather than echoing back the hash, so we compute it
@@ -147,48 +143,7 @@ pub(crate) async fn upload_torrent_file_qbit(
 /// first-in-category — makes the helper safe to call multiple times
 /// against the same category).
 pub(crate) fn bencode_info_hash(bytes: &[u8]) -> Option<String> {
-    let key = b"4:info";
-    let start = find_subslice(bytes, key)? + key.len();
-    let end = bencode_end(bytes, start)?;
-    let info_slice = &bytes[start..end];
-    let mut hasher = sha1_smol::Sha1::new();
-    hasher.update(info_slice);
-    Some(hasher.digest().to_string())
-}
-
-fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|w| w == needle)
-}
-
-/// Given a bencoded value starting at `start`, return the index
-/// just past its end. Handles dicts (`d...e`), lists (`l...e`),
-/// ints (`i...e`), and byte-strings (`N:...`) — the full bencode
-/// grammar. Returns `None` on malformed input.
-fn bencode_end(bytes: &[u8], start: usize) -> Option<usize> {
-    let mut i = start;
-    if i >= bytes.len() {
-        return None;
-    }
-    match bytes[i] {
-        b'd' | b'l' => {
-            i += 1;
-            while i < bytes.len() && bytes[i] != b'e' {
-                i = bencode_end(bytes, i)?;
-            }
-            if i < bytes.len() { Some(i + 1) } else { None }
-        }
-        b'i' => {
-            let e = find_subslice(&bytes[i..], b"e")? + i;
-            Some(e + 1)
-        }
-        b'0'..=b'9' => {
-            let colon = bytes[i..].iter().position(|&b| b == b':')? + i;
-            let len_str = std::str::from_utf8(&bytes[i..colon]).ok()?;
-            let len: usize = len_str.parse().ok()?;
-            Some(colon + 1 + len)
-        }
-        _ => None,
-    }
+    crate::services::torrent_file::torrent_info_hash(bytes)
 }
 
 fn build_inner(name: &str, with_name_file: bool) -> Option<(tempfile::TempDir, PathBuf)> {
@@ -230,4 +185,60 @@ fn build_inner(name: &str, with_name_file: bool) -> Option<(tempfile::TempDir, P
         String::from_utf8_lossy(&output.stderr)
     );
     Some((tmp, torrent_path))
+}
+
+/// Release URLs every client must refuse before sending anything: local
+/// paths (Transmission's `filename` and rTorrent's `load.start_verbose`
+/// would read them on the client's machine), other schemes, and strings
+/// that aren't URLs at all.
+const NON_URL_RELEASES: &[&str] = &[
+    "file:///etc/passwd",
+    "/config/torrents/planted.torrent",
+    "ftp://tracker.example/x.torrent",
+    "javascript:alert(1)",
+    "not-a-url",
+    "",
+];
+
+/// Drive every trait add method with each of [`NON_URL_RELEASES`] and
+/// assert `check_release_url` refused it with no request reaching
+/// `server`.
+pub(crate) async fn assert_refuses_non_url_releases(
+    client: &dyn super::DownloadClient,
+    server: &wiremock::MockServer,
+) {
+    const HASH: &str = "aabbccddeeff00112233445566778899aabbccdd";
+    let sent = || async { server.received_requests().await.map_or(0, |r| r.len()) };
+    let before = sent().await;
+    for url in NON_URL_RELEASES {
+        let refused = |method: &str, err: Option<String>| {
+            let err = err.unwrap_or_else(|| panic!("{method} accepted {url:?}"));
+            assert!(
+                err.starts_with("add rejected url="),
+                "{method} {url:?}: {err}"
+            );
+        };
+        refused("add_torrent", client.add_torrent(url, HASH).await.err());
+        refused(
+            "add_torrent_paused",
+            client.add_torrent_paused(url, HASH).await.err(),
+        );
+        refused(
+            "add_torrent_returning_id",
+            client.add_torrent_returning_id(url, HASH).await.err(),
+        );
+        let mut pick = |_: &[String]| -> Option<Vec<usize>> { None };
+        refused(
+            "add_torrent_with_file_filter",
+            client
+                .add_torrent_with_file_filter(url, HASH, &mut pick)
+                .await
+                .err(),
+        );
+    }
+    assert_eq!(
+        sent().await,
+        before,
+        "a refused URL must not reach the client"
+    );
 }

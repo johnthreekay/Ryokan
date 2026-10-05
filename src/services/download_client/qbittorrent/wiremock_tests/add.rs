@@ -122,3 +122,46 @@ async fn form_body_contains_urls_and_category_keys() {
     // Dropping `server` here runs Mock's `expect(1)` check — panics
     // if the matcher wasn't hit exactly once.
 }
+
+#[tokio::test]
+async fn refuses_a_non_url_release_before_any_request() {
+    let (server, client) = super::fixture::new_fixture().await;
+    crate::services::download_client::test_helpers::assert_refuses_non_url_releases(
+        &client, &server,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_hash_already_in_the_client_is_never_reported_as_added() {
+    // qBittorrent 4.x answers `Ok.` to a duplicate add, and the file
+    // picker read `Added` as "ours", so its cancel deleted the existing
+    // torrent with its data. The client asks first and never adds.
+    let (server, client) = new_fixture().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v2/torrents/add"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("Ok."))
+        .expect(0)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/torrents/info"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {
+                "hash": HASH,
+                "name": "Another grab's download",
+                "size": 1000,
+                "progress": 0.5,
+                "dlspeed": 0,
+                "state": "downloading",
+                "category": "ryokan-test",
+                "eta": 0,
+                "save_path": "/downloads",
+                "content_path": "/downloads/Existing"
+            }
+        ])))
+        .mount(&server)
+        .await;
+    let outcome = client.add_torrent(MAGNET, HASH).await.expect("add");
+    assert_eq!(outcome, AddOutcome::AlreadyPresent);
+}

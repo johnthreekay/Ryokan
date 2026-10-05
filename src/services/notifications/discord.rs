@@ -209,7 +209,7 @@ async fn post_payload(webhook_url: &str, payload: &Value) -> Result<TestSendResu
         Err(e) if e.is_timeout() => {
             return Err("Discord POST timed out".into());
         }
-        Err(e) => return Err(format!("Discord POST failed: {e}")),
+        Err(e) => return Err(format!("Discord POST failed: {}", e.without_url())),
     };
     let status = response.status();
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {

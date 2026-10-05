@@ -221,9 +221,15 @@ mod from_tracked {
         let row = series::get_by_id(&db, series_id).await.unwrap().unwrap();
 
         let cfg = Config::default();
-        let out = build_sonarr_series_from_tracked(&row, None, /*tmdb_id=*/ 5555, &cfg).await;
+        let ids = crate::handlers::sonarr_compat::helpers::ShimIds {
+            tvdb_id: 5555,
+            tvdb_season: 1,
+            tmdb_id: 7777,
+        };
+        let out = build_sonarr_series_from_tracked(&row, None, ids, &cfg).await;
         assert_eq!(out.title, "Show Title", "expected romaji fallback");
         assert_eq!(out.tvdb_id, 5555);
+        assert_eq!(out.tmdb_id, 7777, "the TMDB id has its own field");
         assert!(out.monitored);
         assert_eq!(out.seasons.len(), 1);
         // No detail provided ⇒ rating zero.
@@ -239,7 +245,12 @@ mod from_tracked {
         let row = series::get_by_id(&db, series_id).await.unwrap().unwrap();
         let detail = detail_with_score(2, Some(90));
         let cfg = Config::default();
-        let out = build_sonarr_series_from_tracked(&row, Some(&detail), 0, &cfg).await;
+        let ids = crate::handlers::sonarr_compat::helpers::ShimIds {
+            tvdb_id: 0,
+            tvdb_season: 1,
+            tmdb_id: 0,
+        };
+        let out = build_sonarr_series_from_tracked(&row, Some(&detail), ids, &cfg).await;
         // 0-100 ÷ 10 = 9.0 (Sonarr's 0-10 scale).
         assert_eq!(out.ratings.value, 9.0);
     }
@@ -257,7 +268,12 @@ mod from_tracked {
             .unwrap();
         let row = series::get_by_id(&db, series_id).await.unwrap().unwrap();
         let cfg = Config::default();
-        let out = build_sonarr_series_from_tracked(&row, None, 0, &cfg).await;
+        let ids = crate::handlers::sonarr_compat::helpers::ShimIds {
+            tvdb_id: 0,
+            tvdb_season: 1,
+            tmdb_id: 0,
+        };
+        let out = build_sonarr_series_from_tracked(&row, None, ids, &cfg).await;
         assert!(!out.monitored);
         assert!(!out.seasons[0].monitored);
     }
@@ -294,8 +310,13 @@ mod from_search {
         // monitored=true, no on-disk file count. Title slug encodes
         // the AL id so it survives renames.
         let cfg = Config::default();
-        let out =
-            build_sonarr_series_from_search(&entry(), "English Title", 9001, None, &cfg).await;
+        let ids = crate::handlers::sonarr_compat::helpers::ShimIds {
+            tvdb_id: 9001,
+            tvdb_season: 2,
+            tmdb_id: 1,
+        };
+        let out = build_sonarr_series_from_search(&entry(), "English Title", ids, None, &cfg).await;
+        assert_eq!(out.seasons[0].season_number, 2, "the TVDB season");
         assert_eq!(out.id, 0);
         assert!(out.monitored);
         assert_eq!(out.title, "English Title");
@@ -314,8 +335,13 @@ mod from_search {
         // tweak to the regex doesn't accidentally start carrying
         // diacritics through.
         let cfg = Config::default();
+        let ids = crate::handlers::sonarr_compat::helpers::ShimIds {
+            tvdb_id: 0,
+            tvdb_season: 1,
+            tmdb_id: 0,
+        };
         let out =
-            build_sonarr_series_from_search(&entry(), "Foo: Bar - Part 2!", 0, None, &cfg).await;
+            build_sonarr_series_from_search(&entry(), "Foo: Bar - Part 2!", ids, None, &cfg).await;
         assert_eq!(out.clean_title, "foobarpart2");
     }
 }

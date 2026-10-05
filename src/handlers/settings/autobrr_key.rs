@@ -47,6 +47,10 @@ pub async fn settings_autobrr_regenerate_key(
     State(state): State<AppState>,
     HxRequest(is_htmx): HxRequest,
 ) -> Response {
+    // Read-modify-write of the whole config row: under the same lock as
+    // every other settings save, or a concurrent save of another tab
+    // writes back its stale copy over this change.
+    let _guard = super::CONFIG_WRITE_LOCK.lock().await;
     // Read the existing config to preserve every other field —
     // this handler must rotate ONLY the autobrr_api_key.
     let mut cfg = match config::get_config(&state.db).await {

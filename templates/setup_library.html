@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %} - Set up your library{% endblock %}
+
+{% block content %}
+{# First-run step after /setup (handlers::settings::setup_library).
+   Saving turns post-processing on; Skip leaves it off. The Jellyfin
+   Test button is the Integrations tab's, against the same endpoint. #}
+<div class="setup-library">
+    <div class="page-header">
+        <h2>Set up your library</h2>
+    </div>
+    <p class="cf-section-desc">Ryokan renames finished downloads and places them in your media library, the folder Jellyfin reads. If you don't have a media library yet, skip this step and set it up later in Settings → General.</p>
+    {% if let Some(err) = error %}
+        <div class="alert alert-error" role="alert">{{ err }}</div>
+    {% endif %}
+    <form method="post" action="/setup/library" class="settings-form">
+        <div class="cf-section">
+            <h3>Media library</h3>
+            <div class="form-group">
+                <label for="media_root">Media Root Path</label>
+                <input type="text" name="media_root" id="media_root" value="{{ media_root }}" placeholder="/data/media/anime" required>
+                <span class="form-hint">Each series gets a folder in here. In Docker this is a path inside the container, on a mounted volume.</span>
+            </div>
+            <div class="form-group">
+                <label for="post_processing_mode">File operation mode</label>
+                <select name="post_processing_mode" id="post_processing_mode">
+                    <option value="hardlink" {% if post_processing_mode == "hardlink" %}selected{% endif %}>Hardlink (recommended; preserves seeding, no extra disk space)</option>
+                    <option value="copy" {% if post_processing_mode == "copy" %}selected{% endif %}>Copy (safe across filesystems, uses extra disk space)</option>
+                    <option value="move" {% if post_processing_mode == "move" %}selected{% endif %}>Move (frees download space, breaks seeding)</option>
+                </select>
+                <span class="form-hint">A hardlink needs the downloads and the library on one filesystem and, in Docker, one mount: mount a single folder that holds both (such as <code>/data</code>) rather than one for each. Ryokan falls back to copy when a hardlink fails.</span>
+            </div>
+        </div>
+
+        <div class="cf-section">
+            <h3>Jellyfin <span class="form-hint">optional</span></h3>
+            <p class="cf-section-desc">With Jellyfin connected, Ryokan refreshes its library after each import. Leave both fields empty if you don't use Jellyfin.</p>
+            <div class="form-group">
+                <label for="jellyfin_url">URL</label>
+                <input type="text" name="jellyfin_url" id="jellyfin_url" value="{{ jellyfin_url }}" placeholder="http://jellyfin:8096">
+            </div>
+            <div class="form-group">
+                <label for="jellyfin_api_key">API Key</label>
+                <input type="password" name="jellyfin_api_key" id="jellyfin_api_key" autocomplete="new-password" placeholder="{% if jellyfin_key_saved %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% endif %}">
+                <span class="form-hint">Create one in Jellyfin under Dashboard → API Keys.</span>
+            </div>
+            <div class="settings-inline-actions">
+                <button type="button" class="btn btn-secondary"
+                        hx-post="/api/jellyfin/test"
+                        hx-include="closest form"
+                        hx-target="#jellyfin-test-result"
+                        hx-swap="innerHTML"
+                        hx-disable="this">Test</button>
+                <span id="jellyfin-test-result" class="form-hint" aria-live="polite"></span>
+            </div>
+        </div>
+
+        <div class="settings-inline-actions">
+            <button type="submit" class="btn btn-primary">Save and continue</button>
+            {% if saved %}
+                <a href="/" class="btn btn-secondary">Continue</a>
+            {% else %}
+                <a href="/" class="btn btn-secondary">Skip for now</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+{% endblock %}

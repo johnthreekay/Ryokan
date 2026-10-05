@@ -28,7 +28,7 @@ use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, monitoring, series};
 use crate::services::{anilist, auto_search, logger, media, progress};
 
-use super::super::reconcile::{maybe_hydrate_cumulative_offset, resolve_series_context};
+use super::super::reconcile::{maybe_hydrate_cumulative_offset, resolve_series_context_by};
 
 /// Issue #102 — gate the per-target loop in
 /// `run_auto_search_targets_with_upgrades` (and the parallel
@@ -144,6 +144,7 @@ pub async fn run_auto_search_targets(
     run_auto_search_targets_with_upgrades(
         state,
         request_id,
+        false,
         targets,
         allow_batch,
         series_id,
@@ -178,6 +179,19 @@ pub struct AutoSearchQuery {
     /// mode, where an on-disk episode is never monitored.
     #[serde(default)]
     pub include_disk_upgrades: bool,
+    /// `?by=anilist`: the path id is an AniList id (the page of a series
+    /// not in the library), never an internal one. See
+    /// `SeriesIdKind`; without it the id is read as an internal id
+    /// first, and an untracked series' search ran for whichever library
+    /// series had that internal id.
+    #[serde(default)]
+    pub by: Option<String>,
+}
+
+impl AutoSearchQuery {
+    fn by_anilist(&self) -> bool {
+        self.by.as_deref() == Some("anilist")
+    }
 }
 
 /// Pick a user-facing title for progress toasts. Prefers the English
@@ -285,9 +299,12 @@ async fn emit_auto_search_terminal(
     }
 }
 
+/// `by_anilist` says `request_id` is an AniList id (`?by=anilist`, see
+/// [`AutoSearchQuery::by`]); otherwise it is read internal-first.
 async fn run_auto_search_targets_with_upgrades(
     state: &AppState,
     request_id: i64,
+    by_anilist: bool,
     targets: Vec<auto_search::SearchTarget>,
     allow_batch: bool,
     series_id: Option<i64>,
@@ -316,7 +333,7 @@ async fn run_auto_search_targets_with_upgrades(
         .unwrap_or_default();
     let upgrade_policy = crate::services::source::UpgradePolicy::from_config(&cfg);
 
-    let (_, _, detail) = resolve_series_context(&state.db, request_id)
+    let (_, _, detail) = resolve_series_context_by(&state.db, request_id, by_anilist)
         .await
         .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
 
@@ -992,9 +1009,11 @@ pub async fn auto_search_series(
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .unwrap_or_default();
 
-    let (tracked_row, provider_id, detail) = resolve_series_context(&state.db, request_id)
-        .await
-        .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
+    let by_anilist = q.by_anilist();
+    let (tracked_row, provider_id, detail) =
+        resolve_series_context_by(&state.db, request_id, by_anilist)
+            .await
+            .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
 
     let tracked = if let Some(row) = tracked_row {
         Some(row)
@@ -1124,6 +1143,7 @@ pub async fn auto_search_series(
         let result = run_auto_search_targets_with_upgrades(
             &state_clone,
             request_id,
+            by_anilist,
             targets,
             true,
             series_id_for_grab,
@@ -1177,7 +1197,8 @@ pub async fn auto_search_episode(
         )
         .await;
     }
-    let (tracked_row, _, detail) = resolve_series_context(&state.db, request_id)
+    let by_anilist = q.by_anilist();
+    let (tracked_row, _, detail) = resolve_series_context_by(&state.db, request_id, by_anilist)
         .await
         .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
 
@@ -1216,12 +1237,14 @@ pub async fn auto_search_episode(
     let state_clone = state.clone();
     let progress_for_task = progress_handle.clone();
     let handle = tokio::spawn(progress::run_with_progress(progress_for_task, async move {
-        let result = run_auto_search_targets(
+        let result = run_auto_search_targets_with_upgrades(
             &state_clone,
             request_id,
+            by_anilist,
             vec![target],
             false,
             series_id_for_grab,
+            UpgradeContext::default(),
         )
         .await;
         emit_auto_search_terminal(&result).await;

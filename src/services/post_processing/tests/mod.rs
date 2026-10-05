@@ -13,11 +13,11 @@
 //!     returns early without stepping on the first's state.
 //!
 //! Cross-filesystem test paths (EXDEV hardlink fallback, cross-fs
-//! move via `.ryokan-tmp`) are intentionally out of scope — they
-//! require a second mounted filesystem to produce the errno, which
-//! CI runners don't guarantee. The hardlink-on-fail path is still
-//! covered by integration observation when the release binary runs
-//! against a real download directory.
+//! move via `.ryokan-tmp`) need a second mounted filesystem to
+//! produce the errno, which CI runners don't guarantee. The one
+//! exception is `file_ops.rs`'s hardlink-fallback report test, which
+//! uses `/dev/shm` where it is its own filesystem and skips itself
+//! elsewhere; the cross-fs move stays out of scope.
 
 mod batch_import_live;
 mod batch_preflight;

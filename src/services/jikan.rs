@@ -8,6 +8,7 @@ use tokio::sync::RwLock;
 
 use crate::models::log::LogCategory;
 use crate::services::anilist::{AnimeDetail, AnimeEntry, RelatedEntry, StreamingEpisode};
+use crate::services::http_body::CappedBody;
 use crate::services::logger;
 
 /// Default base URL for the MAL metadata fallback. Tenrai's v1 API is a
@@ -17,6 +18,9 @@ use crate::services::logger;
 /// Point `JIKAN_API_BASE` at any Jikan-v4-compatible base (e.g. a
 /// self-hosted Jikan) to override.
 const JIKAN_API: &str = "https://api.tenrai.org/v1";
+
+/// Most episode-list pages fetched for one series (100 episodes each).
+const MAX_EPISODE_PAGES: i32 = 50;
 
 /// Cache TTL in seconds (7 days).
 const CACHE_TTL_SECS: i64 = 7 * 24 * 60 * 60;
@@ -124,7 +128,7 @@ async fn get_text_with_retry(client: &reqwest::Client, url: &str) -> Result<Stri
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok());
         let text = resp
-            .text()
+            .text_capped()
             .await
             .map_err(|e| format!("Failed to read Jikan response: {}", e))?;
 
@@ -355,7 +359,7 @@ pub async fn search_anime(query: &str) -> Result<Vec<AnimeEntry>, String> {
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());
     let text = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("Failed to read Jikan search response: {}", e))?;
 
@@ -385,7 +389,9 @@ pub async fn search_anime(query: &str) -> Result<Vec<AnimeEntry>, String> {
                 format,
                 status,
                 status_display,
-                episodes: anime.episodes.filter(|&n| n > 0),
+                episodes: anime
+                    .episodes
+                    .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
                 season_year: None, // Jikan search results don't include year
                 source: "mal".to_string(),
                 // MAL ships a 0-10 float; AnimeEntry stores 0-100 to
@@ -469,7 +475,9 @@ async fn fetch_relation_card_detail(mal_id: i64, fallback_name: &str) -> Related
         format,
         status,
         status_display,
-        episodes: anime.episodes.filter(|&n| n > 0),
+        episodes: anime
+            .episodes
+            .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
         relation_type: String::new(),
         season_year: anime.year,
         media_type: "ANIME".to_string(),
@@ -675,7 +683,9 @@ pub async fn get_anime_detail(mal_id: i64) -> Result<AnimeDetail, String> {
         format,
         status,
         status_display,
-        episodes: anime.episodes.filter(|&n| n > 0),
+        episodes: anime
+            .episodes
+            .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
         duration,
         season: anime.season.unwrap_or_default().to_uppercase(),
         season_year: anime.year,
@@ -686,7 +696,9 @@ pub async fn get_anime_detail(mal_id: i64) -> Result<AnimeDetail, String> {
         average_score_display: anime.score.map(format_ten_point_score),
         score_is_ten_point: true,
         score_class: score_class(anime.score.map(|s| s.round() as i32), true),
-        next_airing_episode: next_airing.and_then(|(ep, _)| ep),
+        next_airing_episode: next_airing
+            .and_then(|(ep, _)| ep)
+            .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
         next_airing_at: next_airing.and_then(|(_, ts)| ts),
         synonyms: Vec::new(),
         streaming_episodes: anime
@@ -1035,11 +1047,9 @@ async fn fetch_from_jikan(mal_id: i64) -> Result<HashMap<i32, EpisodeInfo>, Stri
 
         for (idx, ep) in body.data.iter().enumerate() {
             let aired = ep.aired.as_deref().unwrap_or("").to_string();
-            let aired_short = if aired.len() >= 10 {
-                aired[..10].to_string()
-            } else {
-                aired
-            };
+            // `get`, not `[..10]`: a byte 10 inside a multi-byte character
+            // (provider data) used to panic the episode fetch.
+            let aired_short = aired.get(..10).unwrap_or(&aired).to_string();
 
             let number = ep.episode_id.unwrap_or((page - 1) * 100 + idx as i32 + 1);
             let title = ep.title.clone().unwrap_or_default();
@@ -1059,6 +1069,18 @@ async fn fetch_from_jikan(mal_id: i64) -> Result<HashMap<i32, EpisodeInfo>, Stri
         // off the payload size instead: Jikan serves 100 episodes per page,
         // so anything smaller means we're past the last full page.
         if body.data.len() < 100 {
+            break;
+        }
+        // The loop otherwise ends only on a short page, and episode
+        // numbers are derived from `page`, so an API that ignores
+        // `?page=` repeated page 1 forever: an endless loop holding the
+        // metadata sweep's lock. 50 pages is 5,000 episodes.
+        if page >= MAX_EPISODE_PAGES {
+            tracing::warn!(
+                target: "ryokan::jikan",
+                mal_id,
+                "episode list still full at page {page}; stopping"
+            );
             break;
         }
 

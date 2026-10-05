@@ -19,7 +19,7 @@ use wiremock::{Mock, ResponseTemplate};
 use super::fixture::new_fixture;
 use crate::services::download_client::{DownloadClient, SeedRules};
 
-const HASH: &str = "abc1234567";
+const HASH: &str = "aabbccddeeff00112233445566778899aabbccdd";
 
 #[tokio::test]
 async fn seed_rules_with_ratio_only_passes_minus_two_for_time() {

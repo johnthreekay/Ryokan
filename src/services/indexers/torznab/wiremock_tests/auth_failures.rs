@@ -68,3 +68,20 @@ async fn http_200_with_error_body_surfaces_error_code() {
         "error must surface code + category: {err}"
     );
 }
+
+#[tokio::test]
+async fn a_failed_request_never_reports_the_api_key() {
+    // reqwest's error text includes the full request URL, and the
+    // torznab URL carries `apikey=`. The error reached "indexer down"
+    // notifications (Discord), System -> Logs, and the poll-error column.
+    let (_server, client) = super::fixture::new_fixture_with_row(|row| {
+        row.url = "http://127.0.0.1:1/api".to_string();
+    })
+    .await;
+    let err = crate::services::indexers::Indexer::caps(&client)
+        .await
+        .expect_err("nothing listens on port 1");
+    assert!(err.starts_with("indexer request failed"), "{err}");
+    assert!(!err.contains(super::fixture::TEST_API_KEY), "{err}");
+    assert!(!err.contains("apikey"), "{err}");
+}

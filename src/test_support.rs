@@ -234,6 +234,7 @@ pub async fn logged_in_session(db: &SqlitePool) -> (AppState, String) {
 /// * `GET /setup` — public setup page render
 /// * `POST /setup` — public setup submit (wrapped in `csrf_public`)
 /// * `GET /api/health` — protected health check (wrapped in `require_auth`)
+/// * `POST /logout` — protected logout (wrapped in `require_auth`)
 ///
 /// Later test waves extend this helper — add new routes to the
 /// matching route group (public vs protected) and re-merge.
@@ -253,6 +254,12 @@ pub fn handler_router(state: AppState) -> Router {
 
     let protected_routes = Router::new()
         .route("/api/health", get(handlers::settings::api_health))
+        .route(
+            "/setup/library",
+            get(handlers::settings::setup_library::setup_library_page)
+                .post(handlers::settings::setup_library::setup_library_submit),
+        )
+        .route("/logout", axum::routing::post(handlers::auth::logout))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             handlers::auth::require_auth,
@@ -706,6 +713,12 @@ window.addEventListener('DOMContentLoaded', function () {
                 "/api/downloads/blocklist/remove",
                 post(crate::handlers::downloads::api_blocklist_remove),
             )
+            // The queue's poll and its Pause button.
+            .route("/api/torrents", get(crate::handlers::search::get_torrents))
+            .route(
+                "/api/downloads/pause",
+                post(crate::handlers::downloads::api_pause_torrent),
+            )
             .route(
                 "/api/library/misgrabs/{id}/restore",
                 post(crate::handlers::library::misgrabs::restore_misgrab),
@@ -744,9 +757,22 @@ window.addEventListener('DOMContentLoaded', function () {
             // up each page's distinct `{% block page_css %}` link.
             // Phase D pentagon-nav test exercises every route here.
             .route("/", get(crate::handlers::library::pages::index))
+            // First-run library step
+            // (`tests/htmx_browser_e2e_setup_library.rs`).
+            .route(
+                "/setup/library",
+                get(crate::handlers::settings::setup_library::setup_library_page)
+                    .post(crate::handlers::settings::setup_library::setup_library_submit),
+            )
+            // The library's add-series Monitor Episodes dialog posts
+            // here (`tests/htmx_browser_e2e_add_series_monitor.rs`).
+            .route(
+                "/api/library/monitoring",
+                post(crate::handlers::library::crud::set_monitoring),
+            )
             .route("/search", get(crate::handlers::search::search_page))
             .route("/system", get(crate::handlers::system::system_page))
-            // Phase D's logout-flow test follows the GET → /logout
+            // Phase D's logout-flow test follows the POST /logout
             // → 303 /login chain, so the logout handler needs to be
             // reachable. /logout must be inside the protected layer
             // (the auth middleware reads the cookie before clearing
@@ -756,7 +782,7 @@ window.addEventListener('DOMContentLoaded', function () {
             // identically here as in production, so the assertion
             // that subsequent navs land on `/login` reflects the
             // genuine middleware redirect, not a mocked path.
-            .route("/logout", get(crate::handlers::auth::logout))
+            .route("/logout", post(crate::handlers::auth::logout))
             // Issue #129 completion — per-tab subform handlers
             // (`/settings/general`, `/settings/quality`,
             // `/settings/integrations`). Mounted here so the

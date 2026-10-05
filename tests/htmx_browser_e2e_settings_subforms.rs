@@ -52,9 +52,9 @@ async fn seed_config_distinct(db: &SqlitePool) {
         jellyfin_url: "http://seed-integrations.local:8096".to_string(),
         jellyfin_api_key: "seed-jellyfin-key".to_string(),
         sonarr_enabled: true,
-        sonarr_api_key: "seed-sonarr-key".to_string(),
+        sonarr_api_key: "seed-sonarr-key-0123456789".to_string(),
         radarr_enabled: false,
-        radarr_api_key: "seed-radarr-key".to_string(),
+        radarr_api_key: "seed-radarr-key-0123456789".to_string(),
         grab_preview_mode: "never".to_string(),
         external_sync_interval_minutes: 90,
 
@@ -188,7 +188,7 @@ async fn general_save_persists_swaps_in_place_and_isolates_other_tabs() {
         assert_eq!(cfg.jellyfin_url, "http://seed-integrations.local:8096");
         assert_eq!(cfg.jellyfin_api_key, "seed-jellyfin-key");
         assert!(cfg.sonarr_enabled);
-        assert_eq!(cfg.sonarr_api_key, "seed-sonarr-key");
+        assert_eq!(cfg.sonarr_api_key, "seed-sonarr-key-0123456789");
         assert_eq!(cfg.preferred_groups, "SeedGroup1, SeedGroup2");
         assert_eq!(cfg.preferred_resolution, "720");
         assert_eq!(cfg.cutoff_source, "bluray_remux");
@@ -316,6 +316,8 @@ async fn integrations_save_persists_swaps_in_place_and_isolates_other_tabs() {
         // unbound) so the integrations side effect surfaces a
         // failure notice in the toast — verifies the side effect
         // fires without depending on a live Jellyfin instance.
+        // A new address needs the key typed again: the stored key is
+        // write-only and never sent to an address it wasn't saved for.
         client
             .execute(
                 r#"
@@ -323,6 +325,10 @@ async fn integrations_save_persists_swaps_in_place_and_isolates_other_tabs() {
                 if (!inp) throw new Error('jellyfin_url input not found');
                 inp.value = 'http://127.0.0.1:1';
                 inp.dispatchEvent(new Event('input', { bubbles: true }));
+                const key = document.getElementById('jellyfin_api_key');
+                if (!key) throw new Error('jellyfin_api_key input not found');
+                if (key.value !== '') throw new Error('the stored key rendered into the page');
+                key.value = 'retyped-jellyfin-key';
                 "#,
                 vec![],
             )
@@ -377,12 +383,12 @@ async fn integrations_save_persists_swaps_in_place_and_isolates_other_tabs() {
             .into());
         }
 
+        assert_eq!(cfg.jellyfin_api_key, "retyped-jellyfin-key");
         // Other Integrations fields stayed at their seeded values.
-        assert_eq!(cfg.jellyfin_api_key, "seed-jellyfin-key");
         assert!(cfg.sonarr_enabled);
-        assert_eq!(cfg.sonarr_api_key, "seed-sonarr-key");
+        assert_eq!(cfg.sonarr_api_key, "seed-sonarr-key-0123456789");
         assert!(!cfg.radarr_enabled);
-        assert_eq!(cfg.radarr_api_key, "seed-radarr-key");
+        assert_eq!(cfg.radarr_api_key, "seed-radarr-key-0123456789");
         assert_eq!(cfg.grab_preview_mode, "never");
         assert_eq!(cfg.external_sync_interval_minutes, 90);
         Ok::<(), Box<dyn std::error::Error>>(())

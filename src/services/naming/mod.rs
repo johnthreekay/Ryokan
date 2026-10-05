@@ -42,6 +42,9 @@ mod tests;
 
 pub const DEFAULT_SERIES_FOLDER_FORMAT: &str = "{series.title}";
 pub const DEFAULT_SEASON_FOLDER_FORMAT: &str = "Season {season.number:00}";
+/// Widest zero-pad a token may ask for (`{episode.number:0000}` is 4).
+const MAX_PAD: usize = 16;
+
 pub const DEFAULT_EPISODE_FILE_FORMAT: &str =
     "{series.title} - S{season.number:00}E{episode.number:00} - {episode.title}{ext}";
 
@@ -238,6 +241,14 @@ fn parse_template(template: &str) -> Result<Vec<Piece<'_>>, String> {
                 };
                 let pad = match spec {
                     None => 0,
+                    // `format!("{n:0pad$}")` panics past u16::MAX, and no
+                    // file name needs more than a few digits.
+                    Some(s) if s.len() > MAX_PAD => {
+                        return Err(format!(
+                            "{{{name}:...}} pads to {} digits; {MAX_PAD} is the most supported",
+                            s.len()
+                        ));
+                    }
                     Some(s) if !s.is_empty() && s.bytes().all(|b| b == b'0') => s.len(),
                     Some(s) => {
                         return Err(format!(
@@ -653,7 +664,10 @@ pub fn render(kind: TemplateKind, template: &str, ctx: &NameContext) -> Result<R
             stem = sanitize_folder_name(&cut_to_bytes(&stem, budget));
         }
     }
-    if stem.is_empty() {
+    // A dots-only stem is `.` or `..` as a path component: the media
+    // root or its parent. `sanitize_folder_name` can't produce one any
+    // more; this keeps any future path from doing so.
+    if stem.is_empty() || stem.chars().all(|c| c == '.') {
         return Err(format!(
             "the {} template renders to an empty name",
             kind.label()

@@ -43,6 +43,54 @@ pub mod transmission;
 
 pub mod sabnzbd;
 
+/// Refuse a release URL that isn't `magnet:`, `http://` or `https://`
+/// before it reaches a client. Every client implementation calls this
+/// first in each of its add methods, before any request. The URLs come
+/// from feeds, indexer results and autobrr announces, and the client
+/// fetches them from inside the network; Transmission's `filename` and
+/// rTorrent's `load.start_verbose` also take a path on the client's own
+/// machine, and rTorrent answers success for a string it can't load.
+/// Schemes are matched case-insensitively (RFC 3986).
+/// `raw` as a lowercase info-hash, or `None` unless it is 40 (v1) or
+/// 64 (v2) hex characters. Hashes come from indexers, feeds, autobrr
+/// and the browser, and qBittorrent reads `hashes=` specially: `all`
+/// is every torrent in the client and `a|b` is a list. A stored `all`
+/// turned a later "delete with files" for one grab into deleting every
+/// torrent qBittorrent holds. Sources normalize through this, and the
+/// qBittorrent client refuses anything else ([`check_info_hash`]).
+pub(crate) fn normalize_info_hash(raw: &str) -> Option<String> {
+    let hash = raw.trim();
+    ((hash.len() == 40 || hash.len() == 64) && hash.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then(|| hash.to_ascii_lowercase())
+}
+
+/// Refuse a hash [`normalize_info_hash`] wouldn't accept, before it is
+/// sent to a client.
+pub(crate) fn check_info_hash(hash: &str) -> Result<(), String> {
+    if normalize_info_hash(hash).is_some() {
+        Ok(())
+    } else {
+        let shown: String = hash.chars().take(80).collect();
+        Err(format!(
+            "refused info-hash {shown:?}: expected 40 or 64 hex characters"
+        ))
+    }
+}
+
+pub(crate) fn check_release_url(url: &str) -> Result<(), String> {
+    let lowered = url.trim().to_ascii_lowercase();
+    if lowered.starts_with("magnet:")
+        || lowered.starts_with("http://")
+        || lowered.starts_with("https://")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "add rejected url={url}: expected a magnet:, http:// or https:// scheme"
+        ))
+    }
+}
+
 #[async_trait]
 pub trait DownloadClient: Send + Sync {
     /// Test connection and return the client's version string.
@@ -775,6 +823,28 @@ pub fn compute_content_path(save_path: &str, files: &[DownloadFile]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_info_hash_accepts_only_v1_and_v2_hex() {
+        let v1 = "AABBCCDDEEFF00112233445566778899AABBCCDD";
+        assert_eq!(
+            normalize_info_hash(v1).as_deref(),
+            Some(&*v1.to_ascii_lowercase())
+        );
+        let v2 = "ab".repeat(32);
+        assert_eq!(normalize_info_hash(&v2).as_deref(), Some(v2.as_str()));
+        for bad in [
+            "all",
+            "aabbccddeeff00112233445566778899aabbccdd|ffeeddccbbaa00112233445566778899aabbccdd",
+            "zzbbccddeeff00112233445566778899aabbccdd",
+            "aabbccddeeff00112233445566778899aabbccd",
+            "SABnzbd_nzo_abc123",
+            "",
+        ] {
+            assert_eq!(normalize_info_hash(bad), None, "{bad}");
+            assert!(check_info_hash(bad).is_err(), "{bad}");
+        }
+    }
 
     fn f(name: &str) -> DownloadFile {
         DownloadFile {

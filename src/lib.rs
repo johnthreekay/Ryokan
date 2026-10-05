@@ -106,24 +106,32 @@ impl DownloadClientPool {
 /// lock releases before any HTTP calls.
 pub type DownloadClientsCache = Arc<RwLock<Arc<DownloadClientPool>>>;
 
-/// Cache-busting stamp for `/static/` URLs: the crate version plus the
-/// process start time, appended as `?v=` by every `<script src>` and
-/// `<link href>` in the templates. Static files are served with
-/// `Cache-Control: max-age=3600`, so without it a browser kept running
-/// the previous release's JS and CSS against the new HTML for up to an
-/// hour after an upgrade (and a developer saw nothing change after a
-/// rebuild). The start time, not just the version, so a dev-tag image
-/// or a rebuilt binary at the same version still refreshes; the cost
-/// is one re-download of the bundle per restart.
+/// Cache-busting stamp for `/static/` URLs, appended as `?v=` by every
+/// `<script src>` and `<link href>` in the templates. Static files are
+/// served with `Cache-Control: max-age=3600`, so without it a browser
+/// kept running the previous release's JS and CSS against the new HTML
+/// for up to an hour after an upgrade (and a developer saw nothing
+/// change after a rebuild). Random per process, so any restart (a new
+/// release, a dev-tag image, a rebuilt binary at the same version)
+/// refreshes. It used to be the crate version plus the start time,
+/// which the unauthenticated login page handed to anyone who asked;
+/// the cost either way is one re-download of the bundle per restart.
 pub fn asset_version() -> &'static str {
-    static STAMP: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-        let started = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        format!("{}-{}", env!("CARGO_PKG_VERSION"), started)
-    });
+    static STAMP: std::sync::LazyLock<String> =
+        std::sync::LazyLock::new(|| hex::encode(rand::random::<[u8; 6]>()));
     STAMP.as_str()
+}
+
+#[cfg(test)]
+mod asset_version_tests {
+    #[test]
+    fn the_stamp_names_neither_the_version_nor_the_boot_time() {
+        let stamp = super::asset_version();
+        assert_eq!(stamp.len(), 12);
+        assert!(stamp.bytes().all(|b| b.is_ascii_hexdigit()));
+        assert!(!stamp.contains(env!("CARGO_PKG_VERSION")));
+        assert_eq!(stamp, super::asset_version(), "one stamp per process");
+    }
 }
 
 /// Shared application state available to all handlers. Lives in the

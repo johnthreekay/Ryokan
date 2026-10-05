@@ -643,3 +643,41 @@ fn absolute_token_ignores_a_non_positive_number() {
         "Sousou no Frieren - S01E07 - Like a Fairy Tale.mkv"
     );
 }
+
+#[test]
+fn a_pad_wider_than_any_number_needs_is_refused_not_a_panic() {
+    // `format!("{n:0pad$}")` panics past 65535; a stored template like
+    // this (a restored backup) panicked every import.
+    let template = format!(
+        "{{series.title}} - S{{season.number:{}}}E{{episode.number:00}}{{ext}}",
+        "0".repeat(65_536)
+    );
+    let err = validate(TemplateKind::EpisodeFile, &template).unwrap_err();
+    assert!(err.contains("most supported"), "{err}");
+    assert!(
+        validate(
+            TemplateKind::EpisodeFile,
+            "{series.title} - S{season.number:00}E{episode.number:0000}{ext}"
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn a_dots_only_title_falls_back_instead_of_naming_the_media_root() {
+    // " . .. . " used to render the series folder "..", and " . . . "
+    // the media root itself (".").
+    for title in [" . .. . ", " . . . ", "\u{3000}..\u{3000}"] {
+        let names = SeriesNames {
+            title,
+            romaji: title,
+            english: title,
+            native: "",
+            year: None,
+        };
+        let folder = series_folder(DEFAULT_SERIES_FOLDER_FORMAT, "english", &names);
+        assert_eq!(folder, "Unknown Series", "{title:?}");
+        let season = season_folder("{series.title}", "english", &names, 1);
+        assert!(!season.chars().all(|c| c == '.'), "{title:?} -> {season:?}");
+    }
+}

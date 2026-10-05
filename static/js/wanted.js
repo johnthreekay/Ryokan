@@ -183,7 +183,7 @@
         if (label) label.textContent = item.getAttribute('data-label') || item.textContent.trim();
         closeDropdowns();
         var kind = item.getAttribute('data-isearch-choice');
-        var base = '/api/series/' + isearch.anilistId;
+        var base = '/api/series/' + isearch.seriesId;
         if (kind === 'batch') {
             isearch.pickEpisodes = isearch.episodes.slice();
             loadWantedSearch(base + '/interactive-search-batch?from=wanted', 'Searching indexers for batch releases');
@@ -354,8 +354,8 @@
         btn.disabled = true;
         btn.textContent = 'Grabbing…';
         var endpoint = epNum === null
-            ? '/api/series/' + isearch.anilistId + '/grab-batch'
-            : '/api/series/' + isearch.anilistId + '/grab/' + epNum;
+            ? '/api/series/' + isearch.seriesId + '/grab-batch'
+            : '/api/series/' + isearch.seriesId + '/grab/' + epNum;
         fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

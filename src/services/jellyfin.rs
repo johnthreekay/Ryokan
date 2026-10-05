@@ -60,6 +60,15 @@ impl JellyfinClient {
         &self.base_url
     }
 
+    /// `Authorization: MediaBrowser Token="<key>"`, the scheme every
+    /// Jellyfin 10.x accepts. The legacy `X-Emby-Token` header this used
+    /// to send is off by default since 10.11 (`EnableLegacyAuthorization`)
+    /// and answers 401, so every library refresh after an import failed
+    /// on current servers.
+    fn auth_header(&self) -> String {
+        format!("MediaBrowser Token=\"{}\"", self.api_key.replace('"', ""))
+    }
+
     async fn get<T: for<'de> Deserialize<'de>>(
         &self,
         endpoint: &str,
@@ -73,7 +82,7 @@ impl JellyfinClient {
         let mut req = self
             .http
             .get(url)
-            .header("X-Emby-Token", &self.api_key)
+            .header(reqwest::header::AUTHORIZATION, self.auth_header())
             .header("Accept", "application/json");
 
         if !query.is_empty() {
@@ -85,6 +94,9 @@ impl JellyfinClient {
             .await
             .map_err(|e| format!("Jellyfin request failed: {}", e))?;
         let status = resp.status();
+        if let Some(rejected) = rejected_key(status) {
+            return Err(rejected);
+        }
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(format!(
@@ -108,12 +120,15 @@ impl JellyfinClient {
         let resp = self
             .http
             .post(url)
-            .header("X-Emby-Token", &self.api_key)
+            .header(reqwest::header::AUTHORIZATION, self.auth_header())
             .send()
             .await
             .map_err(|e| format!("Jellyfin request failed: {}", e))?;
 
         let status = resp.status();
+        if let Some(rejected) = rejected_key(status) {
+            return Err(rejected);
+        }
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(format!(
@@ -126,8 +141,11 @@ impl JellyfinClient {
         Ok(())
     }
 
+    /// `/System/Info` needs the key; `/System/Info/Public`, which this
+    /// used to call, answers anyone, so a wrong key read as "Connected"
+    /// while every real request failed.
     pub async fn test_connection(&self) -> Result<SystemInfo, String> {
-        self.get("/System/Info/Public", &[]).await
+        self.get("/System/Info", &[]).await
     }
 
     pub async fn refresh_library(&self) -> Result<(), String> {
@@ -156,10 +174,27 @@ impl JellyfinClient {
     }
 }
 
+/// The error for a key Jellyfin turned away, so the message names the
+/// fix instead of an empty 401 body.
+fn rejected_key(status: reqwest::StatusCode) -> Option<String> {
+    matches!(
+        status,
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+    )
+    .then(|| {
+        format!(
+            "Jellyfin rejected the API key ({status}). Create one under Dashboard → API Keys and paste it in Settings → Connections."
+        )
+    })
+}
+
 fn truncate(s: &str) -> String {
     let trimmed = s.trim();
-    if trimmed.len() > 180 {
-        format!("{}...", &trimmed[..180])
+    // Cut at a character, not a byte: byte 180 inside a multi-byte
+    // character (a Japanese path in a Jellyfin error) panicked
+    // post-processing's library refresh.
+    if let Some((cut, _)) = trimmed.char_indices().nth(180) {
+        format!("{}...", &trimmed[..cut])
     } else if trimmed.is_empty() {
         "empty response".to_string()
     } else {
@@ -206,7 +241,7 @@ fn normalize_base_url(base_url: &str) -> String {
 /// the same shape as the original 172.x bug. RFC 3986 requires
 /// brackets around an IPv6 host in a URL anyway, so any input that
 /// would lose the bracketless prefix path was already malformed.
-fn is_local_address(lower: &str) -> bool {
+pub(crate) fn is_local_address(lower: &str) -> bool {
     if lower.starts_with("localhost") || lower.starts_with("127.") {
         return true;
     }
@@ -232,6 +267,85 @@ fn is_local_address(lower: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Auth: the header Jellyfin 10.11+ accepts ────────────────────
+
+    use wiremock::matchers::{header, header_exists, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// A server that answers only the `Authorization: MediaBrowser`
+    /// scheme with the right key, the way Jellyfin 12 does with legacy
+    /// authorization off.
+    async fn jellyfin_12(key: &str) -> MockServer {
+        let server = MockServer::start().await;
+        let good = format!("MediaBrowser Token=\"{key}\"");
+        Mock::given(method("GET"))
+            .and(path("/System/Info"))
+            .and(header("Authorization", good.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ServerName": "jf", "Version": "12.1.0", "Id": "abc"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/Library/Refresh"))
+            .and(header("Authorization", good.as_str()))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+        // Like the real server, the public info answers anyone.
+        Mock::given(method("GET"))
+            .and(path("/System/Info/Public"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ServerName": "jf", "Version": "12.1.0", "Id": "abc"
+            })))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        // Anything else (the legacy header, a wrong key) is a 401.
+        Mock::given(header_exists("X-Emby-Token"))
+            .respond_with(ResponseTemplate::new(401))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(401))
+            .with_priority(10)
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn requests_use_the_mediabrowser_authorization_header() {
+        let server = jellyfin_12("k123").await;
+        let client = JellyfinClient::new(&server.uri(), "k123");
+        let info = client.test_connection().await.expect("connects");
+        assert_eq!(info.version, "12.1.0");
+        client
+            .refresh_library()
+            .await
+            .expect("refresh is authorized");
+    }
+
+    #[tokio::test]
+    async fn a_wrong_key_fails_the_test_with_a_clear_message() {
+        // The test used to call /System/Info/Public, which needs no key,
+        // so a made-up key reported "Connected".
+        let server = jellyfin_12("k123").await;
+        let client = JellyfinClient::new(&server.uri(), "not-the-key");
+        let err = client.test_connection().await.expect_err("rejected");
+        assert!(err.contains("rejected the API key"), "{err}");
+    }
+
+    #[test]
+    fn truncate_cuts_at_a_character_not_a_byte() {
+        // 179 ASCII bytes then a 3-byte character straddling byte 180.
+        let body = format!("{}日本語のパス", "x".repeat(179));
+        let out = truncate(&body);
+        assert!(out.ends_with("..."), "{out}");
+        assert!(out.chars().count() <= 183);
+    }
 
     // ── truncate ─────────────────────────────────────────────────────
 

@@ -19,6 +19,14 @@
 # regenerates and commits the licenses-file refresh as a follow-up
 # `chore:` commit. Same pattern Sonarr / `dependabot` use for similar
 # auto-maintenance tasks.
+#
+# Supply chain: the third-party actions (toolchain, cache, cargo-about
+# install) run in `generate`, which holds a read-only token; an action
+# can read the job's token through its own input defaults, so keeping
+# them out of the job that can push is what matters. `commit` holds
+# `contents: write` and runs only first-party actions. Every action is
+# pinned to a commit SHA, and install-action's manifest at that commit
+# pins cargo-about's version and checksum.
 
 name: Refresh third-party license notices
 
@@ -39,25 +47,23 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  refresh:
+  generate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Need the full token so the auto-commit push back to `dev`
-          # uses the workflow's own credentials. The default
-          # `GITHUB_TOKEN` is fine; we don't need a PAT because we're
-          # pushing to the same repo / non-protected branch.
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: license-notices
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
           tool: cargo-about
       - name: Regenerate licenses/THIRD_PARTY_LICENSES.html
@@ -65,6 +71,27 @@ jobs:
           cargo about generate \
             -c about.toml about.hbs \
             -o licenses/THIRD_PARTY_LICENSES.html
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: third-party-licenses
+          path: licenses/THIRD_PARTY_LICENSES.html
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    needs: generate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      # The checkout keeps the workflow's own token for the push back to
+      # `dev`; no PAT is needed for the same repo.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: third-party-licenses
+          path: licenses
       - name: Commit and push if changed
         run: |
           if git diff --quiet licenses/THIRD_PARTY_LICENSES.html; then

@@ -33,7 +33,7 @@ const RSS_BODY: &str = r#"<?xml version="1.0"?>
   <enclosure url="https://server/dl/abc?apikey=KEY" length="1500000000" type="application/x-bittorrent"/>
   <torznab:attr name="seeders" value="42"/>
   <torznab:attr name="leechers" value="1"/>
-  <torznab:attr name="infohash" value="ABCDEF1234567890"/>
+  <torznab:attr name="infohash" value="ABCDEF1234567890ABCDEF1234567890ABCDEF12"/>
   <torznab:attr name="category" value="5070"/>
 </item>
 </channel>
@@ -63,7 +63,7 @@ async fn fetch_indexer_rss_polls_tvsearch_with_empty_q_and_anime_cat() {
     let it = &items[0];
     assert_eq!(it.title, "[GroupX] Synthetic.Show.S01E01.1080p.WEB");
     assert_eq!(it.guid, "g-rss-1");
-    assert_eq!(it.info_hash, "abcdef1234567890");
+    assert_eq!(it.info_hash, "abcdef1234567890abcdef1234567890abcdef12");
     // `torrent` mirrors the enclosure URL (Release::link). The
     // grab path picks `magnet` first, then `torrent`; here the
     // magnet field is empty so the torrent URL is what gets used.

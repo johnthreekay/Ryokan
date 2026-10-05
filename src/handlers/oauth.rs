@@ -43,13 +43,14 @@ use axum::{
     Json,
     extract::State,
     http::StatusCode,
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Redirect, Response},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
 use crate::models::external_accounts::{self, LinkRequest, PROVIDER_ANILIST, PROVIDER_MAL};
 use crate::models::log::LogCategory;
+use crate::services::http_body::CappedBody;
 use crate::services::{anilist, external_sync, logger, oauth_state, progress};
 
 /// AniList public client ID. Registered 2026-04-22 against the
@@ -88,7 +89,13 @@ const PKCE_VERIFIER_LEN: usize = 43;
 
 // ── AniList start ────────────────────────────────────────────────────
 
-pub async fn anilist_start(State(state): State<AppState>) -> Redirect {
+pub async fn anilist_start(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if let Some(refused) = crate::handlers::auth::refuse_cross_site_get(&headers) {
+        return refused;
+    }
     // Generate a CSRF state nonce and stash it. The verifier slot
     // stays empty for AL (implicit grant has no PKCE step), but we
     // reuse the OAuthAttempt shape so both providers go through the
@@ -119,12 +126,15 @@ pub async fn anilist_start(State(state): State<AppState>) -> Redirect {
         ANILIST_CLIENT_ID,
         urlencoding::encode(&csrf_state),
     );
-    Redirect::temporary(&url)
+    Redirect::temporary(&url).into_response()
 }
 
 // ── MAL start ────────────────────────────────────────────────────────
 
-pub async fn mal_start(State(state): State<AppState>) -> Redirect {
+pub async fn mal_start(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
+    if let Some(refused) = crate::handlers::auth::refuse_cross_site_get(&headers) {
+        return refused;
+    }
     // Fresh PKCE verifier + CSRF state nonce per /start call.
     // Overwrites any prior pending MAL attempt (decision matched in
     // services::oauth_state — second stash wins, first is discarded).
@@ -148,7 +158,7 @@ pub async fn mal_start(State(state): State<AppState>) -> Redirect {
         urlencoding::encode(MAL_REDIRECT_URI),
         urlencoding::encode(&csrf_state),
     );
-    Redirect::temporary(&url)
+    Redirect::temporary(&url).into_response()
 }
 
 // ── AniList submit ───────────────────────────────────────────────────
@@ -400,10 +410,35 @@ pub async fn unlink(State(state): State<AppState>) -> impl IntoResponse {
             StatusCode::OK,
             Json(serde_json::json!({"ok": true, "already": "unlinked"})),
         ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false, "error": e})),
-        ),
+        // The tokens don't decrypt (the encryption key changed), which
+        // used to make unlinking impossible: unlink by id instead.
+        Err(e) => {
+            match external_accounts::current_row(&state.db).await {
+                Ok(Some((id, provider, username))) => {
+                    if let Err(e) = external_accounts::unlink(&state.db, id).await {
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({"ok": false, "error": e})),
+                        );
+                    }
+                    logger::info(
+                    &state.db,
+                    LogCategory::ExternalSync,
+                    &format!("Unlinked {provider} account '{username}' (its tokens no longer decrypted)"),
+                    &format!("external_account_id={id}"),
+                )
+                .await;
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({"ok": true, "provider": provider})),
+                    )
+                }
+                _ => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"ok": false, "error": e})),
+                ),
+            }
+        }
     }
 }
 
@@ -532,7 +567,7 @@ async fn fetch_anilist_viewer(token: &str) -> Result<AniListViewer, String> {
     let status = resp.status();
     let headers = resp.headers().clone();
     let body = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("AniList response read failed: {e}"))?;
     // Participate in the same rate-limit cooldown the in-module AL
@@ -607,7 +642,7 @@ async fn exchange_mal_code(code: &str, verifier: &str) -> Result<MalTokenRespons
 
     let status = resp.status();
     let body = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("MAL token response read failed: {e}"))?;
     if !status.is_success() {
@@ -648,7 +683,7 @@ async fn fetch_mal_me(token: &str) -> Result<MalUserInfo, String> {
 
     let status = resp.status();
     let body = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("MAL @me response read failed: {e}"))?;
     if !status.is_success() {
@@ -863,7 +898,7 @@ mod tests {
         crate::models::migrate(&db).await.unwrap();
         let app_state = crate::test_support::build_test_app_state(db, None);
 
-        let redirect = anilist_start(State(app_state.clone())).await;
+        let redirect = anilist_start(State(app_state.clone()), axum::http::HeaderMap::new()).await;
         let resp = redirect.into_response();
         assert_eq!(resp.status(), axum::http::StatusCode::TEMPORARY_REDIRECT);
         let location = resp
@@ -916,7 +951,7 @@ mod tests {
         crate::models::migrate(&db).await.unwrap();
         let state = crate::test_support::build_test_app_state(db, None);
 
-        let redirect = mal_start(State(state.clone())).await;
+        let redirect = mal_start(State(state.clone()), axum::http::HeaderMap::new()).await;
         let resp = redirect.into_response();
         let location = resp
             .headers()

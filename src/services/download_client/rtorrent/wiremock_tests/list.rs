@@ -179,3 +179,18 @@ async fn list_scoped_marks_a_closed_complete_item_as_done_seeding() {
         "closed without the ignore flag: a restart or a custom action"
     );
 }
+
+#[tokio::test]
+async fn list_scoped_reads_an_empty_client() {
+    // A fresh rtorrent 0.16 answers with `<data/>`; the Downloads page
+    // used to say the client couldn't be reached.
+    let (server, client) = new_fixture().await;
+    install_xmlrpc(
+        &server,
+        "d.multicall2",
+        r#"<?xml version="1.0"?><methodResponse><params><param><value><array><data/></array></value></param></params></methodResponse>"#.to_string(),
+    )
+    .await;
+    let items = client.list_scoped().await.expect("an empty list is a list");
+    assert!(items.is_empty());
+}

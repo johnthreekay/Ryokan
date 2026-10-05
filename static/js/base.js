@@ -1004,32 +1004,6 @@ window.ryokanCopy = function (text, btn) {
     }
 };
 
-// Toggle a `type=password` input between masked and revealed. The
-// click button's text is flipped between "Show" / "Hide" to mirror
-// the masked state; rebinds friendly to per-page lifecycle since
-// the function lives on `window` and reads the input by id.
-window.ryokanTogglePassword = function (inputId, btn) {
-    var input = document.getElementById(inputId);
-    if (!input) return;
-    if (input.type === 'password') {
-        input.type = 'text';
-        if (btn) btn.textContent = 'Hide';
-    } else {
-        input.type = 'password';
-        if (btn) btn.textContent = 'Show';
-    }
-};
-
-// Copy an input element's current value to the clipboard, falling
-// back to the same select-and-prompt path `ryokanCopy` uses on
-// non-secure contexts. `btn` is unused (toast handles feedback) but
-// kept for signature parity with `ryokanCopy(text, btn)`.
-window.ryokanCopyInput = function (inputId, btn) {
-    var input = document.getElementById(inputId);
-    if (!input || !input.value) return Promise.resolve();
-    return window.ryokanCopy(input.value, btn);
-};
-
 // Relative timestamp rendering. Any element with a `data-ts` attribute
 // gets its textContent replaced by a humanized delta ("3m ago",
 // "2h ago", "in 58s") and its `title` set to an absolute UTC string.

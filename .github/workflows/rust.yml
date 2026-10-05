@@ -39,11 +39,12 @@ jobs:
     # eating the runner) before it burns hours of runner minutes.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
+          toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       # mold is the linker pinned in `.cargo/config.toml` for linux
       # targets; CI's ubuntu-latest doesn't ship it preinstalled, so
       # without this step every link step would fail with
@@ -54,12 +55,12 @@ jobs:
       - name: Install mold + clang
         run: sudo apt-get update && sudo apt-get install -y mold clang
       # nextest is the parallel test runner pinned in `.config/nextest.toml`
-      # — runs ~1900 tests roughly 2x faster than `cargo test` thanks
+      # — runs ~3,100 tests roughly 2x faster than `cargo test` thanks
       # to a process-per-test scheduler and a less serialized fixture
       # boot. taiki-e/install-action grabs a precompiled binary from
       # the GitHub release rather than building from source (~20s vs
       # ~2 min via cargo install).
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
           tool: cargo-nextest
       - name: Format check
@@ -75,8 +76,11 @@ jobs:
         # Without the flag those tests silently skip (via
         # `required-features` in Cargo.toml) and clippy wouldn't touch
         # them — running with the flag means the lint pass covers both
-        # unit and integration targets.
-        run: cargo clippy --workspace --all-targets --features test-support -- -D warnings
+        # unit and integration targets. `--locked` as in the build and
+        # test steps: clippy runs first, and without it a Cargo.lock
+        # that no longer matches Cargo.toml is rewritten here, after
+        # which the later `--locked` steps pass against the new file.
+        run: cargo clippy --workspace --all-targets --locked --features test-support -- -D warnings
       - name: Build
         run: cargo build --workspace --locked --verbose
       - name: Test
@@ -84,9 +88,9 @@ jobs:
         # tests under `tests/` actually execute. Release builds and
         # Docker images deliberately leave the feature off so the test
         # helpers don't ship to production.
-        # `--profile ci` picks up the JUnit-output + retry-twice
-        # profile in `.config/nextest.toml` so flaky port-bind / DNS
-        # races don't fail the whole run.
+        # `--profile ci` picks up the retry-twice, no-fail-fast profile
+        # in `.config/nextest.toml` so flaky port-bind / DNS races don't
+        # fail the whole run.
         run: cargo nextest run --workspace --locked --features test-support --profile ci
 
   msrv:
@@ -105,9 +109,11 @@ jobs:
     # hung dep download.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.95.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: msrv
       # The repo's `.cargo/config.toml` pins clang+mold as the linker

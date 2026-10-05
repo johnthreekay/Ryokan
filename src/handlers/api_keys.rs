@@ -2,17 +2,18 @@
 //!
 //! Surfaced through the Settings → API Keys tab. Cookie-auth gated
 //! (the same `require_auth` middleware that wraps every other web-UI
-//! endpoint). The plaintext key is returned exactly once on `create`
-//! and is the only thing that needs special UX handling — the modal
-//! shows it, the user copies it, and a "I've saved it" confirm
-//! advances. Subsequent reads of the row don't surface the plaintext
-//! anywhere.
+//! endpoint). The plaintext comes back on `create` (the modal shows it
+//! for copying) and again from `reveal`, which backs the keys list's
+//! Show and Copy buttons. Both carry the site-wide `Cache-Control:
+//! no-store` from `handlers::security_headers`, so the key never lands
+//! in a browser's disk cache; don't give either a cache policy of its
+//! own. The list itself never includes the plaintext.
 //!
 //! ## Wire shapes
 //!
 //! - `GET /api/api-keys` → list of `ApiKeyView` (no plaintext, no hash).
 //! - `POST /api/api-keys` (form: name + scopes) → `CreatedKey { plaintext, view }`.
-//!   The plaintext is the only place this value is ever exposed.
+//! - `GET /api/api-keys/{id}/reveal` → `{ plaintext }`.
 //! - `POST /api/api-keys/{id}/toggle` (form: enabled) → updated `ApiKeyView`.
 //! - `POST /api/api-keys/{id}/delete` → 204.
 

@@ -4,27 +4,25 @@
 # Run the suite with `cargo nextest run --features test-support`.
 
 [profile.default]
-# Default `cargo test` retries failures once; nextest doesn't. Match
-# the more forgiving behavior so a flaky wiremock port-bind doesn't
-# fail the whole run.
+# Retry a failure once, so a flaky wiremock port-bind shows as FLAKY
+# instead of failing the whole run. (`cargo test` never retries; this
+# is nextest's own retry.)
 retries = 1
 
-# Show test output for failures only — clean signal during the
-# 1900-test pass, full detail when something breaks.
+# Show test output for failures only: clean signal during the
+# ~3,100-test pass, full detail when something breaks.
 failure-output = "immediate-final"
 success-output = "never"
 
 # Slow-test threshold: warn after 60s, terminate after 180s. Catches
 # a hung wiremock fixture or a deadlocked async test before the whole
 # CI run wedges. Live-smoke tests are `#[ignore]`'d and only run with
-# --ignored, so this never trips them.
+# --ignored; their longest wait is 60s, so the cap doesn't trip them.
 slow-timeout = { period = "60s", terminate-after = 3 }
 
 [profile.ci]
-# CI inherits default + adds JUnit output for GitHub Actions surfacing.
+# CI: one more retry, run everything even after a failure, and a
+# longer slow-test window (120s x 2 = 240s) for slower shared runners.
 retries = 2
 fail-fast = false
 slow-timeout = { period = "120s", terminate-after = 2 }
-
-[profile.ci.junit]
-path = "junit.xml"

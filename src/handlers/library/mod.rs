@@ -321,7 +321,11 @@ pub struct RelationGroup {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RelationCard {
+    /// The library series id when `tracked`, else the AniList id.
     pub id: i64,
+    /// In the library: the link carries the internal id; otherwise it
+    /// carries the AniList id and says so with `?by=anilist`.
+    pub tracked: bool,
     pub title: String,
     pub title_romaji: String,
     pub title_english: String,
@@ -330,6 +334,20 @@ pub struct RelationCard {
     pub format: String,
     pub status: String,
     pub episodes: Option<i32>,
+}
+
+/// `?by=anilist` on `/series/{id}` and `/api/series/{id}`: the id is an
+/// AniList id (a link to a series that may not be in the library),
+/// never an internal one. See `reconcile::resolve_series_request`.
+#[derive(Deserialize, Default)]
+pub struct SeriesIdKind {
+    pub by: Option<String>,
+}
+
+impl SeriesIdKind {
+    pub fn by_anilist(&self) -> bool {
+        self.by.as_deref() == Some("anilist")
+    }
 }
 
 #[derive(Deserialize, utoipa::IntoParams)]

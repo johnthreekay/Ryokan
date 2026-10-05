@@ -4,7 +4,8 @@
     "default": -10000,
     "french-multi-vf": 0,
     "french-multi-vo": 0,
-    "german": -35000
+    "german": 0,
+    "german-anime": 0
   },
   "name": "Bad Dual Groups",
   "includeCustomFormatWhenRenaming": false,
@@ -64,12 +65,39 @@
       }
     },
     {
+      "name": "C76",
+      "implementation": "ReleaseGroupSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "^(C76)$"
+      }
+    },
+    {
       "name": "Cory",
       "implementation": "ReleaseGroupSpecification",
       "negate": false,
       "required": false,
       "fields": {
         "value": "^(Cory)$"
+      }
+    },
+    {
+      "name": "CYPHER",
+      "implementation": "ReleaseGroupSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "^(CYPHER)$"
+      }
+    },
+    {
+      "name": "EniaHD",
+      "implementation": "ReleaseGroupSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "^(EniaHD)$"
       }
     },
     {
@@ -127,12 +155,30 @@
       }
     },
     {
+      "name": "MLH",
+      "implementation": "ReleaseGroupSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "^(MLH)$"
+      }
+    },
+    {
       "name": "N3G4N",
       "implementation": "ReleaseGroupSpecification",
       "negate": false,
       "required": false,
       "fields": {
         "value": "^(N3G4N)$"
+      }
+    },
+    {
+      "name": "OldT",
+      "implementation": "ReleaseGroupSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "^(OldT)$"
       }
     },
     {
@@ -223,6 +269,15 @@
       "required": false,
       "fields": {
         "value": "^(WTV)$"
+      }
+    },
+    {
+      "name": "XiQUEXiQUE",
+      "implementation": "ReleaseGroupSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "^(XiQUEXiQUE)$"
       }
     },
     {

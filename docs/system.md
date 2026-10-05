@@ -90,7 +90,7 @@ You can turn off automatic removal under Settings, General, "Remove and blocklis
 
 CRUD UI for outbound notification destinations. Two provider kinds:
 
-- **Webhook**: posts JSON to any HTTPS endpoint you configure (ntfy, Apprise, n8n, custom). Optional HMAC secret signs the body so receivers can verify it came from your Ryokan.
+- **Webhook**: posts JSON to any HTTPS endpoint you configure (ntfy, Apprise, n8n, custom). Optional HMAC secret signs the body so receivers can verify it came from your Ryokan. `X-Ryokan-Signature` is `sha256=` plus the HMAC-SHA256 of the body. `X-Ryokan-Signature-V2` is `t=<timestamp>,sha256=<hex>` over `<timestamp>.<body>`; verify that one and reject old timestamps to refuse replayed deliveries.
 - **Discord**: posts an embed to a Discord webhook URL you provide.
 
 Per-event opt-in matrix per provider: Grabbed, Imported, Import failed, Classifier needs review, Indexer down, Download client unreachable, Re-link required, Health (test).

@@ -244,6 +244,18 @@ if (!window.__ryokanSettingsTriggerListeners) {
     // `ryokan-indexer-test-result` via HX-Trigger from /api/indexers/test.
     // Used by both the modal-footer Test button (Add and Edit) and the
     // per-card Test button on the configured-indexer cards.
+    // Write-only secret fields (`handlers::secret_field`): blank keeps
+    // the saved value, so Clear posts the sentinel the server reads as
+    // "empty it" and shows that it will.
+    document.body.addEventListener('click', function (ev) {
+        const btn = ev.target.closest('[data-clear-secret]');
+        if (!btn) return;
+        const input = document.getElementById(btn.getAttribute('data-clear-secret'));
+        if (!input) return;
+        input.value = '__CLEAR__';
+        input.type = 'text';
+        input.placeholder = '[will be cleared on save]';
+    });
     document.body.addEventListener('ryokan-indexer-test-result', function (ev) {
         const detail = ev.detail || {};
         window.ryokanToast({
@@ -1272,6 +1284,7 @@ function clearExtLinkAttempt() {
     if (!_extLinkAttempt) return;
     window.removeEventListener('message', _extLinkAttempt.handler);
     if (_extLinkAttempt.timer) clearTimeout(_extLinkAttempt.timer);
+    if (_extLinkAttempt.hello) clearInterval(_extLinkAttempt.hello);
     _extLinkAttempt = null;
 }
 
@@ -1313,7 +1326,24 @@ function startExternalAccountLink(provider) {
     // popup navigates only to URLs we control (`/start` → AL/MAL
     // authorize → our gh-pages broker), so the standard tabnabbing
     // protections noopener provides aren't load-bearing here.
-    window.open(`/settings/oauth/${provider}/start`, '_blank');
+    const popup = window.open(`/settings/oauth/${provider}/start`, '_blank');
+
+    // The broker hands the token only to an origin that introduced
+    // itself and that the user then confirms on the broker page (any
+    // page can open the authorize URL in a popup, so `window.opener`
+    // alone proves nothing). Say hello until the hand-off lands or the
+    // attempt ends; addressed to the broker's origin, the message is
+    // dropped while the popup is still on Ryokan's /start or the
+    // provider's consent screen.
+    if (popup) {
+        _extLinkAttempt.hello = setInterval(() => {
+            if (popup.closed) {
+                clearInterval(_extLinkAttempt && _extLinkAttempt.hello);
+                return;
+            }
+            popup.postMessage({ type: 'ryokan-oauth-hello', provider }, EXT_BROKER_ORIGIN);
+        }, 500);
+    }
     openExternalAccountPasteModal(provider);
 }
 

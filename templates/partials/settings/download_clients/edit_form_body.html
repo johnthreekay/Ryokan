@@ -49,7 +49,15 @@
             </div>
             <div class="form-group">
                 <label for="dc-edit-password-{{ row.id }}" data-dc-password-label>{{ copy.password_label }}</label>
-                <input id="dc-edit-password-{{ row.id }}" type="{{ copy.password_type }}" name="password" autocomplete="new-password" value="{{ row.password }}" data-dc-password-input>
+                {# Write-only (`handlers::secret_field`): the saved value
+                   never reaches the page. Blank keeps it while the URL
+                   keeps its host; Clear posts the clear sentinel. #}
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input id="dc-edit-password-{{ row.id }}" type="{{ copy.password_type }}" name="password" autocomplete="new-password" placeholder="{% if !row.password.is_empty() %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% endif %}" data-dc-password-input style="flex:1">
+                    {% if !row.password.is_empty() %}
+                    <button type="button" class="btn btn-secondary" data-clear-secret="dc-edit-password-{{ row.id }}" style="white-space:nowrap">Clear</button>
+                    {% endif %}
+                </div>
                 <span class="form-hint" data-dc-password-hint{% if copy.password_hint.is_empty() %} style="display:none"{% endif %}>{{ copy.password_hint }}</span>
             </div>
         </div>

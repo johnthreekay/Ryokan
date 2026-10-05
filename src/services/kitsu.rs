@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::services::anilist::AnimeDetail;
 use crate::services::html::sanitize_rich_description;
+use crate::services::http_body::CappedBody;
 
 const KITSU_API_DEFAULT: &str = "https://kitsu.io/api/edge";
 
@@ -236,7 +237,7 @@ async fn fetch_collection<T: for<'de> serde::Deserialize<'de>>(
         .map_err(|e| format!("Kitsu request failed: {}", e))?
         .error_for_status()
         .map_err(|e| format!("Kitsu request failed: {}", e))?
-        .json::<CollectionResponse<T>>()
+        .json_capped::<CollectionResponse<T>>()
         .await
         .map_err(|e| format!("Failed to parse Kitsu response: {}", e))
 }
@@ -329,7 +330,9 @@ fn to_anime_detail(item: Candidate) -> AnimeDetail {
         format: item.subtype.to_ascii_uppercase(),
         status: item.status.to_ascii_uppercase().replace(' ', "_"),
         status_display: item.status.replace('-', " "),
-        episodes: item.episode_count.filter(|&n| n > 0),
+        episodes: item
+            .episode_count
+            .and_then(|n| crate::services::anilist::plausible_episode_count(n.into())),
         duration: item.episode_length,
         season: String::new(),
         season_year: parse_year(item.start_date.as_deref()),
@@ -414,7 +417,7 @@ async fn candidate_by_mal_id(mal_id: i64) -> Result<Option<Candidate>, String> {
         .map_err(|e| format!("Kitsu mapping request failed: {}", e))?;
 
     let body: MappingLookupResponse = resp
-        .json()
+        .json_capped()
         .await
         .map_err(|e| format!("Failed to parse Kitsu mapping response: {}", e))?;
 

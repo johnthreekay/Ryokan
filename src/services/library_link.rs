@@ -47,7 +47,7 @@
 use std::collections::HashSet;
 use std::sync::LazyLock;
 
-use anitomy::{Anitomy, ElementCategory};
+use anitomy::ElementCategory;
 
 use crate::AppState;
 use crate::models::log::LogCategory;
@@ -154,16 +154,7 @@ pub fn extract_anime_title(release_title: &str) -> Option<String> {
     // Defensive NUL strip — anitomy rejects NUL bytes; production
     // titles shouldn't contain them but a corrupted feed byte
     // shouldn't panic the resolver.
-    let clean = if release_title.contains('\0') {
-        release_title.replace('\0', "")
-    } else {
-        release_title.to_string()
-    };
-    let mut ani = Anitomy::new();
-    let elements = match ani.parse(&clean) {
-        Ok(e) => e,
-        Err(e) => e,
-    };
+    let elements = crate::services::media::anitomy_parse(release_title);
     elements
         .get(ElementCategory::AnimeTitle)
         .map(|s| s.trim().to_string())

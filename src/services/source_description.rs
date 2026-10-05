@@ -57,22 +57,39 @@ static LAST_FETCH: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::ne
 /// wraps an internal connection pool and is designed to be shared — creating
 /// a new one per request throws away any established keepalive connections
 /// and forces a fresh TCP (and TLS) handshake every time. Build it once and
-/// reuse it for the life of the process.
+/// reuse it for the life of the process. Redirects are followed only
+/// within the host they started on, so a redirect can't carry the fetch
+/// off Nyaa.
 static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .user_agent("Ryokan/0.1")
         .timeout(Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let same_host = attempt
+                .previous()
+                .first()
+                .is_some_and(|first| first.host_str() == attempt.url().host_str());
+            if same_host && attempt.previous().len() < 3 {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        }))
         .build()
         .expect("building the Nyaa description reqwest client should not fail")
 });
 
+/// A Nyaa listing page is ~50 KB.
+const DESCRIPTION_BODY_CAP: usize = 2 << 20;
+
 /// Classify a torrent by scraping its Nyaa description body.
 ///
 /// `info_hash` is the cache key (stable and content-addressed). `view_url`
-/// is the full Nyaa listing URL (`https://nyaa.si/view/{id}`) — it's only
-/// consulted on a cache miss. A cached empty string is a valid "we fetched
-/// it and the description was blank" state and produces no evidence; a
-/// cache miss plus a failed fetch also produces no evidence (logged warn).
+/// is the result's own link, consulted only on a cache miss and only when
+/// [`nyaa_view_url`] maps it to a Nyaa listing page; any other link is no
+/// evidence. A cached empty string is a valid "we fetched it and the
+/// description was blank" state and produces no evidence; a cache miss
+/// plus a failed fetch also produces no evidence (logged warn).
 pub async fn classify_description(
     db: &SqlitePool,
     info_hash: &str,
@@ -88,12 +105,24 @@ pub async fn classify_description(
     let description_text = match cached {
         Some(text) => text,
         None => {
-            let fetched = match fetch_description(view_url).await {
+            let Some(page) = nyaa_view_url(view_url) else {
+                // The host only: a torznab download link carries the
+                // indexer's `apikey=`.
+                tracing::debug!(
+                    target: "ryokan::classify",
+                    host = %link_host(view_url),
+                    "not a Nyaa listing link; skipping description fetch"
+                );
+                return Vec::new();
+            };
+            let fetched = match fetch_description(&page).await {
                 Ok(text) => text,
                 Err(err) => {
+                    // The page built from the link's id, not the link,
+                    // whose query string is the result's own.
                     tracing::warn!(
                         target: "ryokan::classify",
-                        url = view_url,
+                        url = %page,
                         error = %err,
                         "Nyaa description fetch failed"
                     );
@@ -108,22 +137,40 @@ pub async fn classify_description(
     scan_description_for_signals(&description_text)
 }
 
+/// The Nyaa listing page to read for `link`; see
+/// [`crate::services::nyaa::view_page_url`].
+fn nyaa_view_url(link: &str) -> Option<String> {
+    crate::services::nyaa::view_page_url(link)
+}
+
+/// The host of `link`, for a log line that must not carry the link
+/// itself; empty when it isn't a URL.
+fn link_host(link: &str) -> String {
+    reqwest::Url::parse(link.trim())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+fn nyaa_view_url_on(base: &str, link: &str) -> Option<String> {
+    crate::services::nyaa::view_page_url_on(base, link)
+}
+
 /// Fetch `view_url`, parse the response as HTML, and return the plain-text
 /// rendering of the `#torrent-description` block. All live fetches pass
 /// through the global rate limiter.
 async fn fetch_description(view_url: &str) -> Result<String, String> {
     rate_limit().await;
 
-    let html = HTTP_CLIENT
+    let resp = HTTP_CLIENT
         .get(view_url)
         .send()
         .await
-        .map_err(|e| format!("request failed: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("read body failed: {}", e))?;
+        .map_err(|e| format!("request failed: {}", e))?;
+    let body = crate::services::http_body::read_capped(resp, DESCRIPTION_BODY_CAP).await?;
 
-    Ok(extract_description_text(&html))
+    Ok(extract_description_text(&String::from_utf8_lossy(&body)))
 }
 
 /// Sleep until at least `MIN_FETCH_INTERVAL` has elapsed since the previous
@@ -613,5 +660,63 @@ Video: 1080p HEVC
         assert!(text.contains("BDMV"));
         assert!(!text.contains("chrome stuff"));
         assert!(!text.contains("footer"));
+    }
+
+    #[test]
+    fn nyaa_view_url_keeps_listing_pages_and_maps_download_links() {
+        let on = |link| nyaa_view_url_on("https://nyaa.si", link);
+        assert_eq!(
+            on("https://nyaa.si/view/1713886").as_deref(),
+            Some("https://nyaa.si/view/1713886")
+        );
+        assert_eq!(
+            on("https://NYAA.si/view/1713886#comments").as_deref(),
+            Some("https://nyaa.si/view/1713886")
+        );
+        assert_eq!(
+            on("https://nyaa.si/download/1713886.torrent").as_deref(),
+            Some("https://nyaa.si/view/1713886")
+        );
+        // The test seam: a wiremock base keeps its own origin.
+        assert_eq!(
+            nyaa_view_url_on("http://127.0.0.1:4545", "http://127.0.0.1:4545/view/9").as_deref(),
+            Some("http://127.0.0.1:4545/view/9")
+        );
+    }
+
+    #[test]
+    fn nyaa_view_url_refuses_every_other_link() {
+        for link in [
+            // A torznab download URL, which carries the indexer's key.
+            "http://prowlarr:9696/1/download?apikey=secret&link=abc",
+            // Internal and metadata addresses a feed could name.
+            "http://127.0.0.1:8080/view/1",
+            "http://169.254.169.254/latest/meta-data/",
+            // Nyaa look-alikes and the wrong scheme or port.
+            "https://nyaa.si.evil.example/view/1",
+            "https://evil.example/nyaa.si/view/1",
+            "http://nyaa.si/view/1",
+            "https://nyaa.si:8443/view/1",
+            // Nyaa, but not a listing page.
+            "https://nyaa.si/view/1/edit",
+            "https://nyaa.si/view/",
+            "https://nyaa.si/?q=x",
+            "https://nyaa.si/download/1.torrent.exe",
+            // SeaDex leaves relative and non-URL strings here.
+            "/torrents.php?id=1",
+            "Chihiro",
+            "",
+        ] {
+            assert_eq!(nyaa_view_url_on("https://nyaa.si", link), None, "{link}");
+        }
+    }
+
+    #[test]
+    fn a_refused_link_is_logged_by_host_alone() {
+        assert_eq!(
+            link_host("http://prowlarr:9696/1/download?apikey=secret&link=abc"),
+            "prowlarr"
+        );
+        assert_eq!(link_host("Chihiro"), "");
     }
 }

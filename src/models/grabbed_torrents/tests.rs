@@ -816,8 +816,12 @@ async fn is_blocklisted_release_matches_hash_or_series_title() {
         1
     );
     assert!(
-        is_blocklisted_release(&db, other, "bbbb", "anything").await,
-        "hash blocks globally"
+        is_blocklisted_release(&db, sid, "bbbb", "anything").await,
+        "a misgrab's hash blocks its own series"
+    );
+    assert!(
+        !is_blocklisted_release(&db, other, "bbbb", "anything").await,
+        "a misgrab means 'not this series', so the release stays open to the others"
     );
     assert!(
         is_blocklisted_release(&db, sid, "", "[G] Show - 02").await,
@@ -848,6 +852,25 @@ async fn is_blocklisted_release_matches_hash_or_series_title() {
             .await
             .rejects("", "[G] Show - 02")
     );
+    assert!(
+        !blocklist_snapshot(&db, 2).await.rejects("bbbb", "x"),
+        "a misgrab's hash is not blocked for another series"
+    );
+    assert!(is_blocklisted_for(&db, "bbbb", Some(sid)).await.unwrap());
+    assert!(!is_blocklisted_for(&db, "bbbb", Some(other)).await.unwrap());
+    assert!(!is_blocklisted(&db, "bbbb").await.unwrap());
+
+    // Any other failure blocks the hash for every series.
+    record_grab(&db, "dddd", "[G] Show - 03", sid, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    mark_failed_by_hash_with_reason(&db, "dddd", "client_error")
+        .await
+        .unwrap();
+    assert!(is_blocklisted_release(&db, other, "dddd", "anything").await);
+    assert!(blocklist_snapshot(&db, 2).await.rejects("dddd", "x"));
+    assert!(is_blocklisted(&db, "dddd").await.unwrap());
 }
 
 #[tokio::test]
@@ -869,7 +892,7 @@ async fn whitelist_by_hash_marks_all_rows_for_hash() {
         .unwrap();
     assert_ne!(old, fresh);
     assert!(!is_whitelisted_hash(&db, "cccc").await);
-    assert_eq!(whitelist_by_hash(&db, "cccc").await.unwrap(), 2);
+    assert_eq!(whitelist_by_hash(&db, "cccc", Some(sid)).await.unwrap(), 2);
     assert!(is_whitelisted_hash(&db, "cccc").await);
     assert_eq!(
         get_verification(&db, fresh).await.as_deref(),
@@ -879,6 +902,67 @@ async fn whitelist_by_hash_marks_all_rows_for_hash() {
         list_misgrabs(&db, "romaji").await.unwrap().is_empty(),
         "reviewed_at hides it"
     );
+}
+
+#[tokio::test]
+async fn unblocking_a_hash_for_one_series_keeps_another_series_misgrab_block() {
+    // The release was a misgrab for X ("not X") and failed for Z. The
+    // user unblocks it for Z in the picker. X's verdict still holds:
+    // clearing it let X's automatic searches grab the release again.
+    let db = misgrab_pool().await;
+    let x = misgrab_series(&db, 1, "Show X").await;
+    let z = misgrab_series(&db, 2, "Show Z").await;
+    let x_grab = record_grab(&db, "eeee", "[G] Show Z - 01", x, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    stamp_verification(&db, x_grab, "misgrab", "{}")
+        .await
+        .unwrap();
+    mark_failed_by_hash_with_reason(&db, "eeee", "misgrab")
+        .await
+        .unwrap();
+    let z_failed = record_grab(&db, "eeee", "[G] Show Z - 01", z, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+    mark_failed_with_reason(&db, z_failed, "client_error")
+        .await
+        .unwrap();
+    let z_fresh = record_grab(&db, "eeee", "[G] Show Z - 01", z, &[1], false)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        unblock_by_hash(&db, "eeee", z_fresh, Some(z))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(whitelist_by_hash(&db, "eeee", Some(z)).await.unwrap(), 2);
+
+    assert!(!is_blocklisted_for(&db, "eeee", Some(z)).await.unwrap());
+    assert!(is_blocklisted_for(&db, "eeee", Some(x)).await.unwrap());
+    assert!(blocklist_snapshot(&db, 1).await.rejects("eeee", "x"));
+    assert_eq!(
+        get_verification(&db, x_grab).await.as_deref(),
+        Some("misgrab")
+    );
+    assert_eq!(
+        list_misgrabs(&db, "romaji").await.unwrap().len(),
+        1,
+        "X's verdict stays on the Misgrabs tab"
+    );
+
+    // Restore of X's own misgrab (scoped to X) clears X's block.
+    assert_eq!(
+        unblock_by_hash(&db, "eeee", z_fresh, Some(x))
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(!is_blocklisted_for(&db, "eeee", Some(x)).await.unwrap());
 }
 
 #[tokio::test]
@@ -1020,4 +1104,63 @@ async fn mark_failed_with_reason_sets_state_and_reason() {
     assert_eq!(reason, "import_stalled");
     assert!(is_blocklisted(&db, "stall2").await.unwrap());
     assert!(get_all_pending(&db).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_grab_cancelled_during_the_import_stays_removed() {
+    // A copy-mode import runs for minutes; the user cancels meanwhile.
+    let db = crate::test_support::in_memory_pool().await;
+    let series_id = crate::test_support::seed_series(&db, 77, "Show").await;
+    let id = crate::test_support::seed_grabbed_torrent(
+        &db,
+        series_id,
+        "aabbccddeeff00112233445566778899aabbccdd",
+        "pack",
+        &[1],
+    )
+    .await;
+    mark_removed(&db, id).await.unwrap();
+    mark_imported(&db, id).await.unwrap();
+    let state: String = sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+        .bind(id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(state, "removed");
+}
+
+#[tokio::test]
+async fn only_another_series_live_grab_keeps_a_hash_in_use() {
+    // Series B once grabbed this release, and it was a misgrab there.
+    // That dead row used to count as B using the hash, so removing A
+    // with files left A's own download in the client.
+    let db = crate::test_support::in_memory_pool().await;
+    let a = crate::test_support::seed_series(&db, 1201, "Show A").await;
+    let b = crate::test_support::seed_series(&db, 1202, "Show B").await;
+    let hash = "c12fe1c06bba254a9dc9f519b335aa7c1367a88a";
+    let b_grab = crate::test_support::seed_grabbed_torrent(&db, b, hash, "rel", &[1]).await;
+    mark_failed_with_reason(&db, b_grab, "misgrab")
+        .await
+        .unwrap();
+    let a_grab = crate::test_support::seed_grabbed_torrent(&db, a, hash, "rel", &[1]).await;
+    assert!(!hash_in_use_elsewhere(&db, hash, a, a_grab).await);
+    for dead in ["removed", "replaced"] {
+        sqlx::query("UPDATE grabbed_torrents SET state = ? WHERE id = ?")
+            .bind(dead)
+            .bind(b_grab)
+            .execute(&db)
+            .await
+            .unwrap();
+        assert!(!hash_in_use_elsewhere(&db, hash, a, a_grab).await, "{dead}");
+    }
+
+    // The other way round, B's live grab keeps it, whatever state A's
+    // own row is in and however the hash is cased.
+    mark_failed(&db, a_grab).await.unwrap();
+    sqlx::query("UPDATE grabbed_torrents SET state = 'imported' WHERE id = ?")
+        .bind(b_grab)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert!(hash_in_use_elsewhere(&db, &hash.to_uppercase(), a, a_grab).await);
 }

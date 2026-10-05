@@ -158,10 +158,21 @@ pub(super) async fn maybe_hydrate_cumulative_offset(
     refreshed.or(Some(t))
 }
 
+/// The series a `/series/{id}` request names. Library links carry the
+/// internal id; a link to a series that may not be in the library
+/// (a relation card) carries its AniList id and says so with
+/// `?by=anilist`. Without that marker the id was tried as an internal
+/// id first, so a search for Cowboy Bebop (AniList 1) opened whatever
+/// series had internal id 1.
 async fn resolve_series_request(
     db: &SqlitePool,
     request_id: i64,
+    by_anilist: bool,
 ) -> Result<(Option<series::Series>, i64), sqlx::Error> {
+    if by_anilist {
+        let row = series::get_by_anilist_id(db, request_id).await?;
+        return Ok((row, request_id));
+    }
     if let Some(row) = series::get_by_id(db, request_id).await? {
         Ok((Some(row.clone()), row.anilist_id))
     } else if let Some(row) = series::get_by_anilist_id(db, request_id).await? {
@@ -280,7 +291,18 @@ pub(super) async fn resolve_series_context(
     db: &SqlitePool,
     request_id: i64,
 ) -> Result<(Option<series::Series>, i64, anilist::AnimeDetail), String> {
-    let (row, provider_id, detail) = resolve_series_context_raw(db, request_id).await?;
+    resolve_series_context_by(db, request_id, false).await
+}
+
+/// [`resolve_series_context`] for a request that says which kind of id
+/// it carries: `by_anilist` (a `?by=anilist` link to a series that may
+/// not be in the library) looks the id up as an AniList id only.
+pub(super) async fn resolve_series_context_by(
+    db: &SqlitePool,
+    request_id: i64,
+    by_anilist: bool,
+) -> Result<(Option<series::Series>, i64, anilist::AnimeDetail), String> {
+    let (row, provider_id, detail) = resolve_series_context_raw(db, request_id, by_anilist).await?;
     let alt = row
         .as_ref()
         .map(|s| s.alternate_titles.as_str())
@@ -292,9 +314,10 @@ pub(super) async fn resolve_series_context(
 async fn resolve_series_context_raw(
     db: &SqlitePool,
     request_id: i64,
+    by_anilist: bool,
 ) -> Result<(Option<series::Series>, i64, anilist::AnimeDetail), String> {
     let force_fallback = force_mal_fallback_enabled(db).await;
-    let (resolved_row, mut provider_id) = resolve_series_request(db, request_id)
+    let (resolved_row, mut provider_id) = resolve_series_request(db, request_id, by_anilist)
         .await
         .map_err(|e| e.to_string())?;
     let mut db_series = resolved_row.clone();
@@ -577,5 +600,31 @@ pub(crate) async fn populate_series_cover_urls<T, S, M>(
         if let Some(url) = url_map.get(key) {
             set_cover(item, url.clone());
         }
+    }
+}
+
+#[cfg(test)]
+mod series_id_kind_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn an_anilist_link_never_resolves_to_an_internal_id() {
+        // A library big enough that internal id 1 exists, and Cowboy
+        // Bebop (AniList 1) tracked as internal id 2. The relation card
+        // for Bebop links `/series/1?by=anilist`; without the marker
+        // the id was read as internal id 1, another show.
+        let db = crate::test_support::in_memory_pool().await;
+        let first = crate::test_support::seed_series(&db, 500, "Some Other Show").await;
+        let bebop = crate::test_support::seed_series(&db, 1, "Cowboy Bebop").await;
+        assert_eq!(first, 1, "the colliding internal id");
+
+        let (by_anilist, _) = resolve_series_request(&db, 1, true).await.unwrap();
+        assert_eq!(by_anilist.map(|s| s.id), Some(bebop));
+        let (by_internal, _) = resolve_series_request(&db, 1, false).await.unwrap();
+        assert_eq!(
+            by_internal.map(|s| s.id),
+            Some(first),
+            "unmarked ids stay internal-first"
+        );
     }
 }

@@ -36,6 +36,15 @@ var SD = new Proxy({}, {
     },
 });
 
+// `&by=anilist` for an `/api/series/${SD.id}/...` call when `SD.id` is
+// an AniList id (the page of a series not in the library), else ''.
+// Those endpoints read a bare id as a library id first, so an untracked
+// page's search ran for whichever library series had that internal id.
+// Append after a query string that already has a `?`.
+function seriesIdKindParam() {
+    return SD.idKind === 'anilist' ? '&by=anilist' : '';
+}
+
 // Title-language switching is handled entirely by CSS via the
 // `html[data-title-language]` attribute set by the inline head script
 // in base.html. No DOM walking here — doing it post-parse caused a
@@ -48,9 +57,16 @@ var SD = new Proxy({}, {
 // `series_*.js` file that renders user-controlled strings into
 // innerHTML — release titles, group names, file paths, etc.
 function escHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = String(s);
-    return d.innerHTML;
+    // Quotes too: these strings land in attributes (`title="..."`), and
+    // the old textContent -> innerHTML round trip left `"` alone, so a
+    // release title could close the attribute and add a handler.
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // Per-file size renderer for grab-history rows + episode-detail "Size"

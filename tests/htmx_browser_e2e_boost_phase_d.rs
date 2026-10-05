@@ -3,7 +3,7 @@
 //! Phase D scope per the hx-boost rollout plan:
 //!   - `<body hx-boost="true">` covers every plain `<a>` and `<form>`
 //!     site-wide
-//!   - `<a href="/logout" hx-boost="false">` opt-out
+//!   - `<form id="logout-form" hx-boost="false">` opt-out
 //!   - `htmx.config.historyEnableCache = false` so back/forward refetch
 //!     dynamic pages instead of restoring stale snapshots
 //!
@@ -150,14 +150,15 @@ async fn boost_navigates_pentagon_via_body_level_opt_in() {
     let _ = client.close().await;
 }
 
-/// **logout-opt-out** — `<a href="/logout" hx-boost="false">` must do
-/// a real document navigation, not a boosted swap. The logout flow
-/// hits a 303 to /login, the auth middleware redirects, the session
+/// **logout-opt-out** — the Logout button submits
+/// `<form id="logout-form" method="post" action="/logout" hx-boost="false">`,
+/// which must do a real document navigation, not a boosted swap. The
+/// logout flow hits a 303 to /login, the auth middleware redirects, the session
 /// cookie clears via `Set-Cookie: Max-Age=0` — none of that is
 /// boost-friendly. Verify by planting a window marker pre-click; a
 /// real nav wipes it.
 #[tokio::test]
-async fn logout_link_opt_out_does_real_document_nav() {
+async fn logout_button_opt_out_does_real_document_nav() {
     let client = match try_connect_browser().await {
         Ok(c) => c,
         Err(msg) => {
@@ -184,13 +185,13 @@ async fn logout_link_opt_out_does_real_document_nav() {
         .await
         .expect("plant marker");
 
-    let logout_link = client
+    let logout_button = client
         .wait()
         .at_most(Duration::from_secs(5))
-        .for_element(Locator::Css("a[href=\"/logout\"]"))
+        .for_element(Locator::Css("button.nav-logout"))
         .await
-        .expect("logout link");
-    logout_link.click().await.expect("click logout");
+        .expect("logout button");
+    logout_button.click().await.expect("click logout");
 
     // Logout → 303 → /login. Wait for the URL to settle.
     wait_for_path(&client, "/login", Duration::from_secs(5))
@@ -249,12 +250,19 @@ async fn boosted_nav_to_protected_page_with_invalidated_session_lands_on_login()
     let _ = assert_htmx_loaded(&client).await;
 
     // Wipe the session from the DB so the middleware's
-    // `validate_session` returns Ok(None) → redirect-to-login.
-    sqlx::query("DELETE FROM sessions WHERE token = ?")
-        .bind(&session_token)
-        .execute(&db)
+    // `validate_session` returns Ok(None) → redirect-to-login. Through
+    // the model: the table holds the token's hash, so a raw
+    // `WHERE token = ?` on the cookie value deletes nothing.
+    ryokan::models::session::delete_session(&db, &session_token)
         .await
         .expect("delete session");
+    assert_eq!(
+        ryokan::models::session::validate_session(&db, &session_token)
+            .await
+            .expect("validate"),
+        None,
+        "the session is gone"
+    );
 
     // Boost-click any top-nav link. Middleware refuses, returns
     // 200 + HX-Redirect: /login. htmx triggers real nav.

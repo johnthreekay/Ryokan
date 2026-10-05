@@ -1,0 +1,9 @@
+# Docs-build dependencies. Edit this file, then regenerate the pinned,
+# hash-checked docs-requirements.txt the docs workflow installs:
+#
+#   uv pip compile docs-requirements.in --generate-hashes \
+#     --python-version 3.13 --python-platform x86_64-unknown-linux-gnu \
+#     -o docs-requirements.txt
+#
+# Zensical is pre-1.0 and ships often; re-evaluate the range at 1.0.
+zensical>=0.0.57,<0.1

@@ -50,7 +50,8 @@ where
     };
 
     let (enabled, expected) = extract(&cfg);
-    if !enabled || expected.is_empty() {
+    // A placeholder from a restored sanitized backup is "no key".
+    if !enabled || expected.is_empty() || crate::services::sanitize::is_placeholder(&expected) {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             format!("{} API compatibility layer is disabled", label),
@@ -84,6 +85,14 @@ where
     // Constant-time compare so the equality check itself never becomes a
     // timing oracle. The threat is largely theoretical over the network,
     // but it costs nothing to remove.
+    if crate::handlers::auth::api_key_throttled(&req, label) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(axum::http::header::RETRY_AFTER, "60")],
+            "Too many wrong API keys; wait a minute",
+        )
+            .into_response();
+    }
     let valid = match &api_key {
         Some(key) => bool::from(subtle::ConstantTimeEq::ct_eq(
             key.as_bytes(),
@@ -94,6 +103,7 @@ where
     if valid {
         next.run(req).await
     } else {
+        crate::handlers::auth::api_key_failed(&req, label);
         (StatusCode::UNAUTHORIZED, "Invalid or missing API key").into_response()
     }
 }

@@ -198,10 +198,16 @@ pub async fn list(db: &SqlitePool) -> Result<Vec<ApiKey>, sqlx::Error> {
 /// because the key string is the unforgeable secret: a timing oracle
 /// on the lookup leaks at most "this key exists in the DB," which
 /// is the same answer a successful-vs-failed response conveys.
+///
+/// A sanitized backup's placeholder (`[REDACTED-key-1]`) is never a key,
+/// even where a database still holds one: anyone can guess it.
 pub async fn lookup_by_plaintext(
     db: &SqlitePool,
     plaintext: &str,
 ) -> Result<Option<ApiKey>, sqlx::Error> {
+    if crate::services::sanitize::is_placeholder(plaintext) {
+        return Ok(None);
+    }
     let row = sqlx::query(
         "SELECT id, name, scopes, created_at, last_used_at, enabled \
          FROM api_keys \
@@ -378,6 +384,24 @@ mod tests {
             .await
             .unwrap();
         let found = lookup_by_plaintext(&pool, "not-a-real-key").await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn lookup_never_matches_a_sanitized_placeholder() {
+        // A sanitized database's keys read `[REDACTED-key-<rowid>]`, so
+        // anyone could guess one where the placeholders were not cleared.
+        let pool = in_memory_pool().await;
+        let (id, _) = create(&pool, "Cal", &["calendar".to_string()])
+            .await
+            .unwrap();
+        sqlx::query("UPDATE api_keys SET key = '[REDACTED-key-' || rowid || ']' WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let placeholder = format!("[REDACTED-key-{id}]");
+        let found = lookup_by_plaintext(&pool, &placeholder).await.unwrap();
         assert!(found.is_none());
     }
 

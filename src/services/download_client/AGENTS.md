@@ -10,6 +10,10 @@
 - The 40-char-hex contract only applies inside the four BT impls' add paths.
 - The `pick` callback in `add_torrent_with_file_filter` is `&mut dyn FnMut` (not generic) to keep the trait object-safe for `Arc<dyn DownloadClient>` storage on `AppState`.
 
+**Every add method calls `check_release_url(url)?` first**, before any request: `add_torrent`, `add_torrent_paused`, `add_torrent_with_file_filter`, and any `*_returning_id` override. The URL comes from feeds, indexers and autobrr, and Transmission's `filename` / rTorrent's `load.start_verbose` would also read a local path on the client's machine. `test_helpers::assert_refuses_non_url_releases` is the per-client test; a new client gets one in its `wiremock_tests/add.rs`.
+
+**Info-hashes are only ever real hashes.** Every source normalizes through `normalize_info_hash` (40 or 64 hex, lowercased; anything else becomes `""` or a 400): `nyaa::extract_hash`, the Nyaa RSS `nyaa:infohash` tag, the torznab `infohash` attribute, the autobrr payload, the interactive grab bodies. qBittorrent reads `hashes=all` as every torrent and `a|b` as a list, so its client also runs `check_info_hash` before any call that sends a hash (an empty hash on pause / resume / delete / seed rules stays a no-op, for hashless grabs). `wiremock_tests/control.rs::hashes_qbit_reads_as_many_torrents_are_refused_before_any_request` pins it.
+
 ## Multi-client routing pool
 
 `AppState.download_clients` is a `DownloadClientsCache = Arc<RwLock<Arc<DownloadClientPool>>>`. The pool holds `clients: HashMap<i64, Arc<dyn DownloadClient>>` keyed by `download_clients.id`, plus `default_torrent_id` and `default_usenet_id` (the `is_default = 1` rows scoped per protocol — both can coexist).
@@ -54,7 +58,7 @@ There are two ways to add a torrent and pick a subset of files. Don't conflate t
 
 **1. Automated (callback): `add_torrent_with_file_filter`.** Pauses the torrent, waits for metadata, runs the caller's `pick` closure over the file names, sets non-picked files to skip, resumes. Used from auto-search's batch-with-selective branch and `library/search/grab.rs`. **10s** metadata ceiling (the user is waiting). Each impl handles its own wait-and-narrow loop and **must be idempotent on retry**: read each file's `wanted` flag back before changing it so a re-narrow doesn't clobber user edits. The `pick` callback is `&mut dyn FnMut` to keep the trait object-safe.
 
-**2. Interactive (preview→confirm): `add_torrent_paused` + `get_files` + `set_file_wanted` + `resume`.** Used by the grab picker (`handlers/grab.rs:329`). Preview adds the torrent paused, `get_files` lists what's inside, the user picks via the modal UI, confirm calls `set_file_wanted` then `resume`. Reads through `models::pending_grabs` (the preview persists rows there until confirmed/cancelled). The grab-sweep task GC's previews after `HEARTBEAT_TTL_SECS + SWEEP_INTERVAL ≈ 2 min` of inactivity. SAB has a private `add_torrent_paused_returning_id` so the impl can capture the `nzo_id` from the paused-add path.
+**2. Interactive (preview→confirm): `add_torrent_paused` + `get_files` + `set_file_wanted` + `resume`.** Used by the grab picker (`handlers/grab.rs:329`). Preview adds the torrent paused, `get_files` lists what's inside, the user picks via the modal UI, confirm calls `set_file_wanted` then `resume`. Reads through `models::pending_grabs` (the preview persists rows there until confirmed/cancelled). The grab-sweep task GC's previews after `HEARTBEAT_TTL_SECS + SWEEP_INTERVAL ≈ 2 min` of inactivity. `pending_grabs::reserve` stamps the heartbeat before the paused add and `finish_add` stamps it again when the add answers, since rTorrent's add can wait 60 s for metadata; a row the sweep dropped mid-add makes the preview delete the torrent it added (unless another preview holds the hash) and answer 504. SAB has a private `add_torrent_paused_returning_id` so the impl can capture the `nzo_id` from the paused-add path.
 
 Distinct from `services::auto_expand` (sibling-series detection inside a batch pack — different problem, different code path).
 
@@ -128,6 +132,7 @@ A new state that Sonarr does not fail belongs in `Warning`; the errored branch d
 - `d.base_path` is empty on closed/stopped torrents and after rtorrent restart; fall back to `d.directory + "/" + d.name` when empty.
 - During metadata fetch, `base_path` ends in `.meta` (also the signal metadata hasn't arrived); post-metadata it rewrites to actual content name. Poll `!base_path.ends_with(".meta")` at 500ms cadence, **60s budget** (longer than other clients — cold DHT legitimately takes longer).
 - Wire tags: rtorrent returns `<i8>` for sizes / rates / most counters; the decoder accepts both `<i4>` and `<i8>`.
+- Empty values come self-closed: rtorrent 0.16 answers a list call on an empty client with `<array><data/></array>`, and `<string/>` is legal too. `Parser::open_tag_or_empty` takes both forms; requiring `<data>` made every client with no torrents read as unreachable on the Downloads page.
 - **No per-torrent seed limits.** See the seed-rules table above; do not reintroduce a `d.ratio.*.set` call, none exists in `command_download.cc`.
 
 ## SAB quirks (`sabnzbd/mod.rs`)

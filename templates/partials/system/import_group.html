@@ -41,7 +41,7 @@
                 <span class="tag tag-res">{{ p.format }}</span>
                 {% if !p.year.is_empty() %}<span class="tag tag-res">{{ p.year }}</span>{% endif %}
                 <span class="tag tag-res">{{ p.episodes }}</span>
-                {% if g.kind == "merge" %}<span class="tag import-tag-merge">In your library as <a href="/series/{{ g.existing_anilist_id }}">{{ g.existing_title }}</a></span>{% endif %}
+                {% if g.kind == "merge" %}<span class="tag import-tag-merge">In your library as <a href="/series/{{ g.existing_series_id }}">{{ g.existing_title }}</a></span>{% endif %}
                 {% if g.low_confidence %}<span class="tag import-tag-warn" title="Weak match">Check this match</span>{% endif %}
                 {% if !g.duplicate_of.is_empty() %}<span class="tag import-tag-warn" title="Two folders matched this series">Also matched by &ldquo;{{ g.duplicate_of }}&rdquo;</span>{% endif %}
             </div>

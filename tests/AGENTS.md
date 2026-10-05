@@ -83,6 +83,7 @@ When in doubt, add the assertion and **mutation-test it**: revert the correspond
 ## CI-enforced lints
 
 - `tests/htmx_redirect_audit.rs` — every `Redirect::to` callsite must route through `htmx_aware_redirect`, sit inside an `if !is_htmx { ... }` arm, or be in the documented exceptions table. New handlers adding bare `Redirect::to` fail the lint.
+- `tests/js_constants_audit.rs` — every `UPPER_SNAKE` name a script under `static/js` uses must be declared somewhere in `static/js` or the templates (`var` / `let` / `const` / `function`, or `window.NAME =`). The scripts share a page-global scope with no bundler, so a deleted constant only fails when its code path runs; 65b545e left every live episode-row update throwing that way.
 
 ## Migration discipline (browser-e2e specifically)
 

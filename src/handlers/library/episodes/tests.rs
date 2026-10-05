@@ -33,7 +33,8 @@ async fn remove_hardlinks_with_inode_finds_link_in_subdirectory() {
     // Capture the shared inode via the media side (the realistic
     // call shape — caller has the media file's inode pre-deletion).
     use std::os::unix::fs::MetadataExt;
-    let inode = std::fs::metadata(&media).unwrap().ino();
+    let meta = std::fs::metadata(&media).unwrap();
+    let inode = (meta.dev(), meta.ino());
     // Remove the media side first (mirrors the production order:
     // delete media file, then walk SAB content_path for the
     // surviving hardlink).
@@ -62,9 +63,20 @@ async fn remove_hardlinks_with_inode_skips_when_inode_does_not_match() {
 
     // Pick an inode that very likely doesn't match anything in
     // tmp (max u64 sentinel — real inodes are never this).
-    let removed = remove_hardlinks_with_inode(root, u64::MAX).await;
+    let removed = remove_hardlinks_with_inode(root, (u64::MAX, u64::MAX)).await;
     assert!(removed.is_empty());
     assert!(source.exists(), "non-matching files must survive");
+
+    // The same inode number on another device is another file: inode
+    // numbers repeat across filesystems.
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(&source).unwrap();
+    let removed = remove_hardlinks_with_inode(root, (meta.dev() ^ 1, meta.ino())).await;
+    assert!(removed.is_empty());
+    assert!(
+        source.exists(),
+        "an inode match on another device must survive"
+    );
 }
 
 /// `remove_stamped_source_paths` removes the exact paths recorded
@@ -835,6 +847,118 @@ mod episodes_ci {
             state_kind,
             seeding_done,
         }
+    }
+
+    /// A client whose `list_scoped` fails, like qBittorrent mid-restart.
+    struct FailingListClient;
+
+    #[async_trait::async_trait]
+    impl crate::services::download_client::DownloadClient for FailingListClient {
+        async fn test(&self) -> Result<String, String> {
+            Ok("stub".into())
+        }
+        async fn add_torrent(
+            &self,
+            _u: &str,
+            _h: &str,
+        ) -> Result<crate::services::download_client::AddOutcome, String> {
+            Ok(crate::services::download_client::AddOutcome::Added)
+        }
+        async fn add_torrent_with_file_filter(
+            &self,
+            _u: &str,
+            _h: &str,
+            _p: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
+        ) -> Result<crate::services::download_client::SelectiveOutcome, String> {
+            Ok(crate::services::download_client::SelectiveOutcome::FullDownload)
+        }
+        async fn list_scoped(
+            &self,
+        ) -> Result<Vec<crate::services::download_client::DownloadItem>, String> {
+            Err("connection refused".into())
+        }
+        async fn get_files(
+            &self,
+            _h: &str,
+        ) -> Result<Vec<crate::services::download_client::DownloadFile>, String> {
+            Ok(vec![])
+        }
+        async fn pause(&self, _h: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn resume(&self, _h: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn delete(&self, _h: &str, _df: bool) -> Result<(), String> {
+            Ok(())
+        }
+        async fn set_file_wanted(&self, _h: &str, _f: &[usize], _w: bool) -> Result<(), String> {
+            Ok(())
+        }
+        fn sonarr_impl_name(&self) -> &'static str {
+            "QBittorrent"
+        }
+    }
+
+    async fn stale_pending_grab(db: &sqlx::SqlitePool, series_id: i64, hash: &str) -> i64 {
+        let id = crate::test_support::seed_grabbed_torrent(db, series_id, hash, "pack", &[1]).await;
+        sqlx::query(
+            "UPDATE grabbed_torrents SET grabbed_at = datetime('now', '-1 hour') WHERE id = ?",
+        )
+        .bind(id)
+        .execute(db)
+        .await
+        .unwrap();
+        id
+    }
+
+    async fn grab_state(db: &sqlx::SqlitePool, id: i64) -> String {
+        sqlx::query_scalar("SELECT state FROM grabbed_torrents WHERE id = ?")
+            .bind(id)
+            .fetch_one(db)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_failed_client_listing_leaves_its_grabs_pending() {
+        // The poll used to read a failed `list_scoped` as an empty one,
+        // so a series page open while qBittorrent restarted marked every
+        // grab on it removed and the downloads were never imported.
+        let db = in_memory_pool().await;
+        let anilist_id: i64 = 504;
+        let series_id = seed_series(&db, anilist_id, "Client Restarting").await;
+        let grab =
+            stale_pending_grab(&db, series_id, "5555555555555555555555555555555555555555").await;
+        let client: std::sync::Arc<dyn crate::services::download_client::DownloadClient> =
+            std::sync::Arc::new(FailingListClient);
+        let state = build_test_app_state(db.clone(), Some(client));
+
+        let _ = episode_download_progress(State(state), Path(anilist_id))
+            .await
+            .expect("progress must succeed");
+
+        assert_eq!(grab_state(&db, grab).await, "pending");
+    }
+
+    #[tokio::test]
+    async fn a_grab_missing_from_a_listing_that_came_back_is_removed() {
+        // The other half: the client answered and the torrent isn't in
+        // it, so the user deleted it there.
+        let db = in_memory_pool().await;
+        let anilist_id: i64 = 505;
+        let series_id = seed_series(&db, anilist_id, "Deleted In Client").await;
+        let grab =
+            stale_pending_grab(&db, series_id, "6666666666666666666666666666666666666666").await;
+        let client: std::sync::Arc<dyn crate::services::download_client::DownloadClient> =
+            std::sync::Arc::new(ListingClient(vec![]));
+        let state = build_test_app_state(db.clone(), Some(client));
+
+        let _ = episode_download_progress(State(state), Path(anilist_id))
+            .await
+            .expect("progress must succeed");
+
+        assert_eq!(grab_state(&db, grab).await, "removed");
     }
 
     #[tokio::test]

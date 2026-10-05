@@ -54,6 +54,13 @@ This is opinionated. Sane defaults beat a config matrix. If you need something t
 </fieldset>
 
 <fieldset>
+  <legend>Hardening</legend>
+  <p class="hint">The host check makes Ryokan's web UI answer only to the names you open it by, so a page on another site can't point its own name at Ryokan and use it (DNS rebinding). Off by default. IP addresses and <code>localhost</code> always work. List every name you open Ryokan by, such as your server's name (<code>nas</code>), <code>ryokan.lan</code> or your reverse proxy's domain. Inside Docker, Ryokan doesn't know your server's name unless you list it. Seerr, autobrr and calendar apps aren't affected. See <a href="docker.md#host-check">Host check</a>.</p>
+  <label><input type="checkbox" name="host_check"> Host check</label>
+  <label>Names you open Ryokan by <input type="text" name="allowed_hosts" value="" placeholder="e.g. nas ryokan.lan ryokan.example.com"></label>
+</fieldset>
+
+<fieldset>
   <legend>User / group</legend>
   <p class="hint">Run <code>id -u</code> / <code>id -g</code> on the host to find these. Match the user that owns your media library so post-processed files land with the right ownership.</p>
   <label>PUID <input type="number" name="puid" value="1000" min="0"></label>
@@ -63,9 +70,8 @@ This is opinionated. Sane defaults beat a config matrix. If you need something t
 
 <fieldset>
   <legend>Host paths</legend>
-  <p class="hint">Where on your host the data lives. Defaults follow the convention used by the <a href="quick-start.md">quick start</a>: media under <code>/srv/media/</code>, per-service config under <code>/srv/docker/&lt;service&gt;/</code>. Both downloads and the library should be on the same filesystem if you want post-processing to use hardlinks.</p>
-  <label>Downloads <input type="text" name="downloads_path" value="/srv/media/downloads"></label>
-  <label>Media library <input type="text" name="media_path" value="/srv/media/anime"></label>
+  <p class="hint">Where on your host the data lives. The shared folder holds <code>downloads/</code> and the library, <code>anime/</code>, and every container mounts it at the same path it has on the host, so imports hardlink and the paths you type in Ryokan are the ones you see on the host. It has to be a full path, such as <code>/srv/media</code> or <code>/data</code>. If a folder can't work, for example because an app keeps its own settings there, the output below says why instead of showing a compose file. Per-service config goes under <code>/srv/docker/&lt;service&gt;/</code>.</p>
+  <label>Shared media folder <input type="text" name="shared_path" value="/srv/media"></label>
   <label>Per-service config root <input type="text" name="appdata_path" value="/srv/docker"></label>
 </fieldset>
 
@@ -79,18 +85,19 @@ This is opinionated. Sane defaults beat a config matrix. If you need something t
 
 ## Ryokan settings to paste in
 
-After the stack is up, log into Ryokan at `http://localhost:8978` and paste these values into the matching Settings panels.
+After the stack is up, set each download client's folders as listed, then open Ryokan at `http://localhost:8978`. Create your account, enter the library values when first-run setup asks for them, and paste the rest into the matching Settings panels.
 
 <pre data-picker="settings" class="stack-output"><code>Loading…</code></pre>
 
 ## Notes
 
-- **Hardlinks**: post-processing defaults to hardlink mode. Both the downloads and media paths above are mounted at matching paths inside Ryokan's container, so qBit-reports `/downloads/foo.mkv` and Ryokan-sees `/downloads/foo.mkv` (no path translation needed). If you split downloads and media across different host filesystems, hardlinks will fall back to copy automatically.
+- **Hardlinks**: post-processing defaults to hardlink mode, and a hardlink needs the download and the library inside one mount. Every container mounts the shared folder at its host path, so the client reports `/srv/media/downloads/foo.mkv` and Ryokan opens that same path and links it into `/srv/media/anime`. That only works once each client saves into the shared folder, which is why the settings above list a download folder for every client. If a hardlink fails anyway (the folder spans two filesystems), Ryokan copies instead.
 - **First-run**: every container needs its `/srv/docker/<service>/` subdirectory pre-owned by the PUID/PGID you set above. The generated compose's header comment includes the exact `mkdir + chown` for the services you picked.
 - **Reverse proxy**: the generated config is a stub. You'll need to point a real domain (or Cloudflare Tunnel route) at the proxy and edit the proxy's config file with your actual hostname.
 - **VPN**: Gluetun expects WireGuard or OpenVPN credentials in its env. Wrong/missing credentials show up as connection failures on the download client (which can't reach trackers). The gluetun container's logs are the right place to debug.
-- **qBit "Unauthorized" with correct credentials**: qBittorrent 4.5+ enables Host header validation by default. When Ryokan-in-container POSTs to `http://qbittorrent:8080`, the `Host:` header it sends is `qbittorrent:8080`, which qBit refuses with 401 even when the username and password are right. Symptom in Ryokan: Settings → Download Clients shows the qBit card stuck on "qBittorrent Unauthorized" while the WebUI accessed from your browser works fine. Fix: in the qBit WebUI, **Tools → Options → Web UI**, uncheck **"Enable Host header validation"** (or add `qbittorrent` and your LAN IP to the allowlist if you'd rather keep it on). Save, then `docker compose restart qbittorrent`. SAB and Transmission don't do this check, which is why they connect without the same workaround.
+- **SABnzbd "Access denied"**: SABnzbd checks the hostname it is called by, and Ryokan calls it `sabnzbd`. Until that name is in **Config → Special → host_whitelist**, SAB answers Ryokan with "Access denied - Hostname verification failed" (a 403 in Settings → Download Clients). Add it, save, and restart SAB. qBittorrent's own host check accepts any name by default, so it needs nothing.
+- **Torrent ports**: each torrent client that listens for peers gets its own host port, starting at 6881, so picking several never publishes one port twice. Deluge starts on a random port until you set its Incoming Port to the one in its settings above.
 
 ---
 
-*Last updated: 2026-08-29.*
+*Last updated: 2026-10-04.*

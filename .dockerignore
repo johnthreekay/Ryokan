@@ -12,13 +12,25 @@ target/
 # files. The `RYOKAN_ENCRYPTION_KEY` fallback at `data/.ryokan-key`
 # (raw 32 bytes, mode 0600) MUST NOT enter image layers.
 data/
+# The same files when they live outside data/: `RYOKAN_DATA_DIR` /
+# `RYOKAN_KEY_FILE_PATH` can move them, and `--sanitize-db-for-debug`
+# writes `ryokan-sanitized.db` to the working directory.
+**/.ryokan-key
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
 
 # Git history (the runtime image doesn't need it).
 .git/
 .gitignore
 
-# Local mutation-testing artifacts.
-mutants.out/
+# Local mutation-testing artifacts (outputs, run logs, and the weekly
+# report script's baseline and report).
+mutants.out*/
+mutants-*.log
+mutants.baseline*.json
+mutants-report*.md
 
 # Editor / IDE / OS clutter.
 .vscode/
@@ -37,16 +49,23 @@ mutants.out/
 # MkDocs source — published to GH Pages, not shipped in the image.
 docs/
 mkdocs.yml
+docs-requirements.in
 docs-requirements.txt
+# The built docs site and Zensical's cache.
+site/
+.cache/
 
-# Build/dev tooling not needed in the image.
+# Build/dev tooling not needed in the image. `.cargo/` pins clang +
+# mold, which the builder image doesn't have.
+.cargo/
 .config/
 .env
 .env.*
-!.env.example
+.venv*/
+# The Noto Sans JP source font scripts/subset-noto-sans-jp.py downloads.
+NotoSansJP*.ttf
 
 # Tests + fixtures are excluded from the binary build (they're
 # integration test crates gated by `--features test-support`).
 # Keeping them out of the build context shaves the upload further.
 tests/
-fixtures/

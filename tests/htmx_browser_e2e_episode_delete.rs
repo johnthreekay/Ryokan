@@ -148,5 +148,42 @@ async fn ryokan_episode_deleted_event_flips_row_to_missing_state() {
          indicates the listener didn't fire OR `updateEpisodeRow` lost its 'deleted' branch"
     );
 
+    // The class flips first, so the check above passed while the rest
+    // of `updateEpisodeRow` threw: 65b545e dropped `STATUS_ICON_MISSING`
+    // and every live row update died with a ReferenceError, leaving the
+    // ✓ icon and the old status text (and, after an import, a row stuck
+    // on "Importing…"). The status cell and the page's error log pin
+    // the whole function.
+    let checks = client
+        .execute(
+            r#"
+            const row = document.querySelector('[data-test-id="row-5"]');
+            return [
+                !!row.querySelector('.ep-col-status .ep-status-icon.ep-missing'),
+                row.querySelector('.ep-col-quality').textContent.trim(),
+                (window.__ryokanFixtureErrors || []).join(' | '),
+            ];
+            "#,
+            vec![],
+        )
+        .await
+        .expect("read row state");
+    let checks = checks.as_array().cloned().unwrap_or_default();
+    assert_eq!(
+        checks.first().and_then(|v| v.as_bool()),
+        Some(true),
+        "the status cell must show the missing icon"
+    );
+    assert_eq!(
+        checks.get(1).and_then(|v| v.as_str()),
+        Some("Missing"),
+        "the status text must read Missing"
+    );
+    assert_eq!(
+        checks.get(2).and_then(|v| v.as_str()),
+        Some(""),
+        "the page must not throw while updating the row"
+    );
+
     let _ = client.close().await;
 }

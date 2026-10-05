@@ -28,13 +28,65 @@ pub(super) fn nyaa_base() -> String {
 /// search, and the per-request client was needless overhead. A 30-second
 /// per-call timeout caps the damage from a single hung connection so
 /// the outer RSS/upgrade-search timeouts aren't the only backstop.
+/// Redirects are followed only within the host they started on, and
+/// bodies are read through `http_body::read_capped`: SeaDex hands this
+/// client view-page URLs, and Nyaa itself is a third party.
 static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .user_agent("Ryokan/0.1")
         .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let same_host = attempt
+                .previous()
+                .first()
+                .is_some_and(|first| first.host_str() == attempt.url().host_str());
+            if same_host && attempt.previous().len() < 3 {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        }))
         .build()
         .expect("building the Nyaa search reqwest client should not fail")
 });
+
+/// A Nyaa search results page is ~100 KB, a listing page ~50 KB.
+const SEARCH_BODY_CAP: usize = 4 << 20;
+const VIEW_BODY_CAP: usize = 2 << 20;
+
+/// The Nyaa listing page (`<nyaa base>/view/<id>`) for `link`, or `None`
+/// when `link` is not one. Accepts the page itself, `/torrent/<id>`, and
+/// `/download/<id>.torrent` (the Nyaa RSS `<link>`). Links come from
+/// search results, feeds, indexers and SeaDex, and fetching one that
+/// merely contained `nyaa.si/view/` (`https://evil.example/?nyaa.si/view/1`)
+/// let a third party point Ryokan at any address on its network. Only
+/// the Nyaa origin (`RYOKAN_NYAA_API_BASE` in tests) passes.
+pub(crate) fn view_page_url(link: &str) -> Option<String> {
+    view_page_url_on(&nyaa_base(), link)
+}
+
+pub(crate) fn view_page_url_on(base: &str, link: &str) -> Option<String> {
+    let base = reqwest::Url::parse(base).ok()?;
+    let url = reqwest::Url::parse(link.trim()).ok()?;
+    let same_origin = url.scheme() == base.scheme()
+        && url.host_str() == base.host_str()
+        && url.port_or_known_default() == base.port_or_known_default();
+    if !same_origin {
+        return None;
+    }
+    let path = url.path();
+    let id = path
+        .strip_prefix("/view/")
+        .or_else(|| path.strip_prefix("/torrent/"))
+        .or_else(|| {
+            path.strip_prefix("/download/")
+                .and_then(|rest| rest.strip_suffix(".torrent"))
+        })?;
+    if id.is_empty() || !id.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(format!("{}/view/{id}", base.as_str().trim_end_matches('/')))
+}
 
 /// Process-global concurrency cap for outbound Nyaa HTTP requests. Every
 /// `search` / `fetch_view_page` call must acquire a permit before firing
@@ -151,6 +203,11 @@ pub struct SearchResult {
 }
 
 impl SearchResult {
+    /// `link` for an `href`; see [`crate::services::html::safe_href`].
+    pub fn safe_link(&self) -> &str {
+        crate::services::html::safe_href(&self.link)
+    }
+
     /// `upload_date` trimmed to just the date portion ("YYYY-MM-DD").
     /// Nyaa publishes timestamps as `YYYY-MM-DD HH:MM` UTC; the search
     /// page renders only the date in the cell with the full UTC
@@ -235,14 +292,13 @@ pub async fn search(opts: &SearchOptions, page: i32) -> Result<SearchResponse, S
         .acquire()
         .await
         .expect("nyaa semaphore should never be closed");
-    let html = HTTP_CLIENT
+    let resp = HTTP_CLIENT
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Nyaa request failed: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
+        .map_err(|e| format!("Nyaa request failed: {}", e.without_url()))?;
+    let body = crate::services::http_body::read_capped(resp, SEARCH_BODY_CAP).await?;
+    let html = String::from_utf8_lossy(&body);
 
     let (results, has_next) = parse_results(&html, opts);
     Ok(SearchResponse {
@@ -352,21 +408,15 @@ pub(crate) fn extract_hash(magnet: &str) -> String {
     let end = payload.find('&').unwrap_or(payload.len());
     let hash = &payload[..end];
 
+    // Anything that isn't a real hash comes back "" ("no hash"). This
+    // used to lowercase and return whatever followed `btih:`, so a feed
+    // link like `...?btih:all` stored the hash `all`, which qBittorrent
+    // reads as every torrent (see `download_client::normalize_info_hash`).
     match hash.len() {
-        40 => hash.to_ascii_lowercase(),
-        32 => match base32_decode_infohash(hash) {
-            Some(bytes) => hex::encode(bytes),
-            // Malformed 32-char string — not valid RFC 4648 base32.
-            // Fall through to lowercase so we return *something*
-            // rather than silently swallowing; callers that treat ""
-            // as "no hash" stay unaffected, and a lowercased garbage
-            // string is at least deterministic.
-            None => hash.to_ascii_lowercase(),
-        },
-        // Any other length is a malformed BTIH — not a valid
-        // info-hash. Lowercase fallthrough preserves the prior
-        // behaviour of returning *something* to downstream code.
-        _ => hash.to_ascii_lowercase(),
+        32 => base32_decode_infohash(hash)
+            .map(hex::encode)
+            .unwrap_or_default(),
+        _ => crate::services::download_client::normalize_info_hash(hash).unwrap_or_default(),
     }
 }
 
@@ -410,14 +460,14 @@ pub async fn fetch_view_result(
         .acquire()
         .await
         .expect("nyaa semaphore should never be closed");
-    let html = HTTP_CLIENT
-        .get(view_url)
+    let page = view_page_url(view_url).ok_or("not a Nyaa listing page")?;
+    let resp = HTTP_CLIENT
+        .get(&page)
         .send()
         .await
-        .map_err(|e| format!("Nyaa view fetch failed: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read view body: {}", e))?;
+        .map_err(|e| format!("Nyaa view fetch failed: {}", e.without_url()))?;
+    let body = crate::services::http_body::read_capped(resp, VIEW_BODY_CAP).await?;
+    let html = String::from_utf8_lossy(&body);
 
     parse_view_page(&html, view_url, opts).ok_or_else(|| "Nyaa view page parse failed".to_string())
 }

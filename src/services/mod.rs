@@ -5,6 +5,7 @@ pub mod calendar;
 pub mod crypto;
 pub mod download_client;
 pub mod external_sync;
+pub mod http_body;
 pub mod indexer_catalog;
 pub mod indexers;
 pub mod jikan;
@@ -52,6 +53,7 @@ pub mod post_processing;
 pub mod recycle;
 
 pub mod anibridge;
+pub mod torrent_file;
 pub mod upgrade;
 
 pub mod custom_formats;

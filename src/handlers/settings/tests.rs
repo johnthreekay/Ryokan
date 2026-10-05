@@ -852,29 +852,25 @@ mod non_htmx_path {
                 active_client: "transmission".to_string(), // seed=deluge
                 qbit_url: "http://qbit.submit:9090".to_string(), // seed=...:8080
                 qbit_user: "qbit-submit-user".to_string(),
-                qbit_pass: "qbit-submit-pass".to_string(),
                 qbit_category: "qbit-submit-cat".to_string(),
                 qbit_download_path: "/submit/qbit".to_string(),
                 deluge_url: "http://deluge.submit:8112".to_string(),
-                deluge_password: "deluge-submit-pass".to_string(),
                 deluge_label: "deluge-submit-label".to_string(),
                 deluge_download_path: "/submit/deluge".to_string(),
                 transmission_url: "http://trans.submit:9091".to_string(),
                 transmission_user: "trans-submit-user".to_string(),
-                transmission_password: "trans-submit-pass".to_string(),
                 transmission_label: "trans-submit-label".to_string(),
                 transmission_download_path: "/submit/trans".to_string(),
                 rtorrent_url: "http://rt.submit:8081".to_string(),
                 rtorrent_user: "rt-submit-user".to_string(),
-                rtorrent_password: "rt-submit-pass".to_string(),
                 rtorrent_label: "rt-submit-label".to_string(),
                 rtorrent_download_path: "/submit/rt".to_string(),
                 jellyfin_url: String::new(), // empty — skips connection-test
                 jellyfin_api_key: String::new(),
                 sonarr_enabled: Some(String::new()), // seed=false → submit→true
-                sonarr_api_key: Some("sonarr-submit-key".to_string()),
+                sonarr_api_key: Some("sonarr-submit-key-0123".to_string()),
                 radarr_enabled: None, // seed=true → submit→false
-                radarr_api_key: Some("radarr-submit-key".to_string()),
+                radarr_api_key: Some("radarr-submit-key-0123".to_string()),
                 external_sync_interval_minutes: Some(120), // seed=60
             }),
         )
@@ -893,29 +889,29 @@ mod non_htmx_path {
         assert_eq!(saved.active_client, "transmission");
         assert_eq!(saved.qbit_url, "http://qbit.submit:9090");
         assert_eq!(saved.qbit_user, "qbit-submit-user");
-        assert_eq!(saved.qbit_pass, "qbit-submit-pass");
+        assert_eq!(saved.qbit_pass, "qbit-seed-pass", "never posted, kept");
         assert_eq!(saved.qbit_category, "qbit-submit-cat");
         assert_eq!(saved.qbit_download_path, "/submit/qbit");
         assert_eq!(saved.deluge_url, "http://deluge.submit:8112");
-        assert_eq!(saved.deluge_password, "deluge-submit-pass");
+        assert_eq!(saved.deluge_password, "deluge-seed-pass");
         assert_eq!(saved.deluge_label, "deluge-submit-label");
         assert_eq!(saved.deluge_download_path, "/submit/deluge");
         assert_eq!(saved.transmission_url, "http://trans.submit:9091");
         assert_eq!(saved.transmission_user, "trans-submit-user");
-        assert_eq!(saved.transmission_password, "trans-submit-pass");
+        assert_eq!(saved.transmission_password, "trans-seed-pass");
         assert_eq!(saved.transmission_label, "trans-submit-label");
         assert_eq!(saved.transmission_download_path, "/submit/trans");
         assert_eq!(saved.rtorrent_url, "http://rt.submit:8081");
         assert_eq!(saved.rtorrent_user, "rt-submit-user");
-        assert_eq!(saved.rtorrent_password, "rt-submit-pass");
+        assert_eq!(saved.rtorrent_password, "rt-seed-pass");
         assert_eq!(saved.rtorrent_label, "rt-submit-label");
         assert_eq!(saved.rtorrent_download_path, "/submit/rt");
         assert!(saved.jellyfin_url.is_empty());
         assert!(saved.jellyfin_api_key.is_empty());
         assert!(saved.sonarr_enabled);
-        assert_eq!(saved.sonarr_api_key, "sonarr-submit-key");
+        assert_eq!(saved.sonarr_api_key, "sonarr-submit-key-0123");
         assert!(!saved.radarr_enabled);
-        assert_eq!(saved.radarr_api_key, "radarr-submit-key");
+        assert_eq!(saved.radarr_api_key, "radarr-submit-key-0123");
         // The picker lives on General now; an Integrations save preserves it.
         assert_eq!(saved.grab_preview_mode, "never");
         assert_eq!(saved.external_sync_interval_minutes, 120);
@@ -1329,21 +1325,17 @@ mod non_htmx_path {
                 active_client: "garbage".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(),
@@ -1454,21 +1446,17 @@ mod non_htmx_path {
                 active_client: "deluge".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(),
@@ -1501,21 +1489,17 @@ mod non_htmx_path {
                 active_client: "rtorrent".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(),
@@ -1562,21 +1546,17 @@ mod non_htmx_path {
                 active_client: "qbittorrent".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: "http://127.0.0.1:1".to_string(), // would-fail address
@@ -1615,21 +1595,17 @@ mod non_htmx_path {
                 active_client: "qbittorrent".to_string(),
                 qbit_url: String::new(),
                 qbit_user: String::new(),
-                qbit_pass: String::new(),
                 qbit_category: String::new(),
                 qbit_download_path: String::new(),
                 deluge_url: String::new(),
-                deluge_password: String::new(),
                 deluge_label: String::new(),
                 deluge_download_path: String::new(),
                 transmission_url: String::new(),
                 transmission_user: String::new(),
-                transmission_password: String::new(),
                 transmission_label: String::new(),
                 transmission_download_path: String::new(),
                 rtorrent_url: String::new(),
                 rtorrent_user: String::new(),
-                rtorrent_password: String::new(),
                 rtorrent_label: String::new(),
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(), // empty — gate must skip
@@ -2075,4 +2051,189 @@ mod sync_exclusions_list {
         assert!(html.contains("Nothing yet"));
         assert!(!html.contains("Allow again"));
     }
+}
+
+#[test]
+fn a_short_shim_key_is_refused_by_name() {
+    assert_eq!(shim_key_error(None, None, None), None);
+    assert_eq!(
+        shim_key_error(Some(""), Some("   "), None),
+        None,
+        "blank clears the key"
+    );
+    let long = "k".repeat(MIN_SHIM_KEY_CHARS);
+    assert_eq!(shim_key_error(Some(&long), Some(&long), None), None);
+    assert!(
+        shim_key_error(Some("seerr"), None, None)
+            .unwrap()
+            .contains("Sonarr")
+    );
+    assert!(
+        shim_key_error(Some(&long), Some("seerr"), None)
+            .unwrap()
+            .contains("Radarr")
+    );
+}
+
+#[test]
+fn a_stored_short_shim_key_is_kept_but_a_new_one_is_checked() {
+    let stored = config::Config {
+        sonarr_api_key: "seerr-key-12345".to_string(),
+        ..config::Config::default()
+    };
+    assert_eq!(
+        shim_key_error(Some("seerr-key-12345"), None, Some(&stored)),
+        None,
+        "the key Seerr already holds still saves"
+    );
+    assert!(
+        shim_key_error(Some("seerr-key-99999"), None, Some(&stored)).is_some(),
+        "a changed short key is refused"
+    );
+    assert!(
+        shim_key_error(None, Some("seerr-key-12345"), Some(&stored)).is_some(),
+        "each shim is compared with its own stored key"
+    );
+    assert!(shim_key_is_short("seerr-key-12345"));
+    assert!(!shim_key_is_short(""));
+    assert!(!shim_key_is_short(&"k".repeat(MIN_SHIM_KEY_CHARS)));
+}
+
+#[tokio::test]
+async fn an_install_with_a_short_shim_key_still_saves_the_tab_and_is_warned() {
+    // 2.1.2 accepted any key. After the minimum arrived, an upgraded
+    // install with a short one couldn't save Connections at all (a
+    // Jellyfin edit included) until it rotated the key Seerr holds.
+    use axum::extract::FromRequest;
+    let db = crate::test_support::in_memory_pool().await;
+    let cfg = config::Config {
+        sonarr_enabled: true,
+        sonarr_api_key: "seerr-key-12345".to_string(),
+        external_sync_interval_minutes: 60,
+        ..config::Config::default()
+    };
+    config::save_config(&db, &cfg).await.unwrap();
+    let state = crate::test_support::build_test_app_state(db.clone(), None);
+    let req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/settings/integrations")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(axum::body::Body::from(
+            "sonarr_enabled=on&sonarr_api_key=seerr-key-12345&external_sync_interval_minutes=90",
+        ))
+        .unwrap();
+    let form = Form::<IntegrationsForm>::from_request(req, &())
+        .await
+        .unwrap();
+    let resp = settings_integrations_submit(State(state), HxRequest(false), form)
+        .await
+        .into_response();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let page = String::from_utf8_lossy(&bytes);
+    assert!(
+        !page.contains("must be at least"),
+        "the save is not refused"
+    );
+    let saved = config::get_config(&db).await.unwrap().unwrap();
+    assert_eq!(saved.external_sync_interval_minutes, 90, "the edit saved");
+    assert_eq!(saved.sonarr_api_key, "seerr-key-12345");
+    assert!(
+        page.contains("shorter than 20 characters"),
+        "the tab says to replace the short key"
+    );
+}
+
+#[tokio::test]
+async fn the_legacy_bulk_save_refuses_a_short_shim_key_too() {
+    // `POST /settings` writes the shim keys like the Integrations tab
+    // does, and used to skip the minimum.
+    use axum::extract::FromRequest;
+    let db = crate::test_support::in_memory_pool().await;
+    config::save_config(&db, &config::Config::default())
+        .await
+        .unwrap();
+    let state = crate::test_support::build_test_app_state(db.clone(), None);
+    let req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/settings")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(axum::body::Body::from(
+            "tab=integrations&sonarr_api_key=seerr&radarr_api_key=\
+             &qbit_url=&qbit_user=&qbit_pass=&qbit_category=&qbit_download_path=\
+             &jellyfin_url=&jellyfin_api_key=&preferred_groups=&blocked_groups=\
+             &preferred_source=&preferred_resolution=&cutoff_source=&cutoff_resolution=\
+             &finished_series_quality=&media_root=&title_language=romaji\
+             &rss_interval_minutes=15&post_processing_mode=hardlink&prefer_subs=",
+        ))
+        .unwrap();
+    let form = Form::<SettingsForm>::from_request(req, &()).await.unwrap();
+    let page = settings_submit(State(state), form).await.0;
+    assert!(page.contains("at least"), "the refusal is shown");
+    let saved = config::get_config(&db).await.unwrap().unwrap();
+    assert_ne!(saved.sonarr_api_key, "seerr");
+}
+
+#[tokio::test]
+async fn the_legacy_client_passwords_are_cleared_once_after_the_seed() {
+    let db = crate::test_support::in_memory_pool().await;
+    let cfg = config::Config {
+        qbit_pass: "old-qbit".into(),
+        deluge_password: "old-deluge".into(),
+        ..Default::default()
+    };
+    config::save_config(&db, &cfg).await.unwrap();
+    sqlx::query("DELETE FROM schema_migrations WHERE id = 'legacy_client_passwords_cleared_v1'")
+        .execute(&db)
+        .await
+        .unwrap();
+    crate::models::migrate(&db).await.unwrap();
+    let saved = config::get_config(&db).await.unwrap().unwrap();
+    assert_eq!(
+        (saved.qbit_pass.as_str(), saved.deluge_password.as_str()),
+        ("", "")
+    );
+    // Once: a later value (a restore, a hand edit) is not touched again.
+    sqlx::query("UPDATE config SET qbit_pass = 'later'")
+        .execute(&db)
+        .await
+        .unwrap();
+    crate::models::migrate(&db).await.unwrap();
+    assert_eq!(
+        config::get_config(&db).await.unwrap().unwrap().qbit_pass,
+        "later"
+    );
+}
+
+#[tokio::test]
+async fn the_integrations_tab_never_carries_a_saved_credential() {
+    // The Jellyfin key and the legacy single-slot passwords (hidden
+    // inputs) used to be in the page for anything that could read it.
+    let db = crate::test_support::in_memory_pool().await;
+    let cfg = config::Config {
+        jellyfin_url: "http://jelly:8096".into(),
+        jellyfin_api_key: "jf-secret-321".into(),
+        qbit_pass: "legacy-secret-654".into(),
+        rtorrent_password: "legacy-secret-987".into(),
+        ..Default::default()
+    };
+    config::save_config(&db, &cfg).await.unwrap();
+    let state = crate::test_support::build_test_app_state(db, None);
+    let page = build_settings_template(
+        &state,
+        Some("integrations".into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .render()
+    .unwrap();
+    for secret in ["jf-secret-321", "legacy-secret-654", "legacy-secret-987"] {
+        assert!(!page.contains(secret), "{secret} reached the page");
+    }
+    assert!(page.contains(crate::handlers::secret_field::KEEP_PLACEHOLDER));
 }

@@ -43,9 +43,12 @@
         <div data-notif-field-group="webhook"{% if row.kind != "webhook" %} style="display:none"{% endif %}>
             <div class="form-group">
                 <label for="notif-edit-webhook-url-{{ row.id }}">URL</label>
-                <input id="notif-edit-webhook-url-{{ row.id }}" type="url" name="webhook_url"
-                       value="{% if let Some(url) = row.webhook_url.as_ref() %}{{ url }}{% endif %}"
-                       placeholder="https://example.com/hook">
+                {# Write-only, like the Discord URL: its path or query
+                   often carries the token. Blank keeps the saved one. #}
+                <input id="notif-edit-webhook-url-{{ row.id }}" type="password" name="webhook_url"
+                       autocomplete="new-password"
+                       placeholder="{% if row.webhook_has_url %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% else %}https://example.com/hook{% endif %}">
+                <span class="form-hint">{% if let Some(origin) = row.webhook_origin.as_ref() %}Saved for {{ origin }}. {% endif %}A saved URL is never shown again, since its path or query often carries a token. Leave the field blank to keep it.</span>
             </div>
             <div class="form-group">
                 <label for="notif-edit-webhook-secret-{{ row.id }}">HMAC secret <span class="form-hint">(optional)</span></label>
@@ -56,33 +59,24 @@
                 <button type="button" class="btn btn-danger"
                         data-notif-clear-secret="notif-edit-webhook-secret-{{ row.id }}">Clear secret</button>
                 {% endif %}
-                <span class="form-hint">Leave blank to keep the existing value. Use Clear to wipe it explicitly.</span>
+                <span class="form-hint">Leave blank to keep the saved secret. If you change the URL's host, type it again. Use Clear to remove it.</span>
             </div>
             <div class="form-group">
                 <label for="notif-edit-webhook-headers-{{ row.id }}">Custom headers <span class="form-hint">(optional)</span></label>
                 <textarea id="notif-edit-webhook-headers-{{ row.id }}" name="webhook_headers" rows="3"
                           placeholder="X-Title: Ryokan grab&#10;X-Priority: high">{{ row.webhook_headers_text }}</textarea>
-                <span class="form-hint">One per line, <code>Header-Name: value</code>. Blank lines and <code>#</code> comments allowed.</span>
+                <span class="form-hint">One per line, <code>Header-Name: value</code>. Blank lines and <code>#</code> comments allowed. Saved values show as <code>********</code>. Leave one as is to keep it.</span>
             </div>
         </div>
 
         <div data-notif-field-group="discord"{% if row.kind != "discord" %} style="display:none"{% endif %}>
             <div class="form-group">
                 <label for="notif-edit-discord-webhook-url-{{ row.id }}">Discord webhook URL</label>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <input id="notif-edit-discord-webhook-url-{{ row.id }}" type="password" name="discord_webhook_url"
-                           autocomplete="new-password"
-                           value="{% if let Some(url) = row.discord_webhook_url.as_ref() %}{{ url }}{% endif %}"
-                           placeholder="https://discord.com/api/webhooks/..."
-                           style="flex:1">
-                    <button type="button" class="btn btn-secondary"
-                            onclick="ryokanTogglePassword('notif-edit-discord-webhook-url-{{ row.id }}', this)"
-                            style="white-space:nowrap">Show</button>
-                    <button type="button" class="btn btn-secondary"
-                            onclick="ryokanCopyInput('notif-edit-discord-webhook-url-{{ row.id }}', this)"
-                            style="white-space:nowrap">Copy</button>
-                </div>
-                <span class="form-hint">From Discord: Server Settings → Integrations → Webhooks → Copy Webhook URL.</span>
+                {# Write-only: the URL is the token. Blank keeps the saved one. #}
+                <input id="notif-edit-discord-webhook-url-{{ row.id }}" type="password" name="discord_webhook_url"
+                       autocomplete="new-password"
+                       placeholder="{% if row.discord_has_url %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% else %}https://discord.com/api/webhooks/...{% endif %}">
+                <span class="form-hint">From Discord: Server Settings → Integrations → Webhooks → Copy Webhook URL. A saved URL is never shown again. Leave the field blank to keep it.</span>
             </div>
         </div>
 

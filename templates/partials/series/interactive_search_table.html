@@ -54,7 +54,7 @@
             </td>
             {% if show_episode %}<td class="col-episode"><span class="tag">{{ r.episode_label }}</span></td>{% endif %}
             <td>
-                <a class="isearch-release-link" href="{{ r.result.link }}" target="_blank" rel="noopener">{{ r.result.title }}</a>
+                <a class="isearch-release-link" href="{{ r.result.safe_link() }}" target="_blank" rel="noopener">{{ r.result.title }}</a>
                 {% if r.result.is_batch %}<span class="tag tag-batch" style="margin-left:4px">batch</span>{% endif %}
                 {% if r.result.is_trusted %}<span class="tag tag-trusted" style="margin-left:4px">trusted</span>{% endif %}
             </td>

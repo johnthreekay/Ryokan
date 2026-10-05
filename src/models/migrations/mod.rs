@@ -143,6 +143,22 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
     .execute(db)
     .await?;
 
+    // Browsers that have logged in before (`models::login_device`). Only
+    // the SHA-256 of the cookie's token is stored.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS login_devices (
+            token_hash TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            last_used_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(db)
+    .await?;
+
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS config (
@@ -2427,6 +2443,31 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         }
     }
 
+    // The legacy single-slot client passwords were copied into
+    // `download_clients` by the seed above and nothing reads them since;
+    // they lingered as plaintext copies the Integrations page echoed back
+    // in hidden inputs. Blank them once, and only after the seed ran.
+    {
+        use crate::models::group_source_map::{mark_migration_applied, migration_already_applied};
+        const ID: &str = "legacy_client_passwords_cleared_v1";
+        if migration_already_applied(db, "multi_client_seed_default_v1")
+            .await
+            .unwrap_or(false)
+            && !migration_already_applied(db, ID).await.unwrap_or(false)
+            && let Ok(mut tx) = db.begin().await
+            && sqlx::query(
+                "UPDATE config SET qbit_pass = '', deluge_password = '', \
+                 transmission_password = '', rtorrent_password = ''",
+            )
+            .execute(&mut *tx)
+            .await
+            .is_ok()
+        {
+            let _ = mark_migration_applied(&mut tx, ID).await;
+            let _ = tx.commit().await;
+        }
+    }
+
     // Multi-RSS — user-configured RSS feeds (Option A). Custom
     // feeds beyond Nyaa-direct: per-uploader Nyaa filters, SubsPlease's
     // direct per-quality feeds, indexer-of-the-week aggregators, etc.
@@ -2940,6 +2981,40 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .await
         .ok();
     }
+
+    // Sessions are stored as the SHA-256 of the cookie value since
+    // `sessions_hashed_v1`; rows written before hold raw tokens that no
+    // longer match anything. Clear them once: everyone signs in again.
+    {
+        use crate::models::group_source_map::{
+            ensure_schema_migrations_table, mark_migration_applied, migration_already_applied,
+        };
+        const ID: &str = "sessions_hashed_v1";
+        ensure_schema_migrations_table(db).await.ok();
+        if !migration_already_applied(db, ID).await.unwrap_or(false)
+            && let Ok(mut tx) = db.begin().await
+            && sqlx::query("DELETE FROM sessions")
+                .execute(&mut *tx)
+                .await
+                .is_ok()
+        {
+            let _ = mark_migration_applied(&mut tx, ID).await;
+            let _ = tx.commit().await;
+        }
+    }
+
+    // The TVDB show (and season) Seerr asked for when it added a series
+    // through the Sonarr shim. The shim reports it as `tvdbId`, the id
+    // Seerr's Sonarr scan resolves every series by; NULL falls back to
+    // the anibridge mappings.
+    sqlx::query("ALTER TABLE series ADD COLUMN tvdb_id INTEGER")
+        .execute(db)
+        .await
+        .ok();
+    sqlx::query("ALTER TABLE series ADD COLUMN tvdb_season INTEGER")
+        .execute(db)
+        .await
+        .ok();
 
     // Watch-list sync exclusions (Sonarr's import-list exclusions): a
     // series removed with "keep it off my watch-list sync" is not added

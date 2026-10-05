@@ -16,6 +16,7 @@
 use std::path::Path;
 
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 use crate::services::crypto::SANITIZED_SENTINEL;
 
@@ -84,8 +85,19 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
         )
     })?;
 
-    let url = format!("sqlite://{}?mode=rwc", output.display());
-    let pool = SqlitePool::connect(&url)
+    // `filename` rather than a formatted URL: sqlx percent-decodes a
+    // URL's path, so a data dir holding `%` or `?` opened the wrong file.
+    // The copy is thrown away if anything fails, so it needs no journal
+    // on disk and no fsync. With both, and a commit per changed row, a
+    // database holding 30k RSS rows took minutes to scrub, with the
+    // backup lock held the whole time.
+    let options = SqliteConnectOptions::new()
+        .filename(output)
+        .journal_mode(SqliteJournalMode::Memory)
+        .synchronous(SqliteSynchronous::Off);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
         .await
         .map_err(|e| format!("open sanitized copy: {e}"))?;
 
@@ -159,30 +171,45 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
         .map_err(|e| format!("scrub api_keys: {e}"))?
         .rows_affected();
 
-    // URLs that carry credentials in their query string: a grab's
-    // recorded download link (`?apikey=` on every torznab/newznab
-    // release, kept so Restore can re-add it) and a direct feed's
-    // address (private trackers put the passkey there). The query
-    // string goes, the host and path stay so the dump still says
-    // where a grab came from.
-    let url_rows = sqlx::query(
-        "UPDATE grabbed_torrents \
-            SET source_url = substr(source_url, 1, instr(source_url, '?') - 1) || '?[REDACTED]' \
-          WHERE instr(source_url, '?') > 0",
+    // URLs that can carry credentials: a grab's recorded download link
+    // (`?apikey=` on every torznab/newznab release, kept so Restore can
+    // re-add it), a direct feed's address, and every link the RSS sync
+    // has seen. The passkey can sit in the path too (AnimeBytes-style
+    // `/feed/<passkey>`), so only scheme and host survive (`redact_url`).
+    // A feed's URL is UNIQUE, and two feeds on one host (two uploaders'
+    // Nyaa feeds) redact to the same value, so those keep their row id.
+    let url_rows = redact_url_column(&pool, "grabbed_torrents", "source_url", false).await?
+        + redact_url_column(&pool, "direct_rss_feeds", "url", true).await?
+        + redact_url_column(&pool, "rss_seen", "link", false).await?
+        + redact_item_keys(&pool).await?;
+
+    // Notification providers: the Discord webhook URL carries its token,
+    // a generic webhook its URL, HMAC secret and custom headers
+    // (`Authorization: Bearer ...`). Restored, they simply can't send.
+    let notification_rows = sqlx::query(
+        "UPDATE notification_providers SET config_json = json_replace( \
+             config_json, '$.url', '[REDACTED]', '$.webhook_url', '[REDACTED]', \
+             '$.secret', '[REDACTED]', '$.headers', json('[]')) \
+          WHERE json_valid(config_json)",
     )
     .execute(&pool)
     .await
-    .map_err(|e| format!("scrub grabbed_torrents.source_url: {e}"))?
-    .rows_affected()
-        + sqlx::query(
-            "UPDATE direct_rss_feeds \
-                SET url = substr(url, 1, instr(url, '?') - 1) || '?[REDACTED]' \
-              WHERE instr(url, '?') > 0",
-        )
-        .execute(&pool)
-        .await
-        .map_err(|e| format!("scrub direct_rss_feeds.url: {e}"))?
-        .rows_affected();
+    .map_err(|e| format!("scrub notification_providers: {e}"))?
+    .rows_affected();
+
+    // The last poll errors quote the request that failed.
+    for sql in [
+        "UPDATE indexers SET rss_last_poll_error = ''",
+        "UPDATE direct_rss_feeds SET last_poll_error = ''",
+    ] {
+        sqlx::query(sql)
+            .execute(&pool)
+            .await
+            .map_err(|e| format!("clear poll errors: {e}"))?;
+    }
+
+    // Log text: any URL or `apikey=` value in a message or detail.
+    let log_rows = scrub_logs(&pool).await?;
 
     // `sessions.token` — cookie values double as DB session keys.
     // A sanitized DB handed to someone else shouldn't let them log
@@ -206,6 +233,13 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
         .map_err(|e| format!("scrub users: {e}"))?
         .rows_affected();
 
+    // UPDATE leaves the old values in free pages (the bundled SQLite is
+    // built without SECURE_DELETE), where anyone reading the file can
+    // still find them. VACUUM rewrites the file without the free pages.
+    sqlx::query("VACUUM")
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("vacuum sanitized copy: {e}"))?;
     pool.close().await;
 
     Ok(SanitizeSummary {
@@ -217,6 +251,8 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
         client_passwords: client_rows as usize,
         api_keys: api_key_rows as usize,
         credential_urls: url_rows as usize,
+        notification_configs: notification_rows as usize,
+        log_rows: log_rows as usize,
         output_path: output.to_path_buf(),
     })
 }
@@ -231,6 +267,8 @@ pub struct SanitizeSummary {
     pub client_passwords: usize,
     pub api_keys: usize,
     pub credential_urls: usize,
+    pub notification_configs: usize,
+    pub log_rows: usize,
     pub output_path: std::path::PathBuf,
 }
 
@@ -273,14 +311,494 @@ impl std::fmt::Display for SanitizeSummary {
             "  URLs with credentials scrubbed:  {}",
             self.credential_urls
         )?;
+        writeln!(
+            f,
+            "  notification configs scrubbed:   {}",
+            self.notification_configs
+        )?;
+        writeln!(f, "  log rows redacted:               {}", self.log_rows)?;
         write!(f, "Safe to share in bug reports.")
     }
+}
+
+/// `raw` with whatever could carry a credential removed, for log lines,
+/// error messages and notifications. An http(s) URL keeps its scheme
+/// and host (the path can hold a passkey, AnimeBytes-style, and the
+/// query an `apikey=`); a magnet keeps its info-hash (a `tr=` tracker URL
+/// can hold a passkey); anything else becomes `[redacted]`.
+pub fn redact_url(raw: &str) -> String {
+    let raw = raw.trim();
+    if let Ok(url) = reqwest::Url::parse(raw) {
+        match url.scheme() {
+            "http" | "https" => {
+                let host = url.host_str().unwrap_or("");
+                return match url.port() {
+                    Some(port) => format!("{}://{host}:{port}/[redacted]", url.scheme()),
+                    None => format!("{}://{host}/[redacted]", url.scheme()),
+                };
+            }
+            "magnet" => {
+                let hash = crate::services::nyaa::extract_hash(raw);
+                if !hash.is_empty() {
+                    return format!("magnet:?xt=urn:btih:{hash}");
+                }
+            }
+            _ => {}
+        }
+    }
+    "[redacted]".to_string()
+}
+
+/// Run [`redact_url`] over `table.column`, skipping rows already blank.
+/// A missing table (an old database) counts as nothing to do. A
+/// `unique` column gets [`row_tagged`] values, since two URLs on one
+/// host redact to the same string.
+async fn redact_url_column(
+    pool: &SqlitePool,
+    table: &str,
+    column: &str,
+    unique: bool,
+) -> Result<u64, String> {
+    let (t, c) = (quote_ident(table), quote_ident(column));
+    let rows: Vec<(i64, String)> = match sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT rowid, {c} FROM {t} WHERE {c} != ''"
+    )))
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => return Ok(0),
+    };
+    // One transaction: a commit per row is most of the run's time.
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("redact {table}.{column}: {e}"))?;
+    let mut changed = 0;
+    for (rowid, url) in rows {
+        let mut redacted = redact_url(&url);
+        if unique && redacted != url {
+            redacted = row_tagged(&redacted, rowid);
+        }
+        if redacted != url {
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "UPDATE {t} SET {c} = ? WHERE rowid = ?"
+            )))
+            .bind(&redacted)
+            .bind(rowid)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| format!("redact {table}.{column}: {e}"))?;
+            changed += 1;
+        }
+    }
+    tx.commit()
+        .await
+        .map_err(|e| format!("redact {table}.{column}: {e}"))?;
+    Ok(changed)
+}
+
+/// `redacted` with the row id appended, for a UNIQUE column: the
+/// redacted forms of two different values can be equal.
+fn row_tagged(redacted: &str, rowid: i64) -> String {
+    format!("{redacted}#{rowid}")
+}
+
+/// The RSS dedup keys. An item with no info-hash is keyed by its guid,
+/// else its link (`rss::feed::build_item_key`), and private trackers put
+/// the passkey in both. The key is UNIQUE, so a changed one is
+/// [`row_tagged`]. Restored, those items read as unseen, the same as
+/// any item whose link was redacted.
+async fn redact_item_keys(pool: &SqlitePool) -> Result<u64, String> {
+    let rows: Vec<(i64, String)> = match sqlx::query_as(
+        "SELECT rowid, item_key FROM rss_seen \
+          WHERE item_key LIKE 'guid:%' OR item_key LIKE 'link:%'",
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => return Ok(0),
+    };
+    // One transaction: a commit per row is most of the run's time.
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("redact rss_seen.item_key: {e}"))?;
+    let mut changed = 0;
+    for (rowid, key) in rows {
+        let (prefix, value) = key.split_at(5);
+        // A link is a URL; a guid is often an opaque id, and only a URL
+        // or `passkey=`-style text inside it is taken out.
+        let redacted = if prefix == "link:" {
+            redact_url(value)
+        } else {
+            redact_text(value)
+        };
+        if redacted == value {
+            continue;
+        }
+        sqlx::query("UPDATE rss_seen SET item_key = ? WHERE rowid = ?")
+            .bind(format!("{prefix}{}", row_tagged(&redacted, rowid)))
+            .bind(rowid)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| format!("redact rss_seen.item_key: {e}"))?;
+        changed += 1;
+    }
+    tx.commit()
+        .await
+        .map_err(|e| format!("redact rss_seen.item_key: {e}"))?;
+    Ok(changed)
+}
+
+/// URLs and `apikey=` values in free text.
+static RE_SECRETISH: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+    regex_lite::Regex::new(
+        r#"(?i)\b(?:https?|magnet):[^\s"'<>()\[\]]+|\b(?:api_?key|passkey|token)=[^&\s"']+"#,
+    )
+    .expect("secretish regex compiles")
+});
+
+/// `text` with every URL passed through [`redact_url`] and every bare
+/// `apikey=` / `passkey=` / `token=` value dropped.
+pub fn redact_text(text: &str) -> String {
+    RE_SECRETISH
+        .replace_all(text, |caps: &regex_lite::Captures<'_>| {
+            let hit = &caps[0];
+            if hit.contains("://") || hit.to_ascii_lowercase().starts_with("magnet:") {
+                redact_url(hit)
+            } else {
+                let key = hit.split('=').next().unwrap_or("key");
+                format!("{key}=[redacted]")
+            }
+        })
+        .into_owned()
+}
+
+/// Redact URLs and keys in every log row's message and detail.
+async fn scrub_logs(pool: &SqlitePool) -> Result<u64, String> {
+    let rows: Vec<(i64, String, String)> =
+        match sqlx::query_as("SELECT id, message, detail FROM logs")
+            .fetch_all(pool)
+            .await
+        {
+            Ok(rows) => rows,
+            Err(_) => return Ok(0),
+        };
+    // One transaction: a commit per row is most of the run's time.
+    let mut tx = pool.begin().await.map_err(|e| format!("scrub logs: {e}"))?;
+    let mut changed = 0;
+    for (id, message, detail) in rows {
+        let (m, d) = (redact_text(&message), redact_text(&detail));
+        if m != message || d != detail {
+            sqlx::query("UPDATE logs SET message = ?, detail = ? WHERE id = ?")
+                .bind(&m)
+                .bind(&d)
+                .bind(id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("scrub logs: {e}"))?;
+            changed += 1;
+        }
+    }
+    tx.commit().await.map_err(|e| format!("scrub logs: {e}"))?;
+    Ok(changed)
+}
+
+/// True for a value [`run_sanitize`] wrote in place of a secret
+/// (`[REDACTED]`, `[REDACTED-key-N]`, ...). Key checks treat it as "no
+/// key": restoring a sanitized backup used to leave `[REDACTED]` working
+/// as the Sonarr / Radarr / autobrr key.
+pub fn is_placeholder(value: &str) -> bool {
+    value.trim_start().starts_with("[REDACTED")
+}
+
+/// Take a sanitized backup's placeholders out of a database that is
+/// being restored, so none of them can act as a credential:
+/// - scoped API keys are deleted (`key` is UNIQUE, and new keys are
+///   needed anyway);
+/// - users are deleted, since their hash is gone and nobody could log
+///   in; with no user the first page load is `/setup`;
+/// - linked accounts holding the sanitize sentinel are deleted, since
+///   they can't be decrypted, shown, or unlinked;
+/// - sessions are deleted (restore does that for every archive);
+/// - every other text column still holding a placeholder becomes `""`.
+///
+/// Table and column names come from the archive, so they are quoted as
+/// identifiers, never spliced raw.
+pub(crate) async fn clear_placeholders(pool: &SqlitePool) -> Result<(), String> {
+    // Sessions go first. `sessions.user_id` references `users` with no
+    // ON DELETE action, and backups sanitized before every snapshot
+    // dropped its sessions still hold `[REDACTED-session-N]` rows: the
+    // users delete failed on the foreign key, the error was ignored,
+    // and the loop below emptied the hash, leaving a login page that no
+    // password opens. Each table may be missing from an old backup, but
+    // any other failure stops the restore.
+    delete_unless_table_missing(pool, "DELETE FROM sessions").await?;
+    delete_unless_table_missing(pool, "DELETE FROM api_keys WHERE key LIKE '[REDACTED%'").await?;
+    delete_unless_table_missing(
+        pool,
+        "DELETE FROM users WHERE password_hash LIKE '[REDACTED%'",
+    )
+    .await?;
+    if let Err(e) = sqlx::query("DELETE FROM external_accounts WHERE access_token_encrypted = ?")
+        .bind(SANITIZED_SENTINEL)
+        .execute(pool)
+        .await
+        && !is_missing_table(&e)
+    {
+        return Err(format!("delete sanitized linked accounts: {e}"));
+    }
+
+    // `lower(type)`: SQLite reads the stored type case-insensitively.
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE lower(type) = 'table' AND name NOT LIKE 'sqlite_%'",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("list tables: {e}"))?;
+    for table in tables {
+        let columns: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info(?)")
+            .bind(&table)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| format!("list columns of {table}: {e}"))?;
+        for column in columns {
+            let (t, c) = (quote_ident(&table), quote_ident(&column));
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "UPDATE {t} SET {c} = '' WHERE typeof({c}) = 'text' AND {c} LIKE '[REDACTED%'"
+            )))
+            .execute(pool)
+            .await
+            .map_err(|e| format!("clear placeholders in {table}.{column}: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Run a `DELETE`, treating a table the database doesn't have as
+/// nothing to delete. Any other error (a foreign key that blocks the
+/// delete, a damaged table) is returned: a purge that silently did
+/// nothing is how a restored database kept a login it shouldn't have.
+pub(crate) async fn delete_unless_table_missing(
+    pool: &SqlitePool,
+    sql: &'static str,
+) -> Result<(), String> {
+    match sqlx::query(sql).execute(pool).await {
+        Err(e) if !is_missing_table(&e) => Err(format!("{sql}: {e}")),
+        _ => Ok(()),
+    }
+}
+
+pub(crate) fn is_missing_table(e: &sqlx::Error) -> bool {
+    e.as_database_error()
+        .is_some_and(|d| d.message().starts_with("no such table"))
+}
+
+/// `name` as a quoted SQL identifier.
+fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn redact_url_keeps_only_what_carries_no_credential() {
+        assert_eq!(
+            redact_url("http://prowlarr:9696/1/download?apikey=secret&link=x"),
+            "http://prowlarr:9696/[redacted]"
+        );
+        assert_eq!(
+            redact_url("https://animebytes.tv/feed/rss_torrents_anime/0123passkey"),
+            "https://animebytes.tv/[redacted]"
+        );
+        assert_eq!(
+            redact_url(
+                "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd&tr=https://t.example/0123passkey/announce"
+            ),
+            "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd"
+        );
+        assert_eq!(redact_url("/local/path.torrent"), "[redacted]");
+    }
+
+    #[tokio::test]
+    async fn clear_placeholders_leaves_nothing_usable_as_a_credential() {
+        let pool = crate::test_support::in_memory_pool().await;
+        crate::test_support::seed_sonarr_enabled(&pool, "[REDACTED]").await;
+        sqlx::query("UPDATE config SET autobrr_api_key = '[REDACTED]', jellyfin_api_key = 'kept-real-value'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (i, key) in ["[REDACTED-key-1]", "[REDACTED-key-2]"].iter().enumerate() {
+            sqlx::query("INSERT INTO api_keys (name, key, scopes) VALUES (?, ?, 'calendar')")
+                .bind(format!("k{i}"))
+                .bind(key)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', '[REDACTED]')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        clear_placeholders(&pool).await.expect("clear");
+
+        let (sonarr, autobrr, jellyfin): (String, String, String) = sqlx::query_as(
+            "SELECT sonarr_api_key, autobrr_api_key, jellyfin_api_key FROM config WHERE id = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!((sonarr.as_str(), autobrr.as_str()), ("", ""));
+        assert_eq!(jellyfin, "kept-real-value", "real values are left alone");
+        let count = |sql: &'static str| {
+            let pool = pool.clone();
+            async move {
+                sqlx::query_scalar::<_, i64>(sql)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap()
+            }
+        };
+        assert_eq!(count("SELECT COUNT(*) FROM api_keys").await, 0);
+        assert_eq!(
+            count("SELECT COUNT(*) FROM users").await,
+            0,
+            "first load is /setup"
+        );
+        assert!(is_placeholder("[REDACTED-key-3]") && !is_placeholder("real-key"));
+    }
+
+    #[tokio::test]
+    async fn clear_placeholders_removes_users_that_still_have_redacted_sessions() {
+        // Backups sanitized before every snapshot dropped its sessions
+        // carry the admin's session as `[REDACTED-session-N]`. Its
+        // foreign key blocked the users delete, and the user stayed with
+        // an emptied hash: a login page no password opens.
+        let pool = crate::test_support::in_memory_pool().await;
+        sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', '[REDACTED]')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO sessions (token, user_id) VALUES ('[REDACTED-session-1]', 1), \
+             ('[REDACTED-session-2]', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        clear_placeholders(&pool).await.expect("clear");
+
+        let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!((users, sessions), (0, 0), "first load is /setup");
+    }
+
+    #[tokio::test]
+    async fn clear_placeholders_reports_a_delete_that_fails() {
+        // A table holding a foreign key into `sessions` blocks the purge.
+        // The error used to be ignored, so the restore went ahead with
+        // the session still valid.
+        let pool = crate::test_support::in_memory_pool().await;
+        sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', 'h')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for sql in [
+            "INSERT INTO sessions (token, user_id) VALUES ('planted', 1)",
+            "CREATE TABLE anchor (token TEXT REFERENCES sessions(token))",
+            "INSERT INTO anchor VALUES ('planted')",
+        ] {
+            sqlx::query(sql).execute(&pool).await.unwrap();
+        }
+        let err = clear_placeholders(&pool).await.unwrap_err();
+        assert!(err.contains("FOREIGN KEY"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn sanitize_keeps_unique_columns_unique_and_scrubs_rss_keys() {
+        // Two uploaders' Nyaa feeds share a host, so both redacted to
+        // `https://nyaa.si/[redacted]` and the UNIQUE `url` failed the
+        // whole sanitize. Private trackers also put the passkey in the
+        // RSS dedup key (`link:<url>`, or a guid that is a URL).
+        let dir = tmpdir();
+        let live = dir.join("live.db");
+        seed_live_db(&live).await;
+        {
+            let url = format!("sqlite://{}?mode=rwc", live.display());
+            let pool = SqlitePool::connect(&url).await.unwrap();
+            for (name, url) in [
+                ("Erai-raws", "https://nyaa.si/?page=rss&u=Erai-raws"),
+                ("SubsPlease", "https://nyaa.si/?page=rss&u=subsplease"),
+            ] {
+                sqlx::query("INSERT INTO direct_rss_feeds (name, url, enabled) VALUES (?, ?, 1)")
+                    .bind(name)
+                    .bind(url)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+            for key in [
+                "link:https://tracker.example/rss/download/123/link-passkey-sekrit/x.torrent",
+                "link:https://tracker.example/rss/download/124/link-passkey-sekrit/y.torrent",
+                "guid:https://tracker.example/details.php?id=1&torrent_pass=guid-pass-sekrit",
+                "guid:nyaa-1234567",
+                "hash:aabbccddeeff00112233445566778899aabbccdd",
+            ] {
+                sqlx::query("INSERT INTO rss_seen (item_key) VALUES (?)")
+                    .bind(key)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+            pool.close().await;
+        }
+        let out = dir.join("sanitized.db");
+        run_sanitize(&live, &out).await.expect("sanitize");
+
+        let url = format!("sqlite://{}?mode=ro", out.display());
+        let pool = SqlitePool::connect(&url).await.unwrap();
+        let feeds: Vec<String> =
+            sqlx::query_scalar("SELECT url FROM direct_rss_feeds WHERE url LIKE '%nyaa.si%'")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(feeds.len(), 2);
+        assert_ne!(feeds[0], feeds[1]);
+        assert!(
+            feeds
+                .iter()
+                .all(|u| u.starts_with("https://nyaa.si/[redacted]")),
+            "{feeds:?}"
+        );
+        let keys: Vec<String> = sqlx::query_scalar("SELECT item_key FROM rss_seen")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert!(keys.contains(&"guid:nyaa-1234567".to_string()), "{keys:?}");
+        assert!(
+            keys.contains(&"hash:aabbccddeeff00112233445566778899aabbccdd".to_string()),
+            "{keys:?}"
+        );
+        pool.close().await;
+        let haystack = String::from_utf8_lossy(&fs::read(&out).unwrap()).into_owned();
+        for secret in ["link-passkey-sekrit", "guid-pass-sekrit"] {
+            assert!(!haystack.contains(secret), "{secret} survived in the file");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     fn tmpdir() -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!(
@@ -416,6 +934,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sanitize_scrubs_notifications_feed_history_logs_and_free_pages() {
+        let dir = tmpdir();
+        let live = dir.join("live.db");
+        seed_live_db(&live).await;
+        {
+            let url = format!("sqlite://{}?mode=rwc", live.display());
+            let pool = SqlitePool::connect(&url).await.unwrap();
+            for (kind, cfg) in [
+                (
+                    "discord",
+                    r#"{"webhook_url":"https://discord.com/api/webhooks/1/discord-token-sekrit"}"#,
+                ),
+                (
+                    "webhook",
+                    r#"{"url":"https://hooks.example/in?token=hook-sekrit","secret":"hmac-sekrit","headers":[["Authorization","Bearer header-sekrit"]]}"#,
+                ),
+            ] {
+                sqlx::query(
+                    "INSERT INTO notification_providers (name, kind, config_json) VALUES (?, ?, ?)",
+                )
+                .bind(kind)
+                .bind(kind)
+                .bind(cfg)
+                .execute(&pool)
+                .await
+                .unwrap();
+            }
+            sqlx::query("INSERT INTO rss_seen (item_key, link) VALUES ('k1', 'https://tracker.example/torrent/1/download/path-passkey-sekrit')")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("INSERT INTO logs (message, detail) VALUES ('Failed to query download client id=2', 'SAB request failed: error sending request for url (http://sab:8080/api?apikey=sab-sekrit&mode=queue)')")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("UPDATE indexers SET rss_last_poll_error = 'indexer request failed: for url (http://p/api?apikey=poll-sekrit)'")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
+        let out = dir.join("sanitized.db");
+        let summary = run_sanitize(&live, &out).await.unwrap();
+        assert_eq!(summary.notification_configs, 2);
+        assert!(summary.log_rows >= 1);
+
+        // Nothing secret is left anywhere in the file, free pages
+        // included: the bytes are read raw, not through SQLite.
+        let bytes = fs::read(&out).unwrap();
+        let haystack = String::from_utf8_lossy(&bytes);
+        for secret in [
+            "discord-token-sekrit",
+            "hook-sekrit",
+            "hmac-sekrit",
+            "header-sekrit",
+            "path-passkey-sekrit",
+            "sab-sekrit",
+            "poll-sekrit",
+            "topsecret-qbit",
+            "cookie-token-xyz",
+        ] {
+            assert!(!haystack.contains(secret), "{secret} survived in the file");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn redact_text_takes_urls_and_keys_out_of_free_text() {
+        assert_eq!(
+            redact_text("SAB request failed: for url (http://sab:8080/api?apikey=x&mode=queue)"),
+            "SAB request failed: for url (http://sab:8080/[redacted])"
+        );
+        assert_eq!(
+            redact_text("rejected apikey=abc123 token=zz"),
+            "rejected apikey=[redacted] token=[redacted]"
+        );
+        assert_eq!(redact_text("no secrets here"), "no secrets here");
+    }
+
+    #[tokio::test]
     async fn sanitize_blanks_all_known_secret_columns() {
         let dir = tmpdir();
         let live = dir.join("live.db");
@@ -460,12 +1058,12 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(source_url, "http://prowlarr:9696/1/download?[REDACTED]");
+        assert_eq!(source_url, "http://prowlarr:9696/[redacted]");
         let feed_url: String = sqlx::query_scalar("SELECT url FROM direct_rss_feeds")
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(feed_url, "https://tracker.example/rss?[REDACTED]");
+        assert_eq!(feed_url, "https://tracker.example/[redacted]#1");
 
         let jf_key: String = sqlx::query_scalar("SELECT jellyfin_api_key FROM config WHERE id = 1")
             .fetch_one(&pool)

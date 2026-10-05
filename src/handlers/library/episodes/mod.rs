@@ -5,7 +5,7 @@
 //! mark-failed, progress poll, JSON snapshot) and depend only on a small
 //! set of resolver + builder helpers in the parent module.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axum::{
     Json,
@@ -27,9 +27,14 @@ use super::reconcile::{resolve_series_context, resolve_tracked_series};
 use super::search::run_auto_search_targets;
 use super::{Episode, MarkEpisodeFailedForm};
 
+/// A file's identity: (device, inode). An inode number alone repeats
+/// across filesystems, so a download dir on another disk could hold an
+/// unrelated file with the media file's inode number.
+type FileId = (u64, u64);
+
 /// Walk `root` recursively (depth cap matches `walk_video_files` in
 /// post_processing — 4 levels) and remove any regular file whose
-/// inode equals `inode`. Returns the list of removed paths so the
+/// device and inode equal `inode`. Returns the list of removed paths so the
 /// caller can log them. Best-effort: I/O errors during walk or
 /// remove are swallowed because this is a cleanup pass after the
 /// authoritative media-side delete has already succeeded.
@@ -44,11 +49,11 @@ use super::{Episode, MarkEpisodeFailedForm};
 #[cfg(unix)]
 async fn remove_hardlinks_with_inode(
     root: &std::path::Path,
-    inode: u64,
+    inode: FileId,
 ) -> Vec<std::path::PathBuf> {
     use std::os::unix::fs::MetadataExt;
 
-    fn walk(dir: &std::path::Path, depth: u32, inode: u64, out: &mut Vec<std::path::PathBuf>) {
+    fn walk(dir: &std::path::Path, depth: u32, inode: FileId, out: &mut Vec<std::path::PathBuf>) {
         const MAX_DEPTH: u32 = 4;
         if depth > MAX_DEPTH {
             return;
@@ -63,7 +68,7 @@ async fn remove_hardlinks_with_inode(
             };
             if meta.is_dir() {
                 walk(&path, depth + 1, inode, out);
-            } else if meta.is_file() && meta.ino() == inode {
+            } else if meta.is_file() && (meta.dev(), meta.ino()) == inode {
                 out.push(path);
             }
         }
@@ -108,7 +113,7 @@ async fn remove_hardlinks_with_inode(
 #[cfg(not(unix))]
 async fn remove_hardlinks_with_inode(
     _root: &std::path::Path,
-    _inode: u64,
+    _inode: FileId,
 ) -> Vec<std::path::PathBuf> {
     Vec::new()
 }
@@ -120,14 +125,14 @@ async fn remove_hardlinks_with_inode(
 /// source we want to remove (regardless of which grab "officially"
 /// claims the episode).
 #[cfg(unix)]
-async fn path_has_inode(path: &str, inode: u64) -> bool {
+async fn path_has_inode(path: &str, inode: FileId) -> bool {
     use std::os::unix::fs::MetadataExt;
     let p = std::path::PathBuf::from(path);
     tokio::task::spawn_blocking(move || {
         std::fs::metadata(&p)
             .ok()
             .filter(|m| m.is_file())
-            .map(|m| m.ino() == inode)
+            .map(|m| (m.dev(), m.ino()) == inode)
             .unwrap_or(false)
     })
     .await
@@ -135,7 +140,7 @@ async fn path_has_inode(path: &str, inode: u64) -> bool {
 }
 
 #[cfg(not(unix))]
-async fn path_has_inode(_path: &str, _inode: u64) -> bool {
+async fn path_has_inode(_path: &str, _inode: FileId) -> bool {
     false
 }
 
@@ -199,7 +204,12 @@ pub async fn delete_episode_file(
     let files = media::scan_series_folder(&cfg.media_root, &tracked.folder_name).await;
     // `holds`: a multi-episode file (issue #246) is the file for every
     // episode in its span, and deleting it clears all of them.
-    let target = files.iter().find(|f| f.holds(episode_number));
+    // The own-season file first, so a merged folder's `S02E05` is not
+    // taken for episode 5 while `S01E05` is on disk.
+    let target = files
+        .iter()
+        .find(|f| f.holds(episode_number) && f.is_own_season())
+        .or_else(|| files.iter().find(|f| f.holds(episode_number)));
 
     match target {
         None => json_err(
@@ -265,10 +275,10 @@ pub async fn delete_episode_file(
                 tokio::fs::metadata(&full_path_canon)
                     .await
                     .ok()
-                    .map(|m| m.ino())
+                    .map(|m| (m.dev(), m.ino()))
             };
             #[cfg(not(unix))]
-            let media_inode: Option<u64> = None;
+            let media_inode: Option<FileId> = None;
 
             // Recycle bin (#123): the video plus its companions (`.nfo`,
             // subtitles, thumbnail) move into the bin together; with no
@@ -543,7 +553,7 @@ pub async fn delete_episode_file(
                                         "No source files matched inode for episode {} under '{}'",
                                         episode_number, candidate
                                     ),
-                                    &format!("inode={ino} hash={}", grab.hash),
+                                    &format!("dev={} inode={} hash={}", ino.0, ino.1, grab.hash),
                                 )
                                 .await;
                             }
@@ -1125,12 +1135,14 @@ pub async fn episode_download_progress(
         return Ok(Json(Vec::new()));
     }
     let mut all_torrents: Vec<crate::services::download_client::DownloadItem> = Vec::new();
+    let mut failed_clients: HashSet<i64> = HashSet::new();
     for (client_id, client) in pool.clients.iter() {
         match client.list_scoped().await {
             Ok(t) => all_torrents.extend(t),
             Err(err) => {
                 // One client unreachable shouldn't blank the progress
                 // surface for grabs on other clients. Log + continue.
+                failed_clients.insert(*client_id);
                 tracing::debug!(
                     "episode-progress poll: list_scoped failed for client #{}: {}",
                     client_id,
@@ -1201,7 +1213,21 @@ pub async fn episode_download_progress(
         };
 
         let Some(t) = torrent else {
-            if crate::services::post_processing::grab_is_stale(&grab.grabbed_at, 30) {
+            // Missing only means removed when the listing it would be in
+            // came back. A failed `list_scoped` (client restarting, auth
+            // hiccup) used to read as "every grab on it is gone", and a
+            // series page open through a qBittorrent restart marked them
+            // all removed, so they finished downloading and were never
+            // imported. Post-processing keeps a failed client's grabs
+            // pending the same way. A grab whose client row is gone (or
+            // a legacy grab with no stamp) waits for a fully clean poll.
+            let listing_came_back = match grab.download_client_id {
+                Some(id) if pool.clients.contains_key(&id) => !failed_clients.contains(&id),
+                _ => failed_clients.is_empty(),
+            };
+            if listing_came_back
+                && crate::services::post_processing::grab_is_stale(&grab.grabbed_at, 30)
+            {
                 logger::info(
                     &state.db,
                     LogCategory::DownloadClient,

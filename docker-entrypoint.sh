@@ -15,6 +15,19 @@ set -e
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
 
+# Numeric ids only: anything else would reach useradd / groupmod as an
+# option or a name. 0 runs Ryokan as root, which works but drops the
+# privilege separation this entrypoint exists for, so say so.
+case "$PUID$PGID" in
+    *[!0-9]*|'')
+        echo "Error: PUID and PGID must be numeric (got PUID=$PUID PGID=$PGID)." >&2
+        exit 1
+        ;;
+esac
+if [ "$PUID" = "0" ] || [ "$PGID" = "0" ]; then
+    echo "Warning: PUID or PGID is 0, so Ryokan runs as root. Set them to the owner of your media and download folders instead." >&2
+fi
+
 is_blank() {
     [ -z "$(printf '%s' "$1" | tr -d '[:space:]')" ]
 }
@@ -40,14 +53,18 @@ case "$DATA_DIR" in
     *) DATA_DIR="$(pwd)/$DATA_DIR" ;;
 esac
 mkdir -p "$DATA_DIR"
-# Logical pwd normalizes trailing slashes, `.` and `..`.
-DATA_DIR="$(cd "$DATA_DIR" && pwd)"
+# `realpath -s` normalizes trailing slashes, `.` and `..` without
+# expanding symlinks, like a logical `cd && pwd`, but never enters the
+# directory: a 0700 folder owned by PUID refuses `cd` to a root without
+# CAP_DAC_OVERRIDE (cap_drop: ALL) or behind NFS root_squash.
+DATA_DIR="$(realpath -s "$DATA_DIR")"
 # A recursive chown of the container root (which would include every
 # media mount) or of the app itself is never meant. Compared after
 # resolving symlinks so `//`, `/data/..` or a link to / can't slip past.
-case "$(cd "$DATA_DIR" && pwd -P)" in
+DATA_DIR_REAL="$(realpath "$DATA_DIR")"
+case "$DATA_DIR_REAL" in
     / | /app | /app/static)
-        echo "RYOKAN_DATA_DIR=${RYOKAN_DATA_DIR} resolves to $(cd "$DATA_DIR" && pwd -P), which is not allowed. Point it at a dedicated directory such as /config." >&2
+        echo "RYOKAN_DATA_DIR=${RYOKAN_DATA_DIR} resolves to $DATA_DIR_REAL, which is not allowed. Point it at a dedicated directory such as /config." >&2
         exit 1
         ;;
 esac
@@ -108,6 +125,17 @@ fi
 # alone — those belong to the host. A fresh named volume at a path the
 # image doesn't ship (e.g. /config) arrives root-owned, hence the mkdir
 # above + chown rather than relying on the image's own /data.
-find "$DATA_DIR" \! -user ryokan -exec chown ryokan:ryokan {} + 2>/dev/null || true
+# `chown -h`: a symlink is re-owned itself, never its target. Plain
+# chown followed links, so a link planted in the data dir (a restored
+# archive, another container sharing the volume) had its target, say
+# /etc/passwd, chowned to ryokan by this root process on a PUID change.
+find "$DATA_DIR" \! -user ryokan -exec chown -h ryokan:ryokan {} + 2>/dev/null || true
+# Only Ryokan's user may enter its data directory: it holds the database
+# (credentials, session hashes), the encryption key and backups. A root
+# that may not chmod a folder it doesn't own (NFS root_squash, cap_drop
+# without CAP_FOWNER) warns instead of crash-looping the container.
+if [ "$(stat -c %a "$DATA_DIR" 2>/dev/null)" != 700 ] && ! chmod 700 "$DATA_DIR" 2>/dev/null; then
+    echo "Warning: couldn't make $DATA_DIR private to Ryokan's user. Run chmod 700 on that folder on the host, or other users there can read the database and the encryption key." >&2
+fi
 
 exec gosu ryokan "$@"

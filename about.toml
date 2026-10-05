@@ -1,7 +1,7 @@
 # `cargo about generate` uses this to bundle every transitive dependency's
-# license text into licenses/THIRD_PARTY_LICENSES.html. The freshness
-# check in `.github/workflows/rust.yml` runs the regen and diffs the
-# committed file, so a Cargo.lock change without a regen fails CI. The
+# license text into licenses/THIRD_PARTY_LICENSES.html.
+# `.github/workflows/license-notices.yml` regenerates it and commits it
+# to `dev` whenever Cargo.lock, about.toml or about.hbs changes. The
 # accepted list below covers every SPDX identifier that appears in
 # Ryokan's full dep tree as of writing;
 # `cargo about` will fail loudly if a new dep introduces a new identifier,
@@ -23,7 +23,3 @@ accepted = [
     "Unicode-3.0",           # ICU / Unicode tables
     "Zlib",
 ]
-
-# Ryokan itself is GPL-3.0-or-later; cargo-about excludes the workspace
-# member it's invoked on by default, so we don't need to list our own
-# license here.

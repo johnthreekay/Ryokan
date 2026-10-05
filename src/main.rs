@@ -475,6 +475,15 @@ async fn main() {
         tracing::info!("Cleared stranded backup work dir {}", dir.display());
     }
 
+    // 0600 before SQLite opens it (it would create the file, and its WAL,
+    // with the umask's mode). Created here only when opening would create
+    // it anyway, so an explicit `DATABASE_URL` naming a missing file
+    // still fails the boot.
+    services::paths::make_db_private(
+        &services::paths::live_db_path(),
+        services::paths::opening_creates_db(database_url.as_deref()),
+    );
+
     // The default path goes in through `filename` rather than a
     // formatted URL: sqlx percent-decodes a URL's path, so a data dir
     // containing `%` would open the wrong file.
@@ -619,8 +628,17 @@ async fn main() {
     // (env-var parse, file read, possible first-run key generation
     // with a 0600 chmod) at boot rather than during the user's first
     // OAuth `/submit`. Wrapped in `spawn_blocking` because the
-    // first-run path may write to disk.
-    let _ = tokio::task::spawn_blocking(services::crypto::warm_key).await;
+    // first-run path may write to disk. A key that can't be loaded or
+    // created (malformed `RYOKAN_ENCRYPTION_KEY`, unreadable key file)
+    // stops the boot here: the panic used to end only the blocking task,
+    // and Ryokan ran on with every OAuth link and token read failing.
+    if tokio::task::spawn_blocking(services::crypto::warm_key)
+        .await
+        .is_err()
+    {
+        tracing::error!("Encryption key failed to load (the reason is above); not starting");
+        std::process::exit(1);
+    }
 
     // Warm the Custom Formats cache from disk. Parse failures are logged
     // inside `load_compiled_cfs` and skipped — startup never aborts over
@@ -983,6 +1001,12 @@ async fn main() {
         // the legacy `/settings` POST above is the no-UI fallback for
         // any external bookmark or script still hitting the bulk
         // endpoint.
+        // First-run library step; `/setup` sends a new account here.
+        .route(
+            "/setup/library",
+            get(handlers::settings::setup_library::setup_library_page)
+                .post(handlers::settings::setup_library::setup_library_submit),
+        )
         .route(
             "/settings/general",
             post(handlers::settings::settings_general_submit),
@@ -1317,7 +1341,10 @@ async fn main() {
             get(handlers::progress::stream_progress),
         )
         .route("/media/art/{cache_key}", get(handlers::media::artwork))
-        .route("/logout", get(handlers::auth::logout))
+        // POST so `require_auth`'s same-origin check covers it: as a GET,
+        // any site could log the user out with a link (SameSite=Lax sends
+        // the cookie on top-level navigations).
+        .route("/logout", post(handlers::auth::logout))
         // SwaggerUI/OpenAPI live behind the auth wall: the OpenAPI doc
         // describes the entire route surface and form schemas, including
         // the rate-limited /login and /setup shapes. Exposing it
@@ -1494,20 +1521,37 @@ async fn main() {
     );
     let static_service = ServeDir::new("static");
 
-    let app = Router::new()
+    let mut browser_routes = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
-        .merge(sonarr_routes)
-        .merge(radarr_routes)
-        .merge(calendar_routes)
-        .merge(webhook_routes)
         .nest_service(
             "/static",
             tower::ServiceBuilder::new()
                 .layer(static_cache_control)
                 .service(static_service),
-        )
+        );
+    // Opt-in DNS-rebinding defense (`handlers::host_check`), off unless
+    // `RYOKAN_HOST_CHECK` / `RYOKAN_ALLOWED_HOSTS` is set. Browser
+    // routes only: the API-key routes merged below are called by other
+    // services by name and carry a key a rebinding page doesn't have.
+    if let Some(check) = handlers::host_check::HostCheck::from_env() {
+        browser_routes = browser_routes.layer(axum::middleware::from_fn_with_state(
+            check,
+            handlers::host_check::apply,
+        ));
+    }
+
+    let app = Router::new()
+        .merge(browser_routes)
+        .merge(sonarr_routes)
+        .merge(radarr_routes)
+        .merge(calendar_routes)
+        .merge(webhook_routes)
         .layer(compression)
+        .layer(axum::middleware::from_fn_with_state(
+            handlers::security_headers::SecurityHeaders::from_env(),
+            handlers::security_headers::apply,
+        ))
         .with_state(state.clone());
 
     let addr = std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:8978".to_string());
@@ -2062,8 +2106,13 @@ async fn main() {
                             }
                             _ => {}
                         }
+                        // Login devices unused for 400 days (`models::login_device`).
+                        if let Err(e) = models::login_device::cleanup(&cleanup_db).await {
+                            cleanup_errors.push(format!("login devices: {}", e));
+                            tracing::error!("Login device cleanup failed: {}", e);
+                        }
                         // Prune idle LOGIN_FAILURES entries. The per-request sweep
-                        // in `login_check` only touches keys actively being hit,
+                        // in `login_attempt` only touches keys actively being hit,
                         // so IPs / usernames that failed once and then went quiet
                         // would linger until the process restarts. Hourly global
                         // sweep keeps the map bounded.

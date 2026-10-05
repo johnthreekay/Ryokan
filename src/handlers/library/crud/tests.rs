@@ -941,6 +941,101 @@ mod remove_series_safety {
     }
 
     #[tokio::test]
+    async fn a_dot_folder_name_never_takes_the_library_with_it() {
+        // A title of dots and spaces used to sanitize to "." (the media
+        // root itself), and removing that series with files recycled or
+        // deleted every series' folder.
+        let tmp = TempDir::new().expect("tempdir");
+        let media_root = tmp.path().to_path_buf();
+        let other = media_root.join("Other Show");
+        std::fs::create_dir(&other).unwrap();
+        std::fs::write(other.join("ep01.mkv"), b"x").unwrap();
+
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 1010, "Dots").await;
+        override_folder_name(&db, series_id, ".").await;
+        save_media_root(&db, media_root.to_str().unwrap()).await;
+        let state = build_test_app_state(db.clone(), None);
+        let form = super::super::RemoveSeriesForm {
+            id: series_id,
+            delete_files: Some(true),
+            add_exclusion: None,
+        };
+        let resp = remove_series(State(state), AxumJson(form))
+            .await
+            .expect("handler ok");
+        assert_eq!(folder_status(&resp), "refused");
+        assert!(
+            other.join("ep01.mkv").exists(),
+            "another series' file must survive"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_folder_that_resolves_to_the_media_root_is_refused() {
+        let tmp = TempDir::new().expect("tempdir");
+        let media_root = tmp.path().join("media");
+        std::fs::create_dir(&media_root).unwrap();
+        let other = media_root.join("Other Show");
+        std::fs::create_dir(&other).unwrap();
+        std::fs::write(other.join("ep01.mkv"), b"x").unwrap();
+        std::os::unix::fs::symlink(&media_root, media_root.join("Show")).unwrap();
+
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 1011, "Show").await;
+        save_media_root(&db, media_root.to_str().unwrap()).await;
+        let state = build_test_app_state(db.clone(), None);
+        let form = super::super::RemoveSeriesForm {
+            id: series_id,
+            delete_files: Some(true),
+            add_exclusion: None,
+        };
+        let resp = remove_series(State(state), AxumJson(form))
+            .await
+            .expect("handler ok");
+        assert_eq!(folder_status(&resp), "refused");
+        assert!(other.join("ep01.mkv").exists(), "the library must survive");
+    }
+
+    #[tokio::test]
+    async fn a_folder_another_series_shares_is_kept() {
+        // Two rows written before each new series got its own folder
+        // can both name `Show`: recycling it with one took the other's
+        // episodes.
+        let tmp = TempDir::new().expect("tempdir");
+        let media_root = tmp.path().to_path_buf();
+        let shared = media_root.join("Show");
+        std::fs::create_dir(&shared).unwrap();
+        std::fs::write(shared.join("ep01.mkv"), b"x").unwrap();
+
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 1012, "Show").await;
+        let remake = seed_series(&db, 1013, "Show (Remake)").await;
+        override_folder_name(&db, remake, "show").await;
+        save_media_root(&db, media_root.to_str().unwrap()).await;
+        let state = build_test_app_state(db.clone(), None);
+        let form = super::super::RemoveSeriesForm {
+            id: series_id,
+            delete_files: Some(true),
+            add_exclusion: None,
+        };
+        let resp = remove_series(State(state), AxumJson(form))
+            .await
+            .expect("handler ok");
+        assert_eq!(folder_status(&resp), "shared");
+        assert_eq!(resp["folder_detail"], "Show (Remake)");
+        assert!(shared.join("ep01.mkv").exists(), "the shared folder stays");
+        assert!(
+            crate::models::series::get_by_id(&db, series_id)
+                .await
+                .unwrap()
+                .is_none(),
+            "the series itself is removed"
+        );
+    }
+
+    #[tokio::test]
     async fn removes_folder_when_under_media_root() {
         // Happy path. Pins line 373's positive arm + line 374's
         // remove_dir_all. Without this assertion, a mutation flipping
@@ -1166,6 +1261,37 @@ mod remove_series_safety {
             recorder.deletes.lock().unwrap().len(),
             3,
             "client must have received three delete() calls"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_hash_another_series_uses_is_left_in_the_client() {
+        // Series A's grab of a batch was cancelled and the batch was
+        // re-grabbed under series B. Deleting A with files used to
+        // delete the hash with its data, destroying B's download.
+        let db = in_memory_pool().await;
+        let a = crate::test_support::seed_series(&db, 1101, "Show A").await;
+        let b = crate::test_support::seed_series(&db, 1102, "Show B").await;
+        crate::test_support::seed_grabbed_torrent(&db, a, "hash-shared", "batch", &[1]).await;
+        crate::test_support::seed_grabbed_torrent(&db, a, "hash-own", "a-only", &[2]).await;
+        crate::test_support::seed_grabbed_torrent(&db, b, "HASH-SHARED", "batch", &[1]).await;
+
+        let recorder = Arc::new(RecordingClient::default());
+        let client: Arc<dyn DownloadClient> = recorder.clone();
+        let state = build_test_app_state(db.clone(), Some(client));
+        let form = super::super::RemoveSeriesForm {
+            id: a,
+            delete_files: Some(true),
+            add_exclusion: None,
+        };
+        let _ = remove_series(State(state), AxumJson(form))
+            .await
+            .expect("handler ok");
+
+        assert_eq!(
+            *recorder.deletes.lock().unwrap(),
+            vec!["hash-own".to_string()],
+            "only the hash no other series uses is deleted"
         );
     }
 

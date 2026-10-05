@@ -298,6 +298,15 @@ pub async fn grab_release(
     State(state): State<AppState>,
     Json(form): Json<GrabForm>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+    // A supplied hash has to be a real one (qBittorrent reads `all` as
+    // every torrent); see `download_client::normalize_info_hash`.
+    let form_hash = match form.info_hash.as_deref().unwrap_or("").trim() {
+        "" => String::new(),
+        raw => crate::services::download_client::normalize_info_hash(raw).ok_or((
+            axum::http::StatusCode::BAD_REQUEST,
+            "info_hash must be a 40- or 64-character hex info-hash".to_string(),
+        ))?,
+    };
     // Pin chain: indexer_id (when the result came from a torznab/newznab
     // fan-out) > Nyaa pin (Nyaa-direct results) > default. The manual-
     // search page only invokes `nyaa::search` today, so any form arriving
@@ -320,7 +329,6 @@ pub async fn grab_release(
         "Download client not configured".to_string(),
     ))?;
 
-    let form_hash = form.info_hash.clone().unwrap_or_default();
     let info_hash = if !form_hash.is_empty() {
         form_hash
     } else {
@@ -743,4 +751,38 @@ pub async fn get_torrents(
         }
     }
     Ok(Json(torrents))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{build_test_app_state, in_memory_pool};
+
+    #[tokio::test]
+    async fn a_grab_with_an_info_hash_that_is_not_a_hash_is_refused() {
+        // qBittorrent reads `all` as every torrent; it must never reach
+        // a client or be stored. Refused before any client is resolved,
+        // so the fixture needs none.
+        let state = build_test_app_state(in_memory_pool().await, None);
+        for bad in ["all".to_string(), "a|b".to_string(), "a".repeat(41)] {
+            let res = grab_release(
+                State(state.clone()),
+                Json(GrabForm {
+                    url: "https://nyaa.si/download/1.torrent".into(),
+                    title: None,
+                    info_hash: Some(bad.clone()),
+                    is_batch: None,
+                    indexer_id: None,
+                }),
+            )
+            .await;
+            match res {
+                Err((code, msg)) => {
+                    assert_eq!(code, axum::http::StatusCode::BAD_REQUEST, "{bad}");
+                    assert!(msg.contains("info_hash"), "{bad}: {msg}");
+                }
+                Ok(_) => panic!("{bad} was accepted"),
+            }
+        }
+    }
 }

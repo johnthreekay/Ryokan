@@ -78,7 +78,7 @@
                         </details>
                     </td>
                     <td class="col-name">
-                        <a href="{{ r.link }}" target="_blank" rel="noopener">{{ r.title }}</a>
+                        <a href="{{ r.safe_link() }}" target="_blank" rel="noopener">{{ r.title }}</a>
                         <div class="result-tags">
                             {% if r.is_batch %}<span class="tag tag-batch">BATCH</span>{% endif %}
                             {% if r.is_trusted %}<span class="tag tag-trusted">TRUSTED</span>{% endif %}
@@ -106,9 +106,9 @@
                     <td class="col-dl"><span class="dl-count">{{ r.downloads }}</span></td>
                     <td class="col-actions">
                         {% if !r.magnet.is_empty() %}
-                        <button class="btn btn-grab" onclick="grabRelease('{{ r.magnet }}', this)">Grab</button>
+                        <button class="btn btn-grab" data-grab-url="{{ r.magnet }}" onclick="grabRelease(this.dataset.grabUrl, this)">Grab</button>
                         {% else if !r.torrent.is_empty() %}
-                        <button class="btn btn-grab" onclick="grabRelease('{{ r.torrent }}', this)">Grab</button>
+                        <button class="btn btn-grab" data-grab-url="{{ r.torrent }}" onclick="grabRelease(this.dataset.grabUrl, this)">Grab</button>
                         {% endif %}
                     </td>
                 </tr>
@@ -125,7 +125,7 @@
             <div class="result-card {% if r.is_batch %}is-batch{% endif %} {% if r.is_trusted %}is-trusted{% endif %}" data-name="{{ r.title }}" data-size-human="{{ r.size }}" data-seeders="{{ r.seeders }}" data-info-hash="{{ r.info_hash }}" data-group="{{ r.group }}"{% if let Some(idx) = r.indexer_id %} data-indexer-id="{{ idx }}"{% endif %}>
                 <div class="result-card-header">
                     <span class="score-badge {% if r.score >= 60 %}score-high{% else if r.score >= 30 %}score-mid{% else %}score-low{% endif %}">{{ r.score }}</span>
-                    <a class="result-card-title" href="{{ r.link }}" target="_blank" rel="noopener">{{ r.title }}</a>
+                    <a class="result-card-title" href="{{ r.safe_link() }}" target="_blank" rel="noopener">{{ r.title }}</a>
                 </div>
                 <div class="result-card-tags">
                     {% if r.is_batch %}<span class="tag tag-batch">BATCH</span>{% endif %}
@@ -138,9 +138,9 @@
                     <span class="result-card-meta"><span class="seed-count">{{ r.seeders }}</span> S</span>
                     <span class="result-card-meta"><span class="leech-count">{{ r.leechers }}</span> L</span>
                     {% if !r.magnet.is_empty() %}
-                    <button class="btn btn-grab" onclick="grabRelease('{{ r.magnet }}', this)">Grab</button>
+                    <button class="btn btn-grab" data-grab-url="{{ r.magnet }}" onclick="grabRelease(this.dataset.grabUrl, this)">Grab</button>
                     {% else if !r.torrent.is_empty() %}
-                    <button class="btn btn-grab" onclick="grabRelease('{{ r.torrent }}', this)">Grab</button>
+                    <button class="btn btn-grab" data-grab-url="{{ r.torrent }}" onclick="grabRelease(this.dataset.grabUrl, this)">Grab</button>
                     {% endif %}
                 </div>
             </div>

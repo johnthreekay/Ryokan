@@ -9,6 +9,7 @@ use crate::services::jikan;
 
 pub mod airing_schedules;
 mod rate_limit;
+use crate::services::http_body::CappedBody;
 #[cfg(any(test, feature = "test-support"))]
 pub use rate_limit::reset_state_for_tests;
 use rate_limit::{
@@ -320,7 +321,7 @@ pub async fn fetch_media_list_collection(
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
             set_anilist_cooldown(retry_after_secs, ANILIST_COOLDOWN_DEFAULT);
         }
-        let body = resp.text().await.unwrap_or_default();
+        let body = resp.text_capped().await.unwrap_or_default();
         // OAuth2-shaped 400 responses with an `invalid_token` /
         // `invalid_grant` error code mean the token is dead — same
         // remediation as a 401/403 (user must re-link). AL's
@@ -363,7 +364,7 @@ pub async fn fetch_media_list_collection(
     }
 
     let json: serde_json::Value = resp
-        .json()
+        .json_capped()
         .await
         .map_err(|e| format!("AniList MediaListCollection parse failed: {e}"))?;
 
@@ -688,7 +689,7 @@ pub async fn search_anime_with_options(
     // Read the body as text first so a non-JSON error body (common on 4xx/5xx)
     // produces a useful error instead of "Failed to parse AniList response".
     let body_text = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("AniList response read failed (HTTP {}): {}", status, e))?;
 
@@ -753,7 +754,7 @@ pub async fn search_anime_with_options(
                 format: m["format"].as_str().unwrap_or("").to_string(),
                 status: m["status"].as_str().unwrap_or("").to_string(),
                 status_display: prettify_status(m["status"].as_str().unwrap_or("")),
-                episodes: m["episodes"].as_i64().filter(|&n| n > 0).map(|e| e as i32),
+                episodes: m["episodes"].as_i64().and_then(plausible_episode_count),
                 season_year: m["seasonYear"].as_i64().map(|y| y as i32),
                 source: "anilist".to_string(),
                 average_score: m["averageScore"]
@@ -840,6 +841,27 @@ pub struct StreamingEpisode {
     pub site: String,
 }
 
+/// Most episodes a provider's count is believed for. The longest
+/// finite runs are under 2,000; a count past this is a broken or hostile
+/// response, and the episode table, monitoring and auto-search each
+/// build `1..=count` whole (`i32::MAX` episodes is an 8 GB vector).
+pub const MAX_PLAUSIBLE_EPISODES: i32 = 5_000;
+
+/// A provider's episode count or episode number, or `None` when it is
+/// not a positive number up to [`MAX_PLAUSIBLE_EPISODES`] (read as
+/// "unknown", like a missing count).
+pub fn plausible_episode_count(n: i64) -> Option<i32> {
+    (1..=i64::from(MAX_PLAUSIBLE_EPISODES))
+        .contains(&n)
+        .then_some(n as i32)
+}
+
+/// [`plausible_episode_count`] for a cached detail blob, so a count
+/// stored before the check existed is read through it too.
+fn de_plausible_count<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<i32>, D::Error> {
+    Ok(Option::<i64>::deserialize(d)?.and_then(plausible_episode_count))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct AnimeDetail {
     pub id: i64,
@@ -852,6 +874,7 @@ pub struct AnimeDetail {
     pub format: String,
     pub status: String,
     pub status_display: String,
+    #[serde(default, deserialize_with = "de_plausible_count")]
     pub episodes: Option<i32>,
     pub duration: Option<i32>,
     pub season: String,
@@ -874,6 +897,7 @@ pub struct AnimeDetail {
     pub average_score_display: Option<String>,
     pub score_is_ten_point: bool,
     pub score_class: String,
+    #[serde(default, deserialize_with = "de_plausible_count")]
     pub next_airing_episode: Option<i32>,
     pub next_airing_at: Option<i64>,
     pub synonyms: Vec<String>,
@@ -1142,10 +1166,10 @@ async fn fetch_media_detail(selector: MediaSelector) -> Result<Option<AnimeDetai
     let headers = resp.headers().clone();
     record_rate_limit_headers(&headers);
 
-    // Read as text first (not .json()) so a Cloudflare HTML challenge
+    // Read as text first (not .json_capped()) so a Cloudflare HTML challenge
     // doesn't blow up at the parse step — we need the body to classify
     // the failure correctly.
-    let body_text = match resp.text().await {
+    let body_text = match resp.text_capped().await {
         Ok(t) => t,
         Err(e) => {
             // Body-read failure: the status header was already received,
@@ -1265,10 +1289,7 @@ fn parse_media_node(m: &serde_json::Value) -> Option<AnimeDetail> {
                         format: node["format"].as_str().unwrap_or("").to_string(),
                         status: node["status"].as_str().unwrap_or("").to_string(),
                         status_display: prettify_status(node["status"].as_str().unwrap_or("")),
-                        episodes: node["episodes"]
-                            .as_i64()
-                            .filter(|&n| n > 0)
-                            .map(|e| e as i32),
+                        episodes: node["episodes"].as_i64().and_then(plausible_episode_count),
                         relation_type: edge["relationType"].as_str().unwrap_or("").to_string(),
                         season_year: node["seasonYear"].as_i64().map(|y| y as i32),
                         media_type: node["type"].as_str().unwrap_or("").to_string(),
@@ -1294,7 +1315,7 @@ fn parse_media_node(m: &serde_json::Value) -> Option<AnimeDetail> {
         banner_url: m["bannerImage"].as_str().unwrap_or("").to_string(),
         format: m["format"].as_str().unwrap_or("").to_string(),
         status: m["status"].as_str().unwrap_or("").to_string(),
-        episodes: m["episodes"].as_i64().filter(|&n| n > 0).map(|e| e as i32),
+        episodes: m["episodes"].as_i64().and_then(plausible_episode_count),
         duration: m["duration"].as_i64().map(|d| d as i32),
         season: m["season"].as_str().unwrap_or("").to_string(),
         season_year: m["seasonYear"].as_i64().map(|y| y as i32),
@@ -1313,7 +1334,9 @@ fn parse_media_node(m: &serde_json::Value) -> Option<AnimeDetail> {
         score_is_ten_point: false,
         score_class: score_class(m["averageScore"].as_i64().map(|s| s as i32), false),
         status_display: prettify_status(m["status"].as_str().unwrap_or("")),
-        next_airing_episode: m["nextAiringEpisode"]["episode"].as_i64().map(|e| e as i32),
+        next_airing_episode: m["nextAiringEpisode"]["episode"]
+            .as_i64()
+            .and_then(plausible_episode_count),
         next_airing_at: m["nextAiringEpisode"]["airingAt"].as_i64(),
         synonyms: m["synonyms"]
             .as_array()
@@ -1480,7 +1503,7 @@ pub async fn get_anime_details_batch(ids: &[i64]) -> Result<HashMap<i64, AnimeDe
         record_rate_limit_headers(&headers);
 
         let body_text = resp
-            .text()
+            .text_capped()
             .await
             .map_err(|e| format!("AniList batch unavailable: failed to read response: {}", e))?;
 
@@ -1623,6 +1646,42 @@ fn format_rate_limit_headers_for_log(headers: &reqwest::header::HeaderMap) -> St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_implausible_episode_count_reads_as_unknown() {
+        // Every `1..=count` range is built whole: i32::MAX episodes
+        // is an 8 GB vector.
+        let node = serde_json::json!({
+            "id": 1,
+            "title": {"romaji": "Show"},
+            "episodes": 2_147_483_647_i64,
+            "nextAiringEpisode": {"episode": 9_999_999, "airingAt": 1},
+        });
+        let detail = parse_media_node(&node).expect("parses");
+        assert_eq!(detail.episodes, None);
+        assert_eq!(detail.next_airing_episode, None);
+        assert_eq!(detail.effective_episode_count(), 0);
+
+        // A cached blob from before the bound reads through it too.
+        let mut blob = serde_json::to_value(&detail).unwrap();
+        blob["episodes"] = serde_json::json!(2_147_483_647_i64);
+        blob["next_airing_episode"] = serde_json::json!(-5);
+        let cached: AnimeDetail = serde_json::from_value(blob.clone()).unwrap();
+        assert_eq!((cached.episodes, cached.next_airing_episode), (None, None));
+        blob["episodes"] = serde_json::json!(MAX_PLAUSIBLE_EPISODES);
+        let cached: AnimeDetail = serde_json::from_value(blob.clone()).unwrap();
+        assert_eq!(cached.episodes, Some(MAX_PLAUSIBLE_EPISODES));
+        blob.as_object_mut().unwrap().remove("episodes");
+        let cached: AnimeDetail = serde_json::from_value(blob).unwrap();
+        assert_eq!(cached.episodes, None, "a missing count is still unknown");
+
+        assert_eq!(plausible_episode_count(0), None);
+        assert_eq!(plausible_episode_count(1), Some(1));
+        assert_eq!(
+            plausible_episode_count(i64::from(MAX_PLAUSIBLE_EPISODES) + 1),
+            None
+        );
+    }
 
     #[test]
     fn anilist_post_carries_user_agent_and_referer() {

@@ -61,9 +61,14 @@ function stateBadgeClass(kind) {
 }
 
 function escapeHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
+    // Escapes quotes as well, for attribute values (see series_helpers.js).
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function renderQueue(torrents) {
@@ -103,16 +108,16 @@ function renderQueue(torrents) {
             html += `<td><span class="log-badge ${stateBadgeClass(t.state_kind)}">${stateLabel(t.state_kind)}</span></td>`;
             html += `<td class="dl-actions">`;
             if (isPaused) {
-                html += `<button class="btn btn-ghost btn-sm" onclick="resumeTorrent('${escapeHtml(t.hash)}')" title="Resume"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>`;
+                html += `<button class="btn btn-ghost btn-sm" data-dl-action="resume" title="Resume"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>`;
             } else {
-                html += `<button class="btn btn-ghost btn-sm" onclick="pauseTorrent('${escapeHtml(t.hash)}')" title="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>`;
+                html += `<button class="btn btn-ghost btn-sm" data-dl-action="pause" title="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>`;
             }
             // Copy infohash button — keep in sync with the template's
             // queue-row rendering in downloads.html. Without this, the
             // post-fetch JS render dropped the button so it visibly
             // flashed away on page load when loadQueue() ran immediately.
-            html += `<button class="btn btn-ghost btn-sm" onclick="ryokanCopy('${escapeHtml(t.hash)}', this)" title="Copy infohash"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>`;
-            html += `<button class="btn btn-ghost btn-sm" onclick="deleteTorrent('${escapeHtml(t.hash)}')" title="Remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>`;
+            html += `<button class="btn btn-ghost btn-sm" data-dl-action="copy" title="Copy infohash"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>`;
+            html += `<button class="btn btn-ghost btn-sm" data-dl-action="delete" title="Remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>`;
             html += `</td></tr>`;
         }
         html += '</tbody></table></div>';
@@ -177,6 +182,28 @@ function deleteTorrent(hash) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({hash: hash, delete_files: !!res.extras.deleteFiles}),
         }).then(function() { setTimeout(loadQueue, 500); });
+    });
+}
+
+// Queue row actions. Each button names its action in `data-dl-action`
+// and the row carries the id in `data-hash`; neither is built into an
+// inline `onclick`, where HTML-escaping the id doesn't help: the parser
+// decodes `&#39;` back to `'` before the handler's JS runs. One document
+// listener, bound once since this script re-runs on every boosted
+// visit, covers the server-rendered rows and renderQueue's alike.
+if (!window.__ryokanDownloadsQueueActions) {
+    window.__ryokanDownloadsQueueActions = true;
+    document.addEventListener('click', function (ev) {
+        const btn = ev.target.closest('#queue-container [data-dl-action]');
+        const row = btn && btn.closest('tr[data-hash]');
+        if (!row) return;
+        const hash = row.dataset.hash;
+        switch (btn.dataset.dlAction) {
+            case 'resume': resumeTorrent(hash); break;
+            case 'pause': pauseTorrent(hash); break;
+            case 'copy': window.ryokanCopy(hash, btn); break;
+            case 'delete': deleteTorrent(hash); break;
+        }
     });
 }
 

@@ -3,25 +3,23 @@
            values. Multi-client routing reads from `download_clients` /
            `indexers.download_client_id` / `config.nyaa_download_client_id`
            instead, but the legacy columns are kept as a one-release
-           rollback hatch (a follow-up will strip them entirely). #}
+           rollback hatch (a follow-up will strip them entirely). Their
+           passwords are never sent to the browser: the save keeps
+           what is stored. #}
         <input type="hidden" name="active_client" value="{{ config.active_client }}">
         <input type="hidden" name="qbit_url" value="{{ config.qbit_url }}">
         <input type="hidden" name="qbit_user" value="{{ config.qbit_user }}">
-        <input type="hidden" name="qbit_pass" value="{{ config.qbit_pass }}">
         <input type="hidden" name="qbit_category" value="{{ config.qbit_category }}">
         <input type="hidden" name="qbit_download_path" value="{{ config.qbit_download_path }}">
         <input type="hidden" name="deluge_url" value="{{ config.deluge_url }}">
-        <input type="hidden" name="deluge_password" value="{{ config.deluge_password }}">
         <input type="hidden" name="deluge_label" value="{{ config.deluge_label }}">
         <input type="hidden" name="deluge_download_path" value="{{ config.deluge_download_path }}">
         <input type="hidden" name="transmission_url" value="{{ config.transmission_url }}">
         <input type="hidden" name="transmission_user" value="{{ config.transmission_user }}">
-        <input type="hidden" name="transmission_password" value="{{ config.transmission_password }}">
         <input type="hidden" name="transmission_label" value="{{ config.transmission_label }}">
         <input type="hidden" name="transmission_download_path" value="{{ config.transmission_download_path }}">
         <input type="hidden" name="rtorrent_url" value="{{ config.rtorrent_url }}">
         <input type="hidden" name="rtorrent_user" value="{{ config.rtorrent_user }}">
-        <input type="hidden" name="rtorrent_password" value="{{ config.rtorrent_password }}">
         <input type="hidden" name="rtorrent_label" value="{{ config.rtorrent_label }}">
         <input type="hidden" name="rtorrent_download_path" value="{{ config.rtorrent_download_path }}">
 
@@ -34,11 +32,9 @@
             <div class="form-group">
                 <label for="jellyfin_api_key">API Key</label>
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <input type="password" name="jellyfin_api_key" id="jellyfin_api_key" value="{{ config.jellyfin_api_key }}" style="flex:1">
-                    <button type="button" class="btn btn-secondary" onclick="toggleApiKeyVisibility('jellyfin_api_key', this)" style="white-space:nowrap">Show</button>
-                    <button type="button" class="btn btn-secondary" onclick="copyApiKey('jellyfin_api_key', this)" style="white-space:nowrap">Copy</button>
+                    <input type="password" name="jellyfin_api_key" id="jellyfin_api_key" autocomplete="new-password" placeholder="{% if !config.jellyfin_api_key.is_empty() %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% endif %}" style="flex:1">
                 </div>
-                <span class="form-hint">Ryokan will use this for server info, targeted lookups, and library refreshes.</span>
+                <span class="form-hint">Ryokan will use this for server info, targeted lookups, and library refreshes. A saved key is never shown again. Leave the field blank to keep it.</span>
             </div>
             <div class="settings-inline-actions">
                 <button type="button" class="btn btn-secondary"
@@ -76,7 +72,9 @@
                     <button type="button" class="btn btn-secondary" onclick="copyApiKey('sonarr_api_key', this)" style="white-space:nowrap">Copy</button>
                     <button type="button" class="btn btn-secondary" onclick="generateApiKey()" style="white-space:nowrap">Generate</button>
                 </div>
-                
+                {% if crate::handlers::settings::shim_key_is_short(config.sonarr_api_key) %}
+                <div class="alert alert-warn" role="status" style="margin: 8px 0 0">This key is shorter than {{ crate::handlers::settings::MIN_SHIM_KEY_CHARS }} characters, so it is easy to guess. Press Generate, Save, then paste the new key into Seerr's Sonarr server.</div>
+                {% endif %}
             </div>
         </div>
 
@@ -100,7 +98,9 @@
                     <button type="button" class="btn btn-secondary" onclick="copyApiKey('radarr_api_key', this)" style="white-space:nowrap">Copy</button>
                     <button type="button" class="btn btn-secondary" onclick="generateRadarrApiKey()" style="white-space:nowrap">Generate</button>
                 </div>
-                
+                {% if crate::handlers::settings::shim_key_is_short(config.radarr_api_key) %}
+                <div class="alert alert-warn" role="status" style="margin: 8px 0 0">This key is shorter than {{ crate::handlers::settings::MIN_SHIM_KEY_CHARS }} characters, so it is easy to guess. Press Generate, Save, then paste the new key into Seerr's Radarr server.</div>
+                {% endif %}
             </div>
         </div>
 

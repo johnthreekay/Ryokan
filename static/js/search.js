@@ -160,7 +160,7 @@ function loadMore() {
                 if (r.resolution) tags += `<span class="tag tag-res">${escHtml(r.resolution)}p</span>`;
 
                 const grabUrl = r.magnet || r.torrent || '';
-                const grabBtn = grabUrl ? `<button class="btn btn-grab" onclick="grabRelease('${escAttr(grabUrl)}', this)">Grab</button>` : '';
+                const grabBtn = grabUrl ? `<button class="btn btn-grab" data-grab-url="${escHtml(grabUrl)}" onclick="grabRelease(this.dataset.grabUrl, this)">Grab</button>` : '';
 
                 const scoreBreakdownHtml = renderScoreBreakdown(r);
                 // Mirror the server-rendered shape in templates/search.html:
@@ -171,7 +171,7 @@ function loadMore() {
                 // `data-ts` — the global relative-time renderer in
                 // base.js otherwise mixes "5d ago" / absolute date.
                 const dateCell = r.upload_date
-                    ? `<span data-utc="${escAttr(r.upload_date)}">${escHtml(r.upload_date)}</span>`
+                    ? `<span data-utc="${escHtml(r.upload_date)}">${escHtml(r.upload_date)}</span>`
                     : '—';
 
                 // Table row (desktop).
@@ -198,7 +198,7 @@ function loadMore() {
                         </details>
                     </td>
                     <td class="col-name">
-                        <a href="${escAttr(r.link)}" target="_blank" rel="noopener">${escHtml(r.title)}</a>
+                        <a href="${escHtml(safeHref(r.link))}" target="_blank" rel="noopener">${escHtml(r.title)}</a>
                         <div class="result-tags">${tags}</div>
                     </td>
                     <td class="col-size">${escHtml(r.size)}</td>
@@ -228,7 +228,7 @@ function loadMore() {
                                 <summary class="score-badge ${scoreClass}" title="Score breakdown">${r.score}</summary>
                                 ${scoreBreakdownHtml}
                             </details>
-                            <a class="result-card-title" href="${escAttr(r.link)}" target="_blank" rel="noopener">${escHtml(r.title)}</a>
+                            <a class="result-card-title" href="${escHtml(safeHref(r.link))}" target="_blank" rel="noopener">${escHtml(r.title)}</a>
                         </div>
                         <div class="result-card-tags">${tags}</div>
                         <div class="result-card-footer">
@@ -547,13 +547,23 @@ function cancelGrabbedRelease(hash, btn) {
 }
 
 function escHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = s == null ? '' : s;
-    return d.innerHTML;
+    // Escapes quotes as well, for attribute values (see series_helpers.js).
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
-function escAttr(s) {
-    return String(s == null ? '' : s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+// A release link for an `href`: kept only when it is http(s) or magnet.
+// Indexer results carry whatever URL the indexer sent, and a
+// `javascript:` link would run in Ryokan's origin when clicked.
+// Mirrors `services::html::safe_href` for server-rendered rows.
+function safeHref(url) {
+    const s = String(url == null ? '' : url).trim();
+    return /^(https?:\/\/|magnet:)/i.test(s) ? s : '';
 }
 
 // Build the <div class="score-components"> panel content for a result,

@@ -1973,3 +1973,8 @@
     outline: none;
     border-color: var(--accent);
 }
+
+/* First-run library step (/setup/library): one column of settings
+   cards, read top to bottom. */
+.setup-library { max-width: 760px; margin-inline: auto; }
+.setup-library > .cf-section-desc { margin-bottom: 20px; }

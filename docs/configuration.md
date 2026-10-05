@@ -8,6 +8,8 @@ Changes apply on save; no restart needed.
 
 Third-party services Ryokan talks to.
 
+Saved passwords and keys for other services (download clients, indexers, Jellyfin, a Discord webhook URL, a webhook's URL, signing secret and header values) are never shown again once saved. The field stays empty and reads **[set; leave blank to keep]**. Leave it blank to keep the saved value, type a new one to replace it, or press **Clear** to remove it. A saved webhook header shows its name with `********` in place of the value, and a saved webhook URL shows only its host on the provider card. If you change where a service's address points, such as its host or port, or switch between http and https, type the password or key again. Ryokan doesn't send a saved secret to a new address, on Save or on Test.
+
 - **AniList / MyAnimeList accounts**: OAuth-linked for watch-list sync. When linked, anime you mark "watching" (or "planning", "completed", etc.) on AniList or MAL get auto-added to your Ryokan library on the next sync tick. Setup walkthrough: [External accounts](external-accounts.md).
 - **Sync interval (minutes)**: how often the watch-list sync runs. Default 30 minutes; minimum 15, maximum 10080 (7 days). The form won't let you type anything below 15. If a value somehow ends up outside that range, it falls back to 30.
 - **Jellyfin**: server URL and API key. Lets Ryokan trigger a Jellyfin library refresh after each import and validate that imported files actually landed on disk. URL is `http://jellyfin:8096` when Ryokan and Jellyfin share a Docker compose; if they're on different hosts or in separate composes, use your host's LAN IP and the host-mapped port.
@@ -31,7 +33,7 @@ Each indexer row has an optional **download client pin** that overrides the per-
 
 Two more things live on this tab:
 
-- **autobrr webhook**: accepts inbound webhooks at `/api/webhook/autobrr`. [autobrr](https://autobrr.com) is a separate self-hosted tool that watches IRC announce channels for new releases and pushes matches as HTTP webhooks; this is the receiving side. The webhook has its own API key with a dedicated regenerate button, so an accidental tab POST can't silently rotate or wipe it.
+- **autobrr webhook**: accepts inbound webhooks at `/api/webhook/autobrr`. [autobrr](https://autobrr.com) is a separate self-hosted tool that watches IRC announce channels for new releases and pushes matches as HTTP webhooks; this is the receiving side. The webhook has its own API key with a dedicated regenerate button, so an accidental tab POST can't silently rotate or wipe it. A push whose indexer has the name of an indexer configured in Ryokan (autobrr sends its identifier, such as `animebytes`) uses that indexer's download client and seed rules. `nyaa` uses the built-in Nyaa's client. Any other torrent push is still grabbed, through the default torrent client and without seed rules, and its log line says which indexer matched nothing. A push Ryokan can't tell is a torrent, such as a Usenet release, is skipped instead. Give the indexer in Ryokan the name autobrr uses so those pushes go to its download client.
 - **Nyaa**: the built-in search is the first card, marked built-in, and cannot be removed. Click it to turn it off, switch its RSS feed on or off, choose English-translated or every anime category for automatic grabs, pin it to a torrent client (**use default** routes Nyaa grabs to the default torrent client), or restrict it to one uploader by default. Off skips Nyaa in automatic and interactive searches and stops its feed; the Search page keeps working. A series can override the uploader restriction on its own page.
 
 ## Quality & Releases
@@ -124,4 +126,4 @@ The **Force MAL / Kitsu fallback** switches live on the **System** page rather t
 
 ---
 
-*Last updated: 2026-08-29.*
+*Last updated: 2026-10-04.*

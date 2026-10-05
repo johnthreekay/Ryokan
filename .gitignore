@@ -4,8 +4,13 @@
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
+.ryokan-key
 .env
-.venv-docs/
+.env.*
+.venv*/
+# The source font scripts/subset-noto-sans-jp.py downloads.
+/NotoSansJP*.ttf
 /.claude/*
 !/.claude/agents/
 !/.claude/skills/
@@ -15,3 +20,6 @@
 # `mutants-*.log` rule covers the tee'd run logs.
 mutants.out*/
 mutants-*.log
+# scripts/mutants-weekly.sh's default baseline and report paths.
+mutants.baseline*.json
+mutants-report*.md

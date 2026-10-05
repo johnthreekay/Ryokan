@@ -17,7 +17,7 @@ const KEY: &str = "test-autobrr-key-abcdef";
 
 fn body_minimal(indexer: &str) -> String {
     format!(
-        r#"{{"torrent_name": "Show.S01E01", "info_hash": "deadbeef00", "magnet_uri": "magnet:?xt=urn:btih:deadbeef00", "indexer": "{}"}}"#,
+        r#"{{"torrent_name": "Show.S01E01", "info_hash": "aabbccddeeff00112233445566778899aabbccdd", "magnet_uri": "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd", "indexer": "{}"}}"#,
         indexer
     )
 }

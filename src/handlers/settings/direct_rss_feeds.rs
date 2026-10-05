@@ -201,7 +201,8 @@ pub async fn settings_direct_rss_feeds_upsert(
                 &state.db,
                 LogCategory::Rss,
                 &format!("Direct RSS feed {verb}: {name}"),
-                &url,
+                // The URL often carries the tracker passkey.
+                &crate::services::sanitize::redact_url(&url),
             )
             .await;
             let msg =

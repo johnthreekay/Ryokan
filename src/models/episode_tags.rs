@@ -1117,13 +1117,18 @@ pub async fn mark_grab_failed_for_release(
     .bind(release_title)
     .execute(db)
     .await?;
+    // Only the tag rows this release wrote: a later grab that took the
+    // episode over owns its row now, and failing it left that grab's
+    // imported file tagged `failed` (`mark_completed` promotes
+    // `grabbed` rows only).
     for ep in episodes {
         sqlx::query(
             "UPDATE episode_quality_tags SET state = 'failed', updated_at = CURRENT_TIMESTAMP \
-             WHERE series_id = ? AND episode_number = ? AND state = 'grabbed'",
+             WHERE series_id = ? AND episode_number = ? AND release_title = ? AND state = 'grabbed'",
         )
         .bind(series_id)
         .bind(ep)
+        .bind(release_title)
         .execute(db)
         .await?;
     }
@@ -1675,6 +1680,40 @@ mod grab_history_state_tests {
         assert!(rows[0].match_kind.is_empty());
         assert!(rows[0].grab_match_summary.is_empty());
         assert_eq!(rows[0].match_ratio, 0.0);
+    }
+
+    #[tokio::test]
+    async fn failing_a_release_leaves_the_tag_a_later_grab_took_over() {
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let sid: i64 = sqlx::query_scalar(
+            "INSERT INTO series (anilist_id, title) VALUES (5, 'Show') RETURNING id",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let cls = ClassificationResult::unknown();
+        record_grab(&db, sid, 5, &cls, "[X] Show - 05", "X", 0, false)
+            .await
+            .unwrap();
+        // A later grab of episode 5 owns the tag row now.
+        record_grab(&db, sid, 5, &cls, "[Y] Show - 05", "Y", 0, false)
+            .await
+            .unwrap();
+        mark_grab_failed_for_release(&db, sid, "[X] Show - 05")
+            .await
+            .unwrap();
+        let (title, state): (String, String) = sqlx::query_as(
+            "SELECT release_title, state FROM episode_quality_tags WHERE series_id = ? AND episode_number = 5",
+        )
+        .bind(sid)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            (title.as_str(), state.as_str()),
+            ("[Y] Show - 05", "grabbed")
+        );
     }
 
     #[tokio::test]

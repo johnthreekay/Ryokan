@@ -122,6 +122,34 @@ fn err_json(code: StatusCode, message: impl Into<String>) -> (StatusCode, Json<A
     )
 }
 
+/// autobrr's identifier for Nyaa, which Ryokan has built in rather than
+/// as an indexer row.
+fn is_builtin_nyaa(indexer: &str) -> bool {
+    let name = indexer.trim();
+    name.eq_ignore_ascii_case("nyaa") || name.eq_ignore_ascii_case("nyaa.si")
+}
+
+/// A push whose indexer matches no Ryokan indexer and that can't be
+/// shown to be a torrent. It may be a Usenet release, which only an
+/// indexer row can route to a Usenet client, so it is skipped (200, so
+/// autobrr doesn't retry) with a log line saying how to route it.
+async fn skip_not_a_torrent(
+    state: &AppState,
+    safe_indexer: &str,
+    safe_release: &str,
+) -> (StatusCode, Json<AutobrrResponse>) {
+    logger::warn(
+        &state.db,
+        LogCategory::Grab,
+        &format!(
+            "autobrr: skipping {safe_release}. '{safe_indexer}' matches no indexer in Ryokan and the push is not a torrent Ryokan could read. Give the Ryokan indexer the name autobrr uses ('{safe_indexer}') so its pushes go to that indexer's download client."
+        ),
+        safe_indexer,
+    )
+    .await;
+    skipped("the indexer matches no indexer in Ryokan and the release is not a torrent")
+}
+
 /// API-key auth using the same constant-time-compare shape as
 /// the arr-shim middleware. Returns `Ok(())` when authorized,
 /// `Err(response)` to short-circuit the handler.
@@ -140,7 +168,8 @@ async fn check_api_key(
         }
     };
     let expected = cfg.autobrr_api_key.trim().to_string();
-    if expected.is_empty() {
+    // A placeholder from a restored sanitized backup is "no key".
+    if expected.is_empty() || crate::services::sanitize::is_placeholder(&expected) {
         return Err(err_json(
             StatusCode::SERVICE_UNAVAILABLE,
             "autobrr webhook is disabled — generate an API key in Settings → Connections",
@@ -180,7 +209,7 @@ async fn check_api_key(
     path = "/api/webhook/autobrr",
     tag = "Webhook",
     summary = "autobrr push webhook",
-    description = "Receives a release push from autobrr's Webhook action and dispatches it to the active download client. API key required via X-Api-Key header or ?apikey= query param. The release is matched against tracked series via title-token overlap; unmatched releases are skipped (200 with status=skipped) so autobrr doesn't retry. Per-indexer seed rules from the matching `indexers` row apply automatically.",
+    description = "Receives a release push from autobrr's Webhook action and dispatches it to the active download client. API key required via X-Api-Key header or ?apikey= query param. The release is matched against tracked series via title-token overlap; unmatched releases are skipped (200 with status=skipped) so autobrr doesn't retry. Per-indexer seed rules from the matching `indexers` row apply automatically. A push whose indexer matches no configured indexer goes to the default torrent client when it is a torrent and is skipped otherwise.",
     request_body = AutobrrPayload,
     responses(
         (status = 200, description = "Push handled (grabbed, deduped, or skipped)", body = AutobrrResponse),
@@ -214,6 +243,9 @@ pub async fn webhook_autobrr(
     if payload.torrent_name.trim().is_empty() {
         return err_json(StatusCode::BAD_REQUEST, "torrent_name is required");
     }
+    if payload.torrent_name.len() > crate::services::media::MAX_RELEASE_TITLE_BYTES {
+        return err_json(StatusCode::BAD_REQUEST, "torrent_name is too long");
+    }
     if payload.indexer.trim().is_empty() {
         return err_json(StatusCode::BAD_REQUEST, "indexer is required");
     }
@@ -227,7 +259,20 @@ pub async fn webhook_autobrr(
             "either magnet_uri or torrent_url is required",
         );
     };
-    let info_hash_lc = payload.info_hash.trim().to_ascii_lowercase();
+    // An empty hash is allowed (autobrr can't always know it); anything
+    // else has to be a real one. See `download_client::normalize_info_hash`.
+    let mut info_hash_lc = match payload.info_hash.trim() {
+        "" => crate::services::torrent_file::magnet_info_hash(&download_url).unwrap_or_default(),
+        raw => match crate::services::download_client::normalize_info_hash(raw) {
+            Some(hash) => hash,
+            None => {
+                return err_json(
+                    StatusCode::BAD_REQUEST,
+                    "info_hash must be a 40- or 64-character hex info-hash",
+                );
+            }
+        },
+    };
 
     // Dedup: skip if Ryokan already has this hash in flight or
     // imported. Same shape as the RSS dedup — autobrr can race
@@ -277,11 +322,17 @@ pub async fn webhook_autobrr(
         return skipped("duplicate hash already grabbed");
     }
 
-    // Match the indexer name (case-insensitive) so seed rules
-    // apply at grab time. autobrr's `indexer` field carries the
-    // tracker name (e.g., "AnimeBytes") and Ryokan's indexer row
-    // for the corresponding torznab feed should match by name —
-    // the user picks the row's name when adding via Settings.
+    // Match the indexer name (case-insensitive) so its seed rules and
+    // client pin apply at grab time. autobrr sends its own identifier
+    // ("nyaa", "animebytes") while a Ryokan indexer is named by the
+    // user ("Prowlarr Nyaa"), so a push often matches nothing. It is
+    // grabbed anyway, the way Sonarr's push API takes any release:
+    // "nyaa" follows the built-in Nyaa's client setting, anything else
+    // goes to the default torrent client with no seed rules, once it is
+    // known to be a torrent (a hash, a magnet, or a body that reads as
+    // a .torrent). With no indexer row there is no protocol to go on,
+    // and a Usenet push's `torrent_url` is an NZB the torrent client
+    // would be handed and never download.
     //
     // Reads the cached `Vec<Arc<dyn Indexer>>` rather than
     // hitting the DB so a high-rate autobrr push doesn't
@@ -295,24 +346,9 @@ pub async fn webhook_autobrr(
             .map(|i| i.id())
     };
     let safe_indexer = sanitize_for_log_capped(&payload.indexer, 256);
-    if indexer_id.is_none() {
-        // Per the plan: "If autobrr names a release from an
-        // unconfigured indexer, surface it as an error in logs +
-        // skip rather than grab with default rules." A user who
-        // really wants the grab can add the indexer to Ryokan
-        // first. Surfacing the gap in logs is the only signal —
-        // a 200 with status=skipped keeps autobrr from retrying.
-        logger::warn(
-            &state.db,
-            LogCategory::Grab,
-            &format!(
-                "autobrr: '{safe_indexer}' refers to an indexer Ryokan doesn't have configured — skipping {safe_release}"
-            ),
-            &safe_indexer,
-        )
-        .await;
-        return skipped("indexer not configured in Ryokan");
-    }
+    let as_builtin_nyaa = indexer_id.is_none() && is_builtin_nyaa(&payload.indexer);
+    let unmatched = indexer_id.is_none() && !as_builtin_nyaa;
+    let magnet = download_url.starts_with("magnet:");
 
     // Match the release to a tracked series. autobrr filters are
     // configured per series (or per group of series), so a push
@@ -333,13 +369,27 @@ pub async fn webhook_autobrr(
     };
     let (series, ep_nums) = matched;
 
-    // Hand off to the download client. Multi-client routing —
-    // resolve via the matched indexer's pin first, then fall through
-    // to the default. `indexer_id` is `Some(_)` here because the
-    // earlier guard returned `skipped()` if the indexer wasn't
-    // configured.
-    let (client, dispatch_client_id) = match state.client_for_indexer_with_id(indexer_id).await {
+    // Hand off to the download client. Multi-client routing: the
+    // matched indexer's pin, else the Nyaa client for a built-in Nyaa
+    // push, else the default.
+    let resolved = if as_builtin_nyaa {
+        let nyaa_pin = config::get_config(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|c| c.nyaa_download_client_id);
+        state.client_for_nyaa_with_id(nyaa_pin).await
+    } else {
+        state.client_for_indexer_with_id(indexer_id).await
+    };
+    let (client, dispatch_client_id) = match resolved {
         Some(t) => t,
+        // Unmatched and hashless with no torrent client: most likely a
+        // Usenet push on a Usenet-only install, and a 503 would have
+        // autobrr retry it forever.
+        None if unmatched && info_hash_lc.is_empty() && !magnet => {
+            return skip_not_a_torrent(&state, &safe_indexer, &safe_release).await;
+        }
         None => {
             logger::error(
                 &state.db,
@@ -354,6 +404,60 @@ pub async fn webhook_autobrr(
             );
         }
     };
+    // No hash in the push or the magnet: read it from the .torrent, so
+    // post-processing can find the grab in the client by hash rather
+    // than by name (a single-file torrent named after its file never
+    // matched, and the grab was marked removed while downloading).
+    // Torrent clients only: fetching an NZB can count against an
+    // indexer's daily grab limit. An unmatched push always lands here
+    // (its client is the torrent default), and the fetch is how it is
+    // told apart from a Usenet one: one that doesn't read as a
+    // .torrent is skipped rather than handed to the torrent client.
+    let derived_hash = info_hash_lc.is_empty() && client.protocol() == "torrent";
+    if derived_hash {
+        match crate::services::torrent_file::fetch_torrent_info_hash(payload.torrent_url.trim())
+            .await
+        {
+            Some(hash) => info_hash_lc = hash,
+            None if unmatched && !magnet => {
+                return skip_not_a_torrent(&state, &safe_indexer, &safe_release).await;
+            }
+            None => {
+                logger::warn(
+                    &state.db,
+                    LogCategory::Grab,
+                    &format!(
+                        "autobrr: no info_hash for {safe_release} and the .torrent couldn't be read; Ryokan will look for it in the client by name"
+                    ),
+                    "add info_hash to the autobrr webhook template",
+                )
+                .await;
+            }
+        }
+    }
+    // A misgrab blocks its hash for the series it was misgrabbed for
+    // only, so that check waits for the match (the one above covers
+    // every other failure, for a hash the push carried).
+    if !info_hash_lc.is_empty()
+        && grabbed_torrents::is_blocklisted_for(&state.db, &info_hash_lc, Some(series.id))
+            .await
+            .unwrap_or(false)
+    {
+        logger::info(
+            &state.db,
+            LogCategory::Grab,
+            &format!("autobrr: skipping {safe_release}: hash is blocklisted"),
+            &info_hash_lc,
+        )
+        .await;
+        return skipped("hash is blocklisted");
+    }
+    if derived_hash
+        && !info_hash_lc.is_empty()
+        && grabbed_torrents::is_known_hash(&state.db, &info_hash_lc).await
+    {
+        return skipped("duplicate hash already grabbed");
+    }
     // `add_torrent_returning_id` returns the canonical client-
     // side id alongside the outcome. For BT clients the returned id
     // equals the input info_hash; for SAB it's the `nzo_id` SAB
@@ -424,8 +528,9 @@ pub async fn webhook_autobrr(
         // scoring pass runs (autobrr already filtered upstream), so
         // `score = None`. Indexer resolves from the autobrr-supplied
         // tracker → `indexers` row mapping in `indexer_id`.
-        let indexer =
-            crate::services::notifications::resolve_indexer_name(&state, indexer_id).await;
+        let indexer = crate::services::notifications::resolve_indexer_name(&state, indexer_id)
+            .await
+            .or_else(|| Some(safe_indexer.clone()).filter(|name| !name.is_empty()));
         crate::services::notifications::emit_grabbed(
             &state,
             series.id,
@@ -448,11 +553,18 @@ pub async fn webhook_autobrr(
     } else {
         String::new()
     };
+    let routing = if indexer_id.is_some() {
+        String::new()
+    } else if as_builtin_nyaa {
+        " (built-in Nyaa)".to_string()
+    } else {
+        format!(" ('{safe_indexer}' matches no indexer in Ryokan: default client, no seed rules)")
+    };
     logger::info(
         &state.db,
         LogCategory::Grab,
         &format!(
-            "autobrr push: '{}' → series #{} ({}) [{}]",
+            "autobrr push: '{}' → series #{} ({}) [{}]{routing}",
             safe_release, series.id, series.title, outcome_label
         ),
         &format!("indexer={safe_indexer}, filter={safe_filter}{size_label}"),

@@ -9,7 +9,7 @@
 
 use std::collections::HashSet;
 
-use super::{ImportSession, SeriesGroup};
+use super::{CandidateFile, ImportSession, SeriesGroup};
 use crate::services::library_link::pick_title;
 use crate::services::recycle::human_bytes;
 use crate::services::{media, naming, post_processing, source};
@@ -178,8 +178,9 @@ pub struct GroupView {
     /// Folder under the media root the files would land in. For a new
     /// series this is the auto-generated name (suffixed on collision).
     pub folder_name: String,
-    /// A folder of the plain name already exists under the media root
-    /// and no series row owns it, so the import would suffix.
+    /// The plain name is taken, by another series row or by a folder
+    /// under the media root that no series row owns, so the import
+    /// would suffix.
     pub folder_collision: bool,
     pub files: Vec<FileView>,
     pub counts: GroupCounts,
@@ -198,6 +199,9 @@ pub struct ProjectionContext<'a> {
     /// season folder every file lands in.
     pub series_folder_format: &'a str,
     pub season_folder_format: &'a str,
+    /// The episode-file template, for a file renamed on import
+    /// ([`import_file_name`]).
+    pub episode_file_format: &'a str,
 }
 
 /// The folder name `series::upsert` would generate for an AL entry:
@@ -214,9 +218,10 @@ pub fn default_folder_name(
     )
 }
 
-/// The season folder a group's files land in (#124).
-pub fn season_folder_name(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> String {
-    let names = match (&group.existing, group.picked()) {
+/// The names of the series a group lands in: the library row's, else
+/// the picked entry's.
+fn group_names(group: &SeriesGroup) -> naming::SeriesNames<'_> {
+    match (&group.existing, group.picked()) {
         (Some(existing), _) => naming::SeriesNames {
             title: &existing.title,
             romaji: &existing.title_romaji,
@@ -226,8 +231,63 @@ pub fn season_folder_name(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> S
         },
         (None, Some(entry)) => naming::SeriesNames::from_entry(entry),
         (None, None) => naming::SeriesNames::default(),
+    }
+}
+
+/// The season folder a group's files land in (#124).
+pub fn season_folder_name(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> String {
+    naming::season_folder(
+        ctx.season_folder_format,
+        ctx.title_pref,
+        &group_names(group),
+        1,
+    )
+}
+
+/// The name an episode file is imported under: its own, unless that no
+/// longer reads as the episode it is filed as. Absolute and TMDB-numbered
+/// files are renumbered into the AniList entry's numbering (Part 2's
+/// `SPY x FAMILY - 13` is its episode 1), and every later disk check
+/// reads the name: kept as it was, an upgrade, a replace or "Delete
+/// file" of episode 13 took that file and left the real one. Such a
+/// file gets the episode template's name, as a grab's import would.
+pub fn import_file_name(
+    f: &CandidateFile,
+    names: &naming::SeriesNames<'_>,
+    title_pref: &str,
+    episode_file_format: &str,
+) -> String {
+    let Some(ep) = f.episode else {
+        return f.file_name.clone();
     };
-    naming::season_folder(ctx.season_folder_format, ctx.title_pref, &names, 1)
+    let last = ep + f.episode_count.max(1) - 1;
+    let reads_right = media::parse_episode_span(&f.file_name.to_lowercase()).is_some_and(|s| {
+        s.first == ep && s.last.max(s.first) == last && s.season.is_none_or(|n| n == 1)
+    });
+    if reads_right {
+        return f.file_name.clone();
+    }
+    let ext = std::path::Path::new(&f.file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let (quality_resolution, quality_source, release_group) =
+        post_processing::quality_from_name(&f.file_name);
+    let ctx = naming::NameContext {
+        series_title: names.preferred_title(title_pref),
+        series_year: names.year,
+        season_number: 1,
+        episode_number: ep,
+        episode_last: last,
+        episode_absolute: None,
+        episode_title: String::new(),
+        quality_resolution,
+        quality_source,
+        release_group,
+        ext,
+    };
+    naming::episode_file(episode_file_format, &ctx).file_name
 }
 
 /// A folder name that collides with nothing: the plain name when it is
@@ -245,6 +305,32 @@ pub fn unique_folder_name(base: &str, ctx: &ProjectionContext<'_>) -> (String, b
         }
     }
     (format!("{base} ({})", ctx.disk_folders.len() + 2), true)
+}
+
+/// The folder a new series' files land in, as the import picks it:
+/// `series::upsert` first gives the row a name no other series row has
+/// (`base (year)`, `base (2)`, ...), then [`unique_folder_name`] steps
+/// around a stranger folder on disk. [`unique_folder_name`] alone reads
+/// another row's folder as a merge target, so the preview showed (and
+/// ran its "Already on disk" checks in) that series' folder while the
+/// files went to the suffixed one. Returns whether either step suffixed.
+fn new_series_folder_name(
+    entry: &crate::services::anilist::AnimeEntry,
+    ctx: &ProjectionContext<'_>,
+) -> (String, bool) {
+    let base = default_folder_name(entry, ctx);
+    let owned: HashSet<String> = ctx
+        .owned_folders
+        .iter()
+        .map(|f| f.to_ascii_lowercase())
+        .collect();
+    let row_name =
+        crate::models::series::unique_folder_among(base.clone(), entry.season_year, |n| {
+            owned.contains(&n.to_ascii_lowercase())
+        });
+    let (folder, disk_suffixed) = unique_folder_name(&row_name, ctx);
+    let suffixed = disk_suffixed || row_name != base;
+    (folder, suffixed)
 }
 
 /// `E18`, `E05-E06` for a file holding several episodes (issue #246),
@@ -283,7 +369,7 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
 
     let (folder_name, folder_collision) = match (&group.existing, picked) {
         (Some(existing), _) => (existing.folder_name.clone(), false),
-        (None, Some(entry)) => unique_folder_name(&default_folder_name(entry, ctx), ctx),
+        (None, Some(entry)) => new_series_folder_name(entry, ctx),
         (None, None) => (String::new(), false),
     };
     let season_folder = season_folder_name(group, ctx);
@@ -293,7 +379,8 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
     let folder_on_disk = !folder_name.is_empty() && ctx.disk_folders.contains(&folder_name);
     // Destination-keyed: a special goes to the Specials folder and an
     // episode to the season folder, and one name is free in each.
-    let mut names_taken: HashSet<(&str, &str)> = HashSet::new();
+    let mut names_taken: HashSet<(&str, String)> = HashSet::new();
+    let series_names = group_names(group);
     let mut counts = GroupCounts::default();
     let files = group
         .files
@@ -367,16 +454,22 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
             } else {
                 season_folder.as_str()
             };
+            // Specials keep their own name; an episode may be renamed.
+            let dest_name = if status == FileStatus::Special {
+                f.file_name.clone()
+            } else {
+                import_file_name(f, &series_names, ctx.title_pref, ctx.episode_file_format)
+            };
             if matches!(status, FileStatus::Import | FileStatus::Special) && folder_on_disk {
                 let dest = std::path::Path::new(ctx.media_root)
                     .join(&folder_name)
                     .join(dest_sub)
-                    .join(&f.file_name);
+                    .join(&dest_name);
                 if dest.exists() && !post_processing::files_share_inode(&f.path, &dest) {
                     status = FileStatus::AlreadyOnDisk;
                 }
             }
-            if status.writes() && !names_taken.insert((dest_sub, f.file_name.as_str())) {
+            if status.writes() && !names_taken.insert((dest_sub, dest_name.clone())) {
                 status = FileStatus::DuplicateName;
             }
             match status {
@@ -400,10 +493,10 @@ pub fn project_group(group: &SeriesGroup, ctx: &ProjectionContext<'_>) -> GroupV
                     ctx.media_root,
                     &folder_name,
                     post_processing::SPECIALS_FOLDER,
-                    &f.file_name,
+                    &dest_name,
                 )
             } else if status.writes() {
-                dest_for(ctx.media_root, &folder_name, &season_folder, &f.file_name)
+                dest_for(ctx.media_root, &folder_name, &season_folder, &dest_name)
             } else {
                 String::new()
             };
@@ -544,6 +637,39 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_renumbered_file_is_named_for_its_new_episode() {
+        let names = naming::SeriesNames {
+            title: "SPY x FAMILY",
+            romaji: "SPY x FAMILY",
+            english: "SPY x FAMILY",
+            native: "",
+            year: Some(2022),
+        };
+        let fmt = naming::DEFAULT_EPISODE_FILE_FORMAT;
+        let name_of = |f: &CandidateFile| import_file_name(f, &names, "english", fmt);
+        // Absolute numbering: Part 2's episode 1 was `- 13`.
+        let mut abs = file(
+            "[SubsPlease] SPY x FAMILY - 13 (1080p) [ABCD1234].mkv",
+            Some(1),
+        );
+        abs.source_episode = Some(13);
+        let renamed = name_of(&abs);
+        let span = media::parse_episode_span(&renamed.to_lowercase()).expect("parses");
+        assert_eq!((span.first, span.last.max(span.first)), (1, 1), "{renamed}");
+        assert!(renamed.ends_with(".mkv"), "{renamed}");
+        // A TMDB season whose number matches but isn't season 1.
+        let tmdb = file("SPY x FAMILY - S02E05.mkv", Some(5));
+        let renamed = name_of(&tmdb);
+        let span = media::parse_episode_span(&renamed.to_lowercase()).expect("parses");
+        assert_eq!((span.season.unwrap_or(1), span.first), (1, 5), "{renamed}");
+        // A name that already reads right keeps it.
+        let plain = file("[G] SPY x FAMILY - 05 [1080p].mkv", Some(5));
+        assert_eq!(name_of(&plain), plain.file_name);
+        let s1 = file("SPY x FAMILY - S01E05.mkv", Some(5));
+        assert_eq!(name_of(&s1), s1.file_name);
+    }
+
     fn group(
         files: Vec<CandidateFile>,
         candidates: Vec<AnimeEntry>,
@@ -592,6 +718,7 @@ mod tests {
             title_pref: "english",
             series_folder_format: naming::DEFAULT_SERIES_FOLDER_FORMAT,
             season_folder_format: naming::DEFAULT_SEASON_FOLDER_FORMAT,
+            episode_file_format: naming::DEFAULT_EPISODE_FILE_FORMAT,
         }
     }
 
@@ -638,6 +765,28 @@ mod tests {
         let (name, collided) = unique_folder_name("Show", &ctx(&owned, &disk));
         assert_eq!(name, "Show");
         assert!(!collided);
+    }
+
+    #[test]
+    fn a_new_series_never_lands_in_another_series_folder() {
+        // Another series row owns `Show` (a remake sharing the title).
+        // `series::upsert` gives the new row `Show (2020)`, so that is
+        // where the files go and where "Already on disk" must look.
+        let owned: HashSet<String> = ["show".to_string()].into_iter().collect();
+        let disk: HashSet<String> = ["Show".to_string()].into_iter().collect();
+        let g = group(
+            vec![file("[G] Show - 01 [1080p].mkv", Some(1))],
+            vec![entry(1, "Show", "Show")],
+            Some(0),
+        );
+        let v = project_group(&g, &ctx(&owned, &disk));
+        assert_eq!(v.kind, GroupKind::New);
+        assert_eq!(v.folder_name, "Show (2020)");
+        assert!(v.folder_collision);
+        assert_eq!(
+            v.files[0].dest,
+            "Show (2020)/Season 01/[G] Show - 01 [1080p].mkv"
+        );
     }
 
     #[test]
@@ -733,7 +882,10 @@ mod tests {
             .join("src")
             .join("a")
             .join("[G] Show - 03 [BD 1080p].mkv");
-        let mut f3b = file("[G] Show - 03 [BD 1080p].mkv", Some(4));
+        // The same name in another folder of the source: both read as
+        // episode 3. (One filed as another episode would be renamed for
+        // it, `import_file_name`, and not collide.)
+        let mut f3b = file("[G] Show - 03 [BD 1080p].mkv", Some(3));
         f3b.path = tmp
             .path()
             .join("src")
@@ -766,6 +918,7 @@ mod tests {
             title_pref: "english",
             series_folder_format: naming::DEFAULT_SERIES_FOLDER_FORMAT,
             season_folder_format: naming::DEFAULT_SEASON_FOLDER_FORMAT,
+            episode_file_format: naming::DEFAULT_EPISODE_FILE_FORMAT,
         };
         let v = project_group(&g, &ctx);
         let statuses: Vec<FileStatus> = v.files.iter().map(|f| f.status).collect();
@@ -799,6 +952,7 @@ mod tests {
             title_pref: "english",
             series_folder_format: naming::DEFAULT_SERIES_FOLDER_FORMAT,
             season_folder_format: naming::DEFAULT_SEASON_FOLDER_FORMAT,
+            episode_file_format: naming::DEFAULT_EPISODE_FILE_FORMAT,
         };
         let episode = file("[G] Show - 01 [BD 1080p].mkv", Some(1));
         let mut special = file("[G] Show - 01 [BD 1080p].mkv", Some(1));

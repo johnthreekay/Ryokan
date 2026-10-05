@@ -1,7 +1,8 @@
 use anitomy::{Anitomy, ElementCategory};
 use regex_lite::Regex;
 use serde::Serialize;
-use std::path::Path;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 // ── Pre-compiled regexes for episode-number parsing ───────────────────────
@@ -241,9 +242,61 @@ pub fn sanitize_folder_name(s: &str) -> String {
             c => c,
         })
         .collect::<String>()
-        .trim_matches('.')
-        .trim()
+        // Dots and whitespace in one pass: trimming dots first and
+        // whitespace second turned " .. " into "..", a provider title
+        // that named the media root's parent as a series folder.
+        .trim_matches(|c: char| c == '.' || c.is_whitespace())
         .to_string()
+}
+
+/// Longest input handed to anitomy. Its number parser runs a C++
+/// `std::regex` that recurses once per character of a token; with GCC 14
+/// (the Docker builder) a token of about 8,000 characters overflows the
+/// thread stack and aborts the process, and a release title from an
+/// indexer, an RSS feed or autobrr can be that long. Real titles stay
+/// under 300 bytes, so nothing real is cut.
+pub(crate) const ANITOMY_MAX_INPUT: usize = 1024;
+
+/// Longest release title Ryokan accepts from an indexer, a feed or an
+/// autobrr push; longer ones are dropped (or refused) where they enter.
+/// Real titles stay under 300 bytes, and a megabyte "title" only exists
+/// to stress the parsers behind it.
+pub(crate) const MAX_RELEASE_TITLE_BYTES: usize = 1024;
+
+/// Every anitomy parse goes through here: NUL bytes (anitomy rejects
+/// them) removed and the input cut to [`ANITOMY_MAX_INPUT`] bytes on a
+/// char boundary. anitomy reports `Err` when it finds no title but
+/// fills the elements either way, so both are returned.
+pub(crate) fn anitomy_parse(input: &str) -> anitomy::Elements {
+    match Anitomy::new().parse(anitomy_input(input)) {
+        Ok(elements) | Err(elements) => elements,
+    }
+}
+
+/// What [`anitomy_parse`] hands anitomy: at most [`ANITOMY_MAX_INPUT`]
+/// bytes, cut on a char boundary, with NUL bytes removed.
+fn anitomy_input(input: &str) -> std::borrow::Cow<'_, str> {
+    let mut end = input.len().min(ANITOMY_MAX_INPUT);
+    while !input.is_char_boundary(end) {
+        end -= 1;
+    }
+    let bounded = &input[..end];
+    if bounded.contains('\0') {
+        std::borrow::Cow::Owned(bounded.replace('\0', ""))
+    } else {
+        std::borrow::Cow::Borrowed(bounded)
+    }
+}
+
+/// Whether a stored `series.folder_name` can be joined onto the media
+/// root: one non-empty path component that isn't `.` or `..`. A folder
+/// name of `.` is the media root itself: its scan reads every series'
+/// files as its own, and removing the series with files would recycle
+/// or delete the whole library. New names can't come out that way
+/// ([`sanitize_folder_name`]), but a row written before that fix can.
+pub fn usable_folder_name(name: &str) -> bool {
+    let name = name.trim();
+    !name.is_empty() && !name.chars().all(|c| c == '.') && !name.contains(['/', '\\', '\0'])
 }
 
 /// A file found on disk that represents an episode, or several (issue
@@ -275,6 +328,15 @@ pub struct EpisodeFile {
 }
 
 impl EpisodeFile {
+    /// Whether the file is in Ryokan's own numbering: no season in its
+    /// name, or season 1 (every import names files `S01Exx`). A merged
+    /// Sonarr-style folder can also hold `Season 02/Show - S02E05.mkv`,
+    /// which reads as episode 5 too; a delete or replace of episode 5
+    /// picks the own-season file when there is one.
+    pub fn is_own_season(&self) -> bool {
+        self.season_number.is_none_or(|n| n == 1)
+    }
+
     /// Every episode number the file holds, first to last.
     pub fn episodes(&self) -> std::ops::RangeInclusive<i32> {
         self.episode_number..=self.episode_last
@@ -354,13 +416,22 @@ pub fn scan_series_folder_split(
     media_root: &str,
     folder_name: &str,
 ) -> (Vec<EpisodeFile>, Vec<EpisodeFile>) {
+    if !usable_folder_name(folder_name) {
+        return (Vec::new(), Vec::new());
+    }
     let series_path = Path::new(media_root).join(folder_name);
     if !series_path.is_dir() {
         return (Vec::new(), Vec::new());
     }
 
     let mut files = Vec::new();
-    scan_dir_recursive(&series_path, &series_path, &mut files);
+    scan_dir_recursive(
+        &series_path,
+        &series_path,
+        &mut files,
+        0,
+        &mut HashSet::new(),
+    );
     let (specials, mut files): (Vec<EpisodeFile>, Vec<EpisodeFile>) =
         files.into_iter().partition(|f| f.is_special);
 
@@ -400,7 +471,30 @@ pub fn list_media_folders(media_root: &str) -> Vec<String> {
     folders
 }
 
-fn scan_dir_recursive(dir: &Path, series_root: &Path, files: &mut Vec<EpisodeFile>) {
+/// How far below a series folder the scan reads. Real layouts are one or
+/// two levels deep (`Season 01/`, `Specials/`, a release folder inside).
+const MAX_SCAN_DEPTH: usize = 6;
+
+/// Symlinked folders are followed (a season linked in from another
+/// drive is a real layout), but each real directory is read once and
+/// never past [`MAX_SCAN_DEPTH`]: a link back to a parent folder used to
+/// recurse until the stack overflowed and the process aborted.
+fn scan_dir_recursive(
+    dir: &Path,
+    series_root: &Path,
+    files: &mut Vec<EpisodeFile>,
+    depth: usize,
+    visited: &mut HashSet<PathBuf>,
+) {
+    if depth > MAX_SCAN_DEPTH {
+        return;
+    }
+    let Ok(real) = dir.canonicalize() else {
+        return;
+    };
+    if !visited.insert(real) {
+        return;
+    }
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -409,7 +503,7 @@ fn scan_dir_recursive(dir: &Path, series_root: &Path, files: &mut Vec<EpisodeFil
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            scan_dir_recursive(&path, series_root, files);
+            scan_dir_recursive(&path, series_root, files, depth + 1, visited);
         } else if is_video_file(&path)
             && let Some(ep) = parse_episode_file(&path, series_root)
         {
@@ -861,11 +955,7 @@ fn is_non_episodic_extra(lower: &str) -> bool {
     if lower.contains('\0') {
         return false;
     }
-    let mut ani = Anitomy::new();
-    let elements = match ani.parse(lower) {
-        Ok(e) => e,
-        Err(e) => e,
-    };
+    let elements = anitomy_parse(lower);
     let title_start = elements
         .get(ElementCategory::AnimeTitle)
         .and_then(|t| lower.find(&t.to_ascii_lowercase()))
@@ -1027,6 +1117,85 @@ fn format_size(bytes: u64) -> String {
     } else {
         let mb = bytes as f64 / (1024.0 * 1024.0);
         format!("{:.0} MiB", mb)
+    }
+}
+
+#[cfg(test)]
+mod folder_name_tests {
+    use super::{
+        ANITOMY_MAX_INPUT, anitomy_input, anitomy_parse, sanitize_folder_name, usable_folder_name,
+    };
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_loop_is_read_once_and_never_overflows() {
+        // `Show/Season 01/loop -> ..` used to recurse until the stack
+        // overflowed. A season linked in from elsewhere still counts.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("media");
+        let show = root.join("Show");
+        let s1 = show.join("Season 01");
+        std::fs::create_dir_all(&s1).unwrap();
+        std::fs::write(s1.join("Show - S01E01.mkv"), b"x").unwrap();
+        std::os::unix::fs::symlink(&show, s1.join("loop")).unwrap();
+        let elsewhere = tmp.path().join("disk2").join("Season 02");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("Show - S02E01.mkv"), b"x").unwrap();
+        std::os::unix::fs::symlink(&elsewhere, show.join("Season 02")).unwrap();
+
+        let (files, _) = super::scan_series_folder_split(root.to_str().unwrap(), "Show");
+        let mut names: Vec<_> = files.iter().map(|f| f.filename.as_str()).collect();
+        names.sort();
+        assert_eq!(
+            names,
+            ["Season 01/Show - S01E01.mkv", "Season 02/Show - S02E01.mkv"]
+        );
+    }
+
+    #[test]
+    fn anitomy_never_sees_more_than_its_bound() {
+        // A ~8,000-character token overflowed anitomy's recursive
+        // std::regex (GCC 14) and aborted the process.
+        let digits = "1".repeat(20_000) + "x";
+        assert_eq!(anitomy_input(&digits).len(), ANITOMY_MAX_INPUT);
+        let _ = anitomy_parse(&digits);
+        // Cut on a char boundary, NULs removed.
+        let wide = "\u{3042}".repeat(1_000);
+        let cut = anitomy_input(&wide);
+        assert!(cut.len() <= ANITOMY_MAX_INPUT && cut.chars().all(|c| c == '\u{3042}'));
+        assert_eq!(anitomy_input("[G] Show\0 - 01.mkv"), "[G] Show - 01.mkv");
+        // Real titles pass through untouched.
+        let real = "[Group] Show Title - 28 (1080p) [ABCD1234].mkv";
+        assert_eq!(anitomy_input(real), real);
+    }
+
+    #[test]
+    fn dots_and_spaces_never_survive_at_the_edges() {
+        // Trimming dots and then spaces turned " .. " into "..".
+        for title in [
+            " .. ",
+            " . .. . ",
+            " . . . ",
+            "\u{3000}.\u{3000}",
+            ". ",
+            " .",
+            "...",
+        ] {
+            assert_eq!(sanitize_folder_name(title), "", "{title:?}");
+        }
+        assert_eq!(sanitize_folder_name(".hack//Sign"), "hack__Sign");
+        assert_eq!(sanitize_folder_name(" Show. "), "Show");
+        assert_eq!(sanitize_folder_name("Dr. Stone"), "Dr. Stone");
+    }
+
+    #[test]
+    fn only_a_real_component_is_a_usable_folder_name() {
+        for bad in ["", "  ", ".", "..", "...", "a/b", "a\\b", "../x", "a\0b"] {
+            assert!(!usable_folder_name(bad), "{bad:?}");
+        }
+        for good in ["Show", "Dr. Stone", ".hack", "Show (2011)"] {
+            assert!(usable_folder_name(good), "{good:?}");
+        }
     }
 }
 

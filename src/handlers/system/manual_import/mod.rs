@@ -146,7 +146,9 @@ struct GroupCard {
     search_error: String,
     skipped: bool,
     existing_title: String,
-    existing_anilist_id: i64,
+    /// Internal id of the library series this group merges into, for
+    /// the link (`/series/{id}` resolves internal ids first).
+    existing_series_id: i64,
     files: Vec<FileView>,
     counts: GroupCounts,
     /// Another group in this preview picked the same series.
@@ -358,6 +360,7 @@ struct RenderContext {
     title_pref: String,
     series_folder_format: String,
     season_folder_format: String,
+    episode_file_format: String,
     owned_folders: HashSet<String>,
     disk_folders: HashSet<String>,
 }
@@ -376,6 +379,7 @@ async fn render_context(state: &AppState) -> RenderContext {
     };
     let series_folder_format = cfg.series_folder_format;
     let season_folder_format = cfg.season_folder_format;
+    let episode_file_format = cfg.episode_file_format;
     let owned_folders: HashSet<String> = series::get_all(&state.db)
         .await
         .unwrap_or_default()
@@ -390,6 +394,7 @@ async fn render_context(state: &AppState) -> RenderContext {
         title_pref,
         series_folder_format,
         season_folder_format,
+        episode_file_format,
         owned_folders,
         disk_folders,
     }
@@ -404,6 +409,7 @@ impl RenderContext {
             title_pref: &self.title_pref,
             series_folder_format: &self.series_folder_format,
             season_folder_format: &self.season_folder_format,
+            episode_file_format: &self.episode_file_format,
         }
     }
 }
@@ -447,7 +453,7 @@ fn build_card(
             .as_ref()
             .map(|e| e.title.clone())
             .unwrap_or_default(),
-        existing_anilist_id: group.existing.as_ref().map(|e| e.anilist_id).unwrap_or(0),
+        existing_series_id: group.existing.as_ref().map(|e| e.id).unwrap_or(0),
         files: view.files,
         counts: view.counts,
         duplicate_of,

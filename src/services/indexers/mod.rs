@@ -187,10 +187,10 @@ pub fn search_categories(format: &str, is_adult: bool) -> Vec<i32> {
 pub const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 30;
 
 /// Indexer caps cache TTL. Decision #6 — matches Sonarr's
-/// `NewznabCapabilitiesProvider.cs` 7-day default. The search
-/// pipeline re-fetches lazily on next read past the TTL; manual
-/// "Refresh caps" button on the indexer edit page covers the
-/// out-of-band edit case.
+/// `NewznabCapabilitiesProvider.cs` 7-day default. Not enforced yet:
+/// `rebuild_cache` probes caps only for rows whose `caps_json` is
+/// empty, so stored caps never refresh, and there is no manual
+/// "Refresh caps" control.
 pub const CAPS_TTL_SECONDS: i64 = 7 * 24 * 60 * 60;
 
 /// What an [`Indexer::search`] caller asks for. Mirrors torznab's

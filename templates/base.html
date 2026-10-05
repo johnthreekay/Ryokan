@@ -101,12 +101,13 @@
        head-support extension this used to need is gone.
 
        Per-element `hx-boost="false"` opt-outs in this file:
-         - `<a href="/logout">` (below). `/logout` is a GET handler;
-           boost would send a GET via fetch and inline-swap the
-           response. Bypassing boost sidesteps the history-API write
-           + body-swap racing the 303 + cookie-clear that the auth
-           middleware emits, and a real doc load on this rare path
-           is fine.
+         - `<form id="logout-form">` (below). `/logout` is a POST so
+           the same-origin check in `require_auth` covers it (a GET
+           let any site log the user out with a link). Boost would
+           send the POST via fetch and inline-swap the response.
+           Bypassing boost sidesteps the history-API write + body-swap
+           racing the 303 + cookie-clear the handler emits, and a real
+           doc load on this rare path is fine.
 
        Opt-outs to add IF you ever introduce them (none currently
        present; documented here so the convention is greppable):
@@ -183,7 +184,12 @@
             <a href="/downloads" class="{% if page == "downloads" %}active{% endif %}">Downloads</a>
             <a href="/settings" class="{% if page == "settings" %}active{% endif %}">Settings</a>
             <a href="/system" class="{% if page == "system" %}active{% endif %}">System</a>
-            <a href="/logout" class="nav-logout" hx-boost="false">Logout</a>
+            {# Both Logout buttons submit this one hidden form through
+               their `form` attribute, so the buttons stay direct
+               children of .nav-links, where the mobile filter below
+               --bp-phone picks them by class. #}
+            <form id="logout-form" method="post" action="/logout" hx-boost="false" hidden></form>
+            <button type="submit" form="logout-form" class="nav-logout">Logout</button>
             {# Mobile-only icon-version of Logout. The desktop nav-links
                group is `display: none` below --bp-phone, but we need a
                way to log out from mobile (the bottom mobile-tabbar's
@@ -192,13 +198,13 @@
                this icon-button — so on mobile the topbar shows the
                brand + this single logout icon, and on desktop it
                shows everything else but hides this icon. #}
-            <a href="/logout" class="nav-logout-mobile" hx-boost="false" aria-label="Logout" title="Logout">
+            <button type="submit" form="logout-form" class="nav-logout-mobile" aria-label="Logout" title="Logout">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                     <polyline points="16 17 21 12 16 7"/>
                     <line x1="21" y1="12" x2="9" y2="12"/>
                 </svg>
-            </a>
+            </button>
         </div>
     </nav>
     <main class="content">

@@ -486,9 +486,14 @@ pub async fn client_removed_at(db: &SqlitePool, id: i64) -> Option<String> {
     .flatten()
 }
 
+/// Only a `pending` grab becomes `imported`. A copy-mode import can run
+/// for minutes, and a user who cancels meanwhile marks the grab `removed`
+/// (and deletes its torrent); the unconditional UPDATE then flipped it
+/// back to `imported` when the copy finished.
 pub async fn mark_imported(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "UPDATE grabbed_torrents SET state = 'imported', imported_at = CURRENT_TIMESTAMP WHERE id = ?",
+        "UPDATE grabbed_torrents SET state = 'imported', imported_at = CURRENT_TIMESTAMP \
+          WHERE id = ? AND state = 'pending'",
     )
     .bind(id)
     .execute(db)
@@ -1018,27 +1023,47 @@ pub async fn get_blocked(
         .collect())
 }
 
-/// Is this infohash currently blocklisted? True when at least one
-/// `grabbed_torrents` row exists for the hash with `state = 'failed'`.
-/// Checked by the interactive file-picker preview endpoint so the
-/// modal can render the inline-unblock warning (plan decision #12).
+/// Is this infohash blocklisted for every series? True when a
+/// `grabbed_torrents` row for the hash is `failed` for a reason other
+/// than a misgrab (see [`is_blocklisted_for`]).
 pub async fn is_blocklisted(db: &SqlitePool, hash: &str) -> Result<bool, sqlx::Error> {
+    is_blocklisted_for(db, hash, None).await
+}
+
+/// Is this infohash blocklisted for `series_id`? A misgrab verdict
+/// means "not this series", so its failed row blocks the hash for the
+/// series it was grabbed for only; it used to block the release for
+/// the series it really is. Every other failure blocks it everywhere.
+/// Checked by the interactive file-picker preview endpoint so the
+/// modal can render the inline-unblock warning (plan decision #12),
+/// and by autobrr.
+pub async fn is_blocklisted_for(
+    db: &SqlitePool,
+    hash: &str,
+    series_id: Option<i64>,
+) -> Result<bool, sqlx::Error> {
     if hash.is_empty() {
         return Ok(false);
     }
     let existing: Option<i64> = sqlx::query_scalar(
-        "SELECT id FROM grabbed_torrents WHERE hash = ? AND state = 'failed' LIMIT 1",
+        "SELECT id FROM grabbed_torrents WHERE hash = ? AND state = 'failed' \
+           AND (COALESCE(failure_reason, '') != 'misgrab' OR series_id = ?) LIMIT 1",
     )
     .bind(hash)
+    .bind(series_id)
     .fetch_optional(db)
     .await?;
     Ok(existing.is_some())
 }
 
-/// Flip every `state='failed'` row for this hash to `state='replaced'`
-/// with a back-pointer to the new grab id. Called by the inline-unblock
-/// path in `handlers::grab::grab_confirm` after `record_grab` writes
-/// the fresh pending row.
+/// Flip every `state='failed'` row that blocks this hash for
+/// `series_id` (see [`is_blocklisted_for`]) to `state='replaced'` with
+/// a back-pointer to the new grab id. Called by the inline-unblock path
+/// in `handlers::grab::grab_confirm` and by the Misgrabs tab's Restore,
+/// after `record_grab` writes the fresh pending row. Another series'
+/// misgrab row stays: it says the release is not *that* series, which
+/// a grab for this one doesn't change, and clearing it let that
+/// series' automatic searches grab the release again.
 ///
 /// Using `replaced` (rather than `removed`) preserves the hash→id
 /// audit trail: the Downloads page's blocklist view filters on
@@ -1048,6 +1073,7 @@ pub async fn unblock_by_hash(
     db: &SqlitePool,
     hash: &str,
     replaced_by: i64,
+    series_id: Option<i64>,
 ) -> Result<u64, sqlx::Error> {
     if hash.is_empty() {
         return Ok(0);
@@ -1055,10 +1081,12 @@ pub async fn unblock_by_hash(
     let result = sqlx::query(
         "UPDATE grabbed_torrents \
          SET state = 'replaced', replaced_by_grab_id = ? \
-         WHERE hash = ? AND state = 'failed'",
+         WHERE hash = ? AND state = 'failed' \
+           AND (COALESCE(failure_reason, '') != 'misgrab' OR series_id = ?)",
     )
     .bind(replaced_by)
     .bind(hash)
+    .bind(series_id)
     .execute(db)
     .await?;
     Ok(result.rows_affected())
@@ -1320,6 +1348,39 @@ pub async fn remove(db: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+/// Whether deleting `hash` (series `series_id`'s grab `grab_id`) from
+/// the client would take another series' download with it: another
+/// series has a live grab with that hash (this series' grab was
+/// cancelled and the release re-grabbed there), or the grab is a batch
+/// that also routes files to another series. A lookup error counts as
+/// "in use", so in doubt the data stays.
+///
+/// Live is `pending` / `imported`, the states the partial unique index
+/// on `hash` covers. A failed, removed or replaced row is a grab that
+/// is over (an old misgrab of this release for another series, say),
+/// and counting it left this series' own download in the client.
+pub async fn hash_in_use_elsewhere(
+    db: &SqlitePool,
+    hash: &str,
+    series_id: i64,
+    grab_id: i64,
+) -> bool {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT EXISTS(SELECT 1 FROM grabbed_torrents \
+                        WHERE hash = ? COLLATE NOCASE AND series_id != ? \
+                          AND state IN ('pending', 'imported')) \
+             OR EXISTS(SELECT 1 FROM grabbed_torrent_series \
+                        WHERE grab_id = ? AND series_id != ?)",
+    )
+    .bind(hash)
+    .bind(series_id)
+    .bind(grab_id)
+    .bind(series_id)
+    .fetch_one(db)
+    .await
+    .map_or(true, |in_use| in_use != 0)
+}
+
 /// Return every (id, hash) pair currently associated with `series_id`,
 /// regardless of state. Used by the "remove series" handler so we can
 /// stop seeding and tell qBittorrent to drop the data when the user
@@ -1558,16 +1619,24 @@ pub async fn is_whitelisted_hash(db: &SqlitePool, hash: &str) -> bool {
     .unwrap_or(false)
 }
 
-pub async fn whitelist_by_hash(db: &SqlitePool, hash: &str) -> Result<u64, sqlx::Error> {
+/// Whitelist every row for the hash: the user said the release is
+/// `series_id`'s. Another series' misgrab verdict is left as it is
+/// (see [`unblock_by_hash`]), so it stays on the Misgrabs tab.
+pub async fn whitelist_by_hash(
+    db: &SqlitePool,
+    hash: &str,
+    series_id: Option<i64>,
+) -> Result<u64, sqlx::Error> {
     if hash.is_empty() {
         return Ok(0);
     }
     let result = sqlx::query(
         "UPDATE grabbed_torrents \
          SET verification = 'whitelisted', reviewed_at = CURRENT_TIMESTAMP \
-         WHERE hash = ?",
+         WHERE hash = ? AND (COALESCE(verification, '') != 'misgrab' OR series_id = ?)",
     )
     .bind(hash)
+    .bind(series_id)
     .execute(db)
     .await?;
     Ok(result.rows_affected())
@@ -1650,9 +1719,10 @@ pub async fn set_source_url(db: &SqlitePool, id: i64, url: &str) -> Result<(), s
     Ok(())
 }
 
-/// Blocklist check by hash (any series) or by exact release title for
-/// this series. The failed row written by a misgrab, an import
-/// failure, or the user's "mark failed" is the blocklist entry.
+/// Blocklist check by hash (any series, except a misgrab's, which is
+/// this series only: see [`is_blocklisted_for`]) or by exact release
+/// title for this series. The failed row written by a misgrab, an
+/// import failure, or the user's "mark failed" is the blocklist entry.
 pub async fn is_blocklisted_release(
     db: &SqlitePool,
     series_id: i64,
@@ -1662,10 +1732,13 @@ pub async fn is_blocklisted_release(
     sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM grabbed_torrents \
          WHERE state = 'failed' \
-           AND ((? != '' AND hash = ?) OR (series_id = ? AND torrent_name = ?))",
+           AND ((? != '' AND hash = ? \
+                 AND (COALESCE(failure_reason, '') != 'misgrab' OR series_id = ?)) \
+                OR (series_id = ? AND torrent_name = ?))",
     )
     .bind(hash)
     .bind(hash)
+    .bind(series_id)
     .bind(series_id)
     .bind(title)
     .fetch_one(db)
@@ -1699,9 +1772,13 @@ pub async fn blocklist_snapshot(db: &SqlitePool, anilist_id: i64) -> BlocklistSn
     // off `idx_grabbed_torrents_state`, and the titles only for the
     // series being searched through the partial
     // `(series_id, torrent_name) WHERE state = 'failed'` index.
+    // A misgrab's hash counts only for the series it was misgrabbed for.
     if let Ok(hashes) = sqlx::query_scalar::<_, String>(
-        "SELECT DISTINCT hash FROM grabbed_torrents WHERE state = 'failed' AND hash != ''",
+        "SELECT DISTINCT hash FROM grabbed_torrents WHERE state = 'failed' AND hash != '' \
+           AND (COALESCE(failure_reason, '') != 'misgrab' \
+                OR series_id IN (SELECT id FROM series WHERE anilist_id = ?))",
     )
+    .bind(anilist_id)
     .fetch_all(db)
     .await
     {

@@ -23,8 +23,8 @@ const NYAA_FLAVORED_FIXTURE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <link>https://feed.example/view/1</link>
 <guid>guid-feed-1</guid>
 <nyaa:downloadurl>https://feed.example/torrent/1.torrent</nyaa:downloadurl>
-<nyaa:magneturi>magnet:?xt=urn:btih:abcdef0001</nyaa:magneturi>
-<nyaa:infohash>ABCDEF0001</nyaa:infohash>
+<nyaa:magneturi>magnet:?xt=urn:btih:abcdef0001abcdef0001abcdef0001abcdef0001</nyaa:magneturi>
+<nyaa:infohash>ABCDEF0001ABCDEF0001ABCDEF0001ABCDEF0001</nyaa:infohash>
 </item>
 </channel>
 </rss>"#;
@@ -55,8 +55,11 @@ async fn fetch_user_feed_parses_items_and_stamps_source() {
     assert_eq!(items.len(), 1);
     let it = &items[0];
     assert_eq!(it.title, "[GroupX] Show - 01 [1080p]");
-    assert_eq!(it.info_hash, "abcdef0001"); // lowercased per parser
-    assert_eq!(it.magnet, "magnet:?xt=urn:btih:abcdef0001");
+    assert_eq!(it.info_hash, "abcdef0001abcdef0001abcdef0001abcdef0001"); // lowercased per parser
+    assert_eq!(
+        it.magnet,
+        "magnet:?xt=urn:btih:abcdef0001abcdef0001abcdef0001abcdef0001"
+    );
     // Source attribution carried through.
     assert_eq!(it.source, source);
 }

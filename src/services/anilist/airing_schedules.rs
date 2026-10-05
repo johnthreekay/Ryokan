@@ -29,6 +29,7 @@ use super::rate_limit::{
     set_anilist_cooldown, throttle_before_anilist_request,
 };
 use super::{HTTP_CLIENT, anilist_post};
+use crate::services::http_body::CappedBody;
 
 /// One row of AL's `Page.airingSchedules` response. Exactly the
 /// shape the GraphQL query asks for; transformation into the
@@ -169,7 +170,7 @@ async fn fetch_page(
     }
 
     let body_text = resp
-        .text()
+        .text_capped()
         .await
         .map_err(|e| format!("AniList unavailable: read body: {e}"))?;
     let body: serde_json::Value = serde_json::from_str(&body_text).map_err(|e| {

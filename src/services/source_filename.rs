@@ -21,7 +21,7 @@
 //! the job of [`crate::services::source::aggregate`]. It just emits every
 //! piece of evidence it finds so the aggregator has full context.
 
-use anitomy::{Anitomy, ElementCategory};
+use anitomy::ElementCategory;
 
 use crate::services::source::{Origin, Resolution, Source, SourceEvidence, WebKind, contains_word};
 
@@ -84,14 +84,8 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
     } else {
         title.to_string()
     };
-
-    let mut ani = Anitomy::new();
-    // anitomy reports Err when it couldn't find an AnimeTitle, but in both
-    // Ok/Err cases it still fills the `Elements` with whatever it parsed.
-    let elements = match ani.parse(&clean) {
-        Ok(e) => e,
-        Err(e) => e,
-    };
+    // Length-bounded; see `media::anitomy_parse`.
+    let elements = crate::services::media::anitomy_parse(&clean);
 
     // ── Resolution ────────────────────────────────────────────────────────
     if let Some(res_str) = elements.get(ElementCategory::VideoResolution) {

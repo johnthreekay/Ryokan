@@ -51,6 +51,11 @@ path = "tests/htmx_redirect_audit.rs"
 required-features = ["test-support"]
 
 [[test]]
+name = "js_constants_audit"
+path = "tests/js_constants_audit.rs"
+required-features = ["test-support"]
+
+[[test]]
 name = "htmx_grab_bag"
 path = "tests/htmx_grab_bag.rs"
 required-features = ["test-support"]
@@ -148,6 +153,16 @@ required-features = ["test-support", "browser-e2e"]
 [[test]]
 name = "htmx_browser_e2e_episode_delete"
 path = "tests/htmx_browser_e2e_episode_delete.rs"
+required-features = ["test-support", "browser-e2e"]
+
+[[test]]
+name = "htmx_browser_e2e_add_series_monitor"
+path = "tests/htmx_browser_e2e_add_series_monitor.rs"
+required-features = ["test-support", "browser-e2e"]
+
+[[test]]
+name = "htmx_browser_e2e_setup_library"
+path = "tests/htmx_browser_e2e_setup_library.rs"
 required-features = ["test-support", "browser-e2e"]
 
 [[test]]
@@ -272,7 +287,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # API documentation
 utoipa = { version = "6.0", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "10", features = ["axum"] }
+utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
 
 # Misc
 chrono = { version = "0.4", features = ["serde"] }
@@ -286,6 +301,11 @@ regex-lite = "0.1"
 # they don't need look-around and we want the linear-time guarantee.
 fancy-regex = "0.19"
 sha2 = "0.11"
+# SHA-1 for a .torrent's v1 infohash (its bencoded `info` dict): an
+# autobrr push without a hash (`services::torrent_file`), and the
+# rtorrent smoke, since `load.raw_start_verbose` returns 0 rather than
+# the hash. BitTorrent v1 mandates SHA-1, so sha2 can't stand in.
+sha1_smol = "1"
 # HMAC-SHA256 for outbound webhook signatures (issue #119). Tracks
 # the same `digest = 0.11` crate `sha2 = "0.11"` already uses — using
 # `hmac = "0.12"` would pull in the older `digest = 0.10` and produce
@@ -311,7 +331,7 @@ walkdir = "2"
 # `statvfs` for the free-disk-space precheck before a backup runs.
 tar = "0.4"
 flate2 = "1"
-nix = { version = "0.31", features = ["fs"] }
+nix = { version = "0.31", features = ["fs", "hostname"] }
 
 # fantoccini: WebDriver client for browser-driven e2e tests of HTMX
 # UI flows. `optional = true` + the `browser-e2e` feature gate means
@@ -334,11 +354,6 @@ fantoccini = { version = "0.22", optional = true, default-features = false, feat
 # file-list testing without depending on DHT metadata fetch landing
 # during the test window.
 tempfile = "3"
-# SHA-1 for computing a .torrent's v1 infohash from its bencoded
-# `info` dict — needed by the rtorrent smoke since `load.raw_start_verbose`
-# returns 0 on success rather than echoing back the hash. Test-only;
-# BitTorrent's v1 spec mandates SHA-1 here so we can't swap to sha2.
-sha1_smol = "1"
 
 # ── Test-coverage-expansion (issue-# to be filed) infrastructure ──
 #

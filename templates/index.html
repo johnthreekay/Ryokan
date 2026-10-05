@@ -409,17 +409,21 @@
             <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end">
                 {# Issue #166 — `hx-vals='js:'` reads the module-scope
                    selection state captured by selectMonitorMode +
-                   addSeries. Server returns `HX-Refresh: true` so
-                   htmx reloads the page, equivalent to the prior
-                   JS `location.reload()`. The `_pendingSeriesId == null`
-                   guard from the JS path moves into the helper:
-                   if no series is pending, the helper returns a no-op
-                   payload that the server 400s on, and the htmx error
-                   handler reloads to recover. #}
+                   addSeries. On success the page reloads, so the new
+                   card shows and the dialog closes: the endpoint answers
+                   htmx with a `ryokan-monitoring-changed` event for the
+                   series page's in-place update (65b545e), not with the
+                   `HX-Refresh` this dialog used to rely on, which left
+                   it open over a "0 series" library. The
+                   `_pendingSeriesId == null` guard from the JS path
+                   moves into the helper: if no series is pending, the
+                   helper returns a no-op payload that the server 400s
+                   on, and the htmx error handler reloads to recover. #}
                 <button class="btn btn-primary" id="monitor-confirm-btn"
                     hx-post="/api/library/monitoring"
                     hx-vals='js:{...confirmMonitoringVals()}'
                     hx-swap="none"
+                    hx-on::after:request="if (event.detail.ctx.response && event.detail.ctx.response.status < 400) window.location.reload()"
                     hx-on::response:error="window.location.reload()">Confirm</button>
             </div>
         </div>

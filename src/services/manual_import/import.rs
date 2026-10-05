@@ -176,10 +176,18 @@ async fn existing_files_for_episode(
     count: i32,
 ) -> Vec<(PathBuf, media::EpisodeSpan)> {
     let last = episode + count.max(1) - 1;
-    media::scan_series_folder(media_root, folder)
+    let mut matching: Vec<media::EpisodeFile> = media::scan_series_folder(media_root, folder)
         .await
         .into_iter()
         .filter(|f| f.episode_number <= last && f.episode_last >= episode)
+        .collect();
+    // Another season's file numbered the same is not this episode's
+    // old file when this season has one (see `is_own_season`).
+    if matching.iter().any(|f| f.is_own_season()) {
+        matching.retain(|f| f.is_own_season());
+    }
+    matching
+        .into_iter()
         .map(|f| {
             let span = f.span();
             (Path::new(media_root).join(folder).join(f.filename), span)
@@ -301,6 +309,7 @@ pub async fn run_import(
             title_pref: &cfg.title_language,
             series_folder_format: &cfg.series_folder_format,
             season_folder_format: &cfg.season_folder_format,
+            episode_file_format: &cfg.episode_file_format,
         };
         sess.groups
             .iter()
@@ -337,6 +346,7 @@ pub async fn run_import(
             title_pref: &cfg.title_language,
             series_folder_format: &cfg.series_folder_format,
             season_folder_format: &cfg.season_folder_format,
+            episode_file_format: &cfg.episode_file_format,
         };
         let view = preview::project_group(group, &ctx);
         let mut gr = GroupReport {
@@ -386,14 +396,37 @@ pub async fn run_import(
         // Folder: a created series keeps the upsert's generated name
         // unless an unowned folder of that name already exists (the
         // preview showed the suffixed name); a tracked series with no
-        // folder yet gets one the same way.
-        if created || row.folder_name.is_empty() {
-            let base = if row.folder_name.is_empty() {
-                naming::series_folder(
+        // folder yet gets one the same way, as does one whose stored
+        // name is unusable (`.` / `..` from a title written before
+        // `sanitize_folder_name` handled dots), which would otherwise
+        // put the files in the media root or above it.
+        let usable = media::usable_folder_name(&row.folder_name);
+        if created || !usable {
+            let base = if !usable {
+                let generated = naming::series_folder(
                     &cfg.series_folder_format,
                     &cfg.title_language,
                     &naming::SeriesNames::from_series(&row),
+                );
+                // Never another series' folder: the rule a new row
+                // gets in `series::upsert`.
+                match series::unique_series_folder(
+                    &state.db,
+                    generated,
+                    row.season_year,
+                    Some(row.id),
                 )
+                .await
+                {
+                    Ok(name) => name,
+                    Err(e) => {
+                        gr.errors.push(format!("could not set folder name: {e}"));
+                        report.series_skipped += 1;
+                        gr.skipped = group.files.len();
+                        report.groups.push(gr);
+                        continue;
+                    }
+                }
             } else {
                 row.folder_name.clone()
             };
@@ -567,7 +600,14 @@ pub async fn run_import(
                 }
             }
 
-            let dest = season_dir.join(&file.file_name);
+            // The preview's name for it (`import_file_name`): a renumbered
+            // file is renamed so later disk checks read the right episode.
+            let dest = season_dir.join(preview::import_file_name(
+                file,
+                &naming::SeriesNames::from_series(&row),
+                &cfg.title_language,
+                &cfg.episode_file_format,
+            ));
             // Backstop for the preview's "Already on disk": a stranger
             // at the destination is never overwritten (do_file_op
             // would unlink it outside the recycle bin). The same-inode
@@ -796,6 +836,33 @@ mod tests {
     use crate::test_support::{build_test_app_state, in_memory_pool, seed_series};
     use std::fs;
 
+    #[tokio::test]
+    async fn replace_takes_this_seasons_file_over_another_seasons_namesake() {
+        // A merged Sonarr-style folder: `S02E05` used to be recycled
+        // along with the real episode 5 on a replace.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let s1 = root.join("Show/Season 01");
+        let s2 = root.join("Show/Season 02");
+        std::fs::create_dir_all(&s1).unwrap();
+        std::fs::create_dir_all(&s2).unwrap();
+        std::fs::write(s1.join("Show - S01E05.mkv"), b"x").unwrap();
+        std::fs::write(s2.join("Show - S02E05.mkv"), b"x").unwrap();
+        let root_s = root.to_str().unwrap();
+        let found = existing_files_for_episode(root_s, "Show", 5, 1).await;
+        let names: Vec<_> = found
+            .iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, vec!["Show - S01E05.mkv"]);
+
+        // With no season-1 file, the other season's still counts, as it
+        // does on the series page.
+        std::fs::remove_file(s1.join("Show - S01E05.mkv")).unwrap();
+        let found = existing_files_for_episode(root_s, "Show", 5, 1).await;
+        assert_eq!(found.len(), 1);
+    }
+
     fn entry(id: i64, english: &str) -> AnimeEntry {
         AnimeEntry {
             id,
@@ -934,6 +1001,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_renumbered_file_lands_under_a_name_for_its_new_episode() {
+        // Part 2's `- 13` is its episode 1. Kept as `- 13`, every later
+        // disk check (upgrade, replace, Delete file) read it as 13.
+        let f = fixture("hardlink", false).await;
+        let mut abs = candidate(&f.src, "Show/[G] Show - 13 [WEB 1080p].mkv", Some(1));
+        abs.source_episode = Some(13);
+        let id = ready_session(
+            &f.state,
+            &f.src,
+            ImportMode::Hardlink,
+            vec![group(vec![abs], entry(100, "Show"))],
+        );
+        let report = run_import(f.state.clone(), id, OPTS).await.unwrap();
+        assert_eq!(report.files_written, 1, "{report:?}");
+        let row = series::get_by_anilist_id(&f.state.db, 100)
+            .await
+            .unwrap()
+            .expect("series created");
+        let on_disk = media::scan_series_folder(&f.media.to_string_lossy(), &row.folder_name).await;
+        assert_eq!(on_disk.len(), 1, "{on_disk:?}");
+        assert_eq!(on_disk[0].episode_number, 1, "{}", on_disk[0].filename);
+        assert!(
+            !on_disk[0].filename.contains("- 13"),
+            "{}",
+            on_disk[0].filename
+        );
+    }
+
+    #[tokio::test]
     async fn imports_new_series_by_hardlink_and_tags_episodes() {
         let f = fixture("hardlink", false).await;
         let files = vec![
@@ -1018,6 +1114,7 @@ mod tests {
             title_pref: "english",
             series_folder_format: naming::DEFAULT_SERIES_FOLDER_FORMAT,
             season_folder_format: naming::DEFAULT_SEASON_FOLDER_FORMAT,
+            episode_file_format: naming::DEFAULT_EPISODE_FILE_FORMAT,
         };
         let view = preview::project_group(&g, &ctx);
         assert_eq!(view.kind, GroupKind::Merge);
@@ -1237,6 +1334,36 @@ mod tests {
         assert!(
             !f.media.join("Show/Season 01").exists(),
             "the stranger's folder is untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_series_stored_with_a_dots_folder_gets_a_real_one() {
+        // A row written before `sanitize_folder_name` handled dots can
+        // hold `.`: joined onto the media root, that is the root itself.
+        let f = fixture("copy", false).await;
+        let sid = seed_series(&f.state.db, 100, "Show").await;
+        sqlx::query("UPDATE series SET folder_name = '.' WHERE id = ?")
+            .bind(sid)
+            .execute(&f.state.db)
+            .await
+            .unwrap();
+        let mut g = group(
+            vec![candidate(&f.src, "Show/Show - 01.mkv", Some(1))],
+            entry(100, "Show"),
+        );
+        crate::services::manual_import::resolve_existing(&f.state.db, &mut g).await;
+        assert!(g.existing.is_some(), "merges into the tracked row");
+        let id = ready_session(&f.state, &f.src, ImportMode::Copy, vec![g]);
+
+        let report = run_import(f.state.clone(), id, OPTS).await.unwrap();
+        assert_eq!(report.files_written, 1, "{report:?}");
+        let row = series::get_by_id(&f.state.db, sid).await.unwrap().unwrap();
+        assert_eq!(row.folder_name, "Show");
+        assert!(f.media.join("Show/Season 01/Show - 01.mkv").exists());
+        assert!(
+            !f.media.join("Season 01").exists() && !f.media.join("tvshow.nfo").exists(),
+            "nothing lands in the media root"
         );
     }
 

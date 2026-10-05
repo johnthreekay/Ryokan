@@ -220,3 +220,133 @@ fn xfh_multiple_hosts_all_recognized_under_trust() {
         .unwrap();
     assert!(verify_same_origin_with_trust(&req, true).is_ok());
 }
+
+// ─── Ports and IPv6 ────────────────────────────────────────────────
+
+#[test]
+fn another_port_on_the_same_host_is_rejected() {
+    // A sibling app at :8080 posting to Ryokan at :8978. SameSite
+    // ignores ports, so the cookie goes along; only the Origin check
+    // can tell them apart.
+    let req = post_request("192.168.1.10:8978", Some("http://192.168.1.10:8080"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_err());
+    let req = post_request(
+        "192.168.1.10:8978",
+        None,
+        Some("http://192.168.1.10:8080/page"),
+    );
+    assert!(verify_same_origin_with_trust(&req, false).is_err());
+}
+
+#[test]
+fn a_default_port_matches_an_origin_that_omits_it() {
+    let req = post_request("ryokan.local:443", Some("https://ryokan.local"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+    let req = post_request("ryokan.local:80", Some("http://ryokan.local"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+}
+
+#[test]
+fn a_proxy_default_port_in_host_matches_the_other_default_port() {
+    // A proxy forwarding `$host:$server_port` behind a TLS edge sends
+    // `:80` while the browser's origin is https (443); every POST was
+    // refused.
+    let req = post_request("ryokan.example:80", Some("https://ryokan.example"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+    let req = post_request(
+        "ryokan.example:443",
+        None,
+        Some("http://ryokan.example/settings"),
+    );
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+    // Any other port still has to match exactly.
+    let req = post_request(
+        "ryokan.example:80",
+        Some("http://ryokan.example:8080"),
+        None,
+    );
+    assert!(verify_same_origin_with_trust(&req, false).is_err());
+    let req = post_request("ryokan.example:8978", Some("https://ryokan.example"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_err());
+}
+
+#[test]
+fn a_host_header_without_a_port_compares_hosts_only() {
+    // A reverse proxy forwarding `$host` drops the public port.
+    let req = post_request("ryokan.example", Some("https://ryokan.example:8443"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+}
+
+#[test]
+fn ipv6_hosts_are_told_apart() {
+    assert_eq!(url_host("http://[::1]:8978/x").as_deref(), Some("[::1]"));
+    let req = post_request("[::1]:8978", Some("http://[::1]:8978"), None);
+    assert!(verify_same_origin_with_trust(&req, false).is_ok());
+    let req = post_request("[::1]:8978", Some("http://[::2]:8978"), None);
+    assert!(
+        verify_same_origin_with_trust(&req, false).is_err(),
+        "every IPv6 host used to compare as \"[\""
+    );
+}
+
+#[test]
+fn a_cross_site_navigation_to_a_side_effect_get_is_refused() {
+    use crate::handlers::auth::refuse_cross_site_get;
+    let with = |site: Option<&str>| {
+        let mut headers = axum::http::HeaderMap::new();
+        if let Some(site) = site {
+            headers.insert("sec-fetch-site", site.parse().unwrap());
+        }
+        refuse_cross_site_get(&headers).map(|r| r.status())
+    };
+    assert_eq!(
+        with(Some("cross-site")),
+        Some(axum::http::StatusCode::FORBIDDEN)
+    );
+    assert_eq!(
+        with(Some("same-site")),
+        Some(axum::http::StatusCode::FORBIDDEN),
+        "same-site ignores the port: another service on the same host"
+    );
+    assert_eq!(with(Some("bogus")), Some(axum::http::StatusCode::FORBIDDEN));
+    assert_eq!(with(Some("same-origin")), None);
+    assert_eq!(with(Some("none")), None, "typed into the address bar");
+    assert_eq!(with(None), None, "curl and scripts send no header");
+}
+
+#[test]
+fn flash_text_is_shown_only_on_a_same_origin_navigation() {
+    use crate::handlers::auth::flash_allowed_with_trust;
+    let headers = |pairs: &[(&'static str, &'static str)]| {
+        let mut h = axum::http::HeaderMap::new();
+        for (k, v) in pairs {
+            h.insert(*k, v.parse().unwrap());
+        }
+        h
+    };
+    let host = ("host", "ryokan.lan:8978");
+    assert!(flash_allowed_with_trust(
+        &headers(&[host, ("sec-fetch-site", "same-origin")]),
+        false
+    ));
+    for site in ["cross-site", "same-site", "none", "junk"] {
+        assert!(
+            !flash_allowed_with_trust(&headers(&[host, ("sec-fetch-site", site)]), false),
+            "{site}"
+        );
+    }
+    // No Sec-Fetch-Site (an older browser): the Referer decides, port included.
+    assert!(flash_allowed_with_trust(
+        &headers(&[host, ("referer", "http://ryokan.lan:8978/settings")]),
+        false
+    ));
+    assert!(!flash_allowed_with_trust(
+        &headers(&[host, ("referer", "http://ryokan.lan:8080/x")]),
+        false
+    ));
+    assert!(!flash_allowed_with_trust(
+        &headers(&[host, ("referer", "https://evil.example/")]),
+        false
+    ));
+    assert!(!flash_allowed_with_trust(&headers(&[host]), false));
+}

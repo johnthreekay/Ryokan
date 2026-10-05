@@ -135,7 +135,7 @@ impl RtorrentClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| format!("rtorrent request failed: {e}"))?;
+            .map_err(|e| format!("rtorrent request failed: {}", e.without_url()))?;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             return Err("rtorrent auth failed: check username/password".into());
         }
@@ -147,7 +147,7 @@ impl RtorrentClient {
         let text = resp
             .text()
             .await
-            .map_err(|e| format!("rtorrent response read failed: {e}"))?;
+            .map_err(|e| format!("rtorrent response read failed: {}", e.without_url()))?;
         decode_response(&text)
     }
 
@@ -255,28 +255,10 @@ impl DownloadClient for RtorrentClient {
     }
 
     async fn add_torrent(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
-        // Up-front URL-shape validation. rtorrent's `load.start_verbose`
-        // silently accepts garbage-string inputs and returns 0 (success)
-        // without actually creating a torrent — caller can't tell a
-        // typo'd URL from a real add. Surfaced 2026-04-23 as an #85
-        // parity gap (qBit / Deluge / Transmission all reject
-        // malformed URLs with an RPC-level error; only rtorrent
-        // swallowed them). Reject anything that isn't a magnet URI
-        // or an http(s) URL before burning an XML-RPC round trip.
-        // Lowercase the scheme first so `MAGNET:` / `HTTP://` also
-        // match — RFC 3986 schemes are case-insensitive. Internal
-        // Ryokan call sites always emit lowercase, but third-party
-        // integrations (a future torznab-pushed release, a hand-
-        // edited feed URL) might not.
-        let lowered = url.trim().to_ascii_lowercase();
-        let looks_valid = lowered.starts_with("magnet:")
-            || lowered.starts_with("http://")
-            || lowered.starts_with("https://");
-        if !looks_valid {
-            return Err(format!(
-                "rtorrent add rejected url={url}: expected magnet: / http:// / https:// scheme"
-            ));
-        }
+        // Also what turns a malformed URL into an error here: rtorrent's
+        // `load.start_verbose` returns 0 (success) for a garbage string
+        // without creating a torrent (#85 parity gap, 2026-04-23).
+        super::check_release_url(url)?;
 
         // Pre-check — rtorrent silently accepts duplicate adds so we
         // need to detect them ourselves. The cost is one extra
@@ -358,6 +340,7 @@ impl DownloadClient for RtorrentClient {
     /// 0 means no chunks flow regardless of what pause means; pausing
     /// afterward just stops the peer churn while the user deliberates.
     async fn add_torrent_paused(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {
+        super::check_release_url(url)?;
         let outcome = self.add_torrent(url, info_hash).await?;
 
         if info_hash.is_empty() {
@@ -467,6 +450,7 @@ impl DownloadClient for RtorrentClient {
         info_hash: &str,
         pick: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
     ) -> Result<SelectiveOutcome, String> {
+        super::check_release_url(url)?;
         if info_hash.is_empty() {
             return Err("rtorrent selective download requires a known info hash".into());
         }
