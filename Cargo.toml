@@ -1,6 +1,6 @@
 [package]
 name = "ryokan"
-version = "2.2.0"
+version = "2.2.1"
 edition = "2024"
 authors = ["John K"]
 license = "GPL-3.0-or-later"
@@ -103,6 +103,11 @@ required-features = ["test-support"]
 [[test]]
 name = "rss_sync_blocklist_e2e"
 path = "tests/rss_sync_blocklist_e2e.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "rss_sync_seadex_e2e"
+path = "tests/rss_sync_seadex_e2e.rs"
 required-features = ["test-support"]
 
 [[test]]

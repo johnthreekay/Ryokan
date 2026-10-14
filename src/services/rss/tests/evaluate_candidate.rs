@@ -87,15 +87,10 @@ fn bluray_policy() -> source::UpgradePolicy {
 /// Gate for an item with no Custom Formats in play: the item's own
 /// revision and group, a zero CF total, and no clock (file ages read
 /// as unknown).
-fn gate<'a>(
-    policy: &'a source::UpgradePolicy,
-    seadex: &'a HashSet<String>,
-    item: &'a RssItem,
-) -> UpgradeGate<'a> {
+fn gate<'a>(policy: &'a source::UpgradePolicy, item: &'a RssItem) -> UpgradeGate<'a> {
     UpgradeGate {
         policy,
         cfs: &[],
-        seadex_hashes: seadex,
         now_secs: 0,
         incoming_revision: media::parse_release_revision(&item.title),
         incoming_group: &item.group,
@@ -148,7 +143,6 @@ fn batch_with_partial_coverage_is_rejected() {
     // actionable=2 (missing + upgrade), so the mixed-coverage
     // rejection fires.
     let policy = bluray_policy();
-    let seadex: HashSet<String> = HashSet::new();
     let incoming = classification(Source::BluRay, Resolution::R1080p, false, false);
     let found = series("RELEASING");
     let item = item_with("[Group] Test Series Season 1 (BD 1080p)", true);
@@ -169,7 +163,7 @@ fn batch_with_partial_coverage_is_rejected() {
         &incoming,
         &disk,
         &parsed_eps,
-        &gate(&policy, &seadex, &item),
+        &gate(&policy, &item),
         &quality_tags,
     );
     assert!(
@@ -188,7 +182,6 @@ fn batch_with_full_coverage_is_accepted() {
     // Same shape as above but all covered episodes actionable
     // (1 upgradeable from WEB, 2 and 3 missing).
     let policy = bluray_policy();
-    let seadex: HashSet<String> = HashSet::new();
     let incoming = classification(Source::BluRay, Resolution::R1080p, false, false);
     let found = series("RELEASING");
     let item = item_with("[Group] Test Series Season 1 (BD 1080p)", true);
@@ -202,7 +195,7 @@ fn batch_with_full_coverage_is_accepted() {
         &incoming,
         &disk,
         &parsed_eps,
-        &gate(&policy, &seadex, &item),
+        &gate(&policy, &item),
         &quality_tags,
     );
     assert!(
@@ -220,7 +213,6 @@ fn finished_batch_no_range_with_disk_content_is_rejected() {
     // reject because we can't verify overwrite safety without a
     // range to check per-episode.
     let policy = bluray_policy();
-    let seadex: HashSet<String> = HashSet::new();
     let incoming = classification(Source::BluRay, Resolution::R1080p, false, false);
     let found = series("FINISHED");
     let item = item_with("[Group] Test Series Season 1 (BD 1080p)", true);
@@ -234,7 +226,7 @@ fn finished_batch_no_range_with_disk_content_is_rejected() {
         &incoming,
         &disk,
         &parsed_eps,
-        &gate(&policy, &seadex, &item),
+        &gate(&policy, &item),
         &quality_tags,
     );
     assert!(
@@ -253,7 +245,6 @@ fn finished_batch_no_range_with_empty_disk_is_accepted() {
     // Same as above but empty disk — this is the intentional
     // BD-batch convenience path for fresh adds. Should accept.
     let policy = bluray_policy();
-    let seadex: HashSet<String> = HashSet::new();
     let incoming = classification(Source::BluRay, Resolution::R1080p, false, false);
     let found = series("FINISHED");
     let item = item_with("[Group] Test Series Season 1 (BD 1080p)", true);
@@ -267,7 +258,7 @@ fn finished_batch_no_range_with_empty_disk_is_accepted() {
         &incoming,
         &disk,
         &parsed_eps,
-        &gate(&policy, &seadex, &item),
+        &gate(&policy, &item),
         &quality_tags,
     );
     assert!(
@@ -284,7 +275,6 @@ fn airing_batch_no_range_is_rejected() {
     // doesn't fire so this hits the "batch doesn't include
     // monitored episodes" reject.
     let policy = bluray_policy();
-    let seadex: HashSet<String> = HashSet::new();
     let incoming = classification(Source::Web, Resolution::R1080p, false, false);
     let found = series("RELEASING");
     let item = item_with("[Group] Test Series Season 1 (WEB 1080p)", true);
@@ -298,7 +288,7 @@ fn airing_batch_no_range_is_rejected() {
         &incoming,
         &disk,
         &parsed_eps,
-        &gate(&policy, &seadex, &item),
+        &gate(&policy, &item),
         &quality_tags,
     );
     assert!(decision.reject_reason.is_some());
@@ -342,7 +332,6 @@ fn v2_from_the_same_group_replaces_the_file_past_the_cutoff() {
         cutoff: source::cutoff_classification(Source::Web, Resolution::R1080p, false, false),
         ..bluray_policy()
     };
-    let seadex: HashSet<String> = HashSet::new();
     let (found, item, incoming, disk, parsed_eps, quality_tags) =
         v2_fixture("SubsPlease", "SubsPlease");
     let decision = evaluate_candidate(
@@ -351,7 +340,7 @@ fn v2_from_the_same_group_replaces_the_file_past_the_cutoff() {
         &incoming,
         &disk,
         &parsed_eps,
-        &gate(&policy, &seadex, &item),
+        &gate(&policy, &item),
         &quality_tags,
     );
     assert_eq!(decision.reject_reason, None);
@@ -362,7 +351,6 @@ fn v2_from_the_same_group_replaces_the_file_past_the_cutoff() {
 #[test]
 fn v2_from_another_group_is_rejected_with_the_gate_reason() {
     let policy = bluray_policy();
-    let seadex: HashSet<String> = HashSet::new();
     let (found, item, incoming, disk, parsed_eps, quality_tags) =
         v2_fixture("SubsPlease", "Erai-raws");
     let decision = evaluate_candidate(
@@ -371,7 +359,7 @@ fn v2_from_another_group_is_rejected_with_the_gate_reason() {
         &incoming,
         &disk,
         &parsed_eps,
-        &gate(&policy, &seadex, &item),
+        &gate(&policy, &item),
         &quality_tags,
     );
     let reason = decision.reject_reason.expect("rejected");
@@ -387,7 +375,6 @@ fn v2_is_no_upgrade_when_revisions_are_not_preferred() {
         propers: source::ProperPolicy::DoNotPrefer,
         ..bluray_policy()
     };
-    let seadex: HashSet<String> = HashSet::new();
     let (found, item, incoming, disk, parsed_eps, quality_tags) =
         v2_fixture("SubsPlease", "SubsPlease");
     let decision = evaluate_candidate(
@@ -396,7 +383,7 @@ fn v2_is_no_upgrade_when_revisions_are_not_preferred() {
         &incoming,
         &disk,
         &parsed_eps,
-        &gate(&policy, &seadex, &item),
+        &gate(&policy, &item),
         &quality_tags,
     );
     let reason = decision.reject_reason.expect("rejected");
@@ -409,12 +396,11 @@ fn v2_is_no_upgrade_when_revisions_are_not_preferred() {
 #[test]
 fn v2_for_an_old_file_is_rejected_through_rss() {
     let policy = bluray_policy();
-    let seadex: HashSet<String> = HashSet::new();
     let (found, item, incoming, mut disk, parsed_eps, quality_tags) =
         v2_fixture("SubsPlease", "SubsPlease");
     // File landed 30 days before "now".
     disk[0].modified_secs = Some(0);
-    let mut g = gate(&policy, &seadex, &item);
+    let mut g = gate(&policy, &item);
     g.now_secs = 30 * 86_400;
     let decision = evaluate_candidate(
         &found,

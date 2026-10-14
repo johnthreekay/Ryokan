@@ -695,7 +695,7 @@ pub struct IndexerRssTestResponse {
     path = "/settings/indexers/test-rss",
     tag = "Settings",
     summary = "Test-fetch an indexer's RSS endpoint",
-    description = "Fires a single `?t=tvsearch&cat=5070` (with empty `q`) request against the indexer identified by id and returns a JSON envelope describing the result: item count and first item's title. Used by the Settings → Indexers form's per-row Test RSS button. Indexer protocol kind is already known from the row (torznab/newznab → torrent/usenet) so no protocol detection step is needed here, unlike the direct-feed Test.",
+    description = "Fires the same request the next RSS poll would (`?t=tvsearch` with empty `q`, asking for anime plus Movies or XXX when a tracked series needs them, or the indexer's Categories override) against the indexer identified by id and returns a JSON envelope describing the result: item count and first item's title. Used by the Settings → Indexers form's per-row Test RSS button. Indexer protocol kind is already known from the row (torznab/newznab → torrent/usenet) so no protocol detection step is needed here, unlike the direct-feed Test.",
     responses(
         (status = 200, description = "Test result envelope", body = IndexerRssTestResponse),
     ),
@@ -720,7 +720,8 @@ pub async fn settings_indexers_test_rss(
         });
     };
 
-    match crate::services::indexers::fetch_indexer_rss(&*indexer).await {
+    let categories = crate::services::indexers::rss_categories_for_library(&state.db).await;
+    match crate::services::indexers::fetch_indexer_rss(&*indexer, &categories).await {
         Ok(items) => {
             let count = items.len() as i32;
             let first_title = items.first().map(|i| i.title.clone());
@@ -942,7 +943,8 @@ pub async fn settings_indexers_test_stateless(
         },
     };
 
-    match crate::services::indexers::fetch_indexer_rss(&*indexer).await {
+    let categories = crate::services::indexers::rss_categories_for_library(&state.db).await;
+    match crate::services::indexers::fetch_indexer_rss(&*indexer, &categories).await {
         Ok(items) => {
             // ASCII-only message body. The HX-Trigger header is the
             // transport, and HTTP headers carry no charset metadata.
