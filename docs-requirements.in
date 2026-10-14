@@ -6,4 +6,4 @@
 #     -o docs-requirements.txt
 #
 # Zensical is pre-1.0 and ships often; re-evaluate the range at 1.0.
-zensical>=0.0.57,<0.1
+zensical>=0.0.68,<0.1
