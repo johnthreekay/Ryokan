@@ -40,7 +40,7 @@ RUN touch src/main.rs && cargo build --release --locked
 # that release tarball, after checking its .asc signature against
 # FFmpeg's release key (https://ffmpeg.org/download.html#releases).
 # A new importable extension needs its demuxer added to the list.
-FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS ffprobe
+FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS ffprobe
 
 ARG FFMPEG_VERSION=9.0.2
 ARG FFMPEG_SHA256=8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
@@ -73,7 +73,7 @@ RUN ./configure \
     && ./ffprobe -hide_banner -version > /dev/null
 
 # Runtime stage
-FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
 
 # ca-certificates: outbound HTTPS to AniList / Jikan / Kitsu / Nyaa.
 # curl:            used by the compose healthcheck.
