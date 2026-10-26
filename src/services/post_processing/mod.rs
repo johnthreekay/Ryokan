@@ -2029,15 +2029,18 @@ async fn import_torrent(
                     .filter_map(|e| e.ok())
                     .map(|e| e.path())
                     .filter_map(|p| {
-                        // Videos only: the `.nfo` and the subtitles
-                        // named after a file go with it through the
-                        // recycle bin's companion sweep, never as
-                        // entries of their own.
-                        let is_video = p
+                        // Episode files only: the `.nfo` and the
+                        // subtitles named after a file go with it
+                        // through the recycle bin's companion sweep,
+                        // never as entries of their own. A `.strm` stub
+                        // (issue #287) is the episode's file to the
+                        // scanner, so the upgrade retires it too rather
+                        // than leaving two files on one episode.
+                        let is_episode_file = p
                             .file_name()
                             .and_then(|n| n.to_str())
-                            .is_some_and(is_video_file);
-                        if !is_video {
+                            .is_some_and(|n| is_video_file(n) || media::is_stream_stub(n));
+                        if !is_episode_file {
                             return None;
                         }
                         let span = p

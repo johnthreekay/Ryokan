@@ -115,11 +115,13 @@ pub struct WalkOutput {
     pub stats: WalkStats,
 }
 
-/// True for the container extensions Ryokan imports. Same list the
+/// True for the files Ryokan imports: the container extensions the
 /// post-processing import uses, so a file this walk lists is one the
-/// import step can handle.
-pub fn is_video_file(name: &str) -> bool {
+/// import step can handle, plus `.strm` stubs (issue #287), which the
+/// library scan counts as the episode's file.
+pub fn is_library_file(name: &str) -> bool {
     crate::services::post_processing::is_video_file(name)
+        || crate::services::media::is_stream_stub(name)
 }
 
 fn is_hidden_name(name: &std::ffi::OsStr) -> bool {
@@ -226,7 +228,7 @@ pub fn walk_blocking(opts: &WalkOptions) -> Result<WalkOutput, String> {
             continue;
         }
         let name = entry.file_name().to_string_lossy();
-        if !is_video_file(&name) {
+        if !is_library_file(&name) {
             stats.skipped_non_video += 1;
             continue;
         }
@@ -290,6 +292,26 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    #[test]
+    fn lists_strm_stubs_beside_videos() {
+        // Issue #287: a `.strm` left where an episode's video was is an
+        // episode file to the library scan, so the import lists it too.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Frieren/Sousou no Frieren - 05.mkv"));
+        touch(&root.join("Frieren/Sousou no Frieren - 06.strm"));
+
+        let out = walk_blocking(&WalkOptions::new(root)).unwrap();
+        assert_eq!(
+            rel_names(&out),
+            vec![
+                "Frieren/Sousou no Frieren - 05.mkv",
+                "Frieren/Sousou no Frieren - 06.strm",
+            ]
+        );
+        assert_eq!(out.stats.skipped_non_video, 0);
     }
 
     #[test]

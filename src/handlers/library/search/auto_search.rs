@@ -977,6 +977,25 @@ async fn run_auto_search_targets_with_upgrades(
     })
 }
 
+/// The on-disk episodes an auto-search may look for upgrades of: none
+/// when the series' Upgrades switch is off (the daily sweep and RSS
+/// honor the same switch), every file on disk for the Wanted page's
+/// cutoff search, else the monitored ones.
+fn upgrade_candidate_episodes<'a>(
+    tracked: Option<&series::Series>,
+    include_disk_upgrades: bool,
+    existing_eps: &'a [i32],
+    monitored_eps: &'a [i32],
+) -> &'a [i32] {
+    if tracked.is_some_and(|s| !s.allow_upgrades) {
+        &[]
+    } else if include_disk_upgrades {
+        existing_eps
+    } else {
+        monitored_eps
+    }
+}
+
 #[utoipa::path(
     post,
     path = "/api/series/{anilist_id}/auto-search",
@@ -1059,11 +1078,12 @@ pub async fn auto_search_series(
     } else {
         std::collections::HashMap::new()
     };
-    let upgrade_candidates: &[i32] = if q.include_disk_upgrades {
-        &existing_eps
-    } else {
-        &monitored_eps
-    };
+    let upgrade_candidates = upgrade_candidate_episodes(
+        tracked.as_ref(),
+        q.include_disk_upgrades,
+        &existing_eps,
+        &monitored_eps,
+    );
     let upgrade_targets = auto_search::build_upgrade_targets(
         &existing_files,
         upgrade_candidates,
@@ -1257,4 +1277,61 @@ pub async fn auto_search_episode(
         )
     })??;
     Ok(Json(report))
+}
+
+#[cfg(test)]
+mod upgrade_candidate_tests {
+    use super::*;
+
+    fn tracked(allow_upgrades: bool) -> series::Series {
+        series::Series {
+            is_adult: false,
+            id: 1,
+            anilist_id: 101,
+            mal_id: None,
+            title: "Show".to_string(),
+            title_romaji: String::new(),
+            title_english: String::new(),
+            title_native: String::new(),
+            cover_url: String::new(),
+            format: "TV".to_string(),
+            status: "RELEASING".to_string(),
+            episodes: Some(12),
+            season_year: None,
+            end_year: None,
+            folder_name: "Show".to_string(),
+            monitor_mode: "all".to_string(),
+            allow_upgrades,
+            allow_pt_upgrades: false,
+            custom_query_tokens: String::new(),
+            restrict_to_uploader: String::new(),
+            alternate_titles: String::new(),
+            cumulative_prior_episodes: 0,
+            monitor_mode_manual_override: false,
+            user_score: None,
+            added_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn the_series_upgrades_switch_leaves_no_upgrade_candidates() {
+        let on_disk = [1, 2, 3];
+        let monitored = [2, 3];
+        let on = tracked(true);
+        let off = tracked(false);
+        assert_eq!(
+            upgrade_candidate_episodes(Some(&on), false, &on_disk, &monitored),
+            [2, 3]
+        );
+        assert_eq!(
+            upgrade_candidate_episodes(Some(&on), true, &on_disk, &monitored),
+            [1, 2, 3]
+        );
+        for include_disk in [false, true] {
+            assert!(
+                upgrade_candidate_episodes(Some(&off), include_disk, &on_disk, &monitored)
+                    .is_empty()
+            );
+        }
+    }
 }

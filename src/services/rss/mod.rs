@@ -1000,6 +1000,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             &no_seadex_hashes,
         );
         let gate = UpgradeGate {
+            series_allows_upgrades: found.series.allow_upgrades,
             policy: &policy,
             cfs: &cfs,
             now_secs,
@@ -1907,6 +1908,9 @@ fn resolution_rank(value: &str) -> i32 {
 /// and CF total. No SeaDex hashes: both sides are scored without them
 /// (`incoming_cf_score` included), as the upgrade sweep scores them.
 pub(crate) struct UpgradeGate<'a> {
+    /// The series' Upgrades switch. Off, RSS takes only missing
+    /// episodes, as the daily upgrade sweep and the series search do.
+    pub series_allows_upgrades: bool,
     pub policy: &'a source::UpgradePolicy,
     pub cfs: &'a [crate::services::custom_formats::CompiledCustomFormat],
     /// Unix seconds "now", for the file-age window.
@@ -2111,6 +2115,9 @@ fn episode_is_upgradeable(
         // practice; "unclassified" is the conservative one.
         return Err(source::UpgradeRejection::ExistingUnclassified);
     };
+    if !gate.series_allows_upgrades {
+        return Err(source::UpgradeRejection::SeriesUpgradesOff);
+    }
     // A multi-episode file (issue #246) is only replaced by a release
     // that covers every episode it holds; the import would otherwise
     // retire the file and lose the rest (Sonarr's "same episodes" rule).

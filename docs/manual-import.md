@@ -17,7 +17,7 @@ The start form takes:
 - **Follow symlinks**: off by default. Libraries that symlink into a downloads folder would otherwise import the same file twice.
 - **Include hidden files and folders**: off by default. NAS sidecar folders such as `@eaDir`, `.AppleDouble`, and `lost+found` are always skipped.
 
-Only video files count (`.mkv`, `.mp4`, `.avi`, `.wmv`, `.webm`, `.m4v`, `.ts`). Ryokan's own media root and recycle bin are skipped even when they sit inside the folder you chose. Folders it cannot read are counted and skipped, not fatal.
+Only video files count (`.mkv`, `.mp4`, `.avi`, `.wmv`, `.webm`, `.m4v`, `.ts`), plus `.strm` stream links (see the [FAQ](faq.md#can-a-strm-file-stand-in-for-an-episode)). Ryokan's own media root and recycle bin are skipped even when they sit inside the folder you chose. Folders it cannot read are counted and skipped, not fatal.
 
 Matching each series is one AniList lookup, and AniList allows about thirty a minute, so a library with hundreds of shows takes a few minutes on the first scan. The page updates itself when the preview is ready. You can leave it and come back through **System → Import Library**, which lists recent scans, including any still running. A preview stays available for two hours after you last touched it.
 
