@@ -1069,6 +1069,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#can-a-strm-file-stand-in-for-an-episode" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Can a .strm file stand in for an episode?
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#how-do-i-back-up" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1216,6 +1227,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#can-a-strm-file-stand-in-for-an-episode" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Can a .strm file stand in for an episode?
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#how-do-i-back-up" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1275,6 +1297,10 @@
 <p>Yes. A release like <code>Title - 05-06</code> or <code>S01E05-E06</code> imports as one file named with the range (<code>Title - S01E05-E06 - Title A + Title B.mkv</code> with the default template) and both episodes show as present, so neither is searched for again. Deleting the file clears both episodes. Ryokan reads the range from the file name: numbers joined by dashes in the episode slot (<code>05-06</code>, <code>S01E05-E06</code>, or a run like <code>S01E01-02-03</code>), each at least two digits, at most six episodes in one file. A file that already holds two episodes is only replaced by a release that covers both; a single-episode release for one of them is not imported, since that would drop the other episode.</p>
 <h2 id="where-do-ovas-and-specials-go">Where do OVAs and specials go?<a class="headerlink" href="#where-do-ovas-and-specials-go" title="Anchor link">&para;</a></h2>
 <p>A file whose name marks it as a special (<code>Show - OVA 01</code>, <code>Show - SP1</code>, <code>Show - 01 Special</code>) is not an episode of a TV series, so Ryokan keeps it apart the way Sonarr's Season 0 does. When a batch for a TV series contains one, it lands in a <code>Specials</code> folder inside the series folder, named <code>S00E01</code>-style, which Jellyfin, Plex and Kodi all read as a special. It gets no entry in the episode list and never replaces anything already in that folder. Automatic search and RSS skip special releases for a TV series, since the special is never the episode they are looking for. Grab one from interactive search when you want it. For a series that is itself an OVA or special on AniList the marker is part of its name, and its files are ordinary episodes.</p>
+<h2 id="can-a-strm-file-stand-in-for-an-episode">Can a .strm file stand in for an episode?<a class="headerlink" href="#can-a-strm-file-stand-in-for-an-episode" title="Anchor link">&para;</a></h2>
+<p>Yes. A <code>.strm</code> file is a small text file holding a link to a stream, which Jellyfin, Emby and Kodi play in place of the video. Some setups move an episode off the server and leave a <code>.strm</code> behind under the same name. Ryokan counts a <code>.strm</code> in the series folder as that episode's file, the same as an <code>.mkv</code> with that name, so the episode shows as present and isn't searched for again. Import Library picks them up too.</p>
+<p>Ryokan never opens a <code>.strm</code> or follows its link. The episode keeps the quality recorded when its video was imported, and the series page shows <strong>Stream link</strong> where the file size would be. A <code>.strm</code> for an episode Ryokan never imported is classified like any file you add by hand, except that Ryokan can't measure its resolution, so its quality is a best guess. Downloads never import a <code>.strm</code>, since the link inside a release would be one your media server fetches.</p>
+<p>An upgrade replaces a <code>.strm</code> like any other file, and the <code>.strm</code> goes to the recycle bin. To keep offloaded episodes as they are, turn off <strong>Upgrades</strong> on the series page.</p>
 <h2 id="how-do-i-back-up">How do I back up?<a class="headerlink" href="#how-do-i-back-up" title="Anchor link">&para;</a></h2>
 <p>Ryokan has a built-in backup on <a href="../system/#backup">System → Backup</a>: download a snapshot, save one to the backup folder, schedule daily or weekly backups under Settings → General, and restore by uploading an archive. That is the supported path; a plain file copy taken while Ryokan is running can miss writes.</p>
 <p>If you would rather copy the volume yourself, stop Ryokan first. The whole <code>/data</code> volume captures everything: the SQLite database, the artwork cache, the encryption key, the OAuth tokens (encrypted at rest), and config sentinels. Standard SQLite backup tools work, or just stop Ryokan and copy the volume.</p>
