@@ -504,7 +504,7 @@ fn scan_dir_recursive(
         let path = entry.path();
         if path.is_dir() {
             scan_dir_recursive(&path, series_root, files, depth + 1, visited);
-        } else if is_video_file(&path)
+        } else if is_library_file(&path)
             && let Some(ep) = parse_episode_file(&path, series_root)
         {
             files.push(ep);
@@ -512,14 +512,29 @@ fn scan_dir_recursive(
     }
 }
 
-fn is_video_file(path: &Path) -> bool {
+/// A file the scan counts as an episode: a video, or a `.strm` stub
+/// standing in for one.
+fn is_library_file(path: &Path) -> bool {
     match path.extension().and_then(|e| e.to_str()) {
         Some(ext) => matches!(
             ext.to_lowercase().as_str(),
-            "mkv" | "mp4" | "avi" | "wmv" | "flv" | "webm" | "m4v" | "ts"
+            "mkv" | "mp4" | "avi" | "wmv" | "flv" | "webm" | "m4v" | "ts" | "strm"
         ),
         None => false,
     }
+}
+
+/// True for a `.strm` stub (issue #287): a small text file holding a
+/// stream URL, which Jellyfin, Emby and Kodi play in place of the video.
+/// Setups that move media off the server leave one behind under the
+/// episode's own name. The library counts it as the episode's file;
+/// Ryokan never reads what is inside, never probes it, and never imports
+/// one from a download, where the URL would be a release's to choose.
+pub fn is_stream_stub(name: &str) -> bool {
+    Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("strm"))
 }
 
 fn parse_episode_file(path: &Path, series_root: &Path) -> Option<EpisodeFile> {
@@ -532,7 +547,13 @@ fn parse_episode_file(path: &Path, series_root: &Path) -> Option<EpisodeFile> {
 
     let metadata = std::fs::metadata(path).ok();
     let size_bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-    let size_display = format_size(size_bytes);
+    // A `.strm` stub is a few bytes of text; its size says nothing
+    // about the episode, and "0 MiB" read like a broken file.
+    let size_display = if is_stream_stub(&basename) {
+        "Stream link".to_string()
+    } else {
+        format_size(size_bytes)
+    };
     let modified_secs = metadata
         .and_then(|m| m.modified().ok())
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -1150,6 +1171,42 @@ mod folder_name_tests {
             names,
             ["Season 01/Show - S01E01.mkv", "Season 02/Show - S02E01.mkv"]
         );
+    }
+
+    #[test]
+    fn a_strm_stub_counts_as_the_episodes_file() {
+        // Issue #287: an episode moved off the server leaves a `.strm`
+        // under its own name, and the scan counts it like the video it
+        // stands in for.
+        let tmp = tempfile::tempdir().unwrap();
+        let s1 = tmp.path().join("Show").join("Season 01");
+        std::fs::create_dir_all(&s1).unwrap();
+        std::fs::write(s1.join("Show - S01E05.mkv"), b"x").unwrap();
+        std::fs::write(s1.join("Show - S01E06.STRM"), b"https://example.com/6").unwrap();
+        std::fs::write(s1.join("Show - S01E07.txt"), b"x").unwrap();
+
+        let (files, _) = super::scan_series_folder_split(tmp.path().to_str().unwrap(), "Show");
+        let found: Vec<_> = files
+            .iter()
+            .map(|f| (f.filename.as_str(), f.episode_number))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                ("Season 01/Show - S01E05.mkv", 5),
+                ("Season 01/Show - S01E06.STRM", 6)
+            ]
+        );
+        assert_eq!(files[1].size_display, "Stream link");
+    }
+
+    #[test]
+    fn is_stream_stub_reads_the_extension_only() {
+        assert!(super::is_stream_stub("Show - 06.strm"));
+        assert!(super::is_stream_stub("Season 01/Show - 06.Strm"));
+        assert!(!super::is_stream_stub("Show - 06.mkv"));
+        assert!(!super::is_stream_stub("Show.strm - 06.mkv"));
+        assert!(!super::is_stream_stub("strm"));
     }
 
     #[test]

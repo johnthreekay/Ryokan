@@ -561,6 +561,57 @@ async fn live_upgrade_swaps_new_file_in_after_placement() {
 }
 
 #[tokio::test]
+async fn live_upgrade_retires_a_strm_stub() {
+    // Issue #287: the scan counts a `.strm` as the episode's file, so an
+    // upgrade retires it like a video rather than leaving two files on
+    // one episode.
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let (root, downloads, media) = temp_dirs("upgrade-strm");
+
+    let db = in_memory_pool().await;
+    seed_config(&db, &media).await;
+    let series_id = seed_series(&db, 9010, "Show").await;
+    let (old_video, old_grab_id) = seed_imported_e05(&db, &media, series_id).await;
+    let stub = old_video.with_extension("strm");
+    std::fs::rename(&old_video, &stub).expect("swap the video for a stub");
+    std::fs::write(&stub, b"https://example.com/show/5").expect("write stub");
+
+    std::fs::write(downloads.join("Show - 05v2 (1080p).mkv"), b"new bytes").expect("write source");
+    let grab_id = grabbed_torrents::record_grab(
+        &db,
+        "livehash-upgrade-strm",
+        "Show - 05v2 (1080p)",
+        series_id,
+        &[5],
+        false,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    let client = Arc::new(BatchClient::new(
+        complete_torrent("livehash-upgrade-strm", &downloads),
+        vec![complete_file("Show - 05v2 (1080p).mkv")],
+    ));
+    let state = build_test_app_state(db.clone(), Some(client.clone()));
+
+    post_processing::run_once(&state).await;
+
+    assert_eq!(
+        std::fs::read(&old_video).expect("new file readable"),
+        b"new bytes"
+    );
+    assert!(
+        collect_files(&media, "strm").is_empty(),
+        "the stub was retired by the upgrade"
+    );
+    assert_eq!(grab_state(&db, old_grab_id).await, "replaced");
+    assert_eq!(grab_state(&db, grab_id).await, "imported");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
 async fn live_batch_import_waits_for_incomplete_wanted_video() {
     let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
     let (root, downloads, media) = temp_dirs("notready");
