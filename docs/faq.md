@@ -49,7 +49,7 @@ Yes. A `.strm` file is a small text file holding a link to a stream, which Jelly
 
 Ryokan never opens a `.strm` or follows its link. The episode keeps the quality recorded when its video was imported, and the series page shows **Stream link** where the file size would be. A `.strm` for an episode Ryokan never imported is classified like any file you add by hand, except that Ryokan can't measure its resolution, so its quality is a best guess. Downloads never import a `.strm`, since the link inside a release would be one your media server fetches.
 
-An upgrade replaces a `.strm` like any other file, and the `.strm` goes to the recycle bin. To keep an offloaded episode as it is, turn off **Upgrades** on the series page and unmonitor the episode.
+An upgrade replaces a `.strm` like any other file, and the `.strm` goes to the recycle bin. To keep offloaded episodes as they are, turn off **Upgrades** on the series page.
 
 ## How do I back up?
 

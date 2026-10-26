@@ -157,6 +157,9 @@ impl UpgradeKind {
 /// reason, written into RSS decisions and upgrade-sweep debug lines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpgradeRejection {
+    /// The series' Upgrades switch is off: nothing automatic replaces
+    /// a file it already has.
+    SeriesUpgradesOff,
     ExistingUnclassified,
     /// The file is pinned (`manual_override`): nothing automatic
     /// replaces it.
@@ -182,6 +185,7 @@ impl UpgradeRejection {
     /// The user-facing reason.
     pub fn message(self) -> String {
         match self {
+            Self::SeriesUpgradesOff => "Upgrades are turned off for this series".to_string(),
             Self::ExistingUnclassified => "Existing file quality is unknown".to_string(),
             Self::Pinned => "Existing file is pinned".to_string(),
             Self::SpanNotCovered => {

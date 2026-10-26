@@ -89,6 +89,7 @@ fn bluray_policy() -> source::UpgradePolicy {
 /// as unknown).
 fn gate<'a>(policy: &'a source::UpgradePolicy, item: &'a RssItem) -> UpgradeGate<'a> {
     UpgradeGate {
+        series_allows_upgrades: true,
         policy,
         cfs: &[],
         now_secs: 0,
@@ -174,6 +175,45 @@ fn batch_with_partial_coverage_is_rejected() {
     assert!(
         reason.contains("would overwrite"),
         "reject reason should mention overwrite risk: {reason}"
+    );
+}
+
+#[test]
+fn upgrades_off_for_the_series_takes_only_missing_episodes() {
+    // The series' Upgrades switch turns RSS upgrades off, as it does
+    // for the daily sweep: a BluRay for a WEB file on disk is refused,
+    // while a missing episode is still grabbed.
+    let policy = bluray_policy();
+    let incoming = classification(Source::BluRay, Resolution::R1080p, false, false);
+    let found = series("RELEASING");
+    let disk = vec![disk_file(1, "WEB-1080p")];
+    let quality_tags: HashMap<i32, EpisodeQualityTag> = [web_tag(1)].into_iter().collect();
+    let decide = |title: &str, eps: &[i32], allow: bool| {
+        let item = item_with(title, false);
+        let mut gate = gate(&policy, &item);
+        gate.series_allows_upgrades = allow;
+        let parsed_eps: HashSet<i32> = eps.iter().copied().collect();
+        evaluate_candidate(
+            &found,
+            &item,
+            &incoming,
+            &disk,
+            &parsed_eps,
+            &gate,
+            &quality_tags,
+        )
+    };
+
+    let upgrade = "[Group] Test Series - 01 (BD 1080p)";
+    assert!(decide(upgrade, &[1], true).reject_reason.is_none());
+    assert_eq!(
+        decide(upgrade, &[1], false).reject_reason.as_deref(),
+        Some("Episode is already on disk: Upgrades are turned off for this series")
+    );
+    assert!(
+        decide("[Group] Test Series - 02 (BD 1080p)", &[2], false)
+            .reject_reason
+            .is_none()
     );
 }
 
