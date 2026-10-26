@@ -69,6 +69,16 @@ pub struct FfprobeClassification {
 /// "intentionally useless" fingerprints documented above) are not warned
 /// about — they're the happy path for audio-only or AV1/Opus files.
 pub async fn classify_ffprobe(db: &SqlitePool, path: &Path) -> FfprobeClassification {
+    // A `.strm` stub (issue #287) is a text file holding a URL. There is
+    // no video to measure, and following the URL is the media server's
+    // business, never Ryokan's.
+    if path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(crate::services::media::is_stream_stub)
+    {
+        return FfprobeClassification::default();
+    }
     let Some(path_str) = path.to_str() else {
         tracing::warn!(
             target: "ryokan::source::ffprobe",
@@ -945,6 +955,34 @@ mod tests {
         let out = scan_ffprobe_json(&probe_json(vec![audio_stream("flac")]));
         assert!(out.evidence.is_empty());
         assert!(out.resolution.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_strm_stub_is_never_probed() {
+        // Issue #287. A cached probe for the path would otherwise be
+        // served without running ffprobe, so one is seeded for both
+        // files: the `.mkv` reads it back and the `.strm` does not.
+        let db = crate::test_support::in_memory_pool().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let json = probe_json(vec![video_stream("hevc", 1920, 1080, "yuv420p10le")]);
+        let mut results = Vec::new();
+        for name in ["Show - S01E06.mkv", "Show - S01E06.strm"] {
+            let path = tmp.path().join(name);
+            std::fs::write(&path, b"https://example.com/6").unwrap();
+            let meta = std::fs::metadata(&path).unwrap();
+            let mtime = meta
+                .modified()
+                .unwrap()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            media_probe_cache::upsert(&db, path.to_str().unwrap(), mtime, meta.len() as i64, &json)
+                .await;
+            results.push(classify_ffprobe(&db, &path).await);
+        }
+        assert_eq!(results[0].resolution, Some(Resolution::R1080p));
+        assert!(results[1].evidence.is_empty());
+        assert!(results[1].resolution.is_none());
     }
 
     #[tokio::test]

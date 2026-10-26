@@ -43,6 +43,14 @@ Yes. A release like `Title - 05-06` or `S01E05-E06` imports as one file named wi
 
 A file whose name marks it as a special (`Show - OVA 01`, `Show - SP1`, `Show - 01 Special`) is not an episode of a TV series, so Ryokan keeps it apart the way Sonarr's Season 0 does. When a batch for a TV series contains one, it lands in a `Specials` folder inside the series folder, named `S00E01`-style, which Jellyfin, Plex and Kodi all read as a special. It gets no entry in the episode list and never replaces anything already in that folder. Automatic search and RSS skip special releases for a TV series, since the special is never the episode they are looking for. Grab one from interactive search when you want it. For a series that is itself an OVA or special on AniList the marker is part of its name, and its files are ordinary episodes.
 
+## Can a .strm file stand in for an episode?
+
+Yes. A `.strm` file is a small text file holding a link to a stream, which Jellyfin, Emby and Kodi play in place of the video. Some setups move an episode off the server and leave a `.strm` behind under the same name. Ryokan counts a `.strm` in the series folder as that episode's file, the same as an `.mkv` with that name, so the episode shows as present and isn't searched for again. Import Library picks them up too.
+
+Ryokan never opens a `.strm` or follows its link. The episode keeps the quality recorded when its video was imported, and the series page shows **Stream link** where the file size would be. A `.strm` for an episode Ryokan never imported is classified like any file you add by hand, except that Ryokan can't measure its resolution, so its quality is a best guess. Downloads never import a `.strm`, since the link inside a release would be one your media server fetches.
+
+An upgrade replaces a `.strm` like any other file, and the `.strm` goes to the recycle bin. To keep an offloaded episode as it is, turn off **Upgrades** on the series page and unmonitor the episode.
+
 ## How do I back up?
 
 Ryokan has a built-in backup on [System → Backup](system.md#backup): download a snapshot, save one to the backup folder, schedule daily or weekly backups under Settings → General, and restore by uploading an archive. That is the supported path; a plain file copy taken while Ryokan is running can miss writes.

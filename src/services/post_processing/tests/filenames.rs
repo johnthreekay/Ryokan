@@ -35,6 +35,15 @@ fn rejects_non_video_extensions(#[case] name: &str) {
 }
 
 #[test]
+fn a_strm_stub_is_never_a_download_video() {
+    // Issue #287: the library scan and Import Library count a `.strm` as
+    // an episode's file, but a download never imports one, since the URL
+    // inside would be the release's to choose.
+    assert!(!is_video_file("Show - 06.strm"));
+    assert!(!is_video_file("Show - 06.STRM"));
+}
+
+#[test]
 fn is_case_insensitive_on_extension() {
     assert!(is_video_file("Show.MKV"));
     assert!(is_video_file("show.Mp4"));
