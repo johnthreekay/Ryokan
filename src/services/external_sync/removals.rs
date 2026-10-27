@@ -25,6 +25,12 @@ use super::types::RemovalReport;
 /// MAL syncs. The same value the merge wrote to `series.anilist_id`,
 /// so the comparison is straightforward.
 ///
+/// `fetch_mal_ids` is the MAL ids of a MAL list's entries (empty for
+/// an AniList sync). A row of one of them stays: the merge applies a
+/// MAL entry to every library row of it, and AniList can split a MAL
+/// entry into several rows (#292) while the entry resolves to only one
+/// AniList id.
+///
 /// Series whose `monitor_mode` is already `None` are left alone —
 /// no point burning a write to set the same value, and the user
 /// might have manually downgraded for their own reasons.
@@ -32,6 +38,7 @@ pub async fn detect_removals(
     db: &SqlitePool,
     account_id: i64,
     fetch_ids: &std::collections::HashSet<i64>,
+    fetch_mal_ids: &std::collections::HashSet<i64>,
 ) -> Result<RemovalReport, String> {
     let synced = series::list_synced_from(db, account_id)
         .await
@@ -39,7 +46,8 @@ pub async fn detect_removals(
     let mut report = RemovalReport::default();
     let already_none = MonitorMode::None.as_str();
     for s in synced {
-        if fetch_ids.contains(&s.anilist_id) {
+        if fetch_ids.contains(&s.anilist_id) || s.mal_id.is_some_and(|m| fetch_mal_ids.contains(&m))
+        {
             continue;
         }
         if s.monitor_mode == already_none {

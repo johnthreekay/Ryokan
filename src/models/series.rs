@@ -238,6 +238,23 @@ pub async fn get_by_mal_id(db: &SqlitePool, mal_id: i64) -> Result<Option<Series
     get_by_mal_id_for_entry(db, 0, mal_id).await
 }
 
+/// Every library row of the MAL entry `mal_id`, oldest first. More
+/// than one when the user tracks several AniList entries AniList split
+/// out of it (#292); a MAL list status is about all of them.
+pub async fn get_all_by_mal_id(db: &SqlitePool, mal_id: i64) -> Result<Vec<Series>, sqlx::Error> {
+    if mal_id <= 0 {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query(
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ? ORDER BY id",
+    )
+    .bind(mal_id)
+    .fetch_all(db)
+    .await?;
+
+    Ok(rows.into_iter().map(map_series_row).collect())
+}
+
 /// The library row an entry `(anilist_id, mal_id)` names through its
 /// MAL id. For an entry with a real AniList id only a MAL-fallback row
 /// (negative sentinel AniList id) counts: another positive AniList id
@@ -784,6 +801,7 @@ pub async fn stamp_synced_from(
 pub struct SyncedSeriesRow {
     pub id: i64,
     pub anilist_id: i64,
+    pub mal_id: Option<i64>,
     pub monitor_mode: String,
     pub monitor_mode_manual_override: bool,
 }
@@ -793,7 +811,7 @@ pub async fn list_synced_from(
     account_id: i64,
 ) -> Result<Vec<SyncedSeriesRow>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, anilist_id, monitor_mode, monitor_mode_manual_override FROM series \
+        "SELECT id, anilist_id, mal_id, monitor_mode, monitor_mode_manual_override FROM series \
          WHERE synced_from_external_account_id = ?",
     )
     .bind(account_id)
@@ -804,6 +822,7 @@ pub async fn list_synced_from(
         .map(|r| SyncedSeriesRow {
             id: r.get("id"),
             anilist_id: r.get("anilist_id"),
+            mal_id: r.try_get("mal_id").ok().flatten(),
             monitor_mode: r
                 .try_get("monitor_mode")
                 .unwrap_or_else(|_| "future".to_string()),

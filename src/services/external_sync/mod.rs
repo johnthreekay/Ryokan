@@ -375,7 +375,13 @@ async fn sync_anilist(
     let removal_report = if is_full_sync {
         let fetch_ids: std::collections::HashSet<i64> =
             entries.iter().map(|e| e.anilist_id).collect();
-        detect_removals(&state.db, account.id, &fetch_ids).await?
+        detect_removals(
+            &state.db,
+            account.id,
+            &fetch_ids,
+            &std::collections::HashSet::new(),
+        )
+        .await?
     } else {
         RemovalReport::default()
     };
@@ -600,7 +606,9 @@ async fn sync_mal(
     let removal_report = if is_full_sync {
         let fetch_ids: std::collections::HashSet<i64> =
             resolved.iter().map(|e| e.anilist_id).collect();
-        detect_removals(&state.db, account.id, &fetch_ids).await?
+        let fetch_mal_ids: std::collections::HashSet<i64> =
+            resolved.iter().map(|e| e.provider_media_id).collect();
+        detect_removals(&state.db, account.id, &fetch_ids, &fetch_mal_ids).await?
     } else {
         RemovalReport::default()
     };

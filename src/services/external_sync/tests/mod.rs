@@ -931,7 +931,9 @@ async fn detect_removals_downgrades_missing_synced_series() {
     // 200 is missing → removal detection downgrades it.
     let mut fetch_ids = std::collections::HashSet::new();
     fetch_ids.insert(100);
-    let report = detect_removals(&db, 1, &fetch_ids).await.unwrap();
+    let report = detect_removals(&db, 1, &fetch_ids, &std::collections::HashSet::new())
+        .await
+        .unwrap();
     assert_eq!(report.removed.len(), 1);
     assert_eq!(report.removed[0], removed_id);
 
@@ -964,7 +966,9 @@ async fn detect_removals_leaves_manually_added_series_alone() {
 
     // Empty fetch — neither series is on the user's list.
     let fetch_ids = std::collections::HashSet::new();
-    let report = detect_removals(&db, 1, &fetch_ids).await.unwrap();
+    let report = detect_removals(&db, 1, &fetch_ids, &std::collections::HashSet::new())
+        .await
+        .unwrap();
 
     // Only the synced series gets downgraded.
     assert_eq!(report.removed.len(), 1);
@@ -990,7 +994,9 @@ async fn detect_removals_skips_already_none_series() {
     force_monitor_mode(&db, already_none, MonitorMode::None).await;
 
     let fetch_ids = std::collections::HashSet::new();
-    let report = detect_removals(&db, 1, &fetch_ids).await.unwrap();
+    let report = detect_removals(&db, 1, &fetch_ids, &std::collections::HashSet::new())
+        .await
+        .unwrap();
     assert_eq!(
         report.removed.len(),
         0,
@@ -1014,7 +1020,9 @@ async fn detect_removals_scopes_to_account_id() {
 
     // Empty fetch for account 1.
     let fetch_ids = std::collections::HashSet::new();
-    let report = detect_removals(&db, 1, &fetch_ids).await.unwrap();
+    let report = detect_removals(&db, 1, &fetch_ids, &std::collections::HashSet::new())
+        .await
+        .unwrap();
     assert_eq!(report.removed, vec![acct1_series]);
 
     // Account 2's series is unaffected.
@@ -1265,7 +1273,9 @@ async fn detect_removals_skips_manual_override_pinned_series() {
         .unwrap();
 
     let fetch_ids = std::collections::HashSet::new();
-    let report = detect_removals(&db, 1, &fetch_ids).await.unwrap();
+    let report = detect_removals(&db, 1, &fetch_ids, &std::collections::HashSet::new())
+        .await
+        .unwrap();
     assert!(
         report.removed.is_empty(),
         "manual-override series must NOT be downgraded by removal detection"
@@ -1444,4 +1454,117 @@ async fn merge_honors_a_mal_only_exclusion_for_an_anilist_entry() {
             .unwrap()
             .is_none()
     );
+}
+
+/// Steel Ball Run's two AniList entries on MAL 61469 (#292), both in
+/// the library, synced from account 1 and monitoring everything.
+async fn seed_split_mal_entry(db: &sqlx::SqlitePool) -> (i64, i64) {
+    seed_account_id(db, 1, external_accounts::PROVIDER_MAL).await;
+    let first = crate::test_support::seed_series(db, 190327, "1st STAGE").await;
+    let second = crate::test_support::seed_series(db, 210482, "2nd - 3rd STAGE").await;
+    for id in [first, second] {
+        sqlx::query("UPDATE series SET mal_id = 61469 WHERE id = ?")
+            .bind(id)
+            .execute(db)
+            .await
+            .unwrap();
+        force_synced_from(db, id, 1).await;
+        force_monitor_mode(db, id, MonitorMode::All).await;
+    }
+    (first, second)
+}
+
+#[tokio::test]
+async fn a_mal_list_entry_reaches_every_row_of_a_split_mal_entry() {
+    // anibridge maps MAL 61469 to 1st STAGE only. Dropping the show on
+    // MAL drops both stages, and creates nothing beside them.
+    let db = crate::test_support::in_memory_pool().await;
+    let (first, second) = seed_split_mal_entry(&db).await;
+    let mut dropped = entry(
+        external_accounts::PROVIDER_MAL,
+        190327,
+        NormalizedStatus::Dropped,
+    );
+    dropped.provider_media_id = 61469;
+    let outcome = merge_into_library(
+        &db,
+        std::slice::from_ref(&dropped),
+        &HashMap::new(),
+        &prefs_default(),
+        Some(1),
+    )
+    .await;
+    assert_eq!(outcome.monitor_mode_updated, 1, "{outcome:?}");
+    assert_eq!(outcome.created, 0);
+    assert!(outcome.failed.is_empty(), "{outcome:?}");
+    let target = monitor_mode_for(NormalizedStatus::Dropped, false);
+    for id in [first, second] {
+        let row = series::get_by_id(&db, id).await.unwrap().unwrap();
+        assert_eq!(row.monitor_mode, target.as_str(), "{}", row.title);
+    }
+
+    // The same entry from an AniList list names 1st STAGE alone.
+    let db = crate::test_support::in_memory_pool().await;
+    let (first, second) = seed_split_mal_entry(&db).await;
+    let al = entry(
+        external_accounts::PROVIDER_ANILIST,
+        190327,
+        NormalizedStatus::Dropped,
+    );
+    merge_into_library(&db, &[al], &HashMap::new(), &prefs_default(), Some(1)).await;
+    let first = series::get_by_id(&db, first).await.unwrap().unwrap();
+    let second = series::get_by_id(&db, second).await.unwrap().unwrap();
+    assert_eq!(first.monitor_mode, target.as_str());
+    assert_eq!(second.monitor_mode, MonitorMode::All.as_str());
+}
+
+#[tokio::test]
+async fn an_unmapped_mal_list_entry_reaches_every_row_of_its_mal_entry() {
+    // No anibridge mapping: the entry takes the Jikan path with the
+    // negated sentinel, and still finds both stages by MAL id.
+    let db = crate::test_support::in_memory_pool().await;
+    let (first, second) = seed_split_mal_entry(&db).await;
+    let dropped = entry(
+        external_accounts::PROVIDER_MAL,
+        -61469,
+        NormalizedStatus::Dropped,
+    );
+    let outcome = merge_jikan_fallback_entries(&db, &[dropped], &prefs_default(), Some(1)).await;
+    assert_eq!(outcome.monitor_mode_updated, 1, "{outcome:?}");
+    assert_eq!(outcome.created, 0);
+    let target = monitor_mode_for(NormalizedStatus::Dropped, false);
+    for id in [first, second] {
+        let row = series::get_by_id(&db, id).await.unwrap().unwrap();
+        assert_eq!(row.monitor_mode, target.as_str(), "{}", row.title);
+    }
+}
+
+#[tokio::test]
+async fn detect_removals_keeps_every_row_of_a_listed_mal_entry() {
+    // A full MAL resync lists 61469 under 1st STAGE's AniList id; the
+    // 2nd - 3rd STAGE row is still on the list through its MAL id.
+    let db = crate::test_support::in_memory_pool().await;
+    let (_, second) = seed_split_mal_entry(&db).await;
+    let fetch_ids = std::collections::HashSet::from([190327]);
+    let report = detect_removals(
+        &db,
+        1,
+        &fetch_ids,
+        &std::collections::HashSet::from([61469]),
+    )
+    .await
+    .unwrap();
+    assert!(report.removed.is_empty(), "{report:?}");
+
+    // Off the MAL list, both go.
+    let report = detect_removals(
+        &db,
+        1,
+        &std::collections::HashSet::new(),
+        &std::collections::HashSet::new(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(report.removed.len(), 2);
+    assert!(report.removed.contains(&second));
 }

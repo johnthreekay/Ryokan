@@ -42,8 +42,9 @@ Only one account can be linked. **Unlink** removes the link along with the score
 
 - **Re-link required**: the account's access has expired or been revoked. Click **Link** again. Until you do, Ryokan retries at a slower pace and logs the problem under **System → Logs** (category External Sync).
 - **AniList rate limit**: AniList allows a limited number of requests per minute, and Ryokan stops short of that limit on its own. If syncs look stalled, see [Troubleshooting](troubleshooting.md#anilist-keeps-returning-429-too-many-requests).
+- **One MyAnimeList entry, several series**: AniList sometimes splits one MyAnimeList entry into parts (Steel Ball Run's stages, for example). A status change on MyAnimeList applies to every part you have in your library, and the sync doesn't add a missing part next to them.
 - **Linking fails right after pasting the token**: linking uses the same AniList allowance as syncing. If your account is in a cooldown, wait a minute and try again. See [Troubleshooting](troubleshooting.md#anilist-per-account-cooldown-stuck-past-60s).
 
 ---
 
-*Last updated: 2026-08-29.*
+*Last updated: 2026-10-26.*

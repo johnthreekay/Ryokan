@@ -245,36 +245,12 @@ async fn merge_one_jikan_entry(
     // identity. anilist_id (negated sentinel) is canonical for sync-
     // sourced rows; mal_id covers the case where a previous
     // reconcile-fallbacks run promoted the row to a real AL id (and
-    // the negated sentinel no longer matches).
-    let existing = match series::get_by_anilist_id(db, entry.anilist_id).await {
-        Ok(Some(row)) => Some(row),
-        Ok(None) => series::get_by_mal_id(db, mal_id)
-            .await
-            .map_err(|e| format!("series mal lookup failed: {e}"))?,
-        Err(e) => return Err(format!("series anilist lookup failed: {e}")),
-    };
-
-    if let Some(row) = existing {
-        // Existing series → always update monitor_mode regardless
-        // of import_status preference. A status transition on AL
-        // (Watching → Dropped) must downgrade local monitor_mode
-        // even when the new status's import flag is off.
-        stamp_synced_from_if_set(db, row.id, account_id).await;
-        stamp_user_score_if_set(db, row.id, entry.score, account_id).await;
-        stamp_custom_lists_if_set(db, row.id, &entry.provider, &entry.custom_lists, account_id)
-            .await;
-        // Manual override takes precedence: the user has explicitly
-        // pinned this series's monitor_mode through the UI. Sync
-        // honors that pin until the user clears it via "Sync from
-        // AL/MAL" in the dropdown.
-        if row.monitor_mode_manual_override {
-            return Ok(MergeAction::PinnedManually);
-        }
-        if row.monitor_mode == target_mode.as_str() {
-            return Ok(MergeAction::Unchanged);
-        }
-        monitoring_service::apply_monitor_mode(db, row.id, target_mode).await?;
-        return Ok(MergeAction::MonitorUpdated);
+    // the negated sentinel no longer matches). A MAL entry AniList
+    // split in several (#292) can be several library rows, and the
+    // list status is about every one of them.
+    let existing = existing_rows(db, entry.anilist_id, Some(mal_id)).await?;
+    if !existing.is_empty() {
+        return update_existing_rows(db, entry, &existing, target_mode, account_id).await;
     }
 
     // New series → only create if the user wants this status imported.
@@ -360,6 +336,67 @@ async fn merge_one_jikan_entry(
     }))
 }
 
+/// The library rows a list entry updates: the row of its AniList id
+/// (the negated sentinel for a MAL-only entry), plus, for an entry from
+/// a MAL list, every row of its MAL entry.
+async fn existing_rows(
+    db: &SqlitePool,
+    anilist_id: i64,
+    mal_id: Option<i64>,
+) -> Result<Vec<series::Series>, String> {
+    let mut rows: Vec<series::Series> = series::get_by_anilist_id(db, anilist_id)
+        .await
+        .map_err(|e| format!("series lookup failed: {e}"))?
+        .into_iter()
+        .collect();
+    if let Some(mal_id) = mal_id {
+        for row in series::get_all_by_mal_id(db, mal_id)
+            .await
+            .map_err(|e| format!("series mal lookup failed: {e}"))?
+        {
+            if !rows.iter().any(|r| r.id == row.id) {
+                rows.push(row);
+            }
+        }
+    }
+    Ok(rows)
+}
+
+/// Apply a list entry to rows already in the library. The monitor mode
+/// follows the list whatever the import preferences say: a status
+/// transition (Watching → Dropped) must downgrade local monitoring even
+/// when the new status's import flag is off, or the series keeps
+/// grabbing for a show the user dropped. A row the user pinned through
+/// the UI keeps its mode until they clear the pin with "Sync from
+/// AL/MAL". Reported as one action: updated if any row changed, else
+/// pinned if any row is pinned.
+async fn update_existing_rows(
+    db: &SqlitePool,
+    entry: &SyncEntry,
+    rows: &[series::Series],
+    target_mode: MonitorMode,
+    account_id: Option<i64>,
+) -> Result<MergeAction, String> {
+    let mut action = MergeAction::Unchanged;
+    for row in rows {
+        stamp_synced_from_if_set(db, row.id, account_id).await;
+        stamp_user_score_if_set(db, row.id, entry.score, account_id).await;
+        stamp_custom_lists_if_set(db, row.id, &entry.provider, &entry.custom_lists, account_id)
+            .await;
+        if row.monitor_mode_manual_override {
+            if matches!(action, MergeAction::Unchanged) {
+                action = MergeAction::PinnedManually;
+            }
+            continue;
+        }
+        if row.monitor_mode != target_mode.as_str() {
+            monitoring_service::apply_monitor_mode(db, row.id, target_mode).await?;
+            action = MergeAction::MonitorUpdated;
+        }
+    }
+    Ok(action)
+}
+
 async fn merge_one_anilist_entry(
     db: &SqlitePool,
     entry: &SyncEntry,
@@ -368,31 +405,15 @@ async fn merge_one_anilist_entry(
     prefs: &ImportPreferences,
     account_id: Option<i64>,
 ) -> Result<MergeAction, String> {
-    let existing = series::get_by_anilist_id(db, entry.anilist_id)
-        .await
-        .map_err(|e| format!("series lookup failed: {e}"))?;
-
-    if let Some(row) = existing {
-        // Existing series → always update monitor_mode regardless of
-        // import_status preference. A status transition on AL
-        // (Watching → Dropped) must downgrade local monitor_mode
-        // even when `import_dropped = false`, otherwise the series
-        // silently keeps grabbing for a show the user dropped.
-        stamp_synced_from_if_set(db, row.id, account_id).await;
-        stamp_user_score_if_set(db, row.id, entry.score, account_id).await;
-        stamp_custom_lists_if_set(db, row.id, &entry.provider, &entry.custom_lists, account_id)
-            .await;
-        // Manual override takes precedence: the user pinned this
-        // series's monitor_mode through the UI. Sync honors the pin
-        // until the user clears it via "Sync from AL/MAL".
-        if row.monitor_mode_manual_override {
-            return Ok(MergeAction::PinnedManually);
-        }
-        if row.monitor_mode == target_mode.as_str() {
-            return Ok(MergeAction::Unchanged);
-        }
-        monitoring_service::apply_monitor_mode(db, row.id, target_mode).await?;
-        return Ok(MergeAction::MonitorUpdated);
+    // A MAL list entry names a MAL entry, which can be several library
+    // rows: AniList splits some MAL entries in two (#292) and anibridge
+    // maps the MAL id to only one of them. Every row of it takes the
+    // status, and none is created next to them.
+    let mal_entry =
+        (entry.provider == external_accounts::PROVIDER_MAL).then_some(entry.provider_media_id);
+    let existing = existing_rows(db, entry.anilist_id, mal_entry).await?;
+    if !existing.is_empty() {
+        return update_existing_rows(db, entry, &existing, target_mode, account_id).await;
     }
 
     // New series → only create if the user wants this status imported.
