@@ -339,6 +339,29 @@ pub async fn add_series(
                 }
             };
 
+            // AniList unreachable, MAL data in hand: the MAL entry may be
+            // one AniList split (#292), and `upsert` would hand back the
+            // sibling's row for this request.
+            if let (Some(al_id), Some(mal_id), true) =
+                (ids.anilist_id, detail.id_mal, detail.id <= 0)
+                && let Some(sibling) =
+                    series::other_anilist_entry_on_mal_id(&state.db, al_id, mal_id)
+                        .await
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            {
+                logger::warn(
+                    &state.db,
+                    LogCategory::Library,
+                    &format!(
+                        "Seerr add: skipped AniList {al_id}. AniList is unavailable, and its MyAnimeList entry is also {} in the library.",
+                        sibling.title
+                    ),
+                    &format!("mal_id={mal_id}, sibling_series_id={}. Request it again once AniList answers.", sibling.id),
+                )
+                .await;
+                continue;
+            }
+
             let title = if !detail.title_english.is_empty() {
                 &detail.title_english
             } else {

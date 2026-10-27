@@ -218,13 +218,38 @@ async fn maybe_reconcile_mal_entry(
         return None;
     }
 
-    // Single round-trip: AniList's `Media(idMal:)` query returns the same
-    // full detail payload we'd get from `Media(id:)`, so the previous
-    // "find then fetch detail" two-step has been collapsed.
-    let detail = match anilist::find_anime_detail_by_mal_id(mal_id).await {
-        Ok(Some(d)) => d,
-        _ => return None,
-    };
+    // Single round-trip with full detail for every AniList entry on the
+    // MAL id. More than one means AniList split the MAL entry (#292):
+    // nothing here says which part the user's files are, so the row
+    // stays a MAL series rather than become a guessed part.
+    let mut found = anilist::find_anime_details_by_mal_id(mal_id).await.ok()?;
+    if found.len() > 1 {
+        if logger::first_in_window(
+            &format!("mal-split:{}", existing.id),
+            std::time::Duration::from_secs(24 * 3600),
+        ) {
+            let ids = found
+                .iter()
+                .map(|d| d.id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            logger::warn(
+                db,
+                LogCategory::AniList,
+                &format!(
+                    "{} stays a MyAnimeList series. AniList splits it into {} entries.",
+                    existing.title,
+                    found.len()
+                ),
+                &format!(
+                    "mal_id={mal_id}, anilist_ids={ids}. Remove the series and add the entry you want from search."
+                ),
+            )
+            .await;
+        }
+        return None;
+    }
+    let detail = found.pop()?;
 
     let primary_title = if !detail.title_english.is_empty() {
         detail.title_english.clone()
@@ -254,8 +279,10 @@ async fn maybe_reconcile_mal_entry(
         return None;
     }
 
+    // Not promoted when the AniList entry is already a library row of
+    // its own: `upsert` updated that one and left this row alone.
     let refreshed = match series::get_by_id(db, existing.id).await {
-        Ok(Some(row)) => row,
+        Ok(Some(row)) if row.anilist_id > 0 => row,
         _ => return None,
     };
 
@@ -501,14 +528,20 @@ async fn resolve_series_context_raw(
     }
 
     if db_series.is_none() {
-        db_series = if let Some(mid) = detail.id_mal {
-            series::get_by_mal_id(db, mid).await.ok().flatten()
-        } else {
-            series::get_by_anilist_id(db, detail.id)
+        // AniList id first: a MAL id can name several AniList entries
+        // (#292), and only a MAL-fallback row of it is this series.
+        db_series = series::get_by_anilist_id(db, detail.id)
+            .await
+            .ok()
+            .flatten();
+        if db_series.is_none()
+            && let Some(mid) = detail.id_mal
+        {
+            db_series = series::get_by_mal_id_for_entry(db, detail.id, mid)
                 .await
                 .ok()
-                .flatten()
-        };
+                .flatten();
+        }
     }
 
     if detail.id != 0 {

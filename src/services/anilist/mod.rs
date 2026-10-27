@@ -1035,11 +1035,9 @@ pub async fn get_anime_detail_with_options(
     Ok(detail)
 }
 
-/// What to filter the `Media` query by. AniList's `Media` resolver
-/// accepts `id` and `idMal` as independent filters, so a single query
-/// shape covers both lookup styles by passing the unused argument as
-/// `null` in the variables. Lets `find_anime_detail_by_mal_id` reuse
-/// the full field selection without duplicating the query body.
+/// What to look a detail up by: an AniList id (`Media(id:)`, one entry)
+/// or a MAL id (`Page { media(idMal:) }`, every AniList entry on it).
+/// Both shapes share `MEDIA_DETAIL_FIELDS`.
 #[derive(Debug, Clone, Copy)]
 enum MediaSelector {
     Id(i64),
@@ -1049,11 +1047,12 @@ enum MediaSelector {
 async fn fetch_anime_detail(id: i64) -> Result<AnimeDetail, String> {
     fetch_media_detail(MediaSelector::Id(id))
         .await?
+        .into_iter()
+        .next()
         .ok_or_else(|| "Anime not found".to_string())
 }
 
-/// Build the GraphQL `variables` map for the shared `Media(id:, idMal:)`
-/// query. AniList's resolver treats an explicit `id: null` (or
+/// Build the GraphQL `variables` map for the detail query. AniList's resolver treats an explicit `id: null` (or
 /// `idMal: null`) as "filter where the field equals null" and returns
 /// 404, so the unused arm of [`MediaSelector`] must be **omitted** from
 /// the variables map (sent as undefined), not sent as JSON null.
@@ -1074,7 +1073,55 @@ fn build_media_selector_variables(
     variables
 }
 
-async fn fetch_media_detail(selector: MediaSelector) -> Result<Option<AnimeDetail>, String> {
+/// The `Media` field selection every single-entry detail fetch asks
+/// for, shared by the by-id and by-MAL-id query shapes.
+const MEDIA_DETAIL_FIELDS: &str = r#"
+    id
+    idMal
+    title { romaji english native }
+    synonyms
+    coverImage { large extraLarge }
+    bannerImage
+    format
+    status
+    episodes
+    isAdult
+    duration
+    season
+    seasonYear
+    endDate { year }
+    description(asHtml: true)
+    genres
+    averageScore
+    nextAiringEpisode {
+        episode
+        airingAt
+    }
+    streamingEpisodes {
+        title
+        thumbnail
+        url
+        site
+    }
+    relations {
+        edges {
+            relationType(version: 2)
+            node {
+                id
+                idMal
+                title { romaji english native }
+                format
+                status
+                episodes
+                coverImage { large }
+                type
+                seasonYear
+            }
+        }
+    }
+"#;
+
+async fn fetch_media_detail(selector: MediaSelector) -> Result<Vec<AnimeDetail>, String> {
     // Skip the round trip entirely when a recent 429/403/5xx has tripped
     // the global cooldown. Without this, a metadata-refresh sweep that
     // hits AniList's per-minute cap on the first burst keeps firing
@@ -1091,56 +1138,19 @@ async fn fetch_media_detail(selector: MediaSelector) -> Result<Option<AnimeDetai
         return Err("AniList rate-limit cooldown active; skipping AniList request".to_string());
     }
     let variables = build_media_selector_variables(selector);
+    // `Media(idMal:)` answers with one entry even when AniList has split
+    // the MAL entry into several (#292), so the MAL-id shape asks a
+    // `Page` for all of them.
+    let query = match selector {
+        MediaSelector::Id(_) => format!(
+            "query ($id: Int) {{ Media(id: $id, type: ANIME) {{ {MEDIA_DETAIL_FIELDS} }} }}"
+        ),
+        MediaSelector::IdMal(_) => format!(
+            "query ($idMal: Int) {{ Page(perPage: 10) {{ media(idMal: $idMal, type: ANIME) {{ {MEDIA_DETAIL_FIELDS} }} }} }}"
+        ),
+    };
     let gql = serde_json::json!({
-        "query": r#"
-            query ($id: Int, $idMal: Int) {
-                Media(id: $id, idMal: $idMal, type: ANIME) {
-                    id
-                    idMal
-                    title { romaji english native }
-                    synonyms
-                    coverImage { large extraLarge }
-                    bannerImage
-                    format
-                    status
-                    episodes
-                    isAdult
-                    duration
-                    season
-                    seasonYear
-                    endDate { year }
-                    description(asHtml: true)
-                    genres
-                    averageScore
-                    nextAiringEpisode {
-                        episode
-                        airingAt
-                    }
-                    streamingEpisodes {
-                        title
-                        thumbnail
-                        url
-                        site
-                    }
-                    relations {
-                        edges {
-                            relationType(version: 2)
-                            node {
-                                id
-                                idMal
-                                title { romaji english native }
-                                format
-                                status
-                                episodes
-                                coverImage { large }
-                                type
-                                seasonYear
-                            }
-                        }
-                    }
-                }
-            }
-        "#,
+        "query": query,
         "variables": variables
     });
 
@@ -1240,12 +1250,15 @@ async fn fetch_media_detail(selector: MediaSelector) -> Result<Option<AnimeDetai
         return Err(msg);
     }
 
-    let m = &body["data"]["Media"];
-    if m.is_null() {
-        return Ok(None);
-    }
-
-    Ok(parse_media_node(m))
+    Ok(match selector {
+        MediaSelector::Id(_) => parse_media_node(&body["data"]["Media"])
+            .into_iter()
+            .collect(),
+        MediaSelector::IdMal(_) => body["data"]["Page"]["media"]
+            .as_array()
+            .map(|nodes| nodes.iter().filter_map(parse_media_node).collect())
+            .unwrap_or_default(),
+    })
 }
 
 /// Convert a single Media node from the AniList GraphQL response into
@@ -1351,25 +1364,18 @@ fn parse_media_node(m: &serde_json::Value) -> Option<AnimeDetail> {
     })
 }
 
-/// Look up an anime by MAL id and return the full `AnimeDetail` payload
-/// in one round-trip — replacing the previous `find_anime_by_mal_id` +
-/// `get_anime_detail` two-step. The caller (reconciliation path in
-/// library.rs) already needed the full payload anyway; AniList accepts
-/// `idMal` on the same `Media` query that returns full detail, so the
-/// extra "find then fetch" round-trip was wasted.
+/// Every AniList entry on MAL id `mal_id`, with full detail, in one
+/// round trip. Usually one; AniList splits some MAL entries into
+/// several (#292, Steel Ball Run's stages share MAL 61469), and a
+/// caller that needs *the* entry must treat more than one as ambiguous.
 ///
-/// Populates `DETAIL_CACHE` keyed by the resolved AniList id on success
-/// so that downstream `get_anime_detail(detail.id)` calls in the same
-/// TTL window (Sonarr/Radarr fan-outs, metadata_sync BFS, relation
-/// walks) see a cache hit. The pre-PR two-step had this side-effect
-/// for free because the second leg went through `get_anime_detail`;
-/// the new one-shot helper has to do it explicitly.
-pub async fn find_anime_detail_by_mal_id(mal_id: i64) -> Result<Option<AnimeDetail>, String> {
-    let result = fetch_media_detail(MediaSelector::IdMal(mal_id)).await?;
-    if let Some(detail) = &result
-        && detail.id > 0
-    {
-        let mut cache = DETAIL_CACHE.write().await;
+/// Populates `DETAIL_CACHE` for each, so downstream
+/// `get_anime_detail(detail.id)` calls in the same TTL window
+/// (Sonarr/Radarr fan-outs, metadata_sync BFS, relation walks) hit.
+pub async fn find_anime_details_by_mal_id(mal_id: i64) -> Result<Vec<AnimeDetail>, String> {
+    let found = fetch_media_detail(MediaSelector::IdMal(mal_id)).await?;
+    let mut cache = DETAIL_CACHE.write().await;
+    for detail in found.iter().filter(|d| d.id > 0) {
         cache.insert(
             detail.id,
             CacheEntry {
@@ -1378,7 +1384,8 @@ pub async fn find_anime_detail_by_mal_id(mal_id: i64) -> Result<Option<AnimeDeta
             },
         );
     }
-    Ok(result)
+    drop(cache);
+    Ok(found)
 }
 
 /// Maximum AniList ids to ask for in a single `Page(media(id_in:[]))`

@@ -46,11 +46,34 @@ pub fn reverse_relation_type(rel_type: &str) -> Option<&'static str> {
     }
 }
 
-fn relation_identity_key(provider_id: i64, mal_id: Option<i64>) -> String {
-    if let Some(mal_id) = mal_id {
+/// Which anime a relation names, for de-duplicating a relation list.
+/// The AniList id when there is one; the MAL id only for an entry
+/// without (a MAL-sourced relation, `provider_id = -mal_id`). Keying on
+/// the MAL id first made two AniList entries that share one (#292:
+/// Steel Ball Run's 1st STAGE and 2nd - 3rd STAGE, MAL 61469) one
+/// entry, so each dropped the other as a link to itself.
+pub(crate) fn relation_identity_key(provider_id: i64, mal_id: Option<i64>) -> String {
+    if provider_id > 0 {
+        format!("al:{provider_id}")
+    } else if let Some(mal_id) = mal_id.filter(|m| *m > 0) {
         format!("mal:{mal_id}")
     } else {
         format!("provider:{provider_id}")
+    }
+}
+
+/// Whether two relation endpoints are the same anime, across providers:
+/// two AniList ids decide alone, and a MAL-sourced entry is the AniList
+/// entry carrying its MAL id. Used for "is this the page's own series"
+/// checks, where a MAL-sourced relation pointing back at an AniList page
+/// must still count (the Monogatari self-card).
+pub(crate) fn same_relation_entry(a: (i64, Option<i64>), b: (i64, Option<i64>)) -> bool {
+    if a.0 > 0 && b.0 > 0 {
+        return a.0 == b.0;
+    }
+    match (a.1.filter(|m| *m > 0), b.1.filter(|m| *m > 0)) {
+        (Some(x), Some(y)) => x == y,
+        _ => a.0 == b.0,
     }
 }
 
@@ -80,15 +103,12 @@ async fn replace_relations_table(
         "INSERT INTO {table} ({key_col}, related_provider_id, related_mal_id, title_romaji, title_english, title_native, cover_url, format, status, episodes, relation_type, season_year, media_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT({key_col}, related_provider_id, relation_type) DO UPDATE SET related_mal_id=excluded.related_mal_id, title_romaji=excluded.title_romaji, title_english=excluded.title_english, title_native=excluded.title_native, cover_url=excluded.cover_url, format=excluded.format, status=excluded.status, episodes=excluded.episodes, season_year=excluded.season_year, media_type=excluded.media_type, cached_at=CURRENT_TIMESTAMP"
     );
     let mut seen: HashSet<(String, String)> = HashSet::new();
-    let owner_identity = owner_detail
-        .map(|o| relation_identity_key(o.id, o.id_mal))
-        .unwrap_or_default();
     for rel in relations.iter().filter(|r| relation_is_cacheable(r)) {
         // Skip self-references.
         if rel.id == owner_id {
             continue;
         }
-        if !owner_identity.is_empty() && relation_identity_key(rel.id, rel.id_mal) == owner_identity
+        if owner_detail.is_some_and(|o| same_relation_entry((rel.id, rel.id_mal), (o.id, o.id_mal)))
         {
             continue;
         }
@@ -125,10 +145,8 @@ async fn replace_relations_table(
             if rel.id == owner_id {
                 continue;
             }
-            // Also skip if the identity keys match (catches MAL ID overlap).
-            if relation_identity_key(rel.id, rel.id_mal)
-                == relation_identity_key(owner.id, owner.id_mal)
-            {
+            // Also skip the owner reached through the other provider.
+            if same_relation_entry((rel.id, rel.id_mal), (owner.id, owner.id_mal)) {
                 continue;
             }
             sqlx::query(sqlx::AssertSqlSafe(insert_sql.as_str()))
@@ -177,7 +195,9 @@ pub async fn get_incoming_relations_for_provider(
 ) -> Result<Vec<RelatedEntry>, sqlx::Error> {
     // When provider_id is negative (MAL-sourced, id = -mal_id), the related_provider_id
     // column stores the negated MAL ID and related_mal_id stores the positive MAL ID.
-    // We match on both but must deduplicate since both can match the same row.
+    // We match on both but must deduplicate since both can match the same row. The MAL id
+    // matches only across providers (one side MAL-sourced): an AniList row pointing at
+    // another AniList entry of the same MAL id is about that sibling (#292).
     // Important: for incoming relations, provider_relations_cache rows describe the *target*
     // in their title/cover columns because those columns are copied from the related entry at
     // insert time. Using those columns here makes the source relation card render as the current
@@ -204,7 +224,8 @@ pub async fn get_incoming_relations_for_provider(
         FROM provider_relations_cache pr
         LEFT JOIN provider_metadata_cache pm ON pm.provider_id = pr.provider_id
         WHERE pr.related_provider_id = ?
-           OR (? IS NOT NULL AND pr.related_mal_id = ?)
+           OR (? IS NOT NULL AND pr.related_mal_id = ?
+               AND (pr.related_provider_id <= 0 OR ? <= 0))
         GROUP BY pr.provider_id, pr.relation_type
         ORDER BY pr.relation_type, pr.provider_id
         "#,
@@ -212,6 +233,7 @@ pub async fn get_incoming_relations_for_provider(
     .bind(provider_id)
     .bind(mal_id)
     .bind(mal_id)
+    .bind(provider_id)
     .fetch_all(db)
     .await?;
 
@@ -633,6 +655,99 @@ mod tests {
         .execute(db)
         .await
         .expect("insert prequel");
+    }
+
+    /// One relation edge: `(id, id_mal, type, format, episodes)`.
+    type Edge<'a> = (i64, Option<i64>, &'a str, &'a str, Option<i32>);
+
+    /// A detail with the given relations.
+    fn detail_with_relations(id: i64, id_mal: Option<i64>, relations: &[Edge<'_>]) -> AnimeDetail {
+        let relations: Vec<serde_json::Value> = relations
+            .iter()
+            .map(|(rid, rmal, rel, format, episodes)| {
+                serde_json::json!({
+                    "id": rid, "id_mal": rmal, "title_romaji": format!("R{rid}"),
+                    "title_english": "", "title_native": "", "cover_url": "",
+                    "format": format, "status": "FINISHED", "status_display": "",
+                    "episodes": episodes, "relation_type": rel, "season_year": null,
+                    "media_type": "ANIME"
+                })
+            })
+            .collect();
+        serde_json::from_value(serde_json::json!({
+            "id": id, "id_mal": id_mal, "title_romaji": format!("T{id}"),
+            "title_english": "", "title_native": "", "cover_url": "", "banner_url": "",
+            "format": "TV", "status": "FINISHED", "status_display": "", "episodes": 11,
+            "duration": null, "season": "", "season_year": null, "end_year": null,
+            "description": "", "genres": [], "average_score": null,
+            "average_score_display": null, "score_is_ten_point": false, "score_class": "",
+            "next_airing_episode": null, "next_airing_at": null, "synonyms": [],
+            "streaming_episodes": [], "relations": relations
+        }))
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn split_siblings_on_one_mal_id_keep_their_relations() {
+        // #292: 1st STAGE (190327) and 2nd - 3rd STAGE (210482) share
+        // MAL 61469. Keyed on the MAL id, each relation to the other was
+        // dropped as a self-reference, and the prequel walk lost it.
+        let db = test_pool().await;
+        let second = detail_with_relations(
+            210482,
+            Some(61469),
+            &[(190327, Some(61469), "PREQUEL", "TV", Some(1))],
+        );
+        replace_relations_for_provider(&db, 210482, &second)
+            .await
+            .unwrap();
+        let cached = get_relations_for_provider(&db, 210482).await.unwrap();
+        assert_eq!(cached.len(), 1, "{cached:?}");
+        assert_eq!(cached[0].id, 190327);
+        assert_eq!(compute_cumulative_prior_episodes(&db, 210482).await, 1);
+
+        // A MAL-sourced relation back to the owner is still the owner.
+        let first = detail_with_relations(
+            190327,
+            Some(61469),
+            &[(-61469, Some(61469), "SEQUEL", "TV", None)],
+        );
+        replace_relations_for_provider(&db, 190327, &first)
+            .await
+            .unwrap();
+        assert!(
+            get_relations_for_provider(&db, 190327)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        // Stone Ocean's SEQUEL edge names 1st STAGE: it is 1st STAGE's
+        // incoming PREQUEL, never 2nd - 3rd STAGE's.
+        let stone_ocean = detail_with_relations(
+            146722,
+            Some(51367),
+            &[(190327, Some(61469), "SEQUEL", "TV", Some(1))],
+        );
+        replace_relations_for_provider(&db, 146722, &stone_ocean)
+            .await
+            .unwrap();
+        let into_first = get_incoming_relations_for_provider(&db, 190327, Some(61469))
+            .await
+            .unwrap();
+        assert!(into_first.iter().any(|r| r.id == 146722), "{into_first:?}");
+        let into_second = get_incoming_relations_for_provider(&db, 210482, Some(61469))
+            .await
+            .unwrap();
+        assert!(
+            !into_second.iter().any(|r| r.id == 146722),
+            "{into_second:?}"
+        );
+        // A MAL-sourced page still finds edges by its MAL id.
+        let into_mal = get_incoming_relations_for_provider(&db, -61469, Some(61469))
+            .await
+            .unwrap();
+        assert!(into_mal.iter().any(|r| r.id == 146722), "{into_mal:?}");
     }
 
     #[tokio::test]

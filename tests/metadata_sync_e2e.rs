@@ -1129,3 +1129,104 @@ async fn refresh_with_a_jikan_sentinel_takes_kitsu_titles_by_mal_id_not_by_title
     }
     anilist::reset_state_for_tests();
 }
+
+/// One `Page.media` node for the by-MAL-id detail query.
+fn split_node(id: i64, mal_id: i64, english: &str) -> serde_json::Value {
+    json!({
+        "id": id,
+        "idMal": mal_id,
+        "title": { "romaji": english, "english": english, "native": "" },
+        "synonyms": [],
+        "coverImage": { "large": "", "extraLarge": "" },
+        "format": "ONA",
+        "status": "RELEASING",
+        "episodes": 1,
+        "seasonYear": 2026,
+        "endDate": { "year": null },
+        "genres": [],
+        "streamingEpisodes": [],
+        "relations": { "edges": [] }
+    })
+}
+
+#[tokio::test]
+async fn reconcile_leaves_a_split_mal_entry_as_a_mal_series() {
+    // #292: AniList splits MAL 61469 into Steel Ball Run's 1st STAGE
+    // and 2nd - 3rd STAGE. `Media(idMal:)` answers with one of them, so
+    // a MAL-fallback row was promoted to whichever came back. The
+    // `Page` query sees both and the row stays a MAL series; a MAL id
+    // with one AniList entry is promoted as before.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("media(idMal"))
+        .and(body_string_contains(r#""idMal":61469"#))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": { "Page": { "media": [
+                split_node(190327, 61469, "SBR 1st STAGE"),
+                split_node(210482, 61469, "SBR 2nd - 3rd STAGE"),
+            ] } }
+        })))
+        .mount(&mock)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("media(idMal"))
+        .and(body_string_contains(r#""idMal":1}"#))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": { "Page": { "media": [split_node(1, 1, "Cowboy Bebop")] } }
+        })))
+        .mount(&mock)
+        .await;
+    // SAFETY: serialized via ENV_LOCK.
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    for (mal_id, title) in [(61469, "STEEL BALL RUN"), (1, "Cowboy Bebop")] {
+        sqlx::query(
+            "INSERT INTO series (anilist_id, mal_id, title, title_romaji, folder_name) \
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(-mal_id)
+        .bind(mal_id)
+        .bind(title)
+        .bind(title)
+        .bind(title)
+        .execute(&db)
+        .await
+        .unwrap();
+    }
+    let state = ryokan::test_support::build_test_app_state(db.clone(), None);
+    let axum::Json(report) =
+        ryokan::handlers::library::crud::reconcile_fallbacks(axum::extract::State(state))
+            .await
+            .unwrap();
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+
+    assert_eq!(report["checked"], 2, "{report}");
+    assert_eq!(report["upgraded"], 1, "{report}");
+    let split = series::get_by_mal_id(&db, 61469).await.unwrap().unwrap();
+    assert_eq!(
+        split.anilist_id, -61469,
+        "a split MAL entry is never guessed"
+    );
+    let bebop = series::get_by_mal_id(&db, 1).await.unwrap().unwrap();
+    assert_eq!(bebop.anilist_id, 1);
+    let warned: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM logs WHERE level = 'warn' \
+         AND message LIKE 'STEEL BALL RUN stays a MyAnimeList series%' \
+         AND detail LIKE '%anilist_ids=190327, 210482%'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(warned, 1);
+}

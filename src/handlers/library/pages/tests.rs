@@ -375,23 +375,44 @@ fn format_size_uses_gib_at_or_above_1_gib() {
 // ── relation_identity_key ────────────────────────────────────────
 
 #[test]
-fn relation_identity_key_prefers_mal_over_provider() {
-    // MAL ID is more stable across provider rebinds — when both
-    // are available, key on MAL so a re-link doesn't re-key the
-    // relation cache.
-    assert_eq!(relation_identity_key(42, Some(99)), "mal:99");
+fn relation_identity_key_prefers_the_anilist_id() {
+    // #292: two AniList entries can share a MAL id (Steel Ball Run's
+    // 1st STAGE and 2nd - 3rd STAGE, MAL 61469). Keyed on MAL, each
+    // dropped the other as a link to itself.
+    assert_eq!(relation_identity_key(190327, Some(61469)), "al:190327");
+    assert_ne!(
+        relation_identity_key(190327, Some(61469)),
+        relation_identity_key(210482, Some(61469))
+    );
 }
 
 #[test]
-fn relation_identity_key_falls_back_to_provider() {
-    assert_eq!(relation_identity_key(42, None), "provider:42");
-}
-
-#[test]
-fn relation_identity_key_handles_negative_provider_id() {
-    // Negative-provider sentinel for MAL-fallback rows should
-    // still produce a stable key, not panic on formatting.
+fn relation_identity_key_uses_the_mal_id_without_an_anilist_id() {
+    assert_eq!(relation_identity_key(-99, Some(99)), "mal:99");
     assert_eq!(relation_identity_key(-99, None), "provider:-99");
+    assert_eq!(relation_identity_key(0, None), "provider:0");
+}
+
+#[test]
+fn same_relation_entry_crosses_providers_but_not_split_siblings() {
+    use crate::models::local_metadata::same_relation_entry;
+    // Split siblings are different entries.
+    assert!(!same_relation_entry(
+        (190327, Some(61469)),
+        (210482, Some(61469))
+    ));
+    assert!(same_relation_entry(
+        (190327, Some(61469)),
+        (190327, Some(61469))
+    ));
+    // A MAL-sourced relation is the AniList entry carrying its MAL id,
+    // so a MAL relation pointing back at an AniList page is still self.
+    assert!(same_relation_entry(
+        (-61469, Some(61469)),
+        (190327, Some(61469))
+    ));
+    assert!(same_relation_entry((-5, Some(5)), (-5, None)));
+    assert!(!same_relation_entry((-5, Some(5)), (-6, Some(6))));
 }
 
 // ── relation_richness ────────────────────────────────────────────

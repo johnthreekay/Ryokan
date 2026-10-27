@@ -121,6 +121,7 @@ pub async fn add_movie(
 
     anibridge::ensure_loaded().await;
     let anime_ids = anibridge::lookup_by_tmdb(tmdb_id, None).await;
+    let requested_anilist_id = anime_ids.first().and_then(|a| a.anilist_id);
 
     let detail = if let Some(ids) = anime_ids
         .first()
@@ -174,6 +175,31 @@ pub async fn add_movie(
             .await
             .map_err(|e| (StatusCode::BAD_GATEWAY, e))?
     };
+
+    // AniList unreachable, MAL data in hand: the MAL entry may be one
+    // AniList split (#292), and `upsert` would hand back the sibling's
+    // row for this request.
+    if let (Some(al_id), Some(mal_id), true) = (requested_anilist_id, detail.id_mal, detail.id <= 0)
+        && let Some(sibling) = series::other_anilist_entry_on_mal_id(&state.db, al_id, mal_id)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    {
+        let message = format!(
+            "Seerr add: skipped AniList {al_id}. AniList is unavailable, and its MyAnimeList entry is also {} in the library.",
+            sibling.title
+        );
+        logger::warn(
+            &state.db,
+            LogCategory::Library,
+            &message,
+            &format!(
+                "mal_id={mal_id}, sibling_series_id={}. Request it again once AniList answers.",
+                sibling.id
+            ),
+        )
+        .await;
+        return Err((StatusCode::BAD_GATEWAY, message));
+    }
 
     let title = if !detail.title_english.is_empty() {
         &detail.title_english

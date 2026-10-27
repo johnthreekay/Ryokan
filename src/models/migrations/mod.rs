@@ -8,6 +8,8 @@
 //! guard (data rewrites) live next to their model module and register
 //! themselves in the `schema_migrations` table.
 
+use std::sync::LazyLock;
+
 use sqlx::{Row, SqlitePool};
 
 use super::{custom_formats, group_source_map, media_probe_cache, nyaa_description_cache};
@@ -291,7 +293,7 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         CREATE TABLE IF NOT EXISTS series (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             anilist_id INTEGER NOT NULL UNIQUE,
-            mal_id INTEGER UNIQUE,
+            mal_id INTEGER,
             title TEXT NOT NULL,
             title_romaji TEXT NOT NULL DEFAULT '',
             title_english TEXT NOT NULL DEFAULT '',
@@ -357,10 +359,6 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(db)
         .await
         .ok();
-
-    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_series_mal_id ON series (mal_id) WHERE mal_id IS NOT NULL")
-        .execute(db)
-        .await?;
 
     sqlx::query(
         r#"
@@ -3038,9 +3036,14 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
     )
     .execute(db)
     .await?;
+    // One MAL-only exclusion per MAL id. Rows with an AniList id may
+    // share a MAL id (#292: AniList splits some MAL entries in two).
+    sqlx::query("DROP INDEX IF EXISTS idx_sync_exclusions_mal")
+        .execute(db)
+        .await?;
     sqlx::query(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_exclusions_mal \
-         ON external_sync_exclusions(mal_id) WHERE mal_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_exclusions_mal_only \
+         ON external_sync_exclusions(mal_id) WHERE mal_id IS NOT NULL AND anilist_id IS NULL",
     )
     .execute(db)
     .await?;
@@ -3065,7 +3068,148 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         sqlx::query(sql).execute(db).await.ok();
     }
 
+    // Issue #292: a MAL id is not a series identity. AniList splits
+    // some MAL entries into several (Steel Ball Run's 1st STAGE and
+    // 2nd - 3rd STAGE are both MAL 61469), and the UNIQUE on
+    // `series.mal_id` made `series::upsert` fold the second into the
+    // first. The index goes, and so does the column constraint that
+    // the original `CREATE TABLE` carried, which takes a table rebuild.
+    sqlx::query("DROP INDEX IF EXISTS idx_series_mal_id")
+        .execute(db)
+        .await?;
+    drop_series_mal_id_unique(db).await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_series_mal_id_lookup ON series (mal_id) WHERE mal_id IS NOT NULL",
+    )
+    .execute(db)
+    .await?;
+
     Ok(())
+}
+
+/// `mal_id INTEGER UNIQUE` in a stored `series` definition: installs
+/// created before #292 carry it from the original `CREATE TABLE`.
+static SERIES_MAL_UNIQUE: LazyLock<regex_lite::Regex> =
+    LazyLock::new(|| regex_lite::Regex::new(r"(?i)\bmal_id\s+INTEGER\s+UNIQUE\b").unwrap());
+
+/// The table name in a stored `CREATE TABLE series (` statement, in any
+/// of the quoting styles SQLite keeps verbatim.
+static SERIES_CREATE_HEAD: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(
+        r#"(?i)^\s*CREATE\s+TABLE\s+(?:"series"|`series`|\[series\]|series)\s*\("#,
+    )
+    .unwrap()
+});
+
+/// Rebuild `series` without the column-level UNIQUE on `mal_id`
+/// (SQLite cannot drop a column constraint in place). Self-guarding:
+/// a definition without it is left alone, so this runs once per
+/// install. The new table is the stored definition with only that
+/// word removed, so every column, default and later `ADD COLUMN`
+/// survives as it was; the table's indexes and the AUTOINCREMENT
+/// high-water mark are carried over, so a deleted series' id is never
+/// handed out again.
+///
+/// Foreign keys are off for the swap on one pooled connection: every
+/// child of `series(id)` cascades, and `DROP TABLE series` with them on
+/// would empty all of them. They go back on before the connection
+/// returns to the pool; if that fails the connection is closed instead.
+async fn drop_series_mal_id_unique(db: &SqlitePool) -> Result<(), sqlx::Error> {
+    let create: Option<String> = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'series'",
+    )
+    .fetch_optional(db)
+    .await?;
+    let Some(create) = create else {
+        return Ok(());
+    };
+    if !SERIES_MAL_UNIQUE.is_match(&create) {
+        return Ok(());
+    }
+    if !SERIES_CREATE_HEAD.is_match(&create) {
+        tracing::warn!(
+            target: "ryokan::migrations",
+            "series table definition not recognized; mal_id stays UNIQUE"
+        );
+        return Ok(());
+    }
+    let rebuilt = SERIES_MAL_UNIQUE.replace(&create, "mal_id INTEGER");
+    let rebuilt = SERIES_CREATE_HEAD
+        .replace(&rebuilt, "CREATE TABLE series_rebuild_292 (")
+        .into_owned();
+    let extras: Vec<String> = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master \
+         WHERE tbl_name = 'series' AND type IN ('index', 'trigger') AND sql IS NOT NULL",
+    )
+    .fetch_all(db)
+    .await?;
+    let columns: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info('series')")
+        .fetch_all(db)
+        .await?;
+    let columns = columns
+        .iter()
+        .map(|c| format!("\"{}\"", c.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let mut conn = db.acquire().await?;
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *conn)
+        .await?;
+    let result = rebuild_series_table(&mut conn, rebuilt, &columns, &extras).await;
+    if sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *conn)
+        .await
+        .is_err()
+    {
+        conn.close_on_drop();
+    }
+    result
+}
+
+async fn rebuild_series_table(
+    conn: &mut sqlx::SqliteConnection,
+    create: String,
+    columns: &str,
+    extras: &[String],
+) -> Result<(), sqlx::Error> {
+    use sqlx::Connection;
+    let mut tx = conn.begin().await?;
+    let seq: Option<i64> =
+        sqlx::query_scalar("SELECT seq FROM sqlite_sequence WHERE name = 'series'")
+            .fetch_optional(&mut *tx)
+            .await?;
+    sqlx::query(sqlx::AssertSqlSafe(create))
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "INSERT INTO series_rebuild_292 ({columns}) SELECT {columns} FROM series"
+    )))
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DROP TABLE series").execute(&mut *tx).await?;
+    sqlx::query("ALTER TABLE series_rebuild_292 RENAME TO series")
+        .execute(&mut *tx)
+        .await?;
+    for sql in extras {
+        sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .execute(&mut *tx)
+            .await?;
+    }
+    if let Some(seq) = seq {
+        let updated =
+            sqlx::query("UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'series'")
+                .bind(seq)
+                .execute(&mut *tx)
+                .await?;
+        if updated.rows_affected() == 0 {
+            sqlx::query("INSERT INTO sqlite_sequence (name, seq) VALUES ('series', ?)")
+                .bind(seq)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+    tx.commit().await
 }
 
 #[cfg(test)]

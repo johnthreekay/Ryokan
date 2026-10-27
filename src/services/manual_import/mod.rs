@@ -708,7 +708,8 @@ async fn existing_from_row(db: &SqlitePool, row: series::Series) -> ExistingSeri
 }
 
 /// Library row for the group's current pick: AL id first, MAL id for
-/// the negative-AL-id fallback rows. Title never enters into it.
+/// the negative-AL-id fallback rows only, since two AniList entries can
+/// share a MAL id (#292). Title never enters into it.
 pub async fn resolve_existing(db: &SqlitePool, group: &mut SeriesGroup) {
     group.existing = None;
     let Some(entry) = group.picked().cloned() else {
@@ -721,7 +722,10 @@ pub async fn resolve_existing(db: &SqlitePool, group: &mut SeriesGroup) {
     };
     let row = match (row, entry.id_mal) {
         (Some(r), _) => Some(r),
-        (None, Some(mal)) => series::get_by_mal_id(db, mal).await.ok().flatten(),
+        (None, Some(mal)) => series::get_by_mal_id_for_entry(db, entry.id, mal)
+            .await
+            .ok()
+            .flatten(),
         (None, None) => None,
     };
     if let Some(r) = row {
@@ -748,7 +752,10 @@ pub async fn resolve_existing_all(db: &SqlitePool, groups: &mut [SeriesGroup]) {
         let row = match by_al.remove(&entry.id) {
             Some(r) => Some(r),
             None => match entry.id_mal {
-                Some(mal) => series::get_by_mal_id(db, mal).await.ok().flatten(),
+                Some(mal) => series::get_by_mal_id_for_entry(db, entry.id, mal)
+                    .await
+                    .ok()
+                    .flatten(),
                 None => None,
             },
         };
