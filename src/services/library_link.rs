@@ -375,6 +375,34 @@ pub async fn resolve_or_add_series_for_grab(
         };
     }
 
+    // 4b. A MAL hit (the search fell back while AniList was down)
+    //     names a MAL entry, which can be several library series:
+    //     AniList splits some MAL entries in two (#292). One is the
+    //     series; with several the grab could belong to either, so
+    //     nothing is linked rather than the oldest guessed.
+    if top.id < 0 {
+        let rows = series::get_all_by_mal_id(&state.db, -top.id)
+            .await
+            .unwrap_or_default();
+        match rows.len() {
+            0 => {}
+            1 => {
+                let existing = rows.into_iter().next().expect("one row");
+                let eps = parse_grab_episodes(title, is_batch, existing.episodes);
+                return LibraryLinkOutcome::LinkedByAnilist {
+                    series: existing,
+                    episode_numbers: eps,
+                };
+            }
+            _ => {
+                return LibraryLinkOutcome::AmbiguousMatch {
+                    parsed_title,
+                    al_title: entry_display_title(&title_pref, &top).to_string(),
+                };
+            }
+        }
+    }
+
     // 5. Auto-add safety check — refuse if parsed and AL hit don't
     //    share a substantive token. Skips false-positive auto-adds
     //    when AL search returns a spurious top result.

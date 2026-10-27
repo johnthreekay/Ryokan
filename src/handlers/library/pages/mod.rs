@@ -17,6 +17,7 @@ use axum::{
 use sqlx::SqlitePool;
 
 use crate::AppState;
+use crate::models::local_metadata::relation_identity_key;
 use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, local_metadata, monitoring, series};
 use crate::services::{
@@ -1337,14 +1338,6 @@ pub(super) async fn build_episodes(
     )
 }
 
-fn relation_identity_key(provider_id: i64, mal_id: Option<i64>) -> String {
-    if let Some(mal_id) = mal_id {
-        format!("mal:{mal_id}")
-    } else {
-        format!("provider:{provider_id}")
-    }
-}
-
 /// Resolve the best link ID for a relation card.  If the related entry is
 /// tracked in the library (by AniList ID or MAL ID), return the DB series ID
 /// so the link always navigates to `/series/<db_id>`.  Otherwise fall back to
@@ -1512,13 +1505,13 @@ async fn build_relation_groups(
                 .into_iter()
                 .filter(|r| {
                     !existing_relation_keys.contains(&relation_identity_key(r.id, r.id_mal))
+                        && !relations.iter().any(|e| {
+                            local_metadata::same_relation_entry((e.id, e.id_mal), (r.id, r.id_mal))
+                        })
                 })
                 .collect::<Vec<_>>();
         relations.extend(incoming);
     }
-
-    // Build identity key for the current series so we can filter self-references.
-    let self_key = relation_identity_key(detail.id, detail.id_mal);
 
     let mut deduped: Vec<anilist::RelatedEntry> = Vec::new();
     let mut deduped_index: HashMap<(String, String), usize> = HashMap::new();
@@ -1527,10 +1520,13 @@ async fn build_relation_groups(
             continue;
         }
         // Skip self-references: relations that point back to the current series.
-        let related_key = relation_identity_key(related.id, related.id_mal);
-        if related_key == self_key {
+        if local_metadata::same_relation_entry(
+            (related.id, related.id_mal),
+            (detail.id, detail.id_mal),
+        ) {
             continue;
         }
+        let related_key = relation_identity_key(related.id, related.id_mal);
         let normalized_type =
             local_metadata::normalize_relation_type(&related.relation_type).to_string();
         let key = (related_key, normalized_type);

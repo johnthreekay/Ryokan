@@ -246,9 +246,10 @@ pub async fn expand_from_files(
             sibling.title_romaji.clone()
         };
 
-        // Upsert dedups by mal_id then anilist_id, so reconciled
-        // entries that already have both IDs populated update in
-        // place instead of duplicating.
+        // Upsert finds the sibling by AniList id (or promotes its
+        // MAL-fallback row), so a sibling already in the library
+        // updates in place instead of duplicating. A sibling sharing
+        // the parent's MAL id stays its own series (#292).
         let upsert_result = series::upsert(
             db,
             series::SeriesCore {

@@ -121,11 +121,15 @@ pub fn local_url(cache_key: &str, last_write: i64) -> String {
     format!("/media/art/{}?v={}", cache_key, last_write)
 }
 
+/// The anime an artwork cache key names: the AniList id when there is
+/// one, the MAL id for a MAL-sourced entry. MAL first gave two AniList
+/// entries that share a MAL id (#292: Steel Ball Run's stages, MAL
+/// 61469) one cover.
 pub fn canonical_identity_key(provider_id: i64, mal_id: Option<i64>) -> String {
-    if let Some(mid) = mal_id.filter(|mid| *mid > 0) {
-        format!("mal-{}", mid)
-    } else if provider_id > 0 {
+    if provider_id > 0 {
         format!("al-{}", provider_id)
+    } else if let Some(mid) = mal_id.filter(|mid| *mid > 0) {
+        format!("mal-{}", mid)
     } else {
         format!("prov-{}", provider_id)
     }
@@ -505,12 +509,16 @@ mod tests {
     // ─── canonical_identity_key ───────────────────────────────────
 
     #[test]
-    fn canonical_identity_key_prefers_mal_id_when_positive() {
-        // MAL ID is the more stable external key — AniList IDs shift
-        // during provider re-imports, MAL rarely changes. Preferring
-        // MAL when available means a series re-imported from
-        // AniList-fallback-to-Jikan still hits the cached artwork.
-        assert_eq!(canonical_identity_key(123, Some(456)), "mal-456");
+    fn canonical_identity_key_prefers_the_anilist_id() {
+        // #292: AniList entries that share a MAL id are different
+        // anime with different covers.
+        assert_eq!(canonical_identity_key(190327, Some(61469)), "al-190327");
+        assert_ne!(
+            canonical_identity_key(190327, Some(61469)),
+            canonical_identity_key(210482, Some(61469))
+        );
+        // A MAL-sourced entry keys on its MAL id.
+        assert_eq!(canonical_identity_key(-61469, Some(61469)), "mal-61469");
     }
 
     #[test]
@@ -540,14 +548,14 @@ mod tests {
 
     #[test]
     fn provider_cover_key_combines_identity_key_with_cover_suffix() {
-        assert_eq!(provider_cover_key(123, Some(456)), "provider-mal-456-cover");
+        assert_eq!(provider_cover_key(123, Some(456)), "provider-al-123-cover");
     }
 
     #[test]
     fn provider_banner_key_combines_identity_key_with_banner_suffix() {
         assert_eq!(
             provider_banner_key(123, Some(456)),
-            "provider-mal-456-banner"
+            "provider-al-123-banner"
         );
     }
 
@@ -569,7 +577,7 @@ mod tests {
     fn series_relation_cover_key_includes_parent_series_and_related_identity() {
         assert_eq!(
             series_relation_cover_key(10, 20, Some(30)),
-            "series-10-relation-mal-30-cover"
+            "series-10-relation-al-20-cover"
         );
     }
 
@@ -582,7 +590,7 @@ mod tests {
         // different MAL id in different relation trees.
         assert_eq!(
             provider_relation_cover_key(10, 20, Some(30)),
-            "provider-al-10-relation-mal-30-cover"
+            "provider-al-10-relation-al-20-cover"
         );
     }
 

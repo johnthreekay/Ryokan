@@ -453,3 +453,78 @@ async fn no_match_when_al_search_empty() {
     }
     teardown();
 }
+
+#[tokio::test]
+async fn a_mal_hit_shared_by_two_library_series_links_neither() {
+    // #292: AniList down, the search falls back to MAL and finds MAL
+    // 61469, which AniList splits into Steel Ball Run's 1st STAGE and
+    // 2nd - 3rd STAGE. With both in the library the grab could be for
+    // either; with one, that one is the series.
+    let _gate = ENV_LOCK.lock().await;
+    let mock = al_mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(503).set_body_string("Service Unavailable"))
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": [{
+                "mal_id": 61469,
+                "title": "Steel Ball Run",
+                "title_english": "STEEL BALL RUN",
+                "title_japanese": "",
+                "type": "ONA",
+                "status": "Currently Airing",
+                "episodes": 12
+            }]
+        })))
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("JIKAN_API_BASE", mock.uri());
+    }
+
+    let release = "[SubsPlease] Steel Ball Run - 07 (1080p).mkv";
+    let db = in_memory_pool().await;
+    let state = build_test_app_state(db.clone(), None);
+    let first = seed_series(&db, 190327, "ZZZZ first").await;
+    let second = seed_series(&db, 210482, "ZZZZ second").await;
+    for id in [first, second] {
+        sqlx::query("UPDATE series SET mal_id = 61469 WHERE id = ?")
+            .bind(id)
+            .execute(&db)
+            .await
+            .unwrap();
+    }
+    let outcome = resolve_or_add_series_for_grab(&state, release, false).await;
+    assert!(
+        matches!(outcome, LibraryLinkOutcome::AmbiguousMatch { .. }),
+        "{outcome:?}"
+    );
+    let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM series")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(rows, 2, "nothing is added beside them");
+
+    let db = in_memory_pool().await;
+    let state = build_test_app_state(db.clone(), None);
+    let only = seed_series(&db, 190327, "ZZZZ first").await;
+    sqlx::query("UPDATE series SET mal_id = 61469 WHERE id = ?")
+        .bind(only)
+        .execute(&db)
+        .await
+        .unwrap();
+    let outcome = resolve_or_add_series_for_grab(&state, release, false).await;
+
+    unsafe {
+        std::env::remove_var("JIKAN_API_BASE");
+    }
+    teardown();
+    match outcome {
+        LibraryLinkOutcome::LinkedByAnilist { series, .. } => assert_eq!(series.id, only),
+        other => panic!("expected LinkedByAnilist, got {other:?}"),
+    }
+}
