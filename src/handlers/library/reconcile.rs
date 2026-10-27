@@ -218,13 +218,38 @@ async fn maybe_reconcile_mal_entry(
         return None;
     }
 
-    // Single round-trip: AniList's `Media(idMal:)` query returns the same
-    // full detail payload we'd get from `Media(id:)`, so the previous
-    // "find then fetch detail" two-step has been collapsed.
-    let detail = match anilist::find_anime_detail_by_mal_id(mal_id).await {
-        Ok(Some(d)) => d,
-        _ => return None,
-    };
+    // Single round-trip with full detail for every AniList entry on the
+    // MAL id. More than one means AniList split the MAL entry (#292):
+    // nothing here says which part the user's files are, so the row
+    // stays a MAL series rather than become a guessed part.
+    let mut found = anilist::find_anime_details_by_mal_id(mal_id).await.ok()?;
+    if found.len() > 1 {
+        if logger::first_in_window(
+            &format!("mal-split:{}", existing.id),
+            std::time::Duration::from_secs(24 * 3600),
+        ) {
+            let ids = found
+                .iter()
+                .map(|d| d.id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            logger::warn(
+                db,
+                LogCategory::AniList,
+                &format!(
+                    "{} stays a MyAnimeList series. AniList splits it into {} entries.",
+                    existing.title,
+                    found.len()
+                ),
+                &format!(
+                    "mal_id={mal_id}, anilist_ids={ids}. Remove the series and add the entry you want from search."
+                ),
+            )
+            .await;
+        }
+        return None;
+    }
+    let detail = found.pop()?;
 
     let primary_title = if !detail.title_english.is_empty() {
         detail.title_english.clone()
