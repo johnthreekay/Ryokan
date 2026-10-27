@@ -796,3 +796,187 @@ async fn radarr_add_movie_pins_monitor_mode_to_none_when_seerr_unmonitors() {
     anilist::reset_state_for_tests();
     anibridge::clear_cache_for_tests().await;
 }
+
+// ─── #292: AniList entries sharing a MAL id ─────────────────────────
+
+/// MAL 61469's own detail, what the shims fall back to while AniList
+/// is down. AniList splits it into Steel Ball Run's 1st STAGE (190327)
+/// and 2nd - 3rd STAGE (210482).
+fn split_mal_detail() -> anilist::AnimeDetail {
+    let mut detail: anilist::AnimeDetail = serde_json::from_value(json!({
+        "id": -61469,
+        "id_mal": 61469,
+        "title_romaji": "STEEL BALL RUN",
+        "title_english": "STEEL BALL RUN",
+        "title_native": "",
+        "cover_url": "",
+        "banner_url": "",
+        "format": "ONA",
+        "status": "RELEASING",
+        "status_display": "",
+        "episodes": 12,
+        "duration": null,
+        "season": "",
+        "season_year": 2026,
+        "end_year": null,
+        "description": "",
+        "genres": [],
+        "average_score": null,
+        "average_score_display": null,
+        "score_is_ten_point": false,
+        "score_class": "",
+        "next_airing_episode": null,
+        "next_airing_at": null,
+        "synonyms": [],
+        "streaming_episodes": [],
+        "relations": []
+    }))
+    .unwrap();
+    detail.id_mal = Some(61469);
+    detail
+}
+
+/// AniList down for every request, MAL's detail cached, and 1st STAGE
+/// already in the library under MAL 61469, unmonitored.
+async fn anilist_down_with_first_stage_tracked(db: &SqlitePool) -> (MockServer, i64) {
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503).set_body_string("Service Unavailable"))
+        .mount(&mock)
+        .await;
+    // SAFETY: ENV_LOCK serializes env-var access within this binary.
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+    ryokan::services::jikan::seed_detail_cache_for_tests(61469, split_mal_detail()).await;
+    let first = ryokan::test_support::seed_series(db, 190327, "1st STAGE").await;
+    sqlx::query("UPDATE series SET mal_id = 61469, monitor_mode = 'none' WHERE id = ?")
+        .bind(first)
+        .execute(db)
+        .await
+        .unwrap();
+    (mock, first)
+}
+
+async fn assert_first_stage_untouched(db: &SqlitePool, first: i64) {
+    let row = series::get_by_id(db, first).await.unwrap().unwrap();
+    assert_eq!((row.anilist_id, row.title.as_str()), (190327, "1st STAGE"));
+    assert_eq!(
+        row.monitor_mode, "none",
+        "the request's monitoring landed on 1st STAGE"
+    );
+    assert_eq!(series::tvdb_ids(db, first).await.unwrap(), None);
+    let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM series")
+        .fetch_one(db)
+        .await
+        .unwrap();
+    assert_eq!(rows, 1);
+    let warned: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM logs WHERE level = 'warn' \
+         AND message LIKE 'Seerr add: skipped AniList 210482.%'",
+    )
+    .fetch_one(db)
+    .await
+    .unwrap();
+    assert_eq!(warned, 1);
+}
+
+async fn reset_split_fixture() {
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    ryokan::services::jikan::clear_detail_cache_entry_for_tests(61469).await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
+async fn sonarr_add_never_lands_on_a_sibling_sharing_the_mal_id() {
+    // Seerr asks for 2nd - 3rd STAGE while AniList is down. The MAL
+    // fallback names the whole MAL entry, and `upsert` would answer
+    // with the 1st STAGE row.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::seed_external_mappings_for_tests(
+        &[
+            (9100, 6, Some(190327), Some(61469)),
+            (9100, 7, Some(210482), Some(61469)),
+        ],
+        &[],
+    )
+    .await;
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    let (_mock, first) = anilist_down_with_first_stage_tracked(&db).await;
+
+    let app = sonarr_router_with_series(build_test_app_state(db.clone(), None));
+    let (status, body) = post_json(
+        app,
+        "/api/v3/series",
+        SONARR_KEY,
+        json!({
+            "tvdbId": 9100,
+            "title": "STEEL BALL RUN",
+            "seasons": [{"seasonNumber": 7, "monitored": true}],
+            "monitored": true,
+        }),
+    )
+    .await;
+    reset_split_fixture().await;
+
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
+    assert_first_stage_untouched(&db, first).await;
+}
+
+#[tokio::test]
+async fn radarr_add_never_lands_on_a_sibling_sharing_the_mal_id() {
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::seed_external_mappings_for_tests(&[], &[(5200, 1, Some(210482), Some(61469))]).await;
+    let db = in_memory_pool().await;
+    seed_radarr_state(&db).await;
+    let (_mock, first) = anilist_down_with_first_stage_tracked(&db).await;
+
+    let app = radarr_router_with_movie(build_test_app_state(db.clone(), None));
+    let (status, body) = post_json(
+        app,
+        "/radarr/api/v3/movie",
+        RADARR_KEY,
+        json!({ "tmdbId": 5200, "title": "STEEL BALL RUN", "monitored": true }),
+    )
+    .await;
+    reset_split_fixture().await;
+
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
+    assert_first_stage_untouched(&db, first).await;
+}
+
+#[tokio::test]
+async fn shim_ids_never_borrow_a_split_siblings_mapping_through_the_mal_id() {
+    // The mappings know 1st STAGE only. 2nd - 3rd STAGE shares its MAL
+    // id, and the MAL-keyed TVDB / TMDB answer is 1st STAGE's.
+    let _gate = ENV_LOCK.lock().await;
+    anibridge::seed_external_mappings_for_tests(
+        &[(9100, 6, Some(190327), Some(61469))],
+        &[(5100, 1, Some(190327), Some(61469))],
+    )
+    .await;
+    assert_eq!(
+        anibridge::resolve_tvdb(190327, Some(61469)).await,
+        Some((9100, 6))
+    );
+    assert_eq!(anibridge::resolve_tvdb(210482, Some(61469)).await, None);
+    assert_eq!(
+        anibridge::resolve_tvdb(-61469, Some(61469)).await,
+        Some((9100, 6))
+    );
+    assert_eq!(anibridge::resolve_tmdb_id(210482, Some(61469)).await, 0);
+    assert_eq!(anibridge::resolve_tmdb_id(-61469, Some(61469)).await, 5100);
+    // A MAL id the mappings tie to no AniList entry still answers.
+    anibridge::seed_external_mappings_for_tests(&[(9300, 1, None, Some(777))], &[]).await;
+    assert_eq!(
+        anibridge::resolve_tvdb(4040, Some(777)).await,
+        Some((9300, 1))
+    );
+    anibridge::clear_cache_for_tests().await;
+}

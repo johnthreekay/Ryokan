@@ -255,6 +255,21 @@ pub async fn get_all_by_mal_id(db: &SqlitePool, mal_id: i64) -> Result<Vec<Serie
     Ok(rows.into_iter().map(map_series_row).collect())
 }
 
+/// A library row of MAL entry `mal_id` that is a different AniList
+/// entry than `anilist_id` (#292: AniList split the MAL entry). A caller
+/// that wanted `anilist_id` but could only fetch MAL data checks this
+/// before `upsert`, which would otherwise hand it this sibling's row.
+pub async fn other_anilist_entry_on_mal_id(
+    db: &SqlitePool,
+    anilist_id: i64,
+    mal_id: i64,
+) -> Result<Option<Series>, sqlx::Error> {
+    Ok(get_all_by_mal_id(db, mal_id)
+        .await?
+        .into_iter()
+        .find(|row| row.anilist_id > 0 && row.anilist_id != anilist_id))
+}
+
 /// The library row an entry `(anilist_id, mal_id)` names through its
 /// MAL id. For an entry with a real AniList id only a MAL-fallback row
 /// (negative sentinel AniList id) counts: another positive AniList id

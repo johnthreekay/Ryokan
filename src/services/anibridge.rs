@@ -436,15 +436,6 @@ fn lookup_show_seasons(
     result
 }
 
-/// Look up TMDB show ID by MAL ID (for fallback when AniList is unavailable).
-pub async fn lookup_tmdb_by_mal(mal_id: i64) -> Option<i64> {
-    let cache = CACHE.read().await;
-    cache
-        .as_ref()
-        .and_then(|c| c.data.mal_to_tmdb.get(&mal_id))
-        .copied()
-}
-
 /// Look up TMDB show ID by AniList ID.
 pub async fn lookup_tmdb_by_anilist(anilist_id: i64) -> Option<i64> {
     let cache = CACHE.read().await;
@@ -465,10 +456,24 @@ pub async fn resolve_tvdb(anilist_id: i64, mal_id: impl Into<Option<i64>>) -> Op
         .or_else(|| {
             mal_id
                 .into()
-                .filter(|m| *m > 0)
+                .filter(|m| *m > 0 && mal_speaks_for(data, anilist_id, *m))
                 .and_then(|m| data.mal_to_tvdb.get(&m))
         })
         .copied()
+}
+
+/// Whether the mappings' MAL-keyed answer can stand in for `anilist_id`:
+/// always for a MAL-only entry, and for an AniList entry unless the
+/// mappings tie the MAL id to another AniList entry. AniList splits
+/// some MAL entries in several (#292: Steel Ball Run's 1st STAGE and
+/// 2nd - 3rd STAGE are both MAL 61469), and then the MAL id's TVDB or
+/// TMDB mapping is the sibling's, not this entry's.
+fn mal_speaks_for(data: &MappingCache, anilist_id: i64, mal_id: i64) -> bool {
+    anilist_id <= 0
+        || data
+            .mal_to_anilist
+            .get(&mal_id)
+            .is_none_or(|mapped| *mapped == anilist_id)
 }
 
 /// Look up AniList ID by MAL ID. The watch-list sync (#62) calls
@@ -548,6 +553,13 @@ pub async fn seed_external_mappings_for_tests(
     let mut mal_to_tmdb: HashMap<i64, i64> = HashMap::new();
     let mut anilist_to_tvdb: HashMap<i64, (i64, i32)> = HashMap::new();
     let mut mal_to_tvdb: HashMap<i64, (i64, i32)> = HashMap::new();
+    // Like `build_cache`: an entry naming both ids pairs them.
+    let mut mal_to_anilist: HashMap<i64, i64> = HashMap::new();
+    for &(_, _, al, mal) in tvdb.iter().chain(tmdb) {
+        if let (Some(al_id), Some(mid)) = (al, mal) {
+            mal_to_anilist.insert(mid, al_id);
+        }
+    }
     for &(tvdb_id, season, al, mal) in tvdb {
         if let Some(al_id) = al {
             note_tvdb(&mut anilist_to_tvdb, al_id, (tvdb_id, season));
@@ -583,7 +595,7 @@ pub async fn seed_external_mappings_for_tests(
         tvdb_to_anime,
         anilist_to_tmdb,
         mal_to_tmdb,
-        mal_to_anilist: HashMap::new(),
+        mal_to_anilist,
         tmdb_episode_spans: HashMap::new(),
         anilist_to_tvdb,
         mal_to_tvdb,
@@ -648,16 +660,19 @@ pub async fn seed_tmdb_episode_spans_for_tests(spans: &[(i64, i32, i32, i32, i64
 /// place means future changes (extra fallback IDs, retry semantics,
 /// negative-cache) only need editing once.
 pub async fn resolve_tmdb_id(anilist_id: i64, mal_id: impl Into<Option<i64>>) -> i64 {
-    if let Some(tmdb) = lookup_tmdb_by_anilist(anilist_id).await {
-        return tmdb;
+    let cache = CACHE.read().await;
+    let Some(data) = cache.as_ref().map(|c| &c.data) else {
+        return 0;
+    };
+    if let Some(tmdb) = data.anilist_to_tmdb.get(&anilist_id) {
+        return *tmdb;
     }
-    if let Some(mid) = mal_id.into()
-        && mid > 0
-        && let Some(tmdb) = lookup_tmdb_by_mal(mid).await
-    {
-        return tmdb;
-    }
-    0
+    mal_id
+        .into()
+        .filter(|m| *m > 0 && mal_speaks_for(data, anilist_id, *m))
+        .and_then(|m| data.mal_to_tmdb.get(&m))
+        .copied()
+        .unwrap_or(0)
 }
 
 /// Parse raw mappings JSON bytes into the in-memory lookup tables.
