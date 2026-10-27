@@ -1363,9 +1363,10 @@ async fn resolve_relation_card_id(
     {
         return (row.id, true);
     }
-    // Try MAL ID.
+    // Try MAL ID: only a MAL-fallback row for an AniList entry, since
+    // a sequel AniList splits off can share its MAL id (#292).
     if let Some(mid) = mal_id
-        && let Ok(Some(row)) = series::get_by_mal_id(db, mid).await
+        && let Ok(Some(row)) = series::get_by_mal_id_for_entry(db, provider_id, mid).await
     {
         return (row.id, true);
     }

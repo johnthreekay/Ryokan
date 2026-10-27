@@ -229,11 +229,34 @@ pub async fn get_by_anilist_ids(
         .collect())
 }
 
+/// A library row of the MAL entry `mal_id`, for a caller that has
+/// nothing but the MAL id (a MAL-fallback entry, a Seerr request with
+/// no AniList id). Several rows can share one: AniList splits some MAL
+/// entries into separate series (#292, Steel Ball Run's 1st STAGE and
+/// 2nd - 3rd STAGE are both MAL 61469). The oldest row answers.
 pub async fn get_by_mal_id(db: &SqlitePool, mal_id: i64) -> Result<Option<Series>, sqlx::Error> {
+    get_by_mal_id_for_entry(db, 0, mal_id).await
+}
+
+/// The library row an entry `(anilist_id, mal_id)` names through its
+/// MAL id. For an entry with a real AniList id only a MAL-fallback row
+/// (negative sentinel AniList id) counts: another positive AniList id
+/// under the same MAL id is a different series, since AniList splits
+/// some MAL entries in two (#292). An entry that is itself a MAL
+/// fallback (`anilist_id <= 0`) matches any row of its MAL entry.
+pub async fn get_by_mal_id_for_entry(
+    db: &SqlitePool,
+    anilist_id: i64,
+    mal_id: i64,
+) -> Result<Option<Series>, sqlx::Error> {
+    if mal_id <= 0 {
+        return Ok(None);
+    }
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ?",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ? AND (? <= 0 OR anilist_id < 0) ORDER BY id LIMIT 1",
     )
     .bind(mal_id)
+    .bind(anilist_id)
     .fetch_optional(db)
     .await?;
 
@@ -347,10 +370,58 @@ pub fn unique_folder_among(
 }
 
 /// Insert or update a series based on AniList/MAL provider identity.
+///
+/// The AniList id decides first. The MAL id only finds the row of the
+/// same series under the other provider (`get_by_mal_id_for_entry`): a
+/// MAL-fallback row is promoted to the real AniList id, and a MAL
+/// fallback for a series already tracked under its AniList id returns
+/// that row untouched, since MAL-sourced metadata would overwrite the
+/// AniList entry's own. Two AniList entries that share a MAL id stay
+/// two series (#292).
 pub async fn upsert(db: &SqlitePool, core: SeriesCore<'_>) -> Result<(i64, bool), sqlx::Error> {
+    if let Some(existing) = get_by_anilist_id(db, core.anilist_id).await? {
+        sqlx::query(
+            r#"
+            UPDATE series
+            SET mal_id = COALESCE(?, mal_id),
+                title = ?,
+                title_romaji = ?,
+                title_english = ?,
+                title_native = ?,
+                cover_url = ?,
+                format = ?,
+                status = ?,
+                episodes = ?,
+                season_year = COALESCE(?, season_year),
+                end_year = COALESCE(?, end_year),
+                monitor_mode = COALESCE(NULLIF(monitor_mode, ''), ?)
+            WHERE id = ?
+            "#,
+        )
+        .bind(core.mal_id)
+        .bind(core.title)
+        .bind(core.title_romaji)
+        .bind(core.title_english)
+        .bind(core.title_native)
+        .bind(core.cover_url)
+        .bind(core.format)
+        .bind(core.status)
+        .bind(core.episodes)
+        .bind(core.season_year)
+        .bind(core.end_year)
+        .bind(default_monitor_mode(core.status).as_str())
+        .bind(existing.id)
+        .execute(db)
+        .await?;
+        return Ok((existing.id, false));
+    }
+
     if let Some(mid) = core.mal_id
-        && let Some(existing) = get_by_mal_id(db, mid).await?
+        && let Some(existing) = get_by_mal_id_for_entry(db, core.anilist_id, mid).await?
     {
+        if core.anilist_id <= 0 {
+            return Ok((existing.id, false));
+        }
         sqlx::query(
             r#"
                 UPDATE series
@@ -372,43 +443,6 @@ pub async fn upsert(db: &SqlitePool, core: SeriesCore<'_>) -> Result<(i64, bool)
         )
         .bind(core.anilist_id)
         .bind(mid)
-        .bind(core.title)
-        .bind(core.title_romaji)
-        .bind(core.title_english)
-        .bind(core.title_native)
-        .bind(core.cover_url)
-        .bind(core.format)
-        .bind(core.status)
-        .bind(core.episodes)
-        .bind(core.season_year)
-        .bind(core.end_year)
-        .bind(default_monitor_mode(core.status).as_str())
-        .bind(existing.id)
-        .execute(db)
-        .await?;
-        return Ok((existing.id, false));
-    }
-
-    if let Some(existing) = get_by_anilist_id(db, core.anilist_id).await? {
-        sqlx::query(
-            r#"
-            UPDATE series
-            SET mal_id = COALESCE(?, mal_id),
-                title = ?,
-                title_romaji = ?,
-                title_english = ?,
-                title_native = ?,
-                cover_url = ?,
-                format = ?,
-                status = ?,
-                episodes = ?,
-                season_year = COALESCE(?, season_year),
-                end_year = COALESCE(?, end_year),
-                monitor_mode = COALESCE(NULLIF(monitor_mode, ''), ?)
-            WHERE id = ?
-            "#,
-        )
-        .bind(core.mal_id)
         .bind(core.title)
         .bind(core.title_romaji)
         .bind(core.title_english)
@@ -969,6 +1003,82 @@ mod tests {
         // Re-upserting an existing series keeps its folder.
         upsert(&db, core(11061, 2011)).await.unwrap();
         assert_eq!(folder(new).await, "Hunter x Hunter (2011)");
+    }
+
+    fn core_ids<'a>(anilist_id: i64, mal_id: Option<i64>, title: &'a str) -> SeriesCore<'a> {
+        SeriesCore {
+            anilist_id,
+            mal_id,
+            title,
+            title_romaji: title,
+            title_english: title,
+            title_native: "",
+            cover_url: "",
+            format: "ONA",
+            status: "FINISHED",
+            episodes: Some(1),
+            season_year: Some(2026),
+            end_year: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn anilist_entries_sharing_a_mal_id_stay_two_series() {
+        // #292: Steel Ball Run's stages are two AniList entries on MAL
+        // 61469. The second used to take over the first's row.
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let (first, created) = upsert(&db, core_ids(190327, Some(61469), "1st STAGE"))
+            .await
+            .unwrap();
+        assert!(created);
+        let (second, created) = upsert(&db, core_ids(210482, Some(61469), "2nd - 3rd STAGE"))
+            .await
+            .unwrap();
+        assert!(created);
+        assert_ne!(first, second);
+        let row = get_by_id(&db, first).await.unwrap().unwrap();
+        assert_eq!((row.anilist_id, row.title.as_str()), (190327, "1st STAGE"));
+        // The AniList id finds each one; a MAL-only lookup gets the
+        // oldest; an AniList entry never finds its sibling by MAL id.
+        assert_eq!(get_by_mal_id(&db, 61469).await.unwrap().unwrap().id, first);
+        assert!(
+            get_by_mal_id_for_entry(&db, 210482, 61469)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        // A MAL-fallback add of the shared entry lands on a tracked row
+        // and leaves its AniList metadata alone.
+        let (fallback, created) = upsert(&db, core_ids(-61469, Some(61469), "STEEL BALL RUN"))
+            .await
+            .unwrap();
+        assert!(!created);
+        assert_eq!(fallback, first);
+        let row = get_by_id(&db, first).await.unwrap().unwrap();
+        assert_eq!((row.anilist_id, row.title.as_str()), (190327, "1st STAGE"));
+    }
+
+    #[tokio::test]
+    async fn a_mal_fallback_row_is_promoted_to_its_anilist_id() {
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        let (fallback, _) = upsert(&db, core_ids(-61469, Some(61469), "STEEL BALL RUN"))
+            .await
+            .unwrap();
+        let (promoted, created) = upsert(&db, core_ids(190327, Some(61469), "1st STAGE"))
+            .await
+            .unwrap();
+        assert!(!created);
+        assert_eq!(promoted, fallback);
+        let row = get_by_id(&db, fallback).await.unwrap().unwrap();
+        assert_eq!((row.anilist_id, row.title.as_str()), (190327, "1st STAGE"));
+        // The sibling is a new series, not the promoted row again.
+        let (sibling, created) = upsert(&db, core_ids(210482, Some(61469), "2nd - 3rd STAGE"))
+            .await
+            .unwrap();
+        assert!(created);
+        assert_ne!(sibling, fallback);
     }
 
     #[tokio::test]

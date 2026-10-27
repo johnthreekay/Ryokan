@@ -254,8 +254,10 @@ async fn maybe_reconcile_mal_entry(
         return None;
     }
 
+    // Not promoted when the AniList entry is already a library row of
+    // its own: `upsert` updated that one and left this row alone.
     let refreshed = match series::get_by_id(db, existing.id).await {
-        Ok(Some(row)) => row,
+        Ok(Some(row)) if row.anilist_id > 0 => row,
         _ => return None,
     };
 
@@ -501,14 +503,20 @@ async fn resolve_series_context_raw(
     }
 
     if db_series.is_none() {
-        db_series = if let Some(mid) = detail.id_mal {
-            series::get_by_mal_id(db, mid).await.ok().flatten()
-        } else {
-            series::get_by_anilist_id(db, detail.id)
+        // AniList id first: a MAL id can name several AniList entries
+        // (#292), and only a MAL-fallback row of it is this series.
+        db_series = series::get_by_anilist_id(db, detail.id)
+            .await
+            .ok()
+            .flatten();
+        if db_series.is_none()
+            && let Some(mid) = detail.id_mal
+        {
+            db_series = series::get_by_mal_id_for_entry(db, detail.id, mid)
                 .await
                 .ok()
-                .flatten()
-        };
+                .flatten();
+        }
     }
 
     if detail.id != 0 {

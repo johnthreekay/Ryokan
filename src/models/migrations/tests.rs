@@ -1103,50 +1103,139 @@ async fn series_anilist_id_unique_rejects_duplicate() {
 }
 
 #[tokio::test]
-async fn series_mal_id_partial_unique_index_allows_multiple_nulls() {
-    // The mal_id partial UNIQUE index excludes NULL rows
-    // (`WHERE mal_id IS NOT NULL`), so multiple AL-only series
-    // (no MAL mapping) can all live with mal_id IS NULL. A naive
-    // UNIQUE without the partial-index clause would reject every
-    // 2nd insert. Pin so a future migration that "tightens" the
-    // index by dropping the WHERE clause fails this test loudly.
+async fn series_rows_may_share_a_mal_id() {
+    // #292: AniList splits some MAL entries in two (Steel Ball Run's
+    // 1st STAGE and 2nd - 3rd STAGE are both MAL 61469), so a MAL id
+    // is not a series identity.
     let db = fresh_migrated_pool().await;
+    for (anilist, title) in [(190327, "1st"), (210482, "2nd")] {
+        sqlx::query(
+            "INSERT INTO series (anilist_id, mal_id, title, title_romaji, folder_name) \
+             VALUES (?, 61469, ?, ?, ?)",
+        )
+        .bind(anilist)
+        .bind(title)
+        .bind(title)
+        .bind(title)
+        .execute(&db)
+        .await
+        .expect("a shared MAL id must be accepted");
+    }
+}
+
+/// The `series` definition installs created before #292 carry, with
+/// the column-level UNIQUE on `mal_id` and the old unique index.
+async fn pool_with_pre_292_series(db: &SqlitePool) {
     sqlx::query(
-        "INSERT INTO series (anilist_id, mal_id, title, title_romaji, folder_name) \
-         VALUES (60, NULL, 'A', 'A', 'a')",
+        r#"
+        CREATE TABLE series (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            anilist_id INTEGER NOT NULL UNIQUE,
+            mal_id INTEGER UNIQUE,
+            title TEXT NOT NULL,
+            title_romaji TEXT NOT NULL DEFAULT '',
+            title_english TEXT NOT NULL DEFAULT '',
+            title_native TEXT NOT NULL DEFAULT '',
+            cover_url TEXT NOT NULL DEFAULT '',
+            format TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT '',
+            episodes INTEGER,
+            folder_name TEXT NOT NULL DEFAULT '',
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
     )
-    .execute(&db)
+    .execute(db)
     .await
     .unwrap();
     sqlx::query(
-        "INSERT INTO series (anilist_id, mal_id, title, title_romaji, folder_name) \
-         VALUES (61, NULL, 'B', 'B', 'b')",
+        "CREATE UNIQUE INDEX idx_series_mal_id ON series (mal_id) WHERE mal_id IS NOT NULL",
     )
-    .execute(&db)
+    .execute(db)
     .await
-    .expect("second NULL mal_id must be accepted");
+    .unwrap();
 }
 
 #[tokio::test]
-async fn series_mal_id_unique_rejects_duplicate_non_null() {
-    let db = fresh_migrated_pool().await;
-    sqlx::query(
-        "INSERT INTO series (anilist_id, mal_id, title, title_romaji, folder_name) \
-         VALUES (70, 1234, 'A', 'A', 'a')",
+async fn pre_292_series_table_is_rebuilt_without_the_mal_id_unique() {
+    let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    pool_with_pre_292_series(&db).await;
+    for (id, anilist) in [(3, 190327), (9, 999)] {
+        sqlx::query(
+            "INSERT INTO series (id, anilist_id, mal_id, title, folder_name) \
+             VALUES (?, ?, 61469 + ?, 'Kept', 'Kept')",
+        )
+        .bind(id)
+        .bind(anilist)
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    }
+    // The newest series was removed: its id must not come back.
+    sqlx::query("DELETE FROM series WHERE id = 9")
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE series SET mal_id = 61469 WHERE id = 3")
+        .execute(&db)
+        .await
+        .unwrap();
+
+    migrate(&db).await.expect("migrate must succeed");
+    // A second boot finds nothing to rebuild.
+    migrate(&db).await.expect("re-migrate must succeed");
+
+    let create: String = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'series'",
     )
-    .execute(&db)
+    .fetch_one(&db)
     .await
     .unwrap();
-    let res = sqlx::query(
-        "INSERT INTO series (anilist_id, mal_id, title, title_romaji, folder_name) \
-         VALUES (71, 1234, 'B', 'B', 'b')",
-    )
-    .execute(&db)
-    .await;
+    assert!(!SERIES_MAL_UNIQUE.is_match(&create), "{create}");
     assert!(
-        res.is_err(),
-        "duplicate non-NULL mal_id must be rejected by partial UNIQUE index"
+        create.contains("anilist_id INTEGER NOT NULL UNIQUE"),
+        "{create}"
     );
+    assert!(!index_exists(&db, "idx_series_mal_id").await);
+    assert!(index_exists(&db, "idx_series_mal_id_lookup").await);
+    // Columns added by later migrations survived the rebuild.
+    assert!(column_exists(&db, "series", "cumulative_prior_episodes").await);
+
+    let kept: (String, i64) = sqlx::query_as("SELECT title, mal_id FROM series WHERE id = 3")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(kept, ("Kept".to_string(), 61469));
+
+    let new_id: i64 = sqlx::query_scalar(
+        "INSERT INTO series (anilist_id, mal_id, title, folder_name) \
+         VALUES (210482, 61469, 'Second', 'Second') RETURNING id",
+    )
+    .fetch_one(&db)
+    .await
+    .expect("a shared MAL id must be accepted after the rebuild");
+    assert!(new_id > 9, "AUTOINCREMENT high-water mark lost: {new_id}");
+
+    // Foreign keys are back on, and children cascade off the new table.
+    let fk: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(fk, 1);
+    sqlx::query("INSERT INTO episode_airings (series_id, episode, airing_at) VALUES (3, 1, 0)")
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM series WHERE id = 3")
+        .execute(&db)
+        .await
+        .unwrap();
+    let orphans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM episode_airings")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(orphans, 0);
 }
 
 #[tokio::test]
@@ -1224,12 +1313,10 @@ async fn migrate_creates_partial_unique_index_for_active_grab_dedup() {
 }
 
 #[tokio::test]
-async fn migrate_creates_partial_unique_index_for_series_mal_id() {
+async fn migrate_indexes_series_mal_id_without_uniqueness() {
     let db = fresh_migrated_pool().await;
-    assert!(
-        index_exists(&db, "idx_series_mal_id").await,
-        "series mal_id partial UNIQUE index missing"
-    );
+    assert!(index_exists(&db, "idx_series_mal_id_lookup").await);
+    assert!(!index_exists(&db, "idx_series_mal_id").await);
 }
 
 #[tokio::test]

@@ -4,8 +4,12 @@
 //! the row is deleted from Settings → Integrations.
 //!
 //! Keyed by AniList id with a MAL id beside it, since the MAL fallback
-//! path (`merge_jikan_fallback_entries`) only has the MAL id. Either
-//! id matching is enough.
+//! path (`merge_jikan_fallback_entries`) only has the MAL id. The AniList
+//! id decides when both sides have one: AniList splits some MAL entries
+//! in two (#292, Steel Ball Run's stages share MAL 61469), so excluding
+//! one must not exclude its sibling. A MAL id matches an AniList entry
+//! only through a row recorded without an AniList id, and a MAL-only
+//! entry through any row of its MAL id.
 
 use std::collections::HashSet;
 
@@ -25,9 +29,10 @@ pub struct SyncExclusion {
 /// which is dropped here). Idempotent: a row with both ids is left
 /// alone; a row with only one of them gains the other, so the merge
 /// loop that has only the MAL id (the Jikan fallback) and the one that
-/// has only the AniList id both match it; the partial unique indexes
-/// make a concurrent double insert a no-op. `Ok(true)` when a row was
-/// written or completed.
+/// has only the AniList id both match it. An AniList row never takes
+/// over another AniList id's row through a shared MAL id. The partial
+/// unique indexes make a concurrent double insert a no-op. `Ok(true)`
+/// when a row was written or completed.
 pub async fn add(
     db: &SqlitePool,
     anilist_id: i64,
@@ -63,11 +68,16 @@ pub async fn add(
         }
     }
     if let Some(m) = mal {
-        let by_mal: Option<i64> =
-            sqlx::query_scalar("SELECT id FROM external_sync_exclusions WHERE mal_id = ?")
-                .bind(m)
-                .fetch_optional(db)
-                .await?;
+        // An AniList entry completes only a MAL-only row; a MAL-only
+        // entry is already covered by any row of its MAL id.
+        let by_mal: Option<i64> = sqlx::query_scalar(
+            "SELECT id FROM external_sync_exclusions \
+             WHERE mal_id = ? AND (? IS NULL OR anilist_id IS NULL) ORDER BY id LIMIT 1",
+        )
+        .bind(m)
+        .bind(anilist)
+        .fetch_optional(db)
+        .await?;
         if let Some(id) = by_mal {
             if let Some(a) = anilist {
                 sqlx::query(
@@ -93,8 +103,9 @@ pub async fn add(
     Ok(result.rows_affected() > 0)
 }
 
-/// Drop every exclusion that matches either id: a series added back
-/// by hand is wanted again.
+/// Drop every exclusion that matches the series the way
+/// [`ExclusionSet::contains`] does: a series added back by hand is
+/// wanted again.
 pub async fn delete_for_ids(
     db: &SqlitePool,
     anilist_id: i64,
@@ -107,12 +118,14 @@ pub async fn delete_for_ids(
     }
     let result = sqlx::query(
         "DELETE FROM external_sync_exclusions \
-         WHERE (? IS NOT NULL AND anilist_id = ?) OR (? IS NOT NULL AND mal_id = ?)",
+         WHERE (? IS NOT NULL AND anilist_id = ?) \
+            OR (? IS NOT NULL AND mal_id = ? AND (? IS NULL OR anilist_id IS NULL))",
     )
     .bind(anilist)
     .bind(anilist)
     .bind(mal)
     .bind(mal)
+    .bind(anilist)
     .execute(db)
     .await?;
     Ok(result.rows_affected())
@@ -141,6 +154,8 @@ pub async fn delete(db: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
 pub struct ExclusionSet {
     anilist: HashSet<i64>,
     mal: HashSet<i64>,
+    /// MAL ids of rows recorded without an AniList id.
+    mal_only: HashSet<i64>,
 }
 
 impl ExclusionSet {
@@ -148,11 +163,18 @@ impl ExclusionSet {
         self.anilist.is_empty() && self.mal.is_empty()
     }
 
-    /// True when either id is excluded. `anilist_id` may be the
-    /// negative MAL sentinel, which never matches.
+    /// True when the entry is excluded. An AniList entry matches by
+    /// its AniList id, or by its MAL id through a row recorded without
+    /// one; an entry with no AniList id (`anilist_id` the negative MAL
+    /// sentinel, which never matches itself) matches any row of its MAL
+    /// id.
     pub fn contains(&self, anilist_id: i64, mal_id: Option<i64>) -> bool {
-        (anilist_id > 0 && self.anilist.contains(&anilist_id))
-            || mal_id.is_some_and(|m| m > 0 && self.mal.contains(&m))
+        let mal = mal_id.filter(|m| *m > 0);
+        if anilist_id > 0 {
+            self.anilist.contains(&anilist_id) || mal.is_some_and(|m| self.mal_only.contains(&m))
+        } else {
+            mal.is_some_and(|m| self.mal.contains(&m))
+        }
     }
 }
 
@@ -169,6 +191,9 @@ pub async fn load_set(db: &SqlitePool) -> ExclusionSet {
         }
         if let Some(m) = mal {
             set.mal.insert(m);
+            if anilist.is_none() {
+                set.mal_only.insert(m);
+            }
         }
     }
     set
@@ -225,5 +250,42 @@ mod tests {
         assert!(set.contains(-300, Some(300)));
         assert_eq!(delete_for_ids(&db, 500, None).await.unwrap(), 1);
         assert!(!load_set(&db).await.contains(-300, Some(300)));
+    }
+
+    #[tokio::test]
+    async fn anilist_entries_sharing_a_mal_id_are_excluded_separately() {
+        // #292: Steel Ball Run's 1st STAGE and 2nd - 3rd STAGE are two
+        // AniList entries on one MAL entry.
+        let db = in_memory_pool().await;
+        assert!(add(&db, 190327, Some(61469), "1st STAGE").await.unwrap());
+        let set = load_set(&db).await;
+        assert!(set.contains(190327, Some(61469)));
+        assert!(!set.contains(210482, Some(61469)));
+        // The MAL-only entry is the MAL entry both stages map to.
+        assert!(set.contains(-61469, Some(61469)));
+
+        assert!(
+            add(&db, 210482, Some(61469), "2nd - 3rd STAGE")
+                .await
+                .unwrap()
+        );
+        assert_eq!(list(&db).await.unwrap().len(), 2);
+        // Re-adding one stage by hand clears its own row only.
+        assert_eq!(delete_for_ids(&db, 210482, Some(61469)).await.unwrap(), 1);
+        let set = load_set(&db).await;
+        assert!(set.contains(190327, Some(61469)));
+        assert!(!set.contains(210482, Some(61469)));
+
+        // A MAL-only exclusion can't tell the stages apart, so it
+        // covers both until an AniList id completes it.
+        let db = in_memory_pool().await;
+        assert!(
+            add(&db, -61469, Some(61469), "STEEL BALL RUN")
+                .await
+                .unwrap()
+        );
+        let set = load_set(&db).await;
+        assert!(set.contains(190327, Some(61469)));
+        assert!(set.contains(210482, Some(61469)));
     }
 }

@@ -1030,6 +1030,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn anilist_entries_sharing_a_mal_id_import_as_two_series() {
+        // #292: AniList splits Steel Ball Run into 1st STAGE and
+        // 2nd - 3rd STAGE, both MAL 61469. One TVDB season folder maps
+        // onto both; the second group used to merge into the first by
+        // MAL id, rewrite its AniList id, and skip its episode 1.
+        let f = fixture("copy", false).await;
+        let dir = "JoJo (2012)/Season 06";
+        let mut first = entry(190327, "SBR 1st STAGE");
+        first.id_mal = Some(61469);
+        let mut second = entry(210482, "SBR 2nd - 3rd STAGE");
+        second.id_mal = Some(61469);
+        let stage_one = vec![candidate(
+            &f.src,
+            &format!("{dir}/JoJo - S06E01.mkv"),
+            Some(1),
+        )];
+        let stage_two: Vec<_> = (2..=3)
+            .map(|n| {
+                let mut c = candidate(&f.src, &format!("{dir}/JoJo - S06E0{n}.mkv"), Some(n - 1));
+                c.source_episode = Some(n);
+                c
+            })
+            .collect();
+        let id = ready_session(
+            &f.state,
+            &f.src,
+            ImportMode::Copy,
+            vec![group(stage_one, first), group(stage_two, second)],
+        );
+
+        let report = run_import(f.state.clone(), id, OPTS).await.unwrap();
+        assert_eq!(report.series_created, 2, "{report:?}");
+        assert_eq!(report.series_merged, 0, "{report:?}");
+        assert_eq!(report.files_written, 3, "{report:?}");
+        assert_eq!(report.files_skipped, 0, "{report:?}");
+
+        let media_root = f.media.to_string_lossy().into_owned();
+        for (anilist_id, title, episodes) in [
+            (190327, "SBR 1st STAGE", vec![1]),
+            (210482, "SBR 2nd - 3rd STAGE", vec![1, 2]),
+        ] {
+            let row = series::get_by_anilist_id(&f.state.db, anilist_id)
+                .await
+                .unwrap()
+                .unwrap_or_else(|| panic!("{title} not in the library"));
+            assert_eq!(row.title, title);
+            assert_eq!(row.mal_id, Some(61469));
+            let mut on_disk: Vec<i32> = media::scan_series_folder(&media_root, &row.folder_name)
+                .await
+                .iter()
+                .map(|f| f.episode_number)
+                .collect();
+            on_disk.sort();
+            assert_eq!(on_disk, episodes, "{title} in {}", row.folder_name);
+        }
+    }
+
+    #[tokio::test]
     async fn imports_new_series_by_hardlink_and_tags_episodes() {
         let f = fixture("hardlink", false).await;
         let files = vec![

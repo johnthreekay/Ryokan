@@ -1036,14 +1036,19 @@ pub async fn auto_search_series(
 
     let tracked = if let Some(row) = tracked_row {
         Some(row)
-    } else if let Some(mid) = detail.id_mal {
-        series::get_by_mal_id(&state.db, mid)
-            .await
-            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     } else {
-        series::get_by_anilist_id(&state.db, provider_id)
+        // AniList id first: a MAL id can name several AniList entries
+        // (#292), and only a MAL-fallback row of it is this series.
+        let by_anilist = series::get_by_anilist_id(&state.db, provider_id)
             .await
-            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        match (by_anilist, detail.id_mal) {
+            (Some(row), _) => Some(row),
+            (None, Some(mid)) => series::get_by_mal_id_for_entry(&state.db, provider_id, mid)
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+            (None, None) => None,
+        }
     };
     let tracked = maybe_hydrate_cumulative_offset(&state.db, tracked, &detail).await;
     let folder_name = tracked
