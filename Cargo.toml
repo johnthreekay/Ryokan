@@ -203,7 +203,13 @@ tower-http = { version = "0.7", features = ["fs", "trace", "compression-br", "co
 # call `template.render()` directly and wrap the result in `Html(..)`
 # themselves, which is what this codebase already does — so the axum
 # integration just vanishes on the bump.
-askama = "0.16"
+#
+# default-features = false drops `config`, which only reads an
+# `askama.toml` (Ryokan has none) and is the sole path to `basic-toml`
+# (RUSTSEC-2026-0374, unmaintained). Upstream switched that feature to
+# `toml` in askama-rs/askama#771; once a release carries it, going back
+# to the defaults is harmless.
+askama = { version = "0.16", default-features = false, features = ["derive", "std", "urlencode"] }
 
 # Database
 # default-features = false drops sqlx's `any`/`migrate`/`json` defaults
