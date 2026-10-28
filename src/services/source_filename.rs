@@ -1,4 +1,4 @@
-//! Layer 1 — filename token parsing via anitomy.
+//! Layer 1 — filename token parsing.
 //!
 //! Given a torrent title or filename, extract source/resolution/remux info
 //! and emit weighted evidence records. This is the cheapest and most commonly
@@ -20,8 +20,6 @@
 //! This module does NOT fold evidence into a final source decision — that's
 //! the job of [`crate::services::source::aggregate`]. It just emits every
 //! piece of evidence it finds so the aggregator has full context.
-
-use anitomy::ElementCategory;
 
 use crate::services::source::{Origin, Resolution, Source, SourceEvidence, WebKind, contains_word};
 
@@ -84,8 +82,7 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
     } else {
         title.to_string()
     };
-    // Length-bounded; see `media::anitomy_parse`.
-    let elements = crate::services::media::anitomy_parse(&clean);
+    let tokens = metadata_tokens(&clean);
 
     // ── Resolution and release group ──────────────────────────────────────
     // `release_title` reads both, as every other path does. A height
@@ -143,14 +140,20 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
     }
 
     // ── Explicit source keyword ───────────────────────────────────────────
-    // Try anitomy's structured Source field first, then fall back to scanning
-    // the raw title for source tokens. Anitomy's keyword list is good but
-    // doesn't catch every variant (e.g. it sometimes misses "WEB-DL" when the
-    // title uses dot-separators, and `PDTV` isn't consistently tagged). The
-    // fallback scanner also lets us pick up a SECOND source signal in the
-    // rare multi-source torrent title, which feeds the review-detection rule.
-    if let Some(src_str) = elements.get(ElementCategory::Source)
-        && let Some((src, conf, detail)) = source_from_keyword(src_str, result.resolution)
+    // The first source keyword among the title's tokens (`BD`, `BDRip`,
+    // `DVD`, `WEB-DL`, `REMUX`, `R2J`, ...; a bare `TV` is a title word
+    // too often to count), then a scan of the raw title for further
+    // source tokens. The scan also lets us pick up a SECOND source signal
+    // in the rare multi-source torrent title, which feeds the
+    // review-detection rule.
+    if let Some((src, conf, detail)) = token_words(&tokens)
+        .filter(|w| {
+            !matches!(
+                w.to_ascii_lowercase().as_str(),
+                "tv" | "bdmv" | "bdraw" | "bdiso" | "bd-raw"
+            )
+        })
+        .find_map(|w| source_from_keyword(glued_source(w), result.resolution))
     {
         result
             .evidence
@@ -225,14 +228,9 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
     }
 
     // ── Audio codec inference ─────────────────────────────────────────────
-    // Gather every audio term anitomy identified, plus what we can scan from
-    // the raw title. Scanning the raw title catches releases that pack codec
-    // tokens into brackets where anitomy doesn't tag them as AudioTerm.
-    let audio_terms: Vec<String> = elements
-        .get_all(ElementCategory::AudioTerm)
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
+    // Every audio-codec token in the title (and part of a hyphenated one,
+    // `1080p-AAC`), plus what the raw-title scan finds.
+    let audio_terms: Vec<String> = token_words(&tokens).map(str::to_string).collect();
     if let Some((src, conf, detail)) = audio_signal(&audio_terms, &title_lower) {
         result
             .evidence
@@ -246,7 +244,46 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Map a source keyword (as emitted by anitomy's `Source` field) to our
+/// The title's metadata-sized tokens: split on whitespace, brackets,
+/// underscores, dots, commas, `+`, `|` and `/`, keeping hyphenated words
+/// (`WEB-DL`, `Blu-ray`, `E-AC-3`) whole.
+fn metadata_tokens(title: &str) -> Vec<String> {
+    title
+        .split(|c: char| c.is_whitespace() || "[](){}_.,+|/".contains(c))
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Each token, then the parts of a hyphenated one (`DVD-480p` is
+/// `DVD-480p`, `DVD`, `480p`), in title order.
+fn token_words(tokens: &[String]) -> impl Iterator<Item = &str> {
+    tokens.iter().flat_map(|t| {
+        let parts = t
+            .contains('-')
+            .then(|| t.split('-').filter(|p| !p.is_empty()));
+        std::iter::once(t.as_str()).chain(parts.into_iter().flatten())
+    })
+}
+
+/// A source glued to a resolution (`BD1080p`, `DVD480p`) as its source word.
+fn glued_source(word: &str) -> &str {
+    for prefix in ["bd", "dvd"] {
+        // `get` keeps a CJK token (`月面のイブ`) from being cut mid-character.
+        if let (Some(head), Some(rest)) = (word.get(..prefix.len()), word.get(prefix.len()..))
+            && !rest.is_empty()
+            && head.eq_ignore_ascii_case(prefix)
+            && !crate::services::release_title::release_fields(rest)
+                .resolution
+                .is_empty()
+        {
+            return head;
+        }
+    }
+    word
+}
+
+/// Map a source keyword (one title token) to our
 /// `Source` enum and a confidence score.
 ///
 /// Applies the DVD-resolution override: a BD-class keyword combined with a
@@ -638,6 +675,18 @@ mod tests {
         assert!(fc.evidence.is_empty());
         assert_eq!(fc.resolution, Resolution::Unknown);
         assert!(fc.release_group.is_none());
+    }
+
+    #[test]
+    fn a_cjk_token_is_never_cut_mid_character() {
+        let fc = classify_filename("(OVA) BOUNTY DOG -月面のイブ- (LD 640x480)");
+        assert_eq!(fc.resolution, Resolution::R480p);
+        assert!(
+            classify_filename("[Group] 月 BD1080p")
+                .evidence
+                .iter()
+                .any(|e| e.source == Source::BluRay)
+        );
     }
 
     #[test]
