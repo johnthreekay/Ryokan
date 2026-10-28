@@ -1432,6 +1432,10 @@ mod tests {
         // A BD menu (the anitomy gate the extras rule replaced read it as
         // episode 1).
         assert_eq!(span("[Group] Show Menu 01 [BD].mkv"), None);
+        // `Opening Theme`, `Ending Song`, `Preview Clip` are labels.
+        assert_eq!(span("Show Opening Theme 01.mkv"), None);
+        assert_eq!(span("[G] Show Ending Song 02 [BD].mkv"), None);
+        assert_eq!(span("Show - 01 Opening Theme.mkv"), None);
     }
 
     #[test]

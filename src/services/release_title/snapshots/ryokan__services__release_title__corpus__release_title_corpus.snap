@@ -1,5 +1,6 @@
 ---
 source: src/services/release_title/corpus.rs
+assertion_line: 107
 expression: "lines.join(\"\\n\")"
 ---
 (OVA) BOUNTY DOG -月面のイブ- (LD 640x480)
@@ -1833,17 +1834,17 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [12345] [GroupX] Show.mkv
     eps=- season=- group=GroupX res=- amb=- [file] series=Show
 [1973-2011] Enma_咚隆隆炎魔君(ドロロンえん魔くん)_TV.OVA
-    eps=- season=- group=- res=- amb=- [batch special] series=Enma 咚隆隆炎魔君
+    eps=- season=- group=- res=- amb=- [batch special] series=Enma 咚隆隆炎魔君 TV OVA
 [1973] Chargeman_チャージマン研!_TV
     eps=- season=- group=- res=- amb=- [] series=Chargeman チャージマン研! TV
 [1973] Jungle Kurobe_小酋長小黑(ジャングル黒べえ)_TV
-    eps=- season=- group=- res=- amb=- [] series=Jungle Kurobe 小酋長小黑
+    eps=- season=- group=- res=- amb=- [] series=Jungle Kurobe 小酋長小黑 TV
 [1973] Samurai Giants_魔投手(侍ジャイアンツ)_TV
-    eps=- season=- group=- res=- amb=- [] series=Samurai Giants 魔投手
+    eps=- season=- group=- res=- amb=- [] series=Samurai Giants 魔投手 TV
 [1983-1984] Albegas_光速電神(光速電神アルベガス)_TV
-    eps=- season=- group=- res=- amb=- [batch] series=Albegas 光速電神
+    eps=- season=- group=- res=- amb=- [batch] series=Albegas 光速電神 TV
 [1983-1984] Dorvack_超時空騎兵(特装機兵ドルバック)_TV.OVA
-    eps=- season=- group=- res=- amb=- [batch special] series=Dorvack 超時空騎兵
+    eps=- season=- group=- res=- amb=- [batch special] series=Dorvack 超時空騎兵 TV OVA
 [1983-1985] Dallos_ダロス_OVA (世界初のOVA)
     eps=- season=- group=- res=- amb=- [batch special] series=Dallos ダロス OVA
 [2023-03-18] Creditless Anime Openings and Endings | OPED | OP | ED
@@ -1871,7 +1872,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [7³ACG] Reiwa no Di Gi Charat 令和のデ・ジ・キャラット S1 [BDRip 1080p x265 OPUS]
     eps=- season=1 group=7³ACG res=1080 amb=- [batch] series=Reiwa no Di Gi Charat 令和のデ・ジ・キャラット S1
 [A&C] One Piece - Movie 02 (BD 1080p HEVC) [Multi-Subs] [v2]
-    eps=- season=- group=A&C res=1080 amb=2 [] series=One Piece - Movie
+    eps=- season=- group=A&C res=1080 amb=2 [] series=One Piece - Movie 02
 [A&C] One Piece - OVA 01 - Defeat the Pirate Ganzack! (VHSrip 414p HEVC) [Multi-Subs] [v2]
     eps=- season=- group=A&C res=414 amb=- [special] series=One Piece - OVA 01 - Defeat the Pirate Ganzack!
 [A&C] One Piece - Romance Dawn-Orange Town Recap (DVD HEVC 480p) [Multi-Subs] [v2]
@@ -2201,7 +2202,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [Anime Time] Vanitas No Karte - 12.5 [1080p][HEVC 10bit x265][AAC][Multi Sub] The Case Study of Vanitas
     eps=- season=- group=Anime Time res=1080 amb=- [half] series=Vanitas No Karte
 [Anime-FLAC] Princess Principal - Crown Handler Movie 4 (BDRip 1920x1080 x264 AAC 10 bits) v2
-    eps=- season=- group=Anime-FLAC res=1080 amb=4 [] series=Princess Principal - Crown Handler Movie
+    eps=- season=- group=Anime-FLAC res=1080 amb=4 [] series=Princess Principal - Crown Handler Movie 4
 [Anime-Koi] Series Title - S01E06 - Guys From Sonarr
     eps=6 season=1 group=Anime-Koi res=- amb=- [] series=Series Title
 [Anime-Koi] Series Title - S01E07 - A High-Grade Sonarr
@@ -2247,7 +2248,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [AnoZu] Ascendance of a Bookworm S04 1080p CR WEB-DL Dual-Audio DDP 2.0 H.264 | Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan wo Erandeiraremasen - Ryoushu no Youjo
     eps=- season=4 group=AnoZu res=1080 amb=- [batch] series=Ascendance of a Bookworm S04
 [AnoZu] Battle Spirits [Re] ZEKKAI NO KU S01E04 1080p CR WEB-DL AAC 2.0 H.264 | Battle Spirits [Re] Zekkai no Kuu
-    eps=4 season=1 group=AnoZu res=1080 amb=- [] series=Battle Spirits
+    eps=4 season=1 group=AnoZu res=1080 amb=- [] series=Battle Spirits ZEKKAI NO KU
 [AnoZu] Black Clover S02E02 1080p CR WEB-DL Dual-Audio DDP 2.0 H.264 | Black Clover 2nd Season
     eps=2 season=2 group=AnoZu res=1080 amb=- [] series=Black Clover
 [AnoZu] Black Clover S02E04 1080p CR WEB-DL AAC 2.0 H.264 | Black Clover 2nd Season
@@ -3131,7 +3132,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [EA]Goblin_Slayer_II_05_[1920x1080][HEVC][20035ABA].mkv
     eps=5 season=2 group=EA res=1080 amb=- [file] series=Goblin Slayer II
 [EA]Kage_no_Jitsuryokusha_ni_Naritakute!_2nd_Season_05_[1920x1080][HEVC][62508F6A].mkv
-    eps=5 season=2 group=EA res=1080 amb=- [file] series=Kage no Jitsuryokusha ni Naritakute! 2nd Season 05
+    eps=5 season=2 group=EA res=1080 amb=- [file] series=Kage no Jitsuryokusha ni Naritakute! 2nd Season
 [EA]Kaiju_No_8_03_[1080p]
     eps=- season=- group=EA res=1080 amb=3 [] series=Kaiju No 8
 [EA]Kaiju_No_8_[1080p]
@@ -3161,7 +3162,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [EA]One_Punch_Man_2_01-12_End_[1920x1080][BDRIP][HEVC][Flac]
     eps=1-12 season=- group=EA res=1080 amb=- [batch] series=One Punch Man 2
 [EA]Oshi_no_Ko_2nd_Season_12_[1920x1080][HEVC][AA83802C].mkv
-    eps=12 season=2 group=EA res=1080 amb=- [file] series=Oshi no Ko 2nd Season 12
+    eps=12 season=2 group=EA res=1080 amb=- [file] series=Oshi no Ko 2nd Season
 [EA]Planetarian_~Chiisana_Hoshi_no_Yume~_01-05_End_[1920x1080][BDRIP][HEVC][Flac]
     eps=1-5 season=- group=EA res=1080 amb=- [batch] series=Planetarian ~Chiisana Hoshi no Yume
 [EA]Re_Zero_kara_Hajimeru_Isekai_Seikatsu_3rd_09_[1920x1080]HEVC][A4546444].mkv
@@ -3859,7 +3860,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [Gecko] Babies of Bread - S01E17 (パンの赤ちゃん; Pan no Akachan (TV)) [TVER.WEB-DL 1080P AVC, AAC][D2A6BF7E]
     eps=17 season=1 group=Gecko res=1080 amb=- [] series=Babies of Bread
 [Gecko] Battle Spirits [Re] ZEKKAI NO KU - S01E04 (Battle Spirits [Re] 絶界の空; Battle Spirits [Re] Zekkai no Kuu) [CTHP.WEB-DL 1080P AVC, AAC, M-SUB][4495AB65]
-    eps=4 season=1 group=Gecko res=1080 amb=- [] series=Battle Spirits
+    eps=4 season=1 group=Gecko res=1080 amb=- [] series=Battle Spirits ZEKKAI NO KU
 [Gecko] Chibi Godzilla Raids Again - S01E118 (ちびゴジラの逆襲; Chibi Godzilla no Gyakushuu 4th Season) [YTB.WEB-DL 1080P AVC, Opus, SUB][56ADEBAD]
     eps=118 season=1 group=Gecko res=1080 amb=- [] series=Chibi Godzilla Raids Again
 [Gecko] Chikyuu Daisuki! Kikkun - S01E17 (地球大好き！きっくん) [TVER.WEB-DL 1080P AVC, AAC][DF80A3DC]
@@ -4075,9 +4076,9 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [Group] Show 2nd Season 01-12 [BD 1080p]
     eps=1-12 season=2 group=Group res=1080 amb=- [batch] series=Show 2nd Season
 [Group] Show 2nd Season 05 (1080p)
-    eps=5 season=2 group=Group res=1080 amb=- [] series=Show 2nd Season 05
+    eps=5 season=2 group=Group res=1080 amb=- [] series=Show 2nd Season
 [Group] Show 2nd Season 05 [1080p]
-    eps=5 season=2 group=Group res=1080 amb=- [] series=Show 2nd Season 05
+    eps=5 season=2 group=Group res=1080 amb=- [] series=Show 2nd Season
 [Group] Show 2nd Season [BD 1080p]
     eps=- season=2 group=Group res=1080 amb=- [batch] series=Show 2nd Season
 [Group] Show Batch.mkv

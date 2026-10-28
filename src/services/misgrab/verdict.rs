@@ -66,6 +66,12 @@ pub(crate) const FILE_NOISE_TOKENS: &[&str] = &[
     "complete",
     "uncensored",
     "uncen",
+    "uncut",
+    "remaster",
+    "remastered",
+    "hdr",
+    "sd",
+    "hq",
     "censored",
     "raw",
     "raws",
@@ -76,6 +82,15 @@ pub(crate) const FILE_NOISE_TOKENS: &[&str] = &[
     "dubbed",
     "eng",
     "jpn",
+    "english",
+    "japanese",
+    "spanish",
+    "latino",
+    "castellano",
+    "french",
+    "german",
+    "italian",
+    "portuguese",
     "jap",
     "multi",
     "dual",
@@ -92,6 +107,9 @@ pub(crate) const FILE_NOISE_TOKENS: &[&str] = &[
     "sp",
     "sample",
     "season",
+    "saison",
+    "temporada",
+    "stagione",
     "ep",
     "eps",
     "vol",
@@ -219,6 +237,13 @@ fn is_structural_token(t: &str) -> bool {
         return true;
     }
     if t.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    // `2nd`, `4th`: a season's ordinal (`2nd Season`).
+    if let Some(at) = t.find(|c: char| !c.is_ascii_digit())
+        && at > 0
+        && matches!(&t[at..], "st" | "nd" | "rd" | "th")
+    {
         return true;
     }
     let lower = t.to_ascii_lowercase();

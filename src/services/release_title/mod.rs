@@ -657,6 +657,20 @@ mod tests {
         );
         // A name that opens with its episode names no show.
         assert_eq!(st("S02E04E05.720p.BluRay-FUTV"), None);
+        // After `2nd Season` the number is the episode; `Movie 02` keeps its
+        // number; a plain note inside the name is read past.
+        assert_eq!(
+            st("[EA]Oshi_no_Ko_2nd_Season_12_[1920x1080][HEVC][AA83802C].mkv").as_deref(),
+            Some("Oshi no Ko 2nd Season")
+        );
+        assert_eq!(
+            st("[A&C] One Piece - Movie 02 (BD 1080p HEVC)").as_deref(),
+            Some("One Piece - Movie 02")
+        );
+        assert_eq!(
+            st("[G] Kimetsu no Yaiba (Demon Slayer) Mugen Ressha-hen - 05").as_deref(),
+            Some("Kimetsu no Yaiba Mugen Ressha-hen")
+        );
         // Punctuation, a lead dash, a bracket inside a word, a title number
         // before the episode mark, and a range start.
         assert_eq!(

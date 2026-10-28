@@ -167,6 +167,8 @@ static SUBSTANTIVE_STOPWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(||
         "avc", "hevc", "h264", "h265", "x264", "x265", "aac", "flac", "opus", "ass", "srt",
         // Resolution / quality fields.
         "1080", "1080p", "2160", "2160p", "720p", "480p",
+        // Season and part words the parsed series title keeps.
+        "season", "seasons", "saison", "part", "cour",
         // English fillers that survive the 3-char filter.
         "the", "and", "for", "with", "from", "but", "you", "all", "any", "are", "was", "has",
         "have", "had", "her", "his", "him", "she", "they", "them", "our", "out", "who", "not",

@@ -1166,6 +1166,15 @@ fn extra(ctx: &Ctx) -> bool {
             ) {
                 return true;
             }
+            // `Opening Theme 01`, `Ending Song 02`, `Preview Clip`.
+            if ctx.next(i).is_some_and(|n| {
+                matches!(
+                    ctx.toks[n].lower.as_str(),
+                    "theme" | "themes" | "song" | "songs" | "clip" | "clips" | "video" | "mv"
+                )
+            }) {
+                return true;
+            }
             // Inside a phrase of title words the word is the name or the
             // episode title, not an extras label: before any episode mark
             // when more words follow (`Today's Menu for the Emiya Family -
@@ -1921,6 +1930,22 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
             punct_from = None;
             continue;
         }
+        if let Kind::Open(_) = tok.kind
+            && !out.is_empty()
+            && let Some(g) = ctx.group(tok.group)
+            && ctx
+                .content(g)
+                .iter()
+                .all(|&c| ctx.toks[c].is_word() && matches!(ctx.class[c], Class::Plain | Class::Of))
+            && ctx.toks.get(g.close + 1).is_some_and(|t| {
+                t.depth == 0 && title_word(g.close + 1) && ctx.class[g.close + 1] == Class::Plain
+            })
+        {
+            // `Kimetsu no Yaiba (Demon Slayer) Mugen Ressha-hen - 05`: a note
+            // inside the name; the name goes on after it.
+            inner_bracket = true;
+            continue;
+        }
         if matches!(tok.kind, Kind::Open(_) | Kind::Close(_)) {
             if out.is_empty() {
                 continue;
@@ -1983,18 +2008,30 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
                 }
             }
             _ if word || number.is_some() => {
-                if let Some((_, digits, _)) = number {
+                if let Some((value, digits, _)) = number {
                     // A number ending the zone (`Mob Psycho 100 (BD)`, `Show
                     // 05 [1080p]`), opening a range (`01-25`) or a padded
                     // one before more words (`Title 01 Episode Name`) is the
                     // episode's place, unless a season, part or volume word
                     // marks it; a title never opens with its episode (`86
                     // (Eighty Six)`).
+                    // `Season 2`, `Part 3`, `Vol 1`, `Movie 02` keep their
+                    // number; after `2nd Season` / `Final Season` the season
+                    // is already named and the number is the episode
+                    // (`Oshi_no_Ko_2nd_Season_12_`).
                     let marked = run[..at].last().is_some_and(|&p| {
-                        matches!(
-                            ctx.class[p],
-                            Class::SeasonWord | Class::PartWord | Class::VolWord
-                        )
+                        let named_before = ctx.class[p] == Class::SeasonWord
+                            && run[..at].iter().rev().nth(1).is_some_and(|&q| {
+                                matches!(ctx.class[q], Class::Ordinal(_) | Class::WordNumber(_))
+                                    || ctx.toks[q].lower == "final"
+                            });
+                        let year = digits == 4 && is_year(value, digits);
+                        !named_before
+                            && matches!(
+                                ctx.class[p],
+                                Class::SeasonWord | Class::PartWord | Class::VolWord
+                            )
+                            || ctx.class[p] == Class::Movie && !year
                     });
                     // Before an episode mark the number is the title's (`Log
                     // Horizon 2 Ep11`, `Series at Age 29 S01E03`).

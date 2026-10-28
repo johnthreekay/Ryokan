@@ -1158,6 +1158,28 @@ mod tests {
     }
 
     #[test]
+    fn names_more_than_the_series_ignores_season_ordinals_and_release_noise() {
+        // The series title keeps `2nd Season` and edition words; the season
+        // gate judges the season, and an edition is no other show.
+        let chihayafuru = vec!["Chihayafuru 2".to_string()];
+        assert!(!names_more_than_the_series(
+            "[Group] Chihayafuru 2nd Season - 05 [1080p]",
+            &chihayafuru
+        ));
+        let show = vec!["Show".to_string()];
+        assert!(!names_more_than_the_series(
+            "[G] Show Uncut - 05 [1080p]",
+            &show
+        ));
+        // A sequel's own subtitle still names more.
+        let kny = vec!["Kimetsu no Yaiba".to_string()];
+        assert!(names_more_than_the_series(
+            "[G] Kimetsu no Yaiba (Demon Slayer) Mugen Ressha-hen - 05",
+            &kny
+        ));
+    }
+
+    #[test]
     fn names_more_than_the_series_reads_a_folded_episode_title_as_the_series() {
         // The series title runs on into the episode title for the
         // `Title - Episode Title - 05` shape (346-name Nyaa corpus). The
