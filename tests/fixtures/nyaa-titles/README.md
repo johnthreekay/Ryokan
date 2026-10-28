@@ -16,6 +16,10 @@ by reading the title before the new parser existed. Where the parser
 disagrees, the parser is wrong, or the case moves to a reviewed known-gap list
 with a reason. Do not regenerate expectations from parser output.
 
+Cases added later were promoted from `sample/` while reviewing the
+differential (`src/services/release_title/differential.rs`): each pins a rule
+that review added, was written from the title, and carries a `note`.
+
 ## Buckets
 
 | File | What it covers |
@@ -49,6 +53,8 @@ anime listing, used only to compare old and new parser output.
 ## Expectation fields
 
 Each case is `{title, url, category, expect, series?, verified, note?}`.
+Cases promoted from the sample have no `category` (the listing sample does not
+record it).
 
 `expect` (absent fields take the default shown):
 

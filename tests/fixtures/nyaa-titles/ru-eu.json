@@ -304,6 +304,24 @@
       },
       "verified": "hand",
       "note": "Partie 2 is a part hint, like Part 2"
+    },
+    {
+      "title": "Tensei Shitara Ken Deshita 2 | Reincarnated as a Sword 2 | О моём перерождении в меч [ТВ-2] [2026, TV, 04 из 12] WEBRip 1080p Raw+Rus [2026]",
+      "url": "https://nyaa.si/view/2177741",
+      "expect": {
+        "group": null,
+        "batch": false,
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "year": 2026
+      },
+      "verified": "hand",
+      "note": "Russian `04 из 12` reads like `04 of 12`; [ТВ-2] is a season, not a group"
     }
   ]
 }

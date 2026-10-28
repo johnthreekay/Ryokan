@@ -378,6 +378,23 @@
         "batch": false
       },
       "verified": "hand"
+    },
+    {
+      "title": "[Doomdos] - A Returner's Magic Should Be Special - S02E03 [1080p BILIBILI INTERNATIONAL WEB-DL]",
+      "url": "https://nyaa.si/view/2177019",
+      "expect": {
+        "group": "Doomdos",
+        "batch": false,
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "A tag naming a real season beats a title ending in Special"
     }
   ]
 }

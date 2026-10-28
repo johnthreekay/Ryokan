@@ -530,13 +530,13 @@
         "group": "EA",
         "batch": true,
         "episodes": {
-          "first": 1,
+          "first": 0,
           "last": 21
         },
         "resolution": 1080
       },
       "verified": "hand",
-      "note": "range starts at 0; episode 0 is a separate AniList entry, so it names no slot"
+      "note": "range starts at episode 0 (a prologue), recorded as written"
     }
   ]
 }

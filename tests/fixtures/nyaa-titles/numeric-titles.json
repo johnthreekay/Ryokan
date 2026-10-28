@@ -976,7 +976,7 @@
       "url": "https://nyaa.si/view/2125660",
       "category": "1_2",
       "expect": {
-        "group": null,
+        "group": "MICO XD",
         "batch": true,
         "seasons": [
           3
@@ -985,6 +985,30 @@
       },
       "verified": "hand",
       "note": "Roman numeral ending the title zone reads as a season, as AniList's own Lupin III title does"
+    },
+    {
+      "title": "[Mira] Tatsuki Fujimoto 17-26 - Season 1 - (BD 1080p Opus AV1)",
+      "url": "https://nyaa.si/view/2179444",
+      "expect": {
+        "group": "Mira",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 17,
+          "last": 26
+        },
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "Without the series the range reads as episodes; the series' name vetoes it",
+      "series": {
+        "aliases": [
+          "Tatsuki Fujimoto 17-26"
+        ],
+        "episodes": []
+      }
     }
   ]
 }

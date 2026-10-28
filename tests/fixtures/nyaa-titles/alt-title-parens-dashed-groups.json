@@ -218,6 +218,17 @@
         "batch": false
       },
       "verified": "hand"
+    },
+    {
+      "title": "Death Note - ReLight [2-Films] (BDRip 1920x1080p x265 HEVC OPUS 2.0x2)(Dual Audio)[MICO XD]",
+      "url": "https://nyaa.si/view/2177761",
+      "expect": {
+        "group": "MICO XD",
+        "batch": false,
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "Two plain words in the last bracket after another bracket are the group; WxHp is a resolution"
     }
   ]
 }

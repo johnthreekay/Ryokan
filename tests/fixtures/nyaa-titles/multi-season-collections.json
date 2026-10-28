@@ -186,7 +186,7 @@
       "url": "https://nyaa.si/view/1654803",
       "category": "1_2",
       "expect": {
-        "group": "JPN-ENG",
+        "group": "SEV",
         "batch": true,
         "seasons": [
           1,
@@ -196,7 +196,7 @@
         "resolution": 1080
       },
       "verified": "hand",
-      "note": "[2012-2017] is a year range, not episodes"
+      "note": "[JPN-ENG] is a language tag; the group is the trailing [SEV]; [2012-2017] is a year range"
     },
     {
       "title": "[ShafinKun] Mob Psycho 100 Complete [S01-S03 + OVA] [720p Dual Audio CC]",
@@ -441,6 +441,38 @@
       },
       "verified": "hand",
       "note": "a pack, but bare Collection collides with titles"
+    },
+    {
+      "title": "[Ari-M] Tate no Yuusha no Nariagari (Shield Hero) S1-S2-S3-S4 [CR Web-dl 1080p x265][Multisub]-HEVC",
+      "url": "https://nyaa.si/view/2179253",
+      "expect": {
+        "group": "Ari-M",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "A chain of season markers is a multi-season range"
+    },
+    {
+      "title": "[Ari-M] Fate/strange Fake S1 + Ep. 0 [CR Web-dl 1080p x265][Multisub]-HEVC",
+      "url": "https://nyaa.si/view/2179252",
+      "expect": {
+        "group": "Ari-M",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "An episode added to a season pack after + is a bonus, not the release's episode"
     }
   ]
 }

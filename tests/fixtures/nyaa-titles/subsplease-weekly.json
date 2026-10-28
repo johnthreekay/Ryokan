@@ -290,6 +290,23 @@
         "batch": false
       },
       "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Hotel Inhumans Season 2 - 04 [1080p CR WEB-DL AVC AAC][MultiSub][6ECAEB9E]",
+      "url": "https://nyaa.si/view/2178678",
+      "expect": {
+        "group": "Erai-raws",
+        "batch": false,
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "The season number before the dash is not an episode"
     }
   ]
 }

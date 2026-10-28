@@ -500,6 +500,37 @@
       },
       "verified": "hand",
       "note": "IV inside the title is not a season marker; (Trailer) is an extra"
+    },
+    {
+      "title": "[Commie] Ace of the Diamond act II ~Second Season~ - 16 [A69D5258].mkv",
+      "url": "https://nyaa.si/view/2179182",
+      "expect": {
+        "group": "Commie",
+        "batch": false,
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          16
+        ]
+      },
+      "verified": "hand",
+      "note": "A word ordinal before Season is a season marker; act II before a tilde is not"
+    },
+    {
+      "title": "[YYSUB-RAW]Chibi Maruko-chan II 樱桃小丸子[1553][2026.10.25][AVC][1080P][Tver]",
+      "url": "https://nyaa.si/view/2178480",
+      "expect": {
+        "group": "YYSUB-RAW",
+        "batch": false,
+        "episodes": [
+          1553
+        ],
+        "resolution": 1080,
+        "year": 2026
+      },
+      "verified": "hand",
+      "note": "A Roman numeral followed by more title text is part of the name"
     }
   ]
 }

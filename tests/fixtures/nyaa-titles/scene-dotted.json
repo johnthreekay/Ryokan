@@ -338,6 +338,24 @@
         "batch": false
       },
       "verified": "hand"
+    },
+    {
+      "title": "[AnoZu] KERORO☆ 2026 S01E04 1080p CR WEB-DL AAC 2.0 H.264 | Keroro Gunsou☆",
+      "url": "https://nyaa.si/view/2177818",
+      "expect": {
+        "group": "AnoZu",
+        "batch": false,
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "year": 2026
+      },
+      "verified": "hand",
+      "note": "Stars in a title are not ★10月新番★ decoration"
     }
   ]
 }

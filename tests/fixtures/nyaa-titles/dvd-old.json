@@ -235,6 +235,17 @@
         "resolution": 480
       },
       "verified": "hand"
+    },
+    {
+      "title": "[1983-1984] Dorvack_超時空騎兵(特装機兵ドルバック)_TV.OVA",
+      "url": "https://nyaa.si/view/2179633",
+      "expect": {
+        "group": null,
+        "batch": true,
+        "special": true
+      },
+      "verified": "hand",
+      "note": "An airing span with no episode claim is a whole-run pack; the year bracket is not a group"
     }
   ]
 }

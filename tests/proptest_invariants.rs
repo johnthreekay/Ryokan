@@ -26,6 +26,7 @@ use ryokan::services::auto_search::parse_release_numbers;
 use ryokan::services::custom_formats::{compile_from_json, total_cf_score_for_release};
 use ryokan::services::nyaa::{SearchOptions, SearchResult};
 use ryokan::services::quality::nyaa_categories_for_format;
+use ryokan::services::release_title::{self, SeriesAnchors};
 use ryokan::services::scoring::{ScoreComponent, score_result_with_breakdown};
 use ryokan::services::source::{
     self, ClassificationResult, DecisionRule, Resolution, Source, SourceEvidence, WebKind,
@@ -650,6 +651,84 @@ proptest! {
         s in ".{0,30}",
     ) {
         let _ = Source::from_str(&s);
+    }
+}
+
+// ─── release_title ────────────────────────────────────────────────
+
+/// Metadata tokens a release puts in brackets; none of them names an
+/// episode or a season.
+const BRACKET_METADATA: &[&str] = &[
+    "1080p",
+    "720p",
+    "480p",
+    "2160p",
+    "1920x1080",
+    "HEVC",
+    "x265",
+    "x264",
+    "AAC",
+    "FLAC",
+    "BD",
+    "WEB-DL",
+    "WebRip",
+    "10bit",
+    "Dual Audio",
+    "Multi-Subs",
+    "ABCD1234",
+];
+
+proptest! {
+    /// `release_title::parse` and every reading are total: no panic on
+    /// arbitrary input, deep or unbalanced brackets, or odd Unicode.
+    #[test]
+    fn release_title_parse_never_panics(title in ".{0,300}") {
+        let parsed = release_title::parse(&title);
+        let _ = parsed.is_batch();
+        let _ = parsed.release_episodes();
+        let _ = parsed.for_series(&SeriesAnchors::new(&["Show", "Dark Gathering"]));
+    }
+
+    #[test]
+    fn release_title_parse_is_deterministic(title in ".{0,200}") {
+        let a = release_title::parse(&title);
+        let b = release_title::parse(&title);
+        prop_assert_eq!(a.release_episodes(), b.release_episodes());
+        prop_assert_eq!(a.is_batch(), b.is_batch());
+        prop_assert_eq!(a.seasons, b.seasons);
+        prop_assert_eq!(a.group, b.group);
+    }
+
+    /// Wrapping a dash episode in a group and metadata brackets never
+    /// changes the episode it names.
+    #[test]
+    fn release_title_bracketed_metadata_does_not_move_the_episode(
+        episode in 1_i32..=999,
+        payload in prop::collection::vec(prop::sample::select(BRACKET_METADATA), 0..5),
+    ) {
+        let bare = format!("Show - {episode:02}");
+        let wrapped = format!("[Group] Show - {episode:02} [{}]", payload.join(" "));
+        prop_assert_eq!(
+            release_title::parse(&bare).release_episodes(),
+            release_title::parse(&wrapped).release_episodes()
+        );
+        prop_assert_eq!(
+            release_title::parse(&wrapped).release_episodes(),
+            HashSet::from([episode])
+        );
+    }
+
+    /// A title's own trailing number is never an episode for a series
+    /// whose name carries it.
+    #[test]
+    fn release_title_series_number_stays_in_the_name(
+        number in 2_u32..=999,
+        payload in prop::collection::vec(prop::sample::select(BRACKET_METADATA), 1..4),
+    ) {
+        let name = format!("Some Show {number}");
+        let title = format!("[Group] {name} ({})", payload.join(" "));
+        let reading = release_title::parse(&title).for_series(&SeriesAnchors::new(&[name]));
+        prop_assert!(reading.episodes.is_empty(), "{title} read {:?}", reading.episodes);
     }
 }
 

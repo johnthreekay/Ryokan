@@ -83,6 +83,7 @@
       "expect": {
         "group": "Kaleido-mini",
         "extra": true,
+        "version": 2,
         "resolution": 1080,
         "batch": false
       },
@@ -179,6 +180,7 @@
       "expect": {
         "group": "a2a",
         "extra": true,
+        "special": true,
         "resolution": 1080,
         "batch": false
       },

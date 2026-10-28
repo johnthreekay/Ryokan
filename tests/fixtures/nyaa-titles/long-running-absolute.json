@@ -426,6 +426,20 @@
         "batch": false
       },
       "verified": "hand"
+    },
+    {
+      "title": "[APTX-Fansub] Detective Conan - 1217 FHD [1FF691DA].mp4",
+      "url": "https://nyaa.si/view/2177774",
+      "expect": {
+        "group": "APTX-Fansub",
+        "batch": false,
+        "episodes": [
+          1217
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "FHD is 1080; the number before it is the episode"
     }
   ]
 }

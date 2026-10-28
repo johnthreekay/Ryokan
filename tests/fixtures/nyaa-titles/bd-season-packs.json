@@ -371,6 +371,22 @@
         "batch": false
       },
       "verified": "hand"
+    },
+    {
+      "title": "Black Clover (2017) [Stagione 01 Parte 3] [BluRay.1080p.x265.AAC.ITA.TRUEHD.JPN.Subs.Ita.Eng] [78.9GB] [stress]",
+      "url": "https://nyaa.si/view/2177974",
+      "expect": {
+        "group": "stress",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "season_part": 3,
+        "resolution": 1080,
+        "year": 2017
+      },
+      "verified": "hand",
+      "note": "Italian Stagione / Parte; a one-word last bracket is the group"
     }
   ]
 }

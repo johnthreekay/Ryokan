@@ -318,6 +318,35 @@
         ]
       },
       "verified": "hand"
+    },
+    {
+      "title": "The Legend of Hei 2 (2025) SUBFRENCH 1080p ADN WEB-DL AAC2.0 x264-Tsundere-Raws (VOSTFR, Multi Subs, Luo Xiaohei Zhanji 2, The Legend of Hei II)",
+      "url": "https://nyaa.si/view/2178970",
+      "expect": {
+        "group": "Tsundere-Raws",
+        "batch": false,
+        "ambiguous": 2,
+        "resolution": 1080,
+        "year": 2025
+      },
+      "verified": "hand",
+      "note": "A Roman numeral inside a note is an alternate title, not a season; a sequel number is ambiguous"
+    },
+    {
+      "title": "[ToonsHub] Grotesqqque (2026) (Part 2: YOROSHIKU Girl) 1080p NF WEB-DL AAC2.0 H.264 (Japanese Sub)",
+      "url": "https://nyaa.si/view/2177268",
+      "expect": {
+        "group": "ToonsHub",
+        "batch": false,
+        "seasons": [
+          2
+        ],
+        "season_part": 2,
+        "resolution": 1080,
+        "year": 2026
+      },
+      "verified": "hand",
+      "note": "A Part hint is a season hint, not a pack; the codec number is not a title number"
     }
   ]
 }
