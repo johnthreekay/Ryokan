@@ -109,17 +109,29 @@ fn every_corpus_title_reads_as_snapshotted() {
 
 /// `RT_TITLES=$'title one\ntitle two' cargo nextest run --features
 /// test-support --lib release_title::corpus::dump --run-ignored only
-/// --no-capture` prints each title's parse.
+/// --no-capture` prints each title's parse; a line `title<TAB>alias|alias`
+/// adds the series-aware reading (`for_series`).
 #[test]
 #[ignore = "debugging aid: RT_TITLES"]
 fn dump() {
     let titles = std::env::var("RT_TITLES").unwrap_or_default();
-    for title in titles.lines().filter(|t| !t.trim().is_empty()) {
+    for line in titles.lines().filter(|t| !t.trim().is_empty()) {
+        let (title, aliases) = line.split_once('\t').unwrap_or((line, ""));
         eprintln!(
             "== {}\n   {:?}",
             snapshot_line(title),
             parse(title).episodes
         );
+        if !aliases.is_empty() {
+            let aliases: Vec<&str> = aliases.split('|').collect();
+            let mut eps: Vec<i32> = parse(title)
+                .for_series(&super::SeriesAnchors::new(&aliases))
+                .episodes
+                .into_iter()
+                .collect();
+            eps.sort_unstable();
+            eprintln!("   for_series={eps:?}");
+        }
     }
 }
 
