@@ -24,6 +24,8 @@ Each file is one step and says what it does at the top:
 4. `rules.rs`: the ordered rules, below.
 5. `anchors.rs`: the series-aware reading.
 
+`file_mode.rs` is the file-name parser (`parse_episode_span` and friends), moved verbatim from `services::media`, which re-exports it. Its branch order is the root AGENTS.md's "Parse-ordering" section; it is replaced by the rules above one branch at a time, each step with zero unexplained differences over every corpus and `tests/nyaa_filename_corpus.rs`.
+
 ## Rule order (load-bearing)
 
 `rules::parse` runs, in order: leading group (marks its tokens skipped, so nothing else reads them), revision, resolution, year and airing span, CRC, half episode, the episode claim, the extra gate, seasons, included specials, the special flag, keywords, the ambiguous number (only with no claim), the trailing group (only with no leading group), a bare resolution, the title text, the anchor words.

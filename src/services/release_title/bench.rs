@@ -7,7 +7,7 @@
 //!
 //! Each field is compared the way its consumer reads it today: group and
 //! resolution through `source_filename::classify_filename` (anitomy plus
-//! its fallbacks), the extras gate through `media::is_non_episodic_extra`,
+//! its fallbacks), the extras gate through `file_mode::is_non_episodic_extra`,
 //! title and year straight from anitomy as `library_link` and manual
 //! import take them.
 
@@ -17,8 +17,9 @@ use std::time::Instant;
 use anitomy::ElementCategory;
 
 use super::differential::{fixtures, json_files, load, sample_titles, verified_titles};
+use super::file_mode::is_non_episodic_extra;
 use super::{legacy, parse};
-use crate::services::media::{anitomy_parse, is_non_episodic_extra};
+use crate::services::media::anitomy_parse;
 use crate::services::source::Resolution;
 use crate::services::source_filename::classify_filename;
 

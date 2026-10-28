@@ -19,6 +19,7 @@ mod anchors;
 mod bench;
 #[cfg(test)]
 mod differential;
+pub(crate) mod file_mode;
 #[cfg(test)]
 mod legacy;
 mod lexer;
@@ -28,8 +29,8 @@ mod vocab;
 
 use std::collections::HashSet;
 
-pub use crate::services::media::ReleaseRevision;
 pub use anchors::SeriesAnchors;
+pub use file_mode::ReleaseRevision;
 pub use vocab::roman_value;
 
 /// Ranges wider than this name no slots (`1-1000` mega-batches); the
