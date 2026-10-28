@@ -912,6 +912,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             &incoming_classification,
             disk_files,
             &actionable_eps,
+            &found.resolved_eps,
             &gate,
             qtags,
         );
@@ -1809,16 +1810,29 @@ pub(crate) struct UpgradeGate<'a> {
     pub incoming_cf_score: i32,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn evaluate_candidate(
     found: &series::Series,
     item: &RssItem,
     incoming: &ClassificationResult,
     disk_files: &[media::EpisodeFile],
     parsed_eps: &HashSet<i32>,
+    covered_eps: &HashSet<i32>,
     gate: &UpgradeGate<'_>,
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
 ) -> CandidateDecision {
     let existing_ep_numbers: HashSet<i32> = disk_files.iter().flat_map(|f| f.episodes()).collect();
+    // The import replaces every on-disk episode the release holds,
+    // monitored or not (`future` monitoring leaves every on-disk episode
+    // out of `parsed_eps`), so the overwrite rules read `covered_eps`.
+    let not_upgradeable = covered_eps
+        .iter()
+        .filter(|ep| {
+            existing_ep_numbers.contains(ep)
+                && episode_is_upgradeable(ep, covered_eps, disk_files, incoming, gate, quality_tags)
+                    .is_err()
+        })
+        .count() as i32;
 
     if item.is_batch {
         if !parsed_eps.is_empty() {
@@ -1856,7 +1870,6 @@ fn evaluate_candidate(
                 })
                 .count() as i32;
             let actionable = new_count + upgrade_count;
-            let covered = parsed_eps.len() as i32;
 
             if actionable == 0 {
                 return CandidateDecision {
@@ -1867,12 +1880,14 @@ fn evaluate_candidate(
                     is_upgrade: false,
                 };
             }
-            if actionable < covered {
-                let not_actionable = covered - actionable;
+            if not_upgradeable > 0 {
+                let covered = covered_eps.len() as i32;
                 return CandidateDecision {
                     reject_reason: Some(format!(
                         "Batch would overwrite {} non-upgradeable episode(s) on disk (pack covers {} total, only {} are missing-or-upgradeable). Manual search bypasses this gate if you explicitly want to replace those episodes.",
-                        not_actionable, covered, actionable
+                        not_upgradeable,
+                        covered,
+                        covered - not_upgradeable
                     )),
                     new_episode_count: 0,
                     is_upgrade: false,
@@ -1966,12 +1981,12 @@ fn evaluate_candidate(
     // One file holding several episodes (`- 05-06 (...).mkv`) replaces
     // every on-disk episode it covers, so each must be missing or an
     // upgrade, as for a batch.
-    let not_actionable = on_disk.len() as i32 - upgrade_count;
-    if parsed_eps.len() > 1 && not_actionable > 0 {
+    if covered_eps.len() > 1 && not_upgradeable > 0 {
         return CandidateDecision {
             reject_reason: Some(format!(
-                "Multi-episode release would overwrite {not_actionable} non-upgradeable episode(s) on disk (it covers {}, only {actionable} are missing-or-upgradeable). Manual search bypasses this gate if you explicitly want to replace those episodes.",
-                parsed_eps.len()
+                "Multi-episode release would overwrite {not_upgradeable} non-upgradeable episode(s) on disk (it covers {}, only {} are missing-or-upgradeable). Manual search bypasses this gate if you explicitly want to replace those episodes.",
+                covered_eps.len(),
+                covered_eps.len() as i32 - not_upgradeable
             )),
             new_episode_count: 0,
             is_upgrade: false,

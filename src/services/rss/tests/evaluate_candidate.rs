@@ -164,6 +164,7 @@ fn batch_with_partial_coverage_is_rejected() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
@@ -198,6 +199,7 @@ fn upgrades_off_for_the_series_takes_only_missing_episodes() {
             &item,
             &incoming,
             &disk,
+            &parsed_eps,
             &parsed_eps,
             &gate,
             &quality_tags,
@@ -235,6 +237,7 @@ fn batch_with_full_coverage_is_accepted() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
@@ -265,6 +268,7 @@ fn finished_batch_no_range_with_disk_content_is_rejected() {
         &item,
         &incoming,
         &disk,
+        &parsed_eps,
         &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
@@ -298,6 +302,7 @@ fn finished_batch_no_range_with_empty_disk_is_accepted() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
@@ -327,6 +332,7 @@ fn airing_batch_no_range_is_rejected() {
         &item,
         &incoming,
         &disk,
+        &parsed_eps,
         &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
@@ -380,6 +386,7 @@ fn v2_from_the_same_group_replaces_the_file_past_the_cutoff() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
@@ -406,6 +413,7 @@ fn a_stored_group_from_an_older_reader_is_read_again_from_the_title() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
@@ -422,6 +430,7 @@ fn v2_from_another_group_is_rejected_with_the_gate_reason() {
         &item,
         &incoming,
         &disk,
+        &parsed_eps,
         &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
@@ -447,6 +456,7 @@ fn v2_is_no_upgrade_when_revisions_are_not_preferred() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
@@ -471,6 +481,7 @@ fn v2_for_an_old_file_is_rejected_through_rss() {
         &item,
         &incoming,
         &disk,
+        &parsed_eps,
         &parsed_eps,
         &g,
         &quality_tags,
@@ -503,9 +514,46 @@ fn a_multi_episode_file_over_a_file_at_cutoff_is_rejected() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
     let reason = decision.reject_reason.expect("refused");
     assert!(reason.contains("would overwrite 1"), "{reason}");
+}
+
+#[test]
+fn an_unmonitored_episode_on_disk_still_counts_for_the_overwrite_rule() {
+    // Under `future` monitoring E01 on disk is not monitored, so only E02
+    // is actionable; the release still replaces E01's file at import.
+    let policy = bluray_policy();
+    let incoming = classification(Source::Web, Resolution::R720p, false, false);
+    let found = series("RELEASING");
+    let item = item_with("[Group] Test Series - 01-02 (WEB 720p).mkv", false);
+    let disk = vec![disk_file(1, "BluRay-1080p")];
+    let quality_tags: HashMap<i32, EpisodeQualityTag> = [{
+        let (ep, mut tag) = web_tag(1);
+        tag.source = "BluRay".to_string();
+        tag.quality_tag = "BluRay-1080p".to_string();
+        (ep, tag)
+    }]
+    .into_iter()
+    .collect();
+    let monitored: HashSet<i32> = [2].into_iter().collect();
+    let covered: HashSet<i32> = [1, 2].into_iter().collect();
+    let decision = evaluate_candidate(
+        &found,
+        &item,
+        &incoming,
+        &disk,
+        &monitored,
+        &covered,
+        &gate(&policy, &item),
+        &quality_tags,
+    );
+    assert!(
+        decision
+            .reject_reason
+            .is_some_and(|r| r.contains("would overwrite 1"))
+    );
 }

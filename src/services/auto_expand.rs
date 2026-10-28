@@ -458,6 +458,12 @@ pub async fn expand_from_files(
         else {
             continue;
         };
+        // A TV series' special (`OVA 01`) is filed under Specials, no
+        // episode slot: tagging its number would mark a regular episode
+        // grabbed, and the specials cleanup would then delete that row.
+        if span.special && !parent_anchors.specials_are_episodes() {
+            continue;
+        }
         // Every episode a multi-episode file holds (issue #246).
         for raw_ep in crate::services::grab_commit::file_slot_episodes(span, parent_cumulative) {
             if raw_ep <= 0 {

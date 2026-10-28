@@ -296,6 +296,10 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
         // grabbed_torrents row by hash, but episode_tags::record_grab
         // is unconditional INSERT, so each iteration pollutes history.
         let mut covered_by_batch: HashSet<i32> = HashSet::new();
+        // A release grabbed earlier in this pass is never grabbed again,
+        // whatever numbering its list was recorded in (an unmarked
+        // second-half pack reads as absolute and covers other targets).
+        let mut grabbed_this_pass: HashSet<String> = HashSet::new();
 
         for target in targets {
             // Skip targets a previously-grabbed batch already covers.
@@ -322,6 +326,14 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             let Some(result) = best else {
                 continue;
             };
+            let release_key = if result.info_hash.is_empty() {
+                result.title.to_lowercase()
+            } else {
+                result.info_hash.to_lowercase()
+            };
+            if grabbed_this_pass.contains(&release_key) {
+                continue;
+            }
 
             // Issue #28 — PT upgrade gate. When a user hasn't
             // opted this series in to PT-sourced upgrades and the
@@ -485,6 +497,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                         grab_for,
                         result.is_batch,
                     );
+                    grabbed_this_pass.insert(release_key.clone());
                     if result.is_batch {
                         // Mark every episode this batch will cover as
                         // satisfied so the rest of this series's loop

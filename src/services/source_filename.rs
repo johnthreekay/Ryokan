@@ -157,7 +157,9 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
         .filter(|w| {
             !matches!(
                 w.to_ascii_lowercase().as_str(),
-                "tv" | "bdmv" | "bdraw" | "bdiso" | "bd-raw"
+                // `R2` is a title word too (`Code Geass R2`); a bare `WEB`
+                // is the fallback scan's weaker 0.85 (a title can say it).
+                "tv" | "r2" | "web" | "bdmv" | "bdraw" | "bdiso" | "bd-raw"
             )
         })
         .find_map(|w| source_from_keyword(glued_source(w), dvd_height))
@@ -682,6 +684,20 @@ mod tests {
         assert!(fc.evidence.is_empty());
         assert_eq!(fc.resolution, Resolution::Unknown);
         assert!(fc.release_group.is_none());
+    }
+
+    #[test]
+    fn a_title_word_r2_or_web_is_no_strong_source() {
+        let geass = classify_filename("[G] Code Geass R2 - 05 [BD 1080p]");
+        assert!(!geass.evidence.iter().any(|e| e.source == Source::Dvd));
+        assert!(geass.evidence.iter().any(|e| e.source == Source::BluRay));
+        let web = classify_filename("Show - S01E05 - Spider's Web [Bluray-1080p].mkv");
+        assert!(
+            web.evidence
+                .iter()
+                .filter(|e| e.source == Source::Web)
+                .all(|e| e.confidence < 0.9)
+        );
     }
 
     #[test]

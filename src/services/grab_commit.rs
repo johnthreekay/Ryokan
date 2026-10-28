@@ -386,18 +386,21 @@ pub(crate) fn relative_title_episodes(
     series: &GrabSeries,
     searched: Option<i32>,
 ) -> Vec<i32> {
-    relative_episodes(&release_title::parse(title), series, searched)
+    relative_episodes(&release_title::parse(title), series, searched, true)
 }
 
 /// [`relative_title_episodes`] over an already parsed title. A real tag
-/// (`S02E05`) is relative, as the import reads it; so is a season-bound
-/// run (`S2 - 05`) that fits the series' episode count. Otherwise a run
+/// (`S02E05`) is relative, as the import reads it; so, for a single
+/// release, is a season-bound run (`S2 - 05`) that fits the series'
+/// episode count (the import's `claimed_ep_offset`). A pack's files are
+/// read with no claim, so for a pack only the tag counts. Otherwise a run
 /// past `cumulative_prior_episodes` is absolute, judged on its first
 /// number (`fallback_ep_offset`), unless `searched` shows the numbering.
 fn relative_episodes(
     parsed: &release_title::ParsedTitle,
     series: &GrabSeries,
     searched: Option<i32>,
+    pack: bool,
 ) -> Vec<i32> {
     let mut raw: Vec<i32> = parsed
         .for_series(&series.anchors)
@@ -412,7 +415,8 @@ fn relative_episodes(
     let claim = parsed.episodes.as_ref();
     let tagged =
         claim.is_some_and(|c| c.rule == release_title::ClaimRule::Tag && c.season.is_some());
-    let bound_and_fits = claim.is_some_and(|c| c.season.is_some())
+    let bound_and_fits = !pack
+        && claim.is_some_and(|c| c.season.is_some())
         && series.episode_count.is_some_and(|n| last <= n);
     let offset = match searched {
         _ if tagged || bound_and_fits => 0,
@@ -449,7 +453,7 @@ pub(crate) fn grab_episode_list(
         GrabFor::Episode(ep) if !is_batch => Some(ep),
         _ => None,
     };
-    let relative = relative_episodes(&parsed, series, searched);
+    let relative = relative_episodes(&parsed, series, searched, is_batch);
     let names_no_slot = parsed.extra
         || parsed.half_episode
         || (parsed.is_special_for(&series.anchors) && !series.anchors.specials_are_episodes());
@@ -467,7 +471,12 @@ pub(crate) fn grab_episode_list(
             (1..=series.episode_count.unwrap_or(0).min(WHOLE_SERIES_CAP)).collect()
         }
         GrabFor::Episode(ep) => vec![ep],
-        GrabFor::Single if !is_batch => vec![1],
+        // A movie or a one-episode entry's release is its episode 1; a
+        // longer OVA / ONA entry's release naming nothing is the entry.
+        GrabFor::Single if !is_batch => match series.episode_count {
+            Some(n) if n > 1 => (1..=n.min(WHOLE_SERIES_CAP)).collect(),
+            _ => vec![1],
+        },
         GrabFor::Whole if series.episode_count == Some(1) => vec![1],
         GrabFor::Single | GrabFor::Whole => Vec::new(),
     }
@@ -1131,7 +1140,8 @@ mod tests {
 
     #[test]
     fn a_season_marker_keeps_a_run_relative_only_when_it_fits() {
-        // `S2 - 13-24` for a 12-episode sequel after 12: absolute.
+        // `S2 - 13-24` for a 12-episode sequel after 12: absolute (a pack's
+        // files are read with no claim, so the marker never counts).
         let short = series("Show", 12, Some(12));
         assert_eq!(
             grab_episode_list(
@@ -1141,6 +1151,29 @@ mod tests {
                 true
             ),
             (1..=12).collect::<Vec<i32>>()
+        );
+        // A 24-episode sequel's pack `S2 - 13-24`: its files read `S2 - 13`
+        // with no season, past the offset, so the import files them E1-E12.
+        let long_pack = series("Show", 12, Some(24));
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Show S2 - 13-24 (BD) [Batch]",
+                &long_pack,
+                GrabFor::Whole,
+                true
+            ),
+            (1..=12).collect::<Vec<i32>>()
+        );
+        // A ten-episode OVA entry's release is the entry.
+        let ova = series("Hellsing Ultimate", 0, Some(10));
+        assert_eq!(
+            grab_episode_list(
+                "[G] Hellsing Ultimate (BD 1080p)",
+                &ova,
+                GrabFor::Single,
+                false
+            ),
+            (1..=10).collect::<Vec<i32>>()
         );
         // `S2 - 13` of a 24-episode sequel after 12: relative.
         let long = series("Show", 12, Some(24));
