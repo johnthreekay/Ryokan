@@ -540,6 +540,11 @@ mod tests {
             read("2.5 Dimensional Seduction - S01E24 - 2.5 Dimensional Ririsa.mkv"),
             Some((Some(1), 24, false))
         );
+        // Before the tag too: a tag anywhere is the episode.
+        assert_eq!(
+            read("2.5-jigen no Ririsa - 2.5 Dimensional Seduction - S01E05.mkv"),
+            Some((Some(1), 5, false))
+        );
         assert_eq!(
             read(
                 "Stigmata (2010) - S00E17 - Portrait of the Empress Episode 10.5 [Bluray-1080p].mkv"

@@ -1264,20 +1264,25 @@ fn half_episode(ctx: &Ctx) -> bool {
         // `Episode`'s slot (`- S01E24 - 2.5 Dimensional Ririsa`, Ryokan's
         // own file names; `- S00E17 - ... Episode 10.5`; `- 23 [1080p
         // VMAF-93.5]`). Only a claim before the slot counts: `Fairy Tail -
-        // 100 Years Quest - 13.5` is still a half episode.
+        // 100 Years Quest - 13.5` is still a half episode. A tag anywhere
+        // is the episode, so a decimal before it is the name's
+        // (`2.5-jigen no Ririsa - 2.5 Dimensional Seduction - S01E05`).
         let marked_before = (0..i).any(|j| !ctx.skip[j] && ctx.marks_episode(j));
-        let claimed_before_slot = (0..prev.unwrap_or(0)).any(|j| {
-            !ctx.skip[j]
-                && (matches!(
-                    ctx.class[j],
-                    Class::Tag { .. } | Class::EpPrefix(..) | Class::SpecialNum(_)
-                ) || matches!(ctx.class[j], Class::EpisodeWord)
-                    && ctx.next(j).is_some_and(|n| ctx.num(n).is_some())
-                    || ctx.toks[j].kind == Kind::SegDash
-                        && ctx
-                            .next(j)
-                            .is_some_and(|n| ctx.num(n).is_some() && ctx.boundary_after(n)))
-        });
+        let tag_anywhere =
+            (0..ctx.toks.len()).any(|j| !ctx.skip[j] && matches!(ctx.class[j], Class::Tag { .. }));
+        let claimed_before_slot = tag_anywhere
+            || (0..prev.unwrap_or(0)).any(|j| {
+                !ctx.skip[j]
+                    && (matches!(
+                        ctx.class[j],
+                        Class::Tag { .. } | Class::EpPrefix(..) | Class::SpecialNum(_)
+                    ) || matches!(ctx.class[j], Class::EpisodeWord)
+                        && ctx.next(j).is_some_and(|n| ctx.num(n).is_some())
+                        || ctx.toks[j].kind == Kind::SegDash
+                            && ctx
+                                .next(j)
+                                .is_some_and(|n| ctx.num(n).is_some() && ctx.boundary_after(n)))
+            });
         if slot && !claimed_before_slot
             || (ctx.toks[i].depth == 0 && before_meta && i > 0 && !marked_before)
         {
