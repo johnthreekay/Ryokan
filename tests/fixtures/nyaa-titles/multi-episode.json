@@ -370,6 +370,57 @@
         "resolution": 1080
       },
       "verified": "hand"
+    },
+    {
+      "title": "Ninjala S01E138-S01E198 (WEBDL 1080p x264 AAC) [S1PH3R] + EP110",
+      "url": "https://nyaa.si/view/2171494",
+      "expect": {
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 138,
+          "last": 198
+        },
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "A tag range that writes the season again; read only S01E138 before (AnimeTosho file list: 62 videos)"
+    },
+    {
+      "title": "Full Moon wo Sagashite (2002) S01E01-S01E28 (Bluray 1080p x265 FLAC - AAC) (Dual Audio) [S1PH3R]",
+      "url": "https://nyaa.si/view/2100492",
+      "expect": {
+        "group": "S1PH3R",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 28
+        },
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "The whole season as a tag range that writes the season again"
+    },
+    {
+      "title": "Qin's Moon S1 ep. 1 to 11 (Remastered)",
+      "url": "https://nyaa.si/view/1486124",
+      "expect": {
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 11
+        }
+      },
+      "verified": "hand",
+      "note": "`to` after an episode marker is a range (AnimeTosho file list: 14 videos)"
     }
   ]
 }

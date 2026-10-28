@@ -279,6 +279,10 @@ fn thousands_in_title() {
     );
     // A list of episodes is not a number.
     assert_eq!(
+        parse(r###"Show 101,102 [1080p]"###).series_title.as_deref(),
+        Some("Show")
+    );
+    assert_eq!(
         parse(r###"[ARR] Magnerobo Ga-Keen 13,15-26,28-39 [640p DVD AC3 x264]"###)
             .series_title
             .as_deref(),

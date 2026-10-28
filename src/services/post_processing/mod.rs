@@ -277,11 +277,6 @@ pub(crate) fn validate_batch_episode_map_with_anchors(
             .unwrap_or(name);
         let lower = filename.to_lowercase();
         let in_specials_folder = media::path_names_specials(Path::new(name));
-        // A pack's `Extras/` (menus, previews, PVs) takes no slot, whatever
-        // the files are called there.
-        if media::path_names_extras(name) {
-            continue;
-        }
         let parsed = match anchors.get(series_id) {
             Some(names) => media::parse_episode_span_for(&lower, names),
             None => media::parse_episode_span(&lower),
@@ -296,6 +291,11 @@ pub(crate) fn validate_batch_episode_map_with_anchors(
                 || (parsed.is_none() && media::has_special_marker(&lower)))
         {
             specials.insert(*file_idx);
+            continue;
+        }
+        // A pack's `Extras/` (menus, previews, PVs) takes no slot, whatever
+        // the files are called there; a special in it was set aside above.
+        if media::path_names_extras(name) {
             continue;
         }
         let Some(span) = parsed else {

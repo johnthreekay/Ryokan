@@ -34,10 +34,10 @@ Each file is one step and says what it does at the top:
 The episode claim is the first of these that matches (doc comment at the top of `rules.rs`):
 
 1. `SxxEyy` tags at any depth.
-2. The number after ` - ` / `_-_`, only when a boundary follows it (bracket, metadata, another dash, the end). `Series - 100 Years Quest - 05` is 5; `- 39 Fanart Corner` claims nothing.
-3. `E05` / `EP05` / `Ep 05`. Skipped when it follows a `+` after a season marker (`S1 + Ep. 0` is a pack with a bonus episode).
-4. `Episode 05`, `#05`, `第05话`, `04 of 12` / `04 из 12`.
-5. `OVA 01` / `SP01` (sets `special`).
+2. The number after ` - ` / `_-_`, only when a boundary follows it (bracket, metadata, another dash, the end). `Series - 100 Years Quest - 05` is 5; `- 39 Fanart Corner` claims nothing. A number between two glued dashes (`Hunter X hunter 1999 -02- Encounter`) is one too.
+3. `E05` / `EP05` / `Ep 05` / `Ep-04`, with `to` as a range (`S1 ep. 1 to 11`). Skipped when it follows a `+` after a season marker (`S1 + Ep. 0` is a pack with a bonus episode). A tag range may write the season again (`S01E138-S01E198`).
+4. `Episode 05` (`Episode 1 to 12` a range), `#05`, `第05话`, `04 of 12` / `04 из 12`.
+5. `OVA 01` / `SP01` / `[SP][01]` (sets `special`).
 6. A bracketed number or range (`[03]`, `[08v2]`, `(01-12)`).
 7. A bare range in the title text (`01-25`, `1100-1104`).
 8. A season marker then a bare number (`S2 05`, `2nd Season 05`, `II 05`).
@@ -51,17 +51,17 @@ Moving a rule earlier changes what wins on every title both rules match; run the
 - Years are never episodes; `[1983-1984]` with no claim is a whole-run pack (`year_range`).
 - `1080` / `720` after a dash are episodes (One Piece); a resolution needs `p`, `i`, `WxH` (a trailing `p` is fine), `4K` / `UHD` / `FHD`, or sits beside metadata (`bare_resolution`).
 - `07.5` is a half episode, never episode 7. NC / PV / CM / preview / trailer are extras: no claim, never a batch.
-- An extras word inside a phrase of title words is a title word: before any episode mark when more words follow (`Today's Menu for the Emiya Family - S01E05`), after one when the phrase opens its own dash segment (`- S01E05 - Happy Ending`, Ryokan's own template). `- 12 Minute Preview` is a label. A decimal past a marked episode is the episode title's (`- S01E05 - Chapter 7.5`).
+- An extras word inside a phrase of title words is a title word: before any episode mark when more words follow (`Today's Menu for the Emiya Family - S01E05`), after one when the phrase opens its own dash segment (`- S01E05 - Happy Ending`, Ryokan's own template). `- 12 Minute Preview` is a label, and so is a name that is only the label and its number (`Preview 01.mkv`, an extras folder's file). A decimal past a marked episode is the episode title's (`- S01E05 - Chapter 7.5`).
 - A one-digit `NxN` that runs on into title words is the name (`3x3 Eyes`); `Series Title 1x1` and `- 2x4 -` are tags.
 - The ambiguous number is the last bare number before the metadata (`Show 99 (extra) 12 (1080p)` is 12), and none before a later dash number (`Show 2 (2023) - 05 Title`).
 - A series' name vetoes a number only when every place the title writes it is inside a found alias (`[EA]Vinland_Saga_Season_2_02_` is 2 for "Vinland Saga Season 2"). Where the name is found but nothing readable follows it, a file's plain reading stands (`[EA]Fruits_Basket_2019_05_`).
-- `[SP]` alone is a subtitle tag; `SP01` is a special.
+- `[SP]` alone is a subtitle tag; `SP01` and `[SP][01]` are specials.
 - `special` is a flag; what it means depends on the series' format (`media::is_tv_format`). A tag naming a real season (`S02E03`) beats a title that ends in `Special`.
 - PROPER / REPACK and Roman `II`..`IX` are uppercase only. A Roman numeral is a season marker only at top level or alone in a bracket, and only where the title text ends (a bracket, dash, `|`, metadata, the end) or before a number: `Lupin III vs`, `Chibi Maruko-chan II 樱桃小丸子` and `(..., The Legend of Hei II)` are names.
 - `Part` / `Cour` N ≥ 2 is a season hint (`seasons.hint_only`), not a pack, unless it sits at top level right before a bracket (`Series Cour 2 (WEB 1080p)`, `part_pack`).
 - A title naming one video file is never a season pack. An extras release is never a batch.
 - `[BD]` alone is not a batch keyword.
-- A bare number right after the title is `ambiguous_number`, read only through `for_series`. The search for it stops at the first top-level metadata token, so `H.264 (Japanese Sub)` has none.
+- A bare number right after the title is `ambiguous_number`, read only through `for_series` (and by the file reading). The search for it stops at the first top-level metadata token, so `H.264 (Japanese Sub)` has none. Before an episode title it counts only after a plain title word, as a quote (`Fullmetal Alchemist 23 'Heart of Steel'`) or a padded number of two or three digits (`Holo no Graffiti 095 Going Wild`); never `00` / `00N` (`Gundam 00 the Movie`, `Cyborg 009 Call of Justice`), a movie's number (`Detective Conan Movie 02 The Fourteenth Target`) or a title that opens with its number (`009 Re-Cyborg`). A thousands group (`Saving 80,000 Gold`) stays in the name; a comma list (`13,15-26`, `101,102`) does not.
 - Group: the first non-metadata, non-numeric, non-CRC, non-website bracket; else a scene tail after the longest metadata head (`H.264-VARYG`, `x264-Tsundere-Raws`), a lead-dash word at the end, a one-word last bracket (`[Lunar]`; a round one only right after another bracket, `_(BD_720p)_(Kametsu)`), or two plain words in a last square bracket that follows another bracket (`(Dual Audio)[MICO XD]`). A first bracket made only of metadata words (`[BD_SUBS]`) is skipped; `DVD-Rip` names no group.
 - Resolution: the highest the title names (`(720p + 1080p)`); `release_fields` gives its tier (`resolution_tier`: `540` is 480, `1036` is 1080), the value scoring, Custom Format specs and labels read.
 

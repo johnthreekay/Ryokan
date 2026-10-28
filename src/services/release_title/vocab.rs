@@ -188,6 +188,8 @@ const META: &[&str] = &[
     "dvd",
     "dvdrip",
     "dvdiso",
+    // Dragon Box, the Dragon Ball DVD set (`Dragon.Ball.001.DBOX.480p`).
+    "dbox",
     "pdtv",
     "vhs",
     "vhsrip",

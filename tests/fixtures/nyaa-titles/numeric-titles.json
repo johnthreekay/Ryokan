@@ -1007,6 +1007,46 @@
         ],
         "episodes": []
       }
+    },
+    {
+      "title": "[DDD] CYBORG 009 CALL OF JUSTICE [BDrip 720p HEVC AAC][10bits]",
+      "url": "https://nyaa.si/view/1030578",
+      "expect": {
+        "group": "DDD",
+        "batch": false,
+        "episodes": null,
+        "ambiguous": null,
+        "resolution": 720
+      },
+      "series": {
+        "aliases": [
+          "Cyborg 009: Call of Justice"
+        ],
+        "episodes": []
+      },
+      "verified": "hand",
+      "note": "`00N` before more title words is the title's own number, not an episode before its title"
+    },
+    {
+      "title": "[Ichi656] Crayon Shin-Chan 029 Vitello Dub Japanese Video edit [Lat-Eng] [TVRip] [576p]",
+      "url": "https://nyaa.si/view/1703162",
+      "expect": {
+        "group": "Ichi656",
+        "batch": false,
+        "episodes": null,
+        "ambiguous": 29,
+        "resolution": 576
+      },
+      "series": {
+        "aliases": [
+          "Crayon Shin-chan"
+        ],
+        "episodes": [
+          29
+        ]
+      },
+      "verified": "hand",
+      "note": "A padded number after the title, before the episode's own words, is the episode once the series is known"
     }
   ]
 }

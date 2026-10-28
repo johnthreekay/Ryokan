@@ -95,6 +95,27 @@ fn files_under_an_extras_folder_take_no_slot() {
 }
 
 #[test]
+fn a_special_under_an_extras_folder_is_still_a_special() {
+    // BD packs keep OVAs beside the menus; a TV series files them under
+    // `Specials/`, so the extras-folder rule must not drop them.
+    let files = vec![
+        (0, 42, None, 0, "Show/[G] Show - 01 [BD].mkv".to_string()),
+        (
+            1,
+            42,
+            None,
+            0,
+            "Show/Extras/[G] Show - OVA 01 [BD].mkv".to_string(),
+        ),
+        (2, 42, None, 0, "Show/Extras/Preview 01.mkv".to_string()),
+    ];
+    let plan = validate_batch_episode_map(&files, &HashSet::from([42])).unwrap();
+    assert!(plan.slots.contains_key(&0));
+    assert!(plan.specials.contains(&1));
+    assert!(!plan.slots.contains_key(&2) && !plan.specials.contains(&2));
+}
+
+#[test]
 fn non_positive_resolved_episode_is_skipped_without_failing_the_batch() {
     // E00 specials (and files landing on a sibling whose offset exceeds
     // their own number) resolve non-positive; skip them, keep the rest.

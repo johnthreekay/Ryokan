@@ -1871,8 +1871,9 @@ fn keywords(ctx: &Ctx, out: &mut ParsedTitle) {
 
 /// A bare number after the title that no rule placed: before a subtitle
 /// dash (`86 - Eighty Six`, `Cyborg 009 - Legend`), before a bracket
-/// (`Mob Psycho 100 (BD)`, `Dark_Gathering_24_[`), or at the very end
-/// (`MAX 13`).
+/// (`Mob Psycho 100 (BD)`, `Dark_Gathering_24_[`), at the very end
+/// (`MAX 13`), before metadata (`Dragon.Ball.043.480p`), or before an
+/// episode title (`Show 23 'Title'`, `Show 095 Title Words`).
 fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
     // The last bare number before the metadata, as Sonarr's bare absolute
     // pattern reads it: `Show 99 (extra) 12 (1080p)` is 12.
@@ -1955,18 +1956,27 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
                 // zero-padded number (`Holo no Graffiti 095 Going Wild`,
                 // never a 4-digit title number such as `Gundam 0083`).
                 _ => {
+                    // Before an episode title the number follows a plain
+                    // title word: not a title opening with its own number
+                    // (`009 Re-Cyborg`), not a movie's (`Detective Conan
+                    // Movie 02 The Fourteenth Target`), not a group of
+                    // `80,000`. `00` and `00N` are a title's (`Gundam 00
+                    // the Movie`, `Cyborg 009 Call of Justice`).
+                    let after_title_word = ctx.prev(k).is_some_and(|p| {
+                        ctx.toks[p].is_word()
+                            && ctx.toks[p].depth == 0
+                            && matches!(ctx.class[p], Class::Plain | Class::Of)
+                    }) && ctx.toks[k].sep != Sep::None
+                        && value > 0;
                     digits >= 2
                         && (ctx.class[j].is_meta()
-                            || matches!(ctx.toks[j].text.as_str(), "'" | "\"")
-                            || digits <= 3
-                                && ctx.toks[k].text.starts_with('0')
-                                && ctx.toks[j].is_word()
-                                && ctx.class[j] == Class::Plain
-                                // A title word comes first (`009 Re-Cyborg`
-                                // opens with the title's own number), and
-                                // `80,000` is one number.
-                                && ctx.prev(k).is_some_and(|p| ctx.toks[p].is_word() && ctx.toks[p].depth == 0)
-                                && ctx.toks[k].sep != Sep::None)
+                            || after_title_word
+                                && (matches!(ctx.toks[j].text.as_str(), "'" | "\"")
+                                    || digits <= 3
+                                        && (digits == 2 || value >= 10)
+                                        && ctx.toks[k].text.starts_with('0')
+                                        && ctx.toks[j].is_word()
+                                        && ctx.class[j] == Class::Plain))
                 }
             },
         };
@@ -2249,8 +2259,10 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
                             // `Saving 80,000 Gold`.
                             || ctx.toks[n].kind == Kind::Comma
                                 && ctx.toks[n].sep == Sep::None
+                                // A group above the number before it
+                                // (`101,102`) is a list.
                                 && run.get(at + 2).is_some_and(|&m| {
-                                    ctx.num(m).is_some_and(|(_, d, _)| d == 3)
+                                    ctx.num(m).is_some_and(|(v, d, _)| d == 3 && v <= value)
                                         && ctx.toks[m].sep == Sep::None
                                 })
                             || matches!(
@@ -2261,13 +2273,20 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
                     // A range belongs to the episodes or the pack, whatever
                     // marks it (`2nd Season 01-12`).
                     let opens_range = next.is_some_and(|n| ctx.toks[n].kind == Kind::RangeOp);
-                    let padded = digits >= 2 && tok.text.starts_with('0');
+                    // `00` / `00N` before more words is the name's (`Cyborg
+                    // 009 Call of Justice`), as in `ambiguous_number`.
+                    let padded = digits >= 2
+                        && tok.text.starts_with('0')
+                        && value > 0
+                        && (digits == 2 || value >= 10);
                     // The `000` of `80,000` goes on the number before it.
                     let thousands = digits == 3
                         && tok.sep == Sep::None
                         && at >= 2
                         && ctx.toks[run[at - 1]].kind == Kind::Comma
-                        && ctx.num(run[at - 2]).is_some();
+                        && ctx
+                            .num(run[at - 2])
+                            .is_some_and(|(before, _, _)| value <= before);
                     let episode_like =
                         !continues || padded && next.is_some_and(|n| ctx.toks[n].is_word());
                     if (episode_like && !marked && !thousands || opens_range)

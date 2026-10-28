@@ -267,13 +267,8 @@ pub fn path_names_extras(path: &str) -> bool {
         let words: String = dir
             .to_lowercase()
             .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c >= '\u{3000}' {
-                    c
-                } else {
-                    ' '
-                }
-            })
+            // `【特典映像】`, `（特典）`: CJK brackets and spaces separate too.
+            .map(|c| if c.is_alphanumeric() { c } else { ' ' })
             .collect();
         let words: Vec<&str> = words.split_whitespace().collect();
         let lead = words
@@ -285,23 +280,20 @@ pub fn path_names_extras(path: &str) -> bool {
 }
 
 /// [`parse_episode_span`] for a file in a download or a library folder,
-/// given its path: a file under an extras folder holds no episode, and
-/// only the file's own name is read (a folder's `01-12` is no file's).
+/// given its path: only the file's own name is read (a folder's `01-12`
+/// is no file's), and a file under an extras folder holds no episode
+/// unless its name says it is a special (`Extras/Show - OVA 01.mkv` is
+/// still the special a TV series files under `Specials/`).
 pub fn parse_file_path(path: &str) -> Option<EpisodeSpan> {
-    if path_names_extras(path) {
-        return None;
-    }
     let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
-    parse_episode_span(&base.to_lowercase())
+    parse_episode_span(&base.to_lowercase()).filter(|s| s.special || !path_names_extras(path))
 }
 
 /// [`parse_episode_span_for`] given a path, as [`parse_file_path`].
 pub fn parse_file_path_for(path: &str, anchors: &super::SeriesAnchors) -> Option<EpisodeSpan> {
-    if path_names_extras(path) {
-        return None;
-    }
     let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
     parse_episode_span_for(&base.to_lowercase(), anchors)
+        .filter(|s| s.special || !path_names_extras(path))
 }
 
 /// True when the name carries a special marker in a shape that does
@@ -516,6 +508,17 @@ mod tests {
             None
         );
         assert_eq!(first("[CW] 009 Re-Cyborg (2012) [BD 1080p].mkv"), None);
+        assert_eq!(first("Cyborg 009 Call of Justice [BD].mkv"), None);
+        assert_eq!(
+            first("Mobile Suit Gundam 00 the Movie A wakening of the Trailblazer (2010).mkv"),
+            None
+        );
+        // A movie's number is no episode before the movie's title; the
+        // lone video takes the grab's episode instead.
+        assert_eq!(
+            first("Detective Conan Movie 02 The Fourteenth Target [BD 1080p].mkv"),
+            None
+        );
         assert_eq!(first("Show 99 Luftballons [1080p].mkv"), None);
     }
 
@@ -536,6 +539,10 @@ mod tests {
             assert!(path_names_extras(path), "{path}");
             assert_eq!(parse_file_path(path), None, "{path}");
         }
+        assert!(path_names_extras("【特典映像】/Clip 01.mkv"));
+        assert!(path_names_extras("（特典）/Clip 01.mkv"));
+        // A special stays a special there.
+        assert!(parse_file_path("Extras/[G] Show - OVA 01.mkv").is_some_and(|s| s.special));
         // A show folder that mentions extras is still the show's.
         let main = "[Group] Show (BD) + Extras/[Group] Show - 05 [1080p].mkv";
         assert!(!path_names_extras(main));
