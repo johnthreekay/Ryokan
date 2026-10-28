@@ -12,12 +12,14 @@
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [Blu-ray&DVD CM 01][Ma10p_1080p][x265_flac].mkv",
       "season": null,
-      "episode": 3
+      "episode": null,
+      "note": "release_title file reading (phase 11): an extra (CM, teaser) names no episode; the old reading took the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [Blu-ray&DVD CM 02][Ma10p_1080p][x265_flac].mkv",
       "season": null,
-      "episode": 3
+      "episode": null,
+      "note": "release_title file reading (phase 11): an extra (CM, teaser) names no episode; the old reading took the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [Character PV 01][Ma10p_1080p][x265_flac].mkv",
@@ -227,7 +229,8 @@
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [Teaser][Ma10p_1080p][x265_flac].mkv",
       "season": null,
-      "episode": 3
+      "episode": null,
+      "note": "release_title file reading (phase 11): an extra (CM, teaser) names no episode; the old reading took the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [Trailer01][Ma10p_1080p][x265_flac].mkv",
@@ -332,12 +335,14 @@
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [01][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 1,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [02][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 2,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [03][Ma10p_1080p][x265_flac_2aac].mkv",
@@ -347,52 +352,62 @@
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [04][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 4,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [05][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 5,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [06][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 6,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [07][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 7,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [08][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 8,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [09][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 9,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [10][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 10,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [11][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 11,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [12][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 12,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     },
     {
       "name": "[Airota&VCB-Studio] Hibike! Euphonium 3 [13][Ma10p_1080p][x265_flac_2aac].mkv",
       "season": null,
-      "episode": 3
+      "episode": 13,
+      "note": "release_title file reading (phase 11): the bracketed number is the episode, not the title's 3"
     }
   ]
 }

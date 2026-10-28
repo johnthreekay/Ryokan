@@ -21,7 +21,10 @@ turned the last three from mis-parses into expectations). The test pins
 today's behavior so any parser change that shifts a real-world outcome
 shows up explicitly in review; updating an expectation alongside a
 deliberate parser fix is normal and
-expected.
+expected. A changed expectation carries a `note` with its reason; the
+switch to `release_title`'s file reading changed 46 files that way
+(bare numbers after the title, CJK brackets, extras that read as the
+title's own number).
 
 Category buckets:
 

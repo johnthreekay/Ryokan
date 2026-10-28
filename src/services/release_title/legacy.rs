@@ -1,6 +1,7 @@
 //! Frozen copies of the release-title parsers `release_title` replaces,
 //! taken verbatim from `dev` at 966695a (RSS `parse_release` reads a
-//! `&str` and keeps stand-ins for its alias views). Test-only: the
+//! `&str` and keeps stand-ins for its alias views; `media` shares the
+//! live `EpisodeSpan` type so the two readings compare directly). Test-only: the
 //! differential compares them with the new parser while call sites
 //! migrate, and the copies go when the last old parser is deleted. Fixes
 //! belong in `release_title`, never here.
@@ -717,5 +718,433 @@ pub(crate) mod rss {
             absolute_eps,
             parse_mode,
         }
+    }
+}
+
+/// `media::parse_episode_span` (the file-name parser) as it was before
+/// `release_title::file_mode` replaced its branches.
+pub(crate) mod media {
+    use std::sync::LazyLock;
+
+    use anitomy::ElementCategory;
+    use regex_lite::Regex;
+
+    use crate::services::media::anitomy_parse;
+    use crate::services::release_title::file_mode::{EpisodeSpan, MAX_FILE_SPAN};
+
+    static RE_SXEX: LazyLock<Regex> = LazyLock::new(|| {
+        // The tail must be followed by a non-alphanumeric or the end so
+        // `S01E05-1080p` stays a single episode.
+        Regex::new(r"s(\d{1,2})e(\d{1,4})(?:(?:(?:-e|-|e)(\d{1,4})(?:v\d)?)+(?:[^a-z0-9]|$))?")
+            .expect("RE_SXEX compiles")
+    });
+
+    static RE_DASH_EP: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r" - (\d{1,4})(?:v\d)?(?:[-~](\d{1,4})(?:v\d)?)*(?:\s|\.|\[|\(|$)")
+            .expect("RE_DASH_EP compiles")
+    });
+
+    static RE_E_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"(?:^|[\s._\-])e(?:p\.?)?(\d{1,4})(?:v\d)?(?:[-~]e?(?:p\.?)?(\d{1,4})(?:v\d)?)*(?:\s|\.|\[|\(|$)",
+        )
+        .expect("RE_E_PREFIX compiles")
+    });
+
+    static RE_EPISODE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"episode\s*(\d{1,4})(?:[-~](\d{1,4}))?").expect("RE_EPISODE compiles")
+    });
+
+    static RE_BARE_NUM_DASH: LazyLock<Regex> = LazyLock::new(|| {
+        // Bare 1-3 digit episode number followed by ` - <subtitle>`. Used
+        // by no-group-prefix releases shaped like
+        // `<title> NN - <subtitle>.mkv`. The caller takes the FIRST match
+        // because the actual episode marker comes BEFORE the subtitle, and
+        // the subtitle itself can contain incidental ` <number> - ` runs
+        // (e.g. `Show 03 - Title, Part 4 - Coda.mkv` → must resolve 03,
+        // not 4). 1-3 digits keeps 4-digit years out.
+        Regex::new(r"(?:^|\s)(\d{1,3})(?:v\d)?\s+-\s").expect("RE_BARE_NUM_DASH compiles")
+    });
+
+    static RE_BARE_NUM_BRACKET: LazyLock<Regex> = LazyLock::new(|| {
+        // Bare 1-3 digit episode number followed by a quality `(...)` or
+        // hash `[...]` bracket. Catches packs whose filenames are
+        // space-delimited rather than `S01E01` or `- 01` — i.e. shaped
+        // like `<title tokens> NN (<quality>) [<hash>].mkv`. 1-3 digits
+        // keeps 4-digit years from being read as episode numbers. The
+        // caller picks the rightmost match so a title token like
+        // `something 99 (extra) 12 (...)` still resolves to 12, not 99.
+        Regex::new(r"(?:^|\s)(\d{1,3})(?:v\d)?\s+[\(\[]").expect("RE_BARE_NUM_BRACKET compiles")
+    });
+
+    static RE_NCOP_NCED: LazyLock<Regex> = LazyLock::new(|| {
+        // Creditless OP/ED marker that must NOT be a substring of an
+        // unrelated word. Plain `contains("nced")` trips on any filename
+        // containing "synced", "convinced", "announced", "experienced",
+        // "bounced", etc. — we anchor the left edge to start-of-string or
+        // a non-letter so only real `NCED`/`NCOP` tokens match. The right
+        // edge is left open so glued-digit forms like `NCED01a` / `NCOP01`
+        // (LOGH, some older BDMV rips) still resolve.
+        Regex::new(r"(?:^|[^a-z])(?:ncop|nced)").expect("RE_NCOP_NCED compiles")
+    });
+
+    static RE_OVA_EP: LazyLock<Regex> = LazyLock::new(|| {
+        // Explicit `OVA NN` / `OVA01` episode marker — used by
+        // multi-episode OVA releases (e.g. the JoJo 1993 / 2000 6-episode
+        // OVA sets shaped `<title> - OVA 01.mkv`). Must fire BEFORE the
+        // bare-number branches so `- OVA 01.` resolves to 1 instead of
+        // being shadowed by an earlier title-side digit. Must NOT match
+        // bare `- OVA.` with no trailing digit — single-OVA AL entries
+        // (e.g. Nichijou no 0) legitimately have no episode number and
+        // should fall through to `None` rather than be invented.
+        Regex::new(r"(?:^|[\s._\-])ova\s*(\d{1,3})(?:v\d)?(?:[-~](\d{1,3}))?(?:\s|\.|\[|\(|$)")
+            .expect("RE_OVA_EP compiles")
+    });
+
+    static RE_SPECIAL_EP: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"(?:^|[\s._\-])(?:sp|specials?|oad)\s*(\d{1,3})(?:v\d)?(?:[-~](\d{1,3}))?(?:\s|\.|\[|\(|$)",
+        )
+        .expect("RE_SPECIAL_EP compiles")
+    });
+
+    static RE_NUM_THEN_SPECIAL: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"(?:^|[\s._\-])\d{1,3}(?:v\d)?[\s._\-]+(?:ova|oad|sp|specials?)(?:\s*[\[\(]|\s*-\s|\.[a-z0-9]{2,4}$|$)",
+        )
+        .expect("RE_NUM_THEN_SPECIAL compiles")
+    });
+
+    static RE_BARE_SPECIAL: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"(?:\s-\s(?:ova|oad|sp|specials?)|[\[\(](?:ova|oad|specials?))(?:\s*[\]\)\[\(]|\s*-\s|\.[a-z0-9]{2,4}$|$)",
+        )
+        .expect("RE_BARE_SPECIAL compiles")
+    });
+
+    static RE_HALF_EPISODE: LazyLock<Regex> = LazyLock::new(|| {
+        // Half-episode / recap marker glued to the episode token in the
+        // dash position (`- 07_5`, `- 07.5`, Erai-raws' recap convention)
+        // or to an SxxExx tag (`S01E07.5`). Issue #203: these are
+        // non-episodic under the Season-1 model and must not land in the
+        // E07 slot. Matched on the raw (pre-underscore-normalization)
+        // string because the `_5` form is exactly what normalization
+        // would turn into a plain ` - 07 5 ` that RE_DASH_EP accepts.
+        // Anchored on the dash / SxxExx position so a title like
+        // `2.5 Jigen no Ririsa - 03` is untouched.
+        Regex::new(r"(?:[\s_]-[\s_]|s\d{1,2}e)(\d{1,4})[._]5(?:[\s._\[\(]|$)")
+            .expect("RE_HALF_EPISODE compiles")
+    });
+
+    const NON_EPISODIC_ANIME_TYPES: &[&str] = &[
+        "pv", "cm", "ncop", "nced", "op", "ed", "opening", "ending", "preview", "menu", "trailer",
+    ];
+
+    fn starts_with_non_episode_marker(rest: &str) -> bool {
+        let trimmed = rest.trim_start();
+        const MARKERS: &[&str] = &["ova", "oad", "sp", "special", "specials"];
+        for tok in MARKERS {
+            if let Some(after) = trimmed.strip_prefix(tok) {
+                // Word boundary: next char must not be another letter or
+                // digit (so `special` matches but `spectral` doesn't).
+                let bounded = match after.as_bytes().first() {
+                    None => true,
+                    Some(c) => !c.is_ascii_alphanumeric(),
+                };
+                if bounded {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn parse_dot_delimited_episode(lower: &str) -> Option<i32> {
+        let tokens: Vec<&str> = lower.split('.').collect();
+        tokens.iter().enumerate().rev().find_map(|(i, token)| {
+            let digits = token
+                .split_once('v')
+                .filter(|(_, version)| {
+                    !version.is_empty() && version.chars().all(|c| c.is_ascii_digit())
+                })
+                .map(|(digits, _)| digits)
+                .unwrap_or(token);
+            if !((2..=3).contains(&digits.len()) && digits.chars().all(|c| c.is_ascii_digit())) {
+                return None;
+            }
+            let follows_codec_marker = i > 0
+                && tokens[i - 1]
+                    .rsplit([' ', '-', '_', '(', '['])
+                    .next()
+                    .is_some_and(|word| matches!(word, "h" | "x" | "mpeg"));
+            if follows_codec_marker {
+                return None;
+            }
+            digits.parse().ok()
+        })
+    }
+
+    fn accept_span_tail(first: &str, last: &str) -> Option<(i32, i32)> {
+        let a: i32 = first.parse().ok()?;
+        let b: i32 = last.parse().ok()?;
+        if b <= a {
+            return None;
+        }
+        if first.len() < 2 || last.len() < 2 {
+            return None;
+        }
+        if first.len() == 4 && (1900..=2100).contains(&a) {
+            return None;
+        }
+        if b - a + 1 > MAX_FILE_SPAN {
+            return None;
+        }
+        Some((a, b))
+    }
+
+    enum Tail {
+        Single(i32),
+        Range(i32, i32),
+        Rejected,
+    }
+
+    fn read_tail(
+        caps: &regex_lite::Captures<'_>,
+        first_idx: usize,
+        last_idx: usize,
+    ) -> Option<Tail> {
+        let first = caps.get(first_idx)?.as_str();
+        let Some(last) = caps.get(last_idx) else {
+            return Some(Tail::Single(first.parse().ok()?));
+        };
+        Some(match accept_span_tail(first, last.as_str()) {
+            Some((a, b)) => Tail::Range(a, b),
+            None => Tail::Rejected,
+        })
+    }
+
+    fn scan_tails(
+        re: &Regex,
+        lower: &str,
+        first_idx: usize,
+        last_idx: usize,
+    ) -> Option<EpisodeSpan> {
+        let mut from = 0;
+        while from < lower.len() {
+            let caps = re.captures(&lower[from..])?;
+            match read_tail(&caps, first_idx, last_idx)? {
+                Tail::Single(e) => return Some(EpisodeSpan::single(None, e)),
+                Tail::Range(a, b) => {
+                    return Some(EpisodeSpan {
+                        season: None,
+                        first: a,
+                        last: b,
+                        special: false,
+                    });
+                }
+                // The first number is ASCII digits, so one byte in is a
+                // char boundary.
+                Tail::Rejected => from += caps.get(first_idx)?.start() + 1,
+            }
+        }
+        None
+    }
+
+    pub(crate) fn parse_episode_span(lower: &str) -> Option<EpisodeSpan> {
+        let mut parsed = parse_episode_span_inner(lower)?;
+        // The anitomy gate runs last and only when a number was found, so
+        // the (comparatively) expensive tokenizer pass is skipped for the
+        // NC / bare-marker shapes the regex branches already reject.
+        if is_non_episodic_extra(lower) {
+            return None;
+        }
+        if !parsed.special && (parsed.season == Some(0) || has_special_marker(lower)) {
+            parsed.special = true;
+        }
+        Some(parsed)
+    }
+
+    fn has_special_marker(lower: &str) -> bool {
+        let normalized = if lower.contains('_') {
+            Some(lower.replace('_', " "))
+        } else {
+            None
+        };
+        let lower = normalized.as_deref().unwrap_or(lower);
+        RE_NUM_THEN_SPECIAL.is_match(lower) || RE_BARE_SPECIAL.is_match(lower)
+    }
+
+    fn parse_episode_span_inner(lower: &str) -> Option<EpisodeSpan> {
+        // Non-episodic content guard. Creditless openings/endings carry a
+        // small integer suffix (`NCOP 1`, `NCED 1`, or even glued
+        // `NCED01a` from LOGH-style packs) that the bare-number
+        // fallback below would otherwise mis-parse as episode 1 and
+        // clobber the real ep1. Bail before any pattern fires. Matched
+        // with a token-boundary regex so incidental substring hits like
+        // `synced`, `convinced`, `announced` don't false-positive.
+        if RE_NCOP_NCED.is_match(lower) {
+            return None;
+        }
+
+        // Half-episode / recap guard (issue #203). Checked on the raw
+        // string, before underscore normalization would turn `07_5` into
+        // a plain `07 5` that RE_DASH_EP accepts as episode 7.
+        if RE_HALF_EPISODE.is_match(lower) {
+            return None;
+        }
+
+        // Underscore-delimited releases (HGS-Renc, some older groups)
+        // use `_` where most releases use ` `. Normalize once so a
+        // single set of patterns handles both shapes without having to
+        // dual-parse. Only allocates when an underscore is actually
+        // present — most inputs skip the replace.
+        let normalized = if lower.contains('_') {
+            Some(lower.replace('_', " "))
+        } else {
+            None
+        };
+        let lower = normalized.as_deref().unwrap_or(lower);
+
+        // SxxExx pattern — most reliable. No follow-set, so a rejected tail
+        // keeps the first number the way the pre-#246 regex did.
+        if let Some(caps) = RE_SXEX.captures(lower) {
+            let s: i32 = caps.get(1)?.as_str().parse().ok()?;
+            return Some(match read_tail(&caps, 2, 3)? {
+                Tail::Range(a, b) => EpisodeSpan {
+                    season: Some(s),
+                    first: a,
+                    last: b,
+                    special: false,
+                },
+                Tail::Single(e) => EpisodeSpan::single(Some(s), e),
+                Tail::Rejected => EpisodeSpan::single(Some(s), caps.get(2)?.as_str().parse().ok()?),
+            });
+        }
+
+        // " - 05" pattern (common in anime releases from SubsPlease, Erai, etc).
+        if let Some(span) = scan_tails(&RE_DASH_EP, lower, 1, 2) {
+            return Some(span);
+        }
+
+        // "E05" or "EP05" or "Ep.05" pattern.
+        if let Some(span) = scan_tails(&RE_E_PREFIX, lower, 1, 2) {
+            return Some(span);
+        }
+
+        // "Episode 05" pattern. No follow-set; a rejected tail keeps the
+        // first number.
+        if let Some(caps) = RE_EPISODE.captures(lower) {
+            return Some(match read_tail(&caps, 1, 2)? {
+                Tail::Range(a, b) => EpisodeSpan {
+                    season: None,
+                    first: a,
+                    last: b,
+                    special: false,
+                },
+                Tail::Single(e) => EpisodeSpan::single(None, e),
+                Tail::Rejected => EpisodeSpan::single(None, caps.get(1)?.as_str().parse().ok()?),
+            });
+        }
+
+        // Explicit `OVA NN` marker — for multi-episode OVA releases
+        // whose filenames have no SxxExx and no leading `- NN -`. Must
+        // fire before the bare-number branches so that `Title - OVA 01.`
+        // resolves to 1 even when an earlier title token (e.g. a year)
+        // would otherwise shadow it. Bare `- OVA.` with no trailing
+        // digit correctly falls through here because RE_OVA_EP requires
+        // a captured 1-3 digit group.
+        if let Some(span) = scan_tails(&RE_OVA_EP, lower, 1, 2) {
+            return Some(EpisodeSpan {
+                special: true,
+                ..span
+            });
+        }
+        // `SP01` / `Special 01` / `OAD 01`, the same shape with the other
+        // marker words.
+        if let Some(span) = scan_tails(&RE_SPECIAL_EP, lower, 1, 2) {
+            return Some(EpisodeSpan {
+                special: true,
+                ..span
+            });
+        }
+
+        // Dot-tokenized bare episode number. This covers older complete-series
+        // packs whose files are shaped `Title.001...` rather than `Title - 001`.
+        if let Some(e) = parse_dot_delimited_episode(lower) {
+            return Some(EpisodeSpan::single(None, e));
+        }
+
+        // Bare-number-before-subtitle fallback. Shape:
+        // `<title> NN - <subtitle>.mkv` — first match wins (subtitle may
+        // contain its own ` <n> - ` run that should NOT shadow the real
+        // episode marker).
+        if let Some(caps) = RE_BARE_NUM_DASH.captures(lower)
+            && let Some(m) = caps.get(1)
+        {
+            if let Some(full) = caps.get(0) {
+                // If what follows the ` - ` is a non-episodic marker
+                // (e.g. `Chihayafuru 2 - OVA - Waga Miyo…`), the
+                // captured `2` is a season/title number, not an
+                // episode. Bail with `None` rather than fall through
+                // to further patterns — the subsequent bare-number
+                // branch would re-capture the same false digit.
+                let rest = &lower[full.end()..];
+                if starts_with_non_episode_marker(rest) {
+                    return None;
+                }
+            }
+            if let Ok(e) = m.as_str().parse::<i32>() {
+                return Some(EpisodeSpan::single(None, e));
+            }
+        }
+
+        // Bare-number-before-bracket fallback for space-delimited packs.
+        // Use the rightmost match so an earlier title token like
+        // `Show 99 (extra) 01` doesn't shadow the actual episode number.
+        if let Some(caps) = RE_BARE_NUM_BRACKET.captures_iter(lower).last()
+            && let Some(m) = caps.get(1)
+            && let Ok(e) = m.as_str().parse::<i32>()
+        {
+            return Some(EpisodeSpan::single(None, e));
+        }
+
+        None
+    }
+
+    fn is_non_episodic_extra(lower: &str) -> bool {
+        // anitomy rejects NUL bytes; nothing real carries them.
+        if lower.contains('\0') {
+            return false;
+        }
+        let elements = anitomy_parse(lower);
+        let title_start = elements
+            .get(ElementCategory::AnimeTitle)
+            .and_then(|t| lower.find(&t.to_ascii_lowercase()))
+            .unwrap_or(0);
+        // Earliest byte offset a keyword may start at to count: right after
+        // the first ` - ` / `_-_` separator, else past the title's first
+        // character (so a title-leading keyword never qualifies).
+        let min_at = lower
+            .find(" - ")
+            .or_else(|| lower.find("_-_"))
+            .map(|i| i + 3)
+            .unwrap_or(title_start + 1);
+        elements
+            .get_all(ElementCategory::AnimeType)
+            .into_iter()
+            .map(|t| t.to_ascii_lowercase())
+            .any(|t| {
+                NON_EPISODIC_ANIME_TYPES.contains(&t.as_str()) && keyword_from(lower, &t, min_at)
+            })
+    }
+
+    fn keyword_from(haystack: &str, keyword: &str, min_at: usize) -> bool {
+        let bytes = haystack.as_bytes();
+        haystack.match_indices(keyword).any(|(at, _)| {
+            let before_ok = at == 0 || !bytes[at - 1].is_ascii_alphanumeric();
+            let end = at + keyword.len();
+            let after_ok = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
+            before_ok && after_ok && at >= min_at
+        })
     }
 }

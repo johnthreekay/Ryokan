@@ -22,7 +22,8 @@
     {
       "name": "[EA]Re_Zero_kara_Hajimeru_Isekai_Seikatsu_4th_04_V2_[1920x1080][HEVC][0E7204DD].mkv",
       "season": null,
-      "episode": null
+      "episode": 4,
+      "note": "release_title file reading (phase 11): a bare number after the title is the episode (#296)"
     },
     {
       "name": "[EA]Re_Zero_kara_Hajimeru_Isekai_Seikatsu_4th_05_[1920x1080][HEVC][E6C47091].mkv",
@@ -97,7 +98,8 @@
     {
       "name": "[EA]Re_Zero_kara_Hajimeru_Isekai_Seikatsu_4th_19_Final_[1920x1080][HEVC][09182181].mkv",
       "season": null,
-      "episode": null
+      "episode": 19,
+      "note": "release_title file reading (phase 11): a bare number after the title is the episode (#296)"
     }
   ]
 }

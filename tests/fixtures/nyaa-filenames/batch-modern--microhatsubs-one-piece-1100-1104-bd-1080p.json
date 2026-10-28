@@ -7,7 +7,8 @@
     {
       "name": "[MicroHatSubs] One Piece 1100 (BD 1080p AV1 Opus) [23BFD554].mkv",
       "season": null,
-      "episode": null
+      "episode": 1100,
+      "note": "release_title file reading (phase 11): a bare number right after the title is the file's episode"
     },
     {
       "name": "[MicroHatSubs] One Piece 1100.5 (BD 1080p AV1 Opus) [88E4F1F0].mkv",
@@ -17,22 +18,26 @@
     {
       "name": "[MicroHatSubs] One Piece 1101 (BD 1080p AV1 Opus) [A8AC2E27].mkv",
       "season": null,
-      "episode": null
+      "episode": 1101,
+      "note": "release_title file reading (phase 11): a bare number right after the title is the file's episode"
     },
     {
       "name": "[MicroHatSubs] One Piece 1102 (BD 1080p AV1 Opus) [1F3754BB].mkv",
       "season": null,
-      "episode": null
+      "episode": 1102,
+      "note": "release_title file reading (phase 11): a bare number right after the title is the file's episode"
     },
     {
       "name": "[MicroHatSubs] One Piece 1103 (BD 1080p AV1 Opus) [E1C099AC].mkv",
       "season": null,
-      "episode": null
+      "episode": 1103,
+      "note": "release_title file reading (phase 11): a bare number right after the title is the file's episode"
     },
     {
       "name": "[MicroHatSubs] One Piece 1104 (BD 1080p AV1 Opus) [6C1AB2D5].mkv",
       "season": null,
-      "episode": null
+      "episode": 1104,
+      "note": "release_title file reading (phase 11): a bare number right after the title is the file's episode"
     }
   ]
 }

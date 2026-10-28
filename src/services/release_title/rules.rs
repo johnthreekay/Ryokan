@@ -213,7 +213,42 @@ impl Ctx<'_> {
             last: last as i32,
             list: Vec::new(),
             rule,
+            tight: true,
+            glued: true,
         }
+    }
+
+    /// Whether the range starting at number `k` is written tight: the
+    /// operator glued on both sides and two digits or more each side.
+    fn tight_from(&self, k: usize) -> bool {
+        let Some(op) = self.next(k) else { return false };
+        let Some(r) = self.next(op) else { return false };
+        let digits = |t: usize| self.num(t).map(|(_, d, _)| d).unwrap_or(0);
+        self.glued_from(k) && digits(k) >= 2 && digits(r) >= 2
+    }
+
+    /// Whether the operator after number `k` is glued to both numbers.
+    fn glued_from(&self, k: usize) -> bool {
+        let Some(op) = self.next(k) else { return false };
+        let Some(r) = self.next(op) else { return false };
+        self.toks[op].kind == Kind::RangeOp
+            && self.toks[op].sep == Sep::None
+            && self.toks[r].sep == Sep::None
+    }
+
+    /// `claim` for a range read from number `k`.
+    fn range_claim(
+        &self,
+        k: usize,
+        first: u32,
+        last: u32,
+        season: Option<u32>,
+        rule: ClaimRule,
+    ) -> EpisodeClaim {
+        let mut claim = self.claim(first, last, season, rule);
+        claim.tight = first == last || self.tight_from(k);
+        claim.glued = first == last || self.glued_from(k);
+        claim
     }
 }
 
@@ -561,6 +596,30 @@ fn episode_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         .or_else(|| marker_number_claim(ctx))
 }
 
+/// Whether a tag's episode run (`S01E05-06`, `S01E01E02E03`, a glued
+/// `S01E05` `-06`) has two digits or more in every number.
+fn tag_run_is_tight(lower: &str, ctx: &Ctx, i: usize) -> bool {
+    let run = lower
+        .split_once('e')
+        .map(|(_, rest)| rest.trim_start_matches('p'))
+        .unwrap_or_default();
+    // The run ends at the first part that is not a number (`-1080p`).
+    let inner = run
+        .split(['-', 'e'])
+        .filter(|p| !p.is_empty())
+        .map(|p| p.split('v').next().unwrap_or(p))
+        .take_while(|p| p.bytes().all(|b| b.is_ascii_digit()))
+        .all(|p| p.len() >= 2);
+    let glued = match ctx.next(i) {
+        Some(op) if ctx.toks[op].kind == Kind::RangeOp && ctx.toks[op].sep == Sep::None => ctx
+            .next(op)
+            .and_then(|r| ctx.num(r))
+            .is_none_or(|(_, d, _)| d >= 2),
+        _ => true,
+    };
+    inner && glued
+}
+
 fn tag_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
     for i in 0..ctx.toks.len() {
         if ctx.skip[i] {
@@ -574,7 +633,9 @@ fn tag_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                 ..
             } => {
                 let (last, _) = ctx.extend_glued(last, i);
-                return Some(ctx.claim(first, last, Some(season), ClaimRule::Tag));
+                let mut claim = ctx.claim(first, last, Some(season), ClaimRule::Tag);
+                claim.tight = first == last || tag_run_is_tight(&ctx.toks[i].lower, ctx, i);
+                return Some(claim);
             }
             // `S01 E05`, `S01 E27-E51`, `S6.E1-E2`, `S01.E.01`.
             Class::SeasonShort(season) => {
@@ -620,7 +681,16 @@ fn dash_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         if let Some((b, m)) = ctx.range_after(k, true)
             && ctx.boundary_after(m)
         {
-            return Some(ctx.claim(a, b, season, ClaimRule::Dash));
+            // `Show - 1-5 - 07`: a digit pair in the episode title; the
+            // next dash holds the episode.
+            let later_episode = ctx.next(m).is_some_and(|d2| {
+                ctx.toks[d2].kind == Kind::SegDash
+                    && ctx.next(d2).is_some_and(|e| ctx.episode_num(e).is_some())
+            });
+            if !later_episode {
+                return Some(ctx.range_claim(k, a, b, season, ClaimRule::Dash));
+            }
+            continue;
         }
         if ctx.boundary_after(k) {
             // `Show 01 - 119 [Batch]`: a zero-padded number before the
@@ -629,10 +699,14 @@ fn dash_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                 && let Some((left, digits, _)) = ctx.num(p)
                 && digits >= 2
                 && ctx.toks[p].text.starts_with('0')
+                && left >= 1
                 && left < a
                 && ctx.prev(p).is_some_and(|w| ctx.toks[w].is_word())
             {
-                return Some(ctx.claim(left, a, season, ClaimRule::Dash));
+                let mut claim = ctx.claim(left, a, season, ClaimRule::Dash);
+                claim.tight = false;
+                claim.glued = false;
+                return Some(claim);
             }
             return Some(ctx.claim(a, a, season, ClaimRule::Dash));
         }
@@ -663,7 +737,8 @@ fn prefix_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
             }
             if let Some(a) = ctx.episode_num(k) {
                 let last = ctx.range_after(k, true).map(|(b, _)| b).unwrap_or(a);
-                return Some(ctx.claim(
+                return Some(ctx.range_claim(
+                    k,
                     a,
                     last,
                     ctx.season_marker_before(i),
@@ -705,7 +780,13 @@ fn episode_word_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                 return Some(claim);
             }
             let last = ctx.range_after(k, true).map(|(b, _)| b).unwrap_or(a);
-            return Some(ctx.claim(a, last, ctx.season_marker_before(i), ClaimRule::EpisodeWord));
+            return Some(ctx.range_claim(
+                k,
+                a,
+                last,
+                ctx.season_marker_before(i),
+                ClaimRule::EpisodeWord,
+            ));
         }
         // `#957`.
         if tok.kind == Kind::Hash
@@ -725,7 +806,7 @@ fn episode_word_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                 .next(end)
                 .is_some_and(|c| ctx.class[c] == Class::CjkEpisode)
             {
-                return Some(ctx.claim(a, last, None, ClaimRule::EpisodeWord));
+                return Some(ctx.range_claim(k, a, last, None, ClaimRule::EpisodeWord));
             }
         }
         // `04 of 12`.
@@ -759,7 +840,7 @@ fn special_number_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         {
             let (last, end) = ctx.range_after(k, true).unwrap_or((a, k));
             if ctx.boundary_after(end) {
-                return Some(ctx.claim(a, last, None, ClaimRule::SpecialNumber));
+                return Some(ctx.range_claim(k, a, last, None, ClaimRule::SpecialNumber));
             }
         }
     }
@@ -793,7 +874,7 @@ fn bracket_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         // `[2026]` too.
         let season = ctx.season_marker_before(g.open);
         if let Some((b, _)) = ctx.range_after(first, true) {
-            return Some(ctx.claim(a, b, season, ClaimRule::Bracket));
+            return Some(ctx.range_claim(first, a, b, season, ClaimRule::Bracket));
         }
         let rest_ok = content
             .iter()
@@ -838,7 +919,7 @@ fn bare_range_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         if let Some((b, m)) = ctx.range_after(k, false)
             && ctx.boundary_after(m)
         {
-            return Some(ctx.claim(a, b, None, ClaimRule::BareRange));
+            return Some(ctx.range_claim(k, a, b, None, ClaimRule::BareRange));
         }
     }
     None
@@ -1416,10 +1497,13 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
         if digits > 4 || is_year(value, digits) {
             continue;
         }
-        // A marked number (`+ Ep. 0`, `#5`) is not the title's.
+        // A marked number (`+ Ep. 0`, `#5`, `Part 2`, `Season 2`, `Vol 3`)
+        // or the right side of a pair (`06-05`) is not the title's.
         if ctx.prev(k).is_some_and(|p| {
-            ctx.class[p] == Class::EpisodeWord
-                || matches!(ctx.toks[p].kind, Kind::Hash | Kind::Plus)
+            matches!(
+                ctx.class[p],
+                Class::EpisodeWord | Class::PartWord | Class::SeasonWord | Class::VolWord
+            ) || matches!(ctx.toks[p].kind, Kind::Hash | Kind::Plus | Kind::RangeOp)
         }) {
             continue;
         }
@@ -1434,7 +1518,9 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
             Some(j) => match ctx.toks[j].kind {
                 Kind::Open(_) => true,
                 Kind::SegDash => ctx.next(j).is_some_and(|w| ctx.toks[w].is_word()),
-                _ => false,
+                // Scene names put metadata right after it:
+                // `Dragon.Ball.043.V2.480p.DBox`.
+                _ => digits >= 2 && ctx.class[j].is_meta(),
             },
         };
         if hit {

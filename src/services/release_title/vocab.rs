@@ -480,9 +480,10 @@ fn tag(lower: &str) -> Option<Class> {
     }
     let mut parts = after.split('-');
     let first_part = parts.next()?;
-    // `S01E01E02`: a glued second episode.
-    if let Some((a, b)) = first_part.split_once('e') {
-        let (a, b) = (digits(a)?, digits(b)?);
+    // `S01E01E02`, `S01E01E02E03`: glued further episodes.
+    if first_part.contains('e') {
+        let numbers: Vec<u32> = first_part.split('e').map(digits).collect::<Option<_>>()?;
+        let (&a, &b) = (numbers.first()?, numbers.last()?);
         return Some(Class::Tag {
             season,
             first: a,

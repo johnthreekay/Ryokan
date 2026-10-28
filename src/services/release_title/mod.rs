@@ -69,6 +69,13 @@ pub struct EpisodeClaim {
     /// A non-contiguous list (`Episode 27,69,76`); empty otherwise.
     pub list: Vec<i32>,
     pub rule: ClaimRule,
+    /// A range written the way a file name writes one: glued to its
+    /// operator, two digits or more on each side (`05-06`, not `05 - 06`
+    /// or `5-6`). Always true for a single episode.
+    pub tight: bool,
+    /// The range's operator is glued to both numbers (`5-6`, `05-06`),
+    /// not spaced (`05 - 06`). Always true for a single episode.
+    pub glued: bool,
 }
 
 impl EpisodeClaim {
@@ -255,6 +262,70 @@ impl ParsedTitle {
     pub fn conflicts_with_season(&self, expected: i32) -> bool {
         let expected = expected.max(1);
         !self.seasons.numbers.is_empty() && !self.seasons.numbers.contains(&expected)
+    }
+
+    /// What one file's name holds, the import's question: the episode
+    /// claim (a loose range keeps its first number, a run longer than
+    /// [`file_mode::MAX_FILE_SPAN`] is no file), else a bare number right
+    /// after the title (a file name has no series context to doubt it),
+    /// never an extra, a half episode or a bare special.
+    pub fn file_span(&self) -> Option<file_mode::EpisodeSpan> {
+        if self.extra || self.half_episode {
+            return None;
+        }
+        if let Some(claim) = &self.episodes {
+            let first = claim.list.first().copied().unwrap_or(claim.first);
+            // A loose range reads its own first number where the old file
+            // branches kept it: a tag or `Episode 5-6` (no follow-set), or
+            // a spaced pair (`- 05 - 06`, the dash slot's own number). A
+            // glued malformed run in any other slot (`- 5-10`) names no
+            // file. A run longer than one file holds is a pack.
+            let keeps_first =
+                matches!(claim.rule, ClaimRule::Tag | ClaimRule::EpisodeWord) || !claim.glued;
+            let last = if !claim.list.is_empty() || claim.last < first {
+                first
+            } else if !claim.tight {
+                if !keeps_first {
+                    return None;
+                }
+                first
+            } else if claim.last - first + 1 > file_mode::MAX_FILE_SPAN {
+                // A tag keeps its own episode (`S01E01-02-1080`); any other
+                // over-long run names no file.
+                if claim.rule != ClaimRule::Tag {
+                    return None;
+                }
+                first
+            } else {
+                claim.last
+            };
+            // Only a tag names a file's season: the import and the scanner
+            // read `S3 - 01` as a relative episode with no season.
+            let season = claim.season.filter(|_| claim.rule == ClaimRule::Tag);
+            return Some(file_mode::EpisodeSpan {
+                season,
+                first,
+                last,
+                special: self.file_special(),
+            });
+        }
+        // `Chihayafuru 2 - OVA - ...`: a bare special names no episode,
+        // and the title's own number is not one.
+        if self.special {
+            return None;
+        }
+        self.ambiguous_number.map(|n| file_mode::EpisodeSpan {
+            season: None,
+            first: n,
+            last: n,
+            special: self.file_special(),
+        })
+    }
+
+    /// A file name's special flag: a marker that is part of the title
+    /// before the first dash (`Kekkon Special - 01`) is the name.
+    fn file_special(&self) -> bool {
+        self.special && !self.special_from_title_word
     }
 
     /// The single season the title names, if exactly one.
