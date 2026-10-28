@@ -17,9 +17,9 @@ use std::collections::{HashMap, HashSet};
 use crate::models::grabbed_torrents::VerificationDetail;
 use crate::services::auto_search::{
     distinctive_overlap_ratio, is_generic_title_token, is_media_filename, normalize_title,
-    parse_release_season, token_set,
+    token_set,
 };
-use crate::services::library_link;
+use crate::services::{library_link, release_title};
 
 /// A media file "names something" when this many content tokens survive
 /// the noise filters.
@@ -426,7 +426,7 @@ pub fn assess(input: &VerdictInput<'_>) -> Verdict {
     if input.expected_season > 0 {
         let explicit: Vec<i32> = media
             .iter()
-            .map(|f| parse_release_season(f))
+            .filter_map(|f| release_title::parse(f).season_hint())
             .filter(|s| *s > 0)
             .collect();
         if !explicit.is_empty() && explicit.iter().all(|s| *s != input.expected_season) {

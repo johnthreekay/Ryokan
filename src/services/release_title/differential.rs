@@ -30,7 +30,9 @@ use super::parse;
 /// - `numbers.loose`: the search gates (`classify_match`, the interactive
 ///   filter, scoring, the Wanted episode-set selection) read episodes
 ///   through `for_series`, which is this reading plus the series' name.
-const MIGRATED_LENSES: &[&str] = &["numbers.loose"];
+/// - `season`: the season check (`conflicts_with_season`) in the same
+///   gates, and the misgrab verdict's season note.
+const MIGRATED_LENSES: &[&str] = &["numbers.loose", "season"];
 
 pub(super) fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")

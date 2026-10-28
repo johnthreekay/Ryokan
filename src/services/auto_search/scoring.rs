@@ -19,9 +19,7 @@ use crate::services::scoring::ScoreComponent;
 use crate::services::seadex;
 use crate::services::source::{self, ClassificationResult, Resolution, Source};
 
-use super::{
-    MatchKind, SearchTarget, distinctive_overlap_ratio, normalize_title, season_mismatch, token_set,
-};
+use super::{MatchKind, SearchTarget, distinctive_overlap_ratio, normalize_title, token_set};
 use crate::services::release_title::{self, SeriesAnchors};
 
 /// Misgrab guardrails: a fuzzy title match loses to an otherwise-equal
@@ -321,7 +319,8 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
     }
 
     // Season mismatch penalty (explicit season markers like S03, "3rd Season")
-    if season_mismatch(&result.title, expected_season) {
+    let release = release_title::parse(&result.title);
+    if release.conflicts_with_season(expected_season) {
         add(
             &mut parts,
             "Season Mismatch",
@@ -369,9 +368,7 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
             } else {
                 add(&mut parts, "Single-Episode Target", 10, None);
             }
-            let parsed = release_title::parse(&result.title)
-                .for_series(anchors)
-                .episodes;
+            let parsed = release.for_series(anchors).episodes;
             let relative_match = parsed.contains(ep);
             let absolute_match =
                 absolute_offset > 0 && parsed.contains(&ep.saturating_add(absolute_offset));

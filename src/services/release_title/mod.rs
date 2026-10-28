@@ -30,6 +30,7 @@ use std::collections::HashSet;
 
 pub use crate::services::media::ReleaseRevision;
 pub use anchors::SeriesAnchors;
+pub use vocab::roman_value;
 
 /// Ranges wider than this name no slots (`1-1000` mega-batches); the
 /// release is still a batch.
@@ -170,6 +171,14 @@ pub fn parse(title: &str) -> ParsedTitle {
     rules::parse(title)
 }
 
+/// The season a series name advertises (`2nd Season`, `Season 3`,
+/// `Made in Abyss III`, `Part 2`), read the way a release title is. For
+/// AniList titles and aliases: the auto-search's expected season and the
+/// RSS matcher's series season both come from here.
+pub fn season_marker(name: &str) -> Option<i32> {
+    parse(name).season_hint().filter(|s| *s > 0)
+}
+
 impl ParsedTitle {
     /// A multi-episode pack: a batch keyword, a claim spanning several
     /// episodes (unless the title names one file), a season or volume
@@ -277,5 +286,35 @@ impl ParsedTitle {
                 via: ReadingSource::None,
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{roman_value, season_marker};
+
+    #[test]
+    fn a_series_name_advertises_its_season() {
+        assert_eq!(season_marker("Kusuriya no Hitorigoto 2nd Season"), Some(2));
+        assert_eq!(season_marker("Shingeki no Kyojin Season 3 Part 2"), Some(3));
+        assert_eq!(season_marker("Made in Abyss III"), Some(3));
+        assert_eq!(season_marker("Mob Psycho 100 II"), Some(2));
+        assert_eq!(season_marker("[Oshi no Ko] 2nd Season"), Some(2));
+        assert_eq!(season_marker("86: Eighty Six Part 2"), Some(2));
+        assert_eq!(season_marker("青之箱 第二季"), Some(2));
+        // A title's own number, a lone Part 1 and no marker name no season.
+        assert_eq!(season_marker("Chihayafuru 2"), None);
+        assert_eq!(season_marker("Steins;Gate 0"), None);
+        assert_eq!(season_marker("Kimetsu no Yaiba: Yuukaku-hen"), None);
+        assert_eq!(season_marker("Lupin III: Part 6"), Some(6));
+    }
+
+    #[test]
+    fn roman_numerals_decode_in_any_case() {
+        assert_eq!(roman_value("iv"), Some(4));
+        assert_eq!(roman_value("X"), Some(10));
+        assert_eq!(roman_value("I"), Some(1));
+        assert_eq!(roman_value("XI"), None);
+        assert_eq!(roman_value("vix"), None);
     }
 }

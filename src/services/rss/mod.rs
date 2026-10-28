@@ -11,7 +11,9 @@ use crate::{
     models::log::LogCategory,
     models::{config, episode_tags, monitoring, rss, series},
     services::source::{self, ClassificationResult, Resolution, Source},
-    services::{auto_search, logger, media, monitoring as monitoring_service, quality},
+    services::{
+        auto_search, logger, media, monitoring as monitoring_service, quality, release_title,
+    },
 };
 
 pub mod feed;
@@ -327,7 +329,7 @@ impl SeriesMeta {
 
         let season_num = aliases
             .iter()
-            .find_map(|alias| parse_season_number(&auto_search::normalize_title(alias)));
+            .find_map(|alias| release_title::season_marker(alias));
 
         let mut expanded = aliases.clone();
         let mut core_aliases = Vec::new();

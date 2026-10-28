@@ -328,6 +328,24 @@ fn word_number(w: &str) -> Option<u32> {
     })
 }
 
+/// Value of a Roman numeral `I` to `X`, in any case. Callers bound the
+/// range they accept (a season marker is `II`..`IX`).
+pub fn roman_value(s: &str) -> Option<u32> {
+    Some(match s.to_ascii_uppercase().as_str() {
+        "I" => 1,
+        "II" => 2,
+        "III" => 3,
+        "IV" => 4,
+        "V" => 5,
+        "VI" => 6,
+        "VII" => 7,
+        "VIII" => 8,
+        "IX" => 9,
+        "X" => 10,
+        _ => return None,
+    })
+}
+
 /// `Second` in `Second Season`; only read before a season word.
 pub(super) fn word_ordinal(w: &str) -> Option<u32> {
     Some(match w {
@@ -553,16 +571,14 @@ pub(super) fn classify(tok: &Tok) -> Class {
     }
     let lower = tok.lower.as_str();
     let text = tok.text.as_str();
-    match text {
-        "PROPER" | "REPACK" | "RERIP" => return Class::Revision,
-        "II" => return Class::Roman(2),
-        "III" => return Class::Roman(3),
-        "IV" => return Class::Roman(4),
-        "VI" => return Class::Roman(6),
-        "VII" => return Class::Roman(7),
-        "VIII" => return Class::Roman(8),
-        "IX" => return Class::Roman(9),
-        _ => {}
+    if matches!(text, "PROPER" | "REPACK" | "RERIP") {
+        return Class::Revision;
+    }
+    // Uppercase `II`..`IX` only: `V` and `X` are letters too often.
+    if text.bytes().all(|b| b.is_ascii_uppercase())
+        && let Some(n) = roman_value(text).filter(|n| (2..=9).contains(n) && *n != 5)
+    {
+        return Class::Roman(n);
     }
     match lower {
         "batch" | "complete" | "completa" | "completo" | "mini-batch" => return Class::Batch,

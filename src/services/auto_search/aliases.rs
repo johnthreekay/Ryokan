@@ -17,7 +17,7 @@ use crate::services::release_title::{self, SeriesAnchors};
 
 use super::pack_detection::is_pack_candidate_relation;
 use super::provenance::{AliasMatch, MatchKind};
-use super::{SearchTarget, episode_match, season_mismatch};
+use super::{SearchTarget, episode_match};
 
 pub fn normalize_title(input: &str) -> String {
     let lower = input.to_lowercase();
@@ -269,22 +269,6 @@ fn ordinal_word_to_n(word: &str) -> Option<u32> {
     }
 }
 
-fn roman_to_n(roman: &str) -> Option<u32> {
-    match roman.to_ascii_uppercase().as_str() {
-        "I" => Some(1),
-        "II" => Some(2),
-        "III" => Some(3),
-        "IV" => Some(4),
-        "V" => Some(5),
-        "VI" => Some(6),
-        "VII" => Some(7),
-        "VIII" => Some(8),
-        "IX" => Some(9),
-        "X" => Some(10),
-        _ => None,
-    }
-}
-
 fn n_to_roman(n: u32) -> Option<&'static str> {
     match n {
         1 => Some("I"),
@@ -346,14 +330,14 @@ fn extract_sequel_position(alias: &str) -> Option<(String, u32)> {
     }
     if let Some(cap) = RE_PART_ROMAN.captures(alias) {
         let base = cap.get(1)?.as_str().trim();
-        let n = roman_to_n(cap.get(2)?.as_str())?;
+        let n = release_title::roman_value(cap.get(2)?.as_str())?;
         if !base.is_empty() {
             return Some((base.to_string(), n));
         }
     }
     if let Some(cap) = RE_ROMAN_TAIL.captures(alias) {
         let base = cap.get(1)?.as_str().trim();
-        let n = roman_to_n(cap.get(2)?.as_str())?;
+        let n = release_title::roman_value(cap.get(2)?.as_str())?;
         // RE_ROMAN_TAIL only captures II..X, so n ≥ 2 here.
         if !base.is_empty() {
             return Some((base.to_string(), n));
@@ -440,7 +424,7 @@ pub fn sequel_variant_aliases(aliases: &[String]) -> Vec<String> {
 ///
 /// The motivating bug: auto-searching for Jujutsu Kaisen S1 E6 grabbed a
 /// release titled `[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen -
-/// 06`, which is actually an S2/S3 arc. The existing season_mismatch()
+/// 06`, which is actually an S2/S3 arc. The season check (`ParsedTitle::conflicts_with_season`)
 /// heuristic only catches explicit `S02` / `Season 2` markers; an arc
 /// title like "Shimetsu Kaiyuu" slips through. But AniList knows that
 /// "Jujutsu Kaisen: Shimetsu Kaiyuu" is a SEQUEL of JJK S1 — so we can
@@ -1075,13 +1059,12 @@ pub fn classify_match(
         SearchTarget::Single => Some(alias_match),
         SearchTarget::Episode(target_ep) => {
             // Season check: reject if release has an explicit season that doesn't match
-            if season_mismatch(title, expected_season) {
+            let release = release_title::parse(title);
+            if release.conflicts_with_season(expected_season) {
                 return None;
             }
 
-            let parsed = release_title::parse(title)
-                .for_series(&sibling_precompute.anchors)
-                .episodes;
+            let parsed = release.for_series(&sibling_precompute.anchors).episodes;
             if parsed.is_empty() {
                 return None;
             }
@@ -1444,7 +1427,7 @@ mod tests {
         // Regression: auto-searching JJK S1 E6 used to grab
         // `[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06`
         // because the sibling arc title has no explicit "S02"/"Season 2"
-        // marker for `season_mismatch` to catch, but "Jujutsu Kaisen" is
+        // marker for the season check to catch, but "Jujutsu Kaisen" is
         // a substring of the release. The sibling check resolves this:
         // the sibling alias "Jujutsu Kaisen: Shimetsu Kaiyuu" has 4
         // overlapping tokens with the release vs the target's 2, so the
@@ -1578,7 +1561,7 @@ mod tests {
             &own,
             &no_siblings,
             &SearchTarget::Episode(9),
-            // `expected_season` is the season_mismatch target, not the
+            // `expected_season` is the season check's target, not the
             // numbering target — this is 3 because we're asking for S3.
             3,
             false,

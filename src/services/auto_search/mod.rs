@@ -40,11 +40,9 @@ pub use provenance::{AliasMatch, MatchKind, MatchPhase, MatchProvenance, history
 pub(crate) use release_parse::is_media_filename;
 pub use release_parse::{
     has_selective_discriminator, infer_season_from_detail, parse_release_numbers,
-    parse_release_season, pick_wanted_file_indices,
+    pick_wanted_file_indices,
 };
-use release_parse::{
-    normalize_subtitle, season_mismatch, trailing_subtitle_of, within_episode_slack,
-};
+use release_parse::{normalize_subtitle, trailing_subtitle_of, within_episode_slack};
 use scoring::{
     apply_cf_seadex_overlay, apply_cf_seadex_overlay_with_breakdown, rescore_for_auto_search,
     rescore_for_auto_search_with_breakdown,
@@ -1306,7 +1304,7 @@ struct AutoQueryCtx<'a> {
     /// title-based check is strictly inferior. Without this bypass,
     /// a smol/neoDESU-style release titled `Monogatari (Season 9)`
     /// would be rejected for a Kizumonogatari Part 2 target because
-    /// `parse_release_season` would see "Season 9" and disagree
+    /// the season check would see "Season 9" and disagree
     /// with the Part-2 expected season.
     seadex_hashes: &'a HashSet<String>,
     /// #23 — Nyaa uploader name to restrict searches to. Goes straight
@@ -1377,7 +1375,7 @@ struct InteractiveQueryCtx<'a> {
     /// See the note on `AutoQueryCtx::seadex_hashes`. The interactive
     /// path's consequences for failing the bypass are more severe
     /// than the auto path: `run_queries_interactive` applies
-    /// `season_mismatch` *unconditionally*, including for Single
+    /// the season check *unconditionally*, including for Single
     /// (movie) targets, where the auto path's `matches_target`
     /// skips it. That's why the smol Kizumonogatari II release
     /// vanished from interactive search even though auto search
@@ -1814,7 +1812,7 @@ fn apply_interactive_filter_and_push(
     }
     // SeaDex trusts its AniList-ID-based curation over any title
     // heuristic. If this hash is in the set, skip all alias / season /
-    // episode checks below — the unconditional `season_mismatch` in
+    // episode checks below — the unconditional season check in
     // particular drops releases like smol's `Monogatari (Season 9)`
     // for a Kizumonogatari Part 2 target, even though SeaDex has
     // already confirmed the AniList ID match.
@@ -1851,7 +1849,8 @@ fn apply_interactive_filter_and_push(
         return;
     }
     // Season check: reject results clearly from a different season
-    if season_mismatch(&result.title, ctx.expected_season) {
+    let release = release_title::parse(&result.title);
+    if release.conflicts_with_season(ctx.expected_season) {
         return;
     }
     // Episode check for single-episode targets (allow batches through).
@@ -1864,7 +1863,7 @@ fn apply_interactive_filter_and_push(
     if let SearchTarget::Episode(target_ep) = ctx.target
         && !result.is_batch
     {
-        let parsed = release_title::parse(&result.title)
+        let parsed = release
             .for_series(ctx.sibling_precompute.anchors())
             .episodes;
         if !parsed.is_empty() && !episode_match(&parsed, *target_ep, ctx.absolute_offset) {
