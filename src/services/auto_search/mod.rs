@@ -15,8 +15,6 @@ use crate::services::{
     release_title::{self, SeriesAnchors},
 };
 
-// ── Pre-compiled regexes for parse_release_numbers ─────────────────────────
-
 mod aliases;
 mod pack_detection;
 mod provenance;
@@ -39,8 +37,7 @@ pub use pack_detection::{
 pub use provenance::{AliasMatch, MatchKind, MatchPhase, MatchProvenance, history_summary};
 pub(crate) use release_parse::is_media_filename;
 pub use release_parse::{
-    has_selective_discriminator, infer_season_from_detail, parse_release_numbers,
-    pick_wanted_file_indices,
+    has_selective_discriminator, infer_season_from_detail, pick_wanted_file_indices,
 };
 use release_parse::{normalize_subtitle, trailing_subtitle_of, within_episode_slack};
 use scoring::{
@@ -553,7 +550,7 @@ pub(crate) fn select_episode_set_hits(
         .filter(|r| !r.is_batch)
         .filter_map(|result| {
             // The series-aware reading: `Chihayafuru 2 - 05v2` is episode
-            // 5 (the loose `parse_release_numbers` read 2-5), a bare
+            // 5 (the old loose reader read 2-5), a bare
             // number after the series' name counts, a special of a TV
             // series is no wanted episode, and a run longer than one
             // file holds is a pack, not a hit.

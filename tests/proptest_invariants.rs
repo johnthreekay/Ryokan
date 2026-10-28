@@ -22,7 +22,6 @@
 //! file builds as a normal integration test.
 
 use proptest::prelude::*;
-use ryokan::services::auto_search::parse_release_numbers;
 use ryokan::services::custom_formats::{compile_from_json, total_cf_score_for_release};
 use ryokan::services::nyaa::{SearchOptions, SearchResult};
 use ryokan::services::quality::nyaa_categories_for_format;
@@ -331,59 +330,15 @@ proptest! {
 
 // ─── parser-layer fuzz invariants ─────────────────────────────────
 //
-// `services::auto_search::parse_release_numbers` and
-// `services::source_filename::classify_filename` are pure parsers that
-// take arbitrary release-title strings off-the-wire. The most
+// `services::source_filename::classify_filename` is a pure parser that
+// takes arbitrary release-title strings off-the-wire (`release_title`'s
+// own fuzz invariants are further down). The most
 // valuable property test for each is "doesn't panic on any input"
 // — random byte sequences, trolling Unicode, deeply-nested brackets,
 // pathological lengths. Plus a few targeted invariants that the
 // parsers' doc comments imply.
 
 proptest! {
-    /// `parse_release_numbers` must never panic. Fuzzes the public
-    /// release-title parser with arbitrary strings; if the regex
-    /// engine, range parsing, or bracket-strip ever overflows /
-    /// out-of-bounds / divides-by-zero on a hostile input, this
-    /// catches it.
-    #[test]
-    fn parse_release_numbers_never_panics_on_any_input(
-        title in ".{0,200}",
-    ) {
-        let _ = parse_release_numbers(&title);
-    }
-
-    /// Stripping bracketed metadata is the documented behavior:
-    /// "[1080p]" / "(2024)" / "{tag}" inside the title must be
-    /// ignored before number extraction. Pin that strict equivalence
-    /// — adding bracketed content around a parseable core must not
-    /// change the parsed episode set.
-    #[test]
-    fn parse_release_numbers_ignores_bracketed_content(
-        episode in 1_i32..=300,
-        bracket_payload in "[a-zA-Z0-9 \\.x]{0,40}",
-    ) {
-        let bare = format!("Show - {episode:02}");
-        let bracketed = format!("[Group] Show - {episode:02} [{bracket_payload}]");
-        let bare_set = parse_release_numbers(&bare);
-        let bracketed_set = parse_release_numbers(&bracketed);
-        prop_assert_eq!(
-            bare_set,
-            bracketed_set,
-            "bracketed metadata must not affect the parsed episode set"
-        );
-    }
-
-    /// Determinism: two calls with the same input return the same
-    /// output. Defends against accidental introduction of internal
-    /// state (a once_cell that gets primed differently across calls,
-    /// or thread-local mutability).
-    #[test]
-    fn parse_release_numbers_is_deterministic(title in ".{0,200}") {
-        let a = parse_release_numbers(&title);
-        let b = parse_release_numbers(&title);
-        prop_assert_eq!(a, b);
-    }
-
     /// **Disabled: `classify_filename` has a memory bug in anitomy's
     /// C++ FFI** that proptest reliably triggers at ~2000+ cases,
     /// even on ASCII-only inputs. The crash surfaces as either

@@ -2,7 +2,6 @@
 //! Roman numerals, part identifiers, subtitle extraction, media-file
 //! detection, season-mismatch rejection.
 
-use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use regex_lite::Regex;
@@ -11,93 +10,6 @@ use crate::services::anilist::AnimeDetail;
 use crate::services::release_title;
 
 use super::collect_aliases;
-
-// ── Pre-compiled regexes ───────────────────────────────────────────────
-static RE_EPISODE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
-        // S01E05 style
-        Regex::new(r"s\d{1,2}e(\d{1,4})").unwrap(),
-        // E05 / Ep05 / Ep.05 style
-        Regex::new(r"(?:^|[\s._\-])e(?:p\.?)?(\d{1,4})(?:v\d)?(?:\s|\.|\[|\(|$)").unwrap(),
-        // " - 05" style (common for fansubs)
-        Regex::new(r"(?:^|\s)-\s*(\d{1,4})(?:v\d+)?(?:\s|\.|\[|\(|$)").unwrap(),
-        // "Episode 05"
-        Regex::new(r"episode\s*(\d{1,4})").unwrap(),
-    ]
-});
-static RE_RANGE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:^|[\s._\-])(\d{1,3})\s*[-~]\s*(\d{1,3})(?:v\d+)?(?:\s|\.|\[|\(|$)").unwrap()
-});
-
-fn is_noise_number(n: i32) -> bool {
-    // Year range only. Resolution values (480/576/720/1080/2160) and
-    // codec markers (264/265) used to live here as belt-and-suspenders
-    // protection, but `parse_release_numbers` already strips bracketed
-    // and parenthesized content (where every well-formed release puts
-    // its resolution / codec tags) before running these regexes — so
-    // an unbracketed `1080` *can* only be a real episode number, e.g.
-    // One Piece 1080. Filtering it out as "noise" was silently making
-    // those specific episodes ungrabbable for long-running shows. The
-    // 1900..=2100 year range stays because release titles legitimately
-    // carry an unbracketed year token (`Show 2024 BD`) that the dash-
-    // number regex would otherwise capture as an episode.
-    (1900..=2100).contains(&n)
-}
-
-pub fn parse_release_numbers(title: &str) -> HashSet<i32> {
-    let lower = title.to_lowercase();
-    let mut numbers = HashSet::new();
-
-    // Strip bracketed content first to avoid matching metadata like [1080p] or (2024)
-    let stripped = {
-        let mut out = String::with_capacity(lower.len());
-        let mut depth = 0i32;
-        for ch in lower.chars() {
-            match ch {
-                '[' | '(' | '{' => depth += 1,
-                ']' | ')' | '}' => depth = (depth - 1).max(0),
-                _ if depth > 0 => continue,
-                _ => out.push(ch),
-            }
-        }
-        out
-    };
-
-    for re in RE_EPISODE_PATTERNS.iter() {
-        for caps in re.captures_iter(&stripped) {
-            if let Some(value) = caps.get(1).and_then(|m| m.as_str().parse::<i32>().ok())
-                && !is_noise_number(value)
-            {
-                numbers.insert(value);
-            }
-        }
-    }
-
-    // Range pattern for batch detection (e.g. "01-12", "01~24")
-    // Only add range numbers, not used as the sole episode match.
-    if let Some(caps) = RE_RANGE.captures(&stripped) {
-        let start = caps
-            .get(1)
-            .and_then(|m| m.as_str().parse::<i32>().ok())
-            .unwrap_or(0);
-        let end = caps
-            .get(2)
-            .and_then(|m| m.as_str().parse::<i32>().ok())
-            .unwrap_or(0);
-        if start > 0
-            && end >= start
-            && end - start <= 200
-            && !is_noise_number(start)
-            && !is_noise_number(end)
-        {
-            for value in start..=end {
-                numbers.insert(value);
-            }
-        }
-    }
-
-    numbers
-}
 
 /// Returns 0 if no season indicator is found (treated as season 1 during matching).
 pub fn infer_season_from_detail(detail: &AnimeDetail) -> i32 {
@@ -193,9 +105,9 @@ pub fn extract_part_number(detail: &AnimeDetail) -> Option<i32> {
 ///
 /// 1. **Part number** via [`extract_part_number`]. Handles trilogies
 ///    and multi-part OVAs where AniList titles end in "II", "III",
-///    "Part 2", etc. File selection is done by parsing episode-like
-///    numbers from each filename (via [`parse_release_numbers`]) and
-///    keeping files whose numbers contain the target part.
+///    "Part 2", etc. File selection reads the episodes each file name
+///    holds (`release_title`) and keeps files whose episodes contain the
+///    target part.
 ///
 /// 2. **Positive subtitle match** via [`extract_season_subtitle`].
 ///    Handles franchise megapacks where the target itself carries a
@@ -239,12 +151,11 @@ pub fn pick_wanted_file_indices(filenames: &[String], detail: &AnimeDetail) -> O
 /// as S09E01/S09E02/S09E03) and similar per-episode layouts. Breaks
 /// for releases where a single "part" spans multiple files — e.g.
 /// multi-file BDMV rips of a single film, or "Part 2 E13-E24" —
-/// because `parse_release_numbers(filename).contains(&part)` then
-/// matches the wrong files entirely. Rebuild of Evangelion 1.0/2.0/3.0
-/// happens to fall through to `None` for a different reason:
-/// `parse_release_numbers` doesn't capture `2.22`-style decimal parts,
-/// so the match set is empty and the caller keeps the whole pack —
-/// which is the safe outcome.
+/// because a file's episodes containing `part` then matches the wrong
+/// files entirely. Rebuild of Evangelion 1.0/2.0/3.0 happens to fall
+/// through to `None` for a different reason: a `2.22`-style decimal is
+/// no episode, so the match set is empty and the caller keeps the whole
+/// pack, which is the safe outcome.
 ///
 /// Returns `None` when:
 /// - no files match (keep-everything is safer than picking wrong),
@@ -285,7 +196,11 @@ fn pick_by_part_number(
             continue;
         }
         media_count += 1;
-        if parse_release_numbers(name).contains(&part) {
+        let base = name.rsplit('/').next().unwrap_or(name);
+        if release_title::parse(base)
+            .release_episodes()
+            .contains(&part)
+        {
             matches.push(idx);
         }
     }
@@ -479,7 +394,7 @@ pub(super) fn normalize_subtitle(s: &str) -> String {
     out.trim().to_string()
 }
 
-/// Is this filename likely a media file that `parse_release_numbers`
+/// Is this filename likely a media file that `release_title`
 /// should even be run against? Used by [`pick_wanted_file_indices`] to
 /// stop non-media files (NFOs, subtitles, samples) from inflating the
 /// media count or being accidentally kept/skipped.
@@ -596,7 +511,7 @@ mod tests {
     #[test]
     fn pick_wanted_file_indices_narrows_smol_monogatari_pack() {
         // Simulates the smol Monogatari megapack. The filenames carry
-        // standard S09EXX numbering that `parse_release_numbers` picks
+        // standard S09EXX numbering that `release_title` picks
         // up, and the target's part number (from the AniList title's
         // Roman numeral) selects the right file.
         let files = vec![
@@ -654,7 +569,7 @@ mod tests {
             "[Group] Show II (BD 1080p) - sample.mkv".to_string(),
         ];
         let d = detail_with_titles("Show II", "Show II");
-        // Neither file carries an episode number, so parse_release_numbers
+        // Neither file carries an episode number, so `release_title`
         // returns an empty set — no matches, None returned.
         assert_eq!(pick_wanted_file_indices(&files, &d), None);
     }
@@ -849,47 +764,4 @@ mod tests {
     // TYBW / Demon Slayer / Made in Abyss corpus so a future change that
     // weakens the parsers shows up as a red test, not as a wrong-cour
     // grab reported by a user.
-
-    #[test]
-    fn parse_release_numbers_picks_up_long_running_episode_1080() {
-        // Bracket-stripping removes [1080p]; the dash-number regex then
-        // captures the unbracketed `1080` as a real episode (One Piece
-        // E1080). Previously the noise-number filter rejected this
-        // value as "must be a resolution," silently making the One
-        // Piece 1080 episode (and 480/576/720/2160) ungrabbable.
-        let parsed = parse_release_numbers("[SubsPlease] One Piece - 1080 (1080p) [ABCD1234].mkv");
-        assert!(
-            parsed.contains(&1080),
-            "expected episode 1080 in {:?}",
-            parsed
-        );
-    }
-
-    #[test]
-    fn parse_release_numbers_picks_up_long_running_episode_720() {
-        let parsed = parse_release_numbers("[SubsPlease] One Piece - 720 (720p) [ABCD1234].mkv");
-        assert!(
-            parsed.contains(&720),
-            "expected episode 720 in {:?}",
-            parsed
-        );
-    }
-
-    #[test]
-    fn parse_release_numbers_still_rejects_year_token() {
-        // The 1900..=2100 year guard stays — without it, a release
-        // titled `Show 2024 BD 1080p` would slip the unbracketed `2024`
-        // through as an absolute episode number.
-        let parsed = parse_release_numbers("[Group] Show 2024 BD - 12 (1080p).mkv");
-        assert!(
-            !parsed.contains(&2024),
-            "year token must not be parsed as episode in {:?}",
-            parsed
-        );
-        assert!(
-            parsed.contains(&12),
-            "real episode 12 should still parse in {:?}",
-            parsed
-        );
-    }
 }

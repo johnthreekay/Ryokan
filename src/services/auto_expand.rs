@@ -847,9 +847,11 @@ mod tests {
     /// Seerr-driven add → auto_search picked the [Arid] BD batch
     /// release. The release title carries no episode-range token and
     /// no "[BD]"/"Batch"/"Complete" keyword, so:
-    ///   - `parse_release_numbers` returns empty,
-    ///   - `batch_episode_numbers` falls back to `[1]`,
-    ///   - `detect_batch_from_title` returns false.
+    ///   - `parse_release_numbers` returned empty,
+    ///   - `batch_episode_numbers` fell back to `[1]`,
+    ///   - `detect_batch_from_title` returned false
+    ///
+    /// (the title readers of the time, since replaced by `release_title`).
     ///
     /// The grab row lands as `episode_numbers=[1], is_batch=0`, and
     /// post-processing's `grab_claims_episode` guard rejects every
