@@ -70,24 +70,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anitomy"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec50f0fc7d234becce1b668dfdba8ca7f5f130b01719b153c8a7fe5457531ba7"
-dependencies = [
- "anitomy-sys",
-]
-
-[[package]]
-name = "anitomy-sys"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32aae13d06f5e92fcd031f4ef9f4fd05c9763b612f406bb71b63b84a423917db"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "askama"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2622,7 +2604,6 @@ name = "ryokan"
 version = "2.2.3"
 dependencies = [
  "ammonia",
- "anitomy",
  "askama",
  "async-trait",
  "axum",

@@ -332,8 +332,6 @@ sha1_smol = "1"
 hmac = "0.13"
 ammonia = "4"
 
-# Anime release title tokenization (wraps bundled anitomy C++ lib, compiled via cc)
-anitomy = "0.2"
 
 # Recursive directory walk for the manual-import wizard (#122). Already
 # in the lock as a transitive dep; promoted to a direct one because the

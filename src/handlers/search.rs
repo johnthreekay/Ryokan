@@ -365,7 +365,7 @@ pub async fn grab_release(
     // fuzzy title matcher and silently no-op'd on miss. Now resolved
     // synchronously through `library_link::resolve_or_add_series_for_grab`
     // so the response can carry the linked / auto-added series title
-    // for the search-page toast. The chain is fuzzy-match → anitomy
+    // for the search-page toast. The chain is fuzzy-match → title
     // parse → AL search → AL-ID lookup → auto-add (gated by
     // `config.manual_search_auto_add`, default ON). See module docs.
     //

@@ -750,7 +750,7 @@ pub async fn interactive_search_episode(
     // Layer 3 (group-map) enrichment. Auto-search already runs the full
     // source pipeline so its classification is complete, but the interactive
     // picker shows results straight from nyaa::parse_results where only
-    // Layer 1 (anitomy filename tokens) has fired. Filling source via the
+    // Layer 1 (filename tokens) has fired. Filling source via the
     // group table here is what lets SubsPlease releases label as WEB-DL
     // and VCB-Studio as BluRay when the filename alone is silent.
     crate::services::nyaa::enrich_results_with_group_map(&state.db, &mut results).await;

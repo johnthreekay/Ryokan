@@ -665,10 +665,8 @@ impl Release {
         }
     }
 
-    /// Group + resolution are extracted via the same simple
-    /// patterns the Nyaa scraper uses on raw release titles —
-    /// good enough for scoring, not as accurate as the full
-    /// anitomy pass.
+    /// Group, resolution and the batch flag come from
+    /// `release_title::release_fields`, as on every other source.
     pub fn into_search_result(self) -> crate::services::nyaa::SearchResult {
         let crate::services::release_title::ReleaseFields {
             group,

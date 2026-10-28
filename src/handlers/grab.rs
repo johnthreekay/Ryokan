@@ -607,7 +607,7 @@ pub async fn grab_preview_status(
         .as_ref()
         .map(crate::services::grab_commit::series_anchors)
         .unwrap_or_default();
-    // One parse plus an anitomy parse per file; a BD pack has
+    // One or two parses per file; a BD pack has
     // hundreds, so keep it off the async worker.
     let file_list = tokio::task::spawn_blocking(move || {
         for f in &mut file_list {

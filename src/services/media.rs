@@ -1,5 +1,3 @@
-#[cfg(test)]
-use anitomy::Anitomy;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -29,48 +27,11 @@ pub fn sanitize_folder_name(s: &str) -> String {
         .to_string()
 }
 
-/// Longest input handed to anitomy. Its number parser runs a C++
-/// `std::regex` that recurses once per character of a token; with GCC 14
-/// (the Docker builder) a token of about 8,000 characters overflows the
-/// thread stack and aborts the process, and a release title from an
-/// indexer, an RSS feed or autobrr can be that long. Real titles stay
-/// under 300 bytes, so nothing real is cut.
-#[cfg(test)]
-pub(crate) const ANITOMY_MAX_INPUT: usize = 1024;
-
 /// Longest release title Ryokan accepts from an indexer, a feed or an
 /// autobrr push; longer ones are dropped (or refused) where they enter.
 /// Real titles stay under 300 bytes, and a megabyte "title" only exists
 /// to stress the parsers behind it.
 pub(crate) const MAX_RELEASE_TITLE_BYTES: usize = 1024;
-
-/// Every anitomy parse goes through here (test-only now: the frozen old
-/// parsers and the phase 3 benchmark; phase 12e removes it): NUL bytes
-/// (anitomy rejects them) removed and the input cut to [`ANITOMY_MAX_INPUT`] bytes on a
-/// char boundary. anitomy reports `Err` when it finds no title but
-/// fills the elements either way, so both are returned.
-#[cfg(test)]
-pub(crate) fn anitomy_parse(input: &str) -> anitomy::Elements {
-    match Anitomy::new().parse(anitomy_input(input)) {
-        Ok(elements) | Err(elements) => elements,
-    }
-}
-
-/// What [`anitomy_parse`] hands anitomy: at most [`ANITOMY_MAX_INPUT`]
-/// bytes, cut on a char boundary, with NUL bytes removed.
-#[cfg(test)]
-fn anitomy_input(input: &str) -> std::borrow::Cow<'_, str> {
-    let mut end = input.len().min(ANITOMY_MAX_INPUT);
-    while !input.is_char_boundary(end) {
-        end -= 1;
-    }
-    let bounded = &input[..end];
-    if bounded.contains('\0') {
-        std::borrow::Cow::Owned(bounded.replace('\0', ""))
-    } else {
-        std::borrow::Cow::Borrowed(bounded)
-    }
-}
 
 /// Whether a stored `series.folder_name` can be joined onto the media
 /// root: one non-empty path component that isn't `.` or `..`. A folder
@@ -465,9 +426,7 @@ fn format_size(bytes: u64) -> String {
 
 #[cfg(test)]
 mod folder_name_tests {
-    use super::{
-        ANITOMY_MAX_INPUT, anitomy_input, anitomy_parse, sanitize_folder_name, usable_folder_name,
-    };
+    use super::{sanitize_folder_name, usable_folder_name};
 
     #[cfg(unix)]
     #[test]
@@ -532,20 +491,18 @@ mod folder_name_tests {
     }
 
     #[test]
-    fn anitomy_never_sees_more_than_its_bound() {
+    fn a_huge_token_or_a_nul_never_breaks_the_file_parser() {
         // A ~8,000-character token overflowed anitomy's recursive
-        // std::regex (GCC 14) and aborted the process.
+        // std::regex (GCC 14) and aborted the process; the parser that
+        // replaced it caps its input.
         let digits = "1".repeat(20_000) + "x";
-        assert_eq!(anitomy_input(&digits).len(), ANITOMY_MAX_INPUT);
-        let _ = anitomy_parse(&digits);
-        // Cut on a char boundary, NULs removed.
-        let wide = "\u{3042}".repeat(1_000);
-        let cut = anitomy_input(&wide);
-        assert!(cut.len() <= ANITOMY_MAX_INPUT && cut.chars().all(|c| c == '\u{3042}'));
-        assert_eq!(anitomy_input("[G] Show\0 - 01.mkv"), "[G] Show - 01.mkv");
-        // Real titles pass through untouched.
-        let real = "[Group] Show Title - 28 (1080p) [ABCD1234].mkv";
-        assert_eq!(anitomy_input(real), real);
+        let _ = super::parse_episode_span(&digits);
+        let wide = "\u{3042}".repeat(10_000);
+        let _ = super::parse_episode_span(&wide);
+        assert_eq!(
+            super::parse_episode_span("[g] show\0 - 01.mkv").map(|s| s.first),
+            Some(1)
+        );
     }
 
     #[test]
@@ -1130,8 +1087,8 @@ mod tests {
 
     #[test]
     fn title_leading_type_keyword_does_not_gate_a_real_episode() {
-        // anitomy types the leading `Ed` / `OP` as ED / OP. The keyword
-        // sits before the title, so the gate must stay out of it.
+        // A leading `Ed` / `OP` is the title's: an extras word counts
+        // only past the title's first word.
         assert_eq!(parse("Ed Edd n Eddy - 01.mkv"), Some((None, 1)));
         assert_eq!(
             parse("[Group] OP Rewrite - 03 [1080p].mkv"),
@@ -1472,7 +1429,8 @@ mod tests {
         // A label is still an extra.
         assert_eq!(span("[Group] Show - NCOP [1080p].mkv"), None);
         assert_eq!(span("[Group] Show - 12 - Preview [1080p].mkv"), None);
-        // A BD menu (the anitomy gate this replaced read it as episode 1).
+        // A BD menu (the anitomy gate the extras rule replaced read it as
+        // episode 1).
         assert_eq!(span("[Group] Show Menu 01 [BD].mkv"), None);
     }
 

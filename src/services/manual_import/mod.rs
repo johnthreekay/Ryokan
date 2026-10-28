@@ -387,7 +387,7 @@ async fn run_preview(state: AppState, id: String) -> Result<(), String> {
     )
     .await;
 
-    // Parsing is CPU-only but an anitomy pass per file over 50k files
+    // Parsing is CPU-only but a parse per file over 50k files
     // adds up; keep it off the runtime threads.
     let files: Vec<CandidateFile> = tokio::task::spawn_blocking(move || {
         walked.files.into_iter().map(candidate_from_raw).collect()

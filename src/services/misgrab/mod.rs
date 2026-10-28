@@ -130,7 +130,7 @@ pub async fn assess_and_stamp(
         let _ = grabbed_torrents::stamp_verification(db, grab.id, "whitelisted", &detail).await;
         return verdict;
     }
-    // Pure CPU (regex normalization and an anitomy parse per path
+    // Pure CPU (regex normalization and a title parse per path
     // segment) over every file times every alias; a large pack with
     // a wide sibling set is milliseconds of work that must not sit on
     // a Tokio worker.

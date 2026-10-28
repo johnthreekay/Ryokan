@@ -1498,7 +1498,7 @@ async fn run_queries(
     // Releases the gate turned away in this call. They stay out of
     // `seen` so a later pass with more aliases can admit them, but the
     // same release comes back from every query and category here and
-    // re-classifying it (an anitomy parse plus the alias loop) each
+    // re-classifying it (a title parse plus the alias loop) each
     // time is pure waste.
     let mut rejected_here: HashSet<String> = HashSet::new();
     for resp in responses {

@@ -125,7 +125,7 @@ pub(super) fn parse_results(html: &str, opts: &SearchOptions) -> (Vec<SearchResu
         let row_class = row.value().attr("class").unwrap_or("");
         let is_trusted = row_class.contains("success");
 
-        // Filename-layer classification (anitomy + source-token scan).
+        // Filename-layer classification (release-title fields + source-token scan).
         // Drops the old ad-hoc bracket/regex extract and mirrors what the
         // grab-side pipeline's Layer 1 produces, so the label the user
         // sees in interactive search equals the value persisted on grab.
@@ -728,7 +728,7 @@ mod tests {
         assert_eq!(extract_hash(""), "");
     }
 
-    // ── #24 — anitomy-derived classification on SearchResult ──────────────
+    // ── #24 — filename-layer classification on SearchResult ──────────────
 
     #[test]
     fn classify_search_result_subsplease_1080p_webdl_from_filename_tokens() {

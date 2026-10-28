@@ -64,11 +64,9 @@ impl FilenameClassification {
 
 /// Parse a torrent title and emit classification evidence.
 ///
-/// Uses anitomy to tokenize the title into structured fields (`Source`,
-/// `AudioTerm`, `VideoResolution`, `ReleaseGroup`) and applies weighted
-/// scoring rules on top. Anitomy construction is cheap — roughly equivalent
-/// to one `Vec` allocation — so we build a fresh parser per call rather than
-/// hold shared state.
+/// Resolution and group come from `release_title`; source and audio from
+/// the title's own metadata tokens (`metadata_tokens`) and a raw-title
+/// keyword scan, with weighted scoring rules on top.
 pub fn classify_filename(title: &str) -> FilenameClassification {
     let mut result = FilenameClassification::empty();
     if title.trim().is_empty() {
@@ -105,8 +103,8 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
     let title_lower = clean.to_ascii_lowercase();
 
     // ── Remux detection ───────────────────────────────────────────────────
-    // anitomy tags some releases with Source="Remux" and some with it baked
-    // into the VideoTerm; a direct substring check catches both.
+    // `REMUX` sits alone or inside another token (`BDRemux`); a direct
+    // substring check catches both.
     result.is_remux = title_lower.contains("remux");
 
     // ── BDMV / BD-Raw detection ───────────────────────────────────────────
@@ -173,8 +171,8 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
             continue;
         }
         // Skip if we've already emitted evidence for this source — avoids
-        // double-counting when anitomy and the fallback scanner both catch
-        // the same token.
+        // double-counting when the token scan and the fallback scanner both
+        // catch the same token.
         if result.evidence.iter().any(|e| e.source == *mapped_src) {
             continue;
         }
@@ -336,7 +334,7 @@ fn source_from_keyword(keyword: &str, res: Resolution) -> Option<(Source, f32, S
 /// signal. Lossy Dolby variants (DDP/E-AC-3) are streaming-native. Plain AAC
 /// is suggestive but weaker because older BD rips also used it.
 ///
-/// We merge both anitomy-tagged `AudioTerm`s and a raw-title scan so that
+/// We merge the title's tokens and a raw-title scan so that
 /// releases with codecs packed into brackets (common for mini-encode groups)
 /// still contribute evidence.
 fn audio_signal(audio_terms: &[String], title_lower: &str) -> Option<(Source, f32, String)> {
@@ -347,7 +345,7 @@ fn audio_signal(audio_terms: &[String], title_lower: &str) -> Option<(Source, f3
         classify_audio_token(raw, &mut lossless_hits, &mut web_hits);
     }
 
-    // Raw-title fallback for codec tokens anitomy didn't catch.
+    // Raw-title fallback for codec tokens the token split didn't catch.
     for &token in LOSSLESS_TOKENS {
         if contains_word(title_lower, token) && !lossless_hits.contains(&token) {
             lossless_hits.push(token);
@@ -402,13 +400,11 @@ fn push_unique(list: &mut Vec<&'static str>, item: &'static str) {
 const LOSSLESS_TOKENS: &[&str] = &["flac", "truehd", "dts-hd", "dtshd", "pcm", "lpcm"];
 const WEB_AUDIO_TOKENS: &[&str] = &["ddp", "eac3", "e-ac-3"];
 
-/// Raw-title fallback for source keywords. Anitomy's structured Source field
-/// is accurate when it fires, but misses a few variants in practice —
-/// particularly when release names use dot-separators (e.g.
-/// `Show.S01E01.WEB-DL.DDP`) or rare TV broadcast tags (`PDTV`, `SDTV`).
-/// The scanner runs after anitomy and only contributes evidence for a
-/// source that hasn't already been emitted, so anitomy's stricter parse
-/// takes precedence when both agree.
+/// Raw-title fallback for source keywords the token scan leaves out or
+/// misses (a bare `WEB`, rare TV broadcast tags such as `PDTV` /
+/// `SDTV`). The scanner runs after the token scan and only contributes
+/// evidence for a source that hasn't already been emitted, so the token
+/// scan's answer takes precedence when both agree.
 const SOURCE_FALLBACK_TOKENS: &[(&str, Source)] = &[
     // BluRay variants — BDMV/BD-RAW/BDRAW are caught by the dedicated
     // is_bdmv detector above and emit their own evidence record, so they
@@ -418,9 +414,8 @@ const SOURCE_FALLBACK_TOKENS: &[(&str, Source)] = &[
     ("bluray", Source::BluRay),
     ("blu-ray", Source::BluRay),
     // Web variants — the bare "web" entry catches space-separated
-    // forms like "(WEB 1080p AV1 EAC-3)" that anitomy sometimes
-    // misses as an ElementCategory::Source and that the hyphenated
-    // variants don't cover. The dedup check inside `classify_filename`'s
+    // forms like "(WEB 1080p AV1 EAC-3)" that the token scan leaves to
+    // this weaker 0.85 and that the hyphenated variants don't cover. The dedup check inside `classify_filename`'s
     // fallback loop (`.any(|e| e.source == *mapped_src)`) prevents
     // double-counting when both the specific (web-dl) and the bare
     // (web) token are present in the same title. Bare "web" also gets

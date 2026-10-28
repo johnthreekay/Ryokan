@@ -128,7 +128,7 @@ proptest! {
         is_trusted in any::<bool>(),
         prefer_subs in any::<bool>(),
         // Bound title length and charset to keep the title parser /
-        // anitomy / regex_lite work proportional. Unbounded random
+        // regex_lite work proportional. Unbounded random
         // bytes would spend most of each case in tokenization.
         title in "[a-zA-Z0-9 \\-\\[\\]\\(\\)\\.]{0,80}",
     ) {
@@ -339,33 +339,11 @@ proptest! {
 // parsers' doc comments imply.
 
 proptest! {
-    /// **Disabled: `classify_filename` has a memory bug in anitomy's
-    /// C++ FFI** that proptest reliably triggers at ~2000+ cases,
-    /// even on ASCII-only inputs. The crash surfaces as either
-    /// SIGSEGV (`free(): invalid pointer`) or SIGABRT (`double free
-    /// detected in tcache 2`) — clear C++ memory corruption inside
-    /// the bundled anitomy parser.
-    ///
-    /// Confirmed across:
-    ///   * Full Unicode `.{0,200}` strategy (crashed at ~10 cases)
-    ///   * Restricted Hiragana/Katakana/CJK printable (~13 cases)
-    ///   * ASCII-printable-only (~5000 cases)
-    ///
-    /// Real Nyaa release titles haven't surfaced this in production
-    /// telemetry — the bug requires unusual byte-sequence shapes that
-    /// fuzzing reaches but legitimate release names don't. Filing
-    /// against anitomy upstream is the right fix; for now this test
-    /// is `#[ignore]`d to keep the rest of the proptest suite green.
-    /// Remove the ignore once the upstream fix lands.
-    ///
-    /// Run manually to characterize:
-    ///
-    ///     PROPTEST_CASES=10000 cargo test --features test-support \
-    ///         --test proptest_invariants \
-    ///         classify_filename_never_panics_on_realistic_input \
-    ///         -- --include-ignored
+    /// Never panics on printable ASCII. This was `#[ignore]`d while
+    /// `classify_filename` ran anitomy, whose C++ corrupted memory under
+    /// fuzzing (SIGSEGV / double free within a few thousand cases); the
+    /// crate went in phase 12e of the release-title plan.
     #[test]
-    #[ignore = "anitomy C++ memory bug; see comment + file upstream"]
     fn classify_filename_never_panics_on_realistic_input(
         title in "[ -~]{0,200}",
     ) {
@@ -375,7 +353,7 @@ proptest! {
     /// Empty / whitespace-only titles return the documented empty
     /// classification (`FilenameClassification::empty`). Pin that
     /// short-circuit so a future refactor doesn't accidentally
-    /// invoke anitomy on whitespace and produce surprising output.
+    /// parse whitespace and produce surprising output.
     #[test]
     fn classify_filename_empty_or_whitespace_returns_empty(
         ws in "[ \\t\\r\\n]{0,20}",

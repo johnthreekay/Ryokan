@@ -5,7 +5,7 @@
 Sonarr was built for general-purpose TV; its anime support is real but bolted on. Ryokan is anime-only and tunes its release-classification logic, search shape, and metadata for that. The concrete differences:
 
 - **Batch releases are a first-class search target, not a fan-out.** Sonarr's anime mode searches every episode individually, which multiplies search time and indexer hits with every episode and indexer (and, in our experience, times out before the results aggregate). Ryokan sends one search per batch.
-- **Anime release-name parsing is the default-handled path, not an edge case.** [Anitomy](https://github.com/erengy/anitomy) (a parser specifically for anime release titles) handles tokenization; Custom Formats can match against anitomy fields directly; AniList is the primary metadata source.
+- **Anime release-name parsing is the default-handled path, not an edge case.** Ryokan's own release-title parser reads fansub, BD-pack, scene and CJK naming (groups, absolute and season numbering, batches, specials, revisions); Custom Formats match against the release title; AniList is the primary metadata source.
 - **[SeaDex](https://releases.moe) is integrated as an authoritative-pick layer.** Sonarr has nothing equivalent.
 - **Source classification combines multiple signals** (filename, Nyaa description scrape, release-group reputation table, ffprobe output, directory walk, and a temporal "is this still airing?" heuristic) before deciding whether a release is BD or WEB. Sonarr decides quality from the release title plus Custom Formats; for anime, that misclassifies often enough that the manual-review pile stays large.
 

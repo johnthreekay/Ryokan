@@ -315,9 +315,9 @@ fn dump() {
     }
 }
 
-/// Prints the old and new file reading of each line of `RT_FILES`
-/// (`name` or `name<TAB>alias|alias`, the aliases giving the series-aware
-/// reading too).
+/// Prints the file reading of each line of `RT_FILES` (`name` or
+/// `name<TAB>alias|alias`, the aliases giving the series-aware reading
+/// too).
 #[test]
 #[ignore = "debugging aid: RT_FILES"]
 fn file_dump() {
@@ -325,9 +325,8 @@ fn file_dump() {
     for line in files.lines().filter(|t| !t.trim().is_empty()) {
         let (name, aliases) = line.split_once('\t').unwrap_or((line, ""));
         let lower = name.to_lowercase();
-        let old = legacy::media::parse_episode_span(&lower);
         let new = crate::services::media::parse_episode_span(&lower);
-        eprintln!("== {name}\n   old={old:?}\n   new={new:?}");
+        eprintln!("== {name}\n   new={new:?}");
         if !aliases.is_empty() {
             let aliases: Vec<&str> = aliases.split('|').collect();
             let anchors = super::SeriesAnchors::new(&aliases);
@@ -335,53 +334,4 @@ fn file_dump() {
             eprintln!("   for={named:?}");
         }
     }
-}
-
-/// Every file name in `tests/fixtures/nyaa-filenames/`.
-pub(super) fn corpus_file_names() -> Vec<String> {
-    let mut out = Vec::new();
-    for path in json_files(&fixtures().join("nyaa-filenames")) {
-        if let Some(files) = load(&path)["files"].as_array() {
-            out.extend(
-                files
-                    .iter()
-                    .filter_map(|f| f["name"].as_str().map(String::from)),
-            );
-        }
-    }
-    out
-}
-
-/// `RT_FILE_SOURCE=files|titles|all cargo t release_title::differential::file_report
-/// --run-ignored only --no-capture` prints every name where
-/// `media::parse_episode_span` and its frozen copy (`legacy::media`) disagree.
-#[test]
-#[ignore]
-fn file_report() {
-    let source = std::env::var("RT_FILE_SOURCE").unwrap_or_else(|_| "files".into());
-    let mut names = Vec::new();
-    if source == "files" || source == "all" {
-        names.extend(corpus_file_names());
-    }
-    if source == "titles" || source == "all" {
-        names.extend(verified_titles());
-        names.extend(sample_titles());
-    }
-    let mut differ = 0;
-    for name in &names {
-        let base = name.rsplit('/').next().unwrap_or(name);
-        let lower = base.to_lowercase();
-        let old = legacy::media::parse_episode_span(&lower);
-        let new = crate::services::media::parse_episode_span(&lower);
-        if old != new {
-            differ += 1;
-            eprintln!(
-                "{{\"name\": {:?}, \"old\": {:?}, \"new\": {:?}}}",
-                base,
-                format!("{old:?}"),
-                format!("{new:?}")
-            );
-        }
-    }
-    eprintln!("{differ} of {} names differ", names.len());
 }
