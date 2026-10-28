@@ -1446,6 +1446,101 @@ mod tests {
     }
 
     #[test]
+    fn an_extras_word_in_an_episode_title_keeps_the_episode() {
+        // Ryokan's own default template puts the episode title last.
+        assert_eq!(
+            span("Show - S01E05 - Happy Ending.mkv"),
+            Some((Some(1), 5, 5))
+        );
+        assert_eq!(
+            span("Show - S01E05 - The Secret Menu.mkv"),
+            Some((Some(1), 5, 5))
+        );
+        assert_eq!(
+            span("Show - S01E03 - The Ending.mkv"),
+            Some((Some(1), 3, 3))
+        );
+        assert_eq!(
+            span("Today's Menu for the Emiya Family - S01E05 - Title.mkv"),
+            Some((Some(1), 5, 5))
+        );
+        // A label is still an extra.
+        assert_eq!(span("[Group] Show - NCOP [1080p].mkv"), None);
+        assert_eq!(span("[Group] Show - 12 - Preview [1080p].mkv"), None);
+    }
+
+    #[test]
+    fn a_decimal_in_an_episode_title_is_no_half_episode() {
+        assert_eq!(
+            span("Show - S01E05 - Chapter 7.5.mkv"),
+            Some((Some(1), 5, 5))
+        );
+        assert_eq!(span("[Group] Show - 07.5 [1080p].mkv"), None);
+    }
+
+    #[test]
+    fn a_one_digit_nxn_running_into_the_name_is_the_name() {
+        assert_eq!(span("[Group] 3x3 Eyes - 05 [DVD].mkv"), Some((None, 5, 5)));
+        assert_eq!(span("3x3 Eyes - S01E05 - Title.mkv"), Some((Some(1), 5, 5)));
+        assert_eq!(
+            span("Series - 2x4 - New Car Smell.mkv"),
+            Some((Some(2), 4, 4))
+        );
+    }
+
+    #[test]
+    fn a_padded_title_number_before_the_dash_leaves_the_dash_episode() {
+        assert_eq!(span("[Group] Show 02 - 05 [1080p].mkv"), Some((None, 5, 5)));
+        assert_eq!(span("Cyborg 009 - 012 - Title.mkv"), Some((None, 12, 12)));
+        assert_eq!(span("Cyborg 009 - 12 - Title.mkv"), Some((None, 12, 12)));
+    }
+
+    #[test]
+    fn a_season_marker_or_title_special_leaves_the_residual_dash() {
+        assert_eq!(
+            span("[Group] Show S2 - 05 The Beginning.mkv"),
+            Some((None, 5, 5))
+        );
+        assert_eq!(span("Show Part 2 - 05 Title.mkv"), Some((None, 5, 5)));
+        assert_eq!(
+            span("[Anime Time] Attack on Titan OAD - 01 The Title.mkv"),
+            Some((None, 1, 1))
+        );
+        assert_eq!(span("Show S2 - 05 PROPER.mkv"), Some((None, 5, 5)));
+        // A dotted season folder still names no episode.
+        assert_eq!(span("30.Series.Season.04.HDTV.XviD-DIMENSION.mkv"), None);
+    }
+
+    #[test]
+    fn the_last_bare_number_before_metadata_is_the_episode() {
+        assert_eq!(span("Show 99 (extra) 12 (1080p).mkv"), Some((None, 12, 12)));
+        assert_eq!(
+            span("[Group] Cyborg 009 (2001) 05 [DVD].mkv"),
+            Some((None, 5, 5))
+        );
+        assert_eq!(
+            span("[Group] Show 2 (2023) - 05 The Title.mkv"),
+            Some((None, 5, 5))
+        );
+        assert_eq!(
+            span("[HnY] Beyblade X 136 - The 88th Prince v2.mkv"),
+            Some((None, 136, 136))
+        );
+    }
+
+    #[test]
+    fn glued_and_titled_dash_shapes() {
+        assert_eq!(
+            span("[Group] Show Episode05 [1080p].mkv"),
+            Some((None, 5, 5))
+        );
+        assert_eq!(span("Show - 05-06 The Title.mkv"), Some((None, 5, 6)));
+        assert_eq!(span("Show - 1-5 - 07 Title.mkv"), Some((None, 7, 7)));
+        let ova = super::parse_episode_span("show ova-01.mkv").expect("a special");
+        assert!(ova.special && ova.first == 1);
+    }
+
+    #[test]
     fn span_dash_slot_tails() {
         // The report's release (issue #246), with and without the
         // Japanese parenthetical whose `# 5 - 6` used to supply E05.

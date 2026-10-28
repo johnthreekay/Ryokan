@@ -76,6 +76,9 @@ pub struct EpisodeClaim {
     /// The range's operator is glued to both numbers (`5-6`, `05-06`),
     /// not spaced (`05 - 06`). Always true for a single episode.
     pub glued: bool,
+    /// The range opened on a zero-padded title number before its dash
+    /// (`Show 01 - 119`): a file name's own episode is the dash's.
+    pub opens_before_dash: bool,
 }
 
 impl EpisodeClaim {
@@ -274,6 +277,14 @@ impl ParsedTitle {
             return None;
         }
         if let Some(claim) = &self.episodes {
+            if claim.opens_before_dash {
+                return Some(file_mode::EpisodeSpan {
+                    season: None,
+                    first: claim.last,
+                    last: claim.last,
+                    special: self.file_special(),
+                });
+            }
             let first = claim.list.first().copied().unwrap_or(claim.first);
             // A loose range reads its own first number where the old file
             // branches kept it: a tag or `Episode 5-6` (no follow-set), or
@@ -323,11 +334,12 @@ impl ParsedTitle {
     }
 
     /// What a series' names say about a file name's bare reading:
-    /// `None` when they say nothing (no name found, or the episode came
-    /// from a marked claim such as a dash or a tag), `Some(None)` when the
-    /// number is the name's own (`Mob Psycho 100 (BD)`, a bare range or
-    /// marker number inside the name), `Some(Some(n))` for the number
-    /// right after the name (`[EA]Kaiju_No_8_08_` is 8).
+    /// `None` when they say nothing (no name found, the episode came from
+    /// a marked claim such as a dash or a tag, or nothing readable follows
+    /// the name), `Some(Some(n))` for the number right after the name
+    /// (`[EA]Kaiju_No_8_08_` is 8), `Some(None)` when the number is the
+    /// name's own (`Mob Psycho 100 (BD)`, a bare range or marker number
+    /// written only inside the name).
     pub fn name_reading(&self, anchors: &SeriesAnchors) -> Option<Option<i32>> {
         if anchors.is_empty() {
             return None;
@@ -340,10 +352,17 @@ impl ParsedTitle {
                 Some(None)
             }
             Some(_) => None,
-            None if anchors.finds_name(&self.anchor_words) => {
-                Some(anchors.episode_after_name(&self.anchor_words))
+            None => {
+                if let Some(n) = anchors.episode_after_name(&self.anchor_words) {
+                    return Some(Some(n));
+                }
+                // `[EA]Fruits_Basket_2019_05_`, `K Project 05`: the name is
+                // found but the number is not the name's; the plain reading
+                // stands.
+                self.ambiguous_number
+                    .filter(|&n| anchors.name_holds_numbers(&self.anchor_words, &[n]))
+                    .map(|_| None)
             }
-            None => None,
         }
     }
 
@@ -507,6 +526,13 @@ mod tests {
                 .version,
             2
         );
+    }
+
+    #[test]
+    fn a_marker_ending_an_episode_title_is_no_special() {
+        assert!(!super::parse("[Group] Show - 05 - Something Special [1080p]").special);
+        assert!(super::parse("[Group] Show - Christmas Special [1080p]").special);
+        assert!(super::parse("[Group] Kekkon Special - 01 [1080p]").special);
     }
 
     #[test]

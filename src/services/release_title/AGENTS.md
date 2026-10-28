@@ -50,6 +50,10 @@ Moving a rule earlier changes what wins on every title both rules match; run the
 - Years are never episodes; `[1983-1984]` with no claim is a whole-run pack (`year_range`).
 - `1080` / `720` after a dash are episodes (One Piece); a resolution needs `p`, `i`, `WxH` (a trailing `p` is fine), `4K` / `UHD` / `FHD`, or sits beside metadata (`bare_resolution`).
 - `07.5` is a half episode, never episode 7. NC / PV / CM / preview / trailer are extras: no claim, never a batch.
+- An extras word inside a phrase of title words is a title word: before any episode mark when more words follow (`Today's Menu for the Emiya Family - S01E05`), after one when the phrase opens its own dash segment (`- S01E05 - Happy Ending`, Ryokan's own template). `- 12 Minute Preview` is a label. A decimal past a marked episode is the episode title's (`- S01E05 - Chapter 7.5`).
+- A one-digit `NxN` that runs on into title words is the name (`3x3 Eyes`); `Series Title 1x1` and `- 2x4 -` are tags.
+- The ambiguous number is the last bare number before the metadata (`Show 99 (extra) 12 (1080p)` is 12), and none before a later dash number (`Show 2 (2023) - 05 Title`).
+- A series' name vetoes a number only when every place the title writes it is inside a found alias (`[EA]Vinland_Saga_Season_2_02_` is 2 for "Vinland Saga Season 2"). Where the name is found but nothing readable follows it, a file's plain reading stands (`[EA]Fruits_Basket_2019_05_`).
 - `[SP]` alone is a subtitle tag; `SP01` is a special.
 - `special` is a flag; what it means depends on the series' format (`media::is_tv_format`). A tag naming a real season (`S02E03`) beats a title that ends in `Special`.
 - PROPER / REPACK and Roman `II`..`IX` are uppercase only. A Roman numeral is a season marker only at top level or alone in a bracket, and only where the title text ends (a bracket, dash, `|`, metadata, the end) or before a number: `Lupin III vs`, `Chibi Maruko-chan II 樱桃小丸子` and `(..., The Legend of Hei II)` are names.

@@ -274,12 +274,14 @@ fn file_reading(lower: &str) -> Option<EpisodeSpan> {
     if let Some(span) = title.file_span() {
         return Some(span);
     }
+    // A season marker or a title-word special (`Show S2 - 05 The
+    // Beginning`, `Attack on Titan OAD - 01 The Title`) says nothing
+    // about the episode.
     if title.episodes.is_some()
         || title.extra
         || title.half_episode
-        || title.special
+        || title.file_special()
         || title.volume_range
-        || !title.seasons.numbers.is_empty()
     {
         return None;
     }
@@ -287,13 +289,22 @@ fn file_reading(lower: &str) -> Option<EpisodeSpan> {
     let dash = RE_DASH_SINGLE
         .captures(&normalized)
         .and_then(|caps| caps.get(1)?.as_str().parse::<i32>().ok());
-    dash.or_else(|| parse_dot_delimited_episode(lower))
-        .map(|n| EpisodeSpan {
-            season: None,
-            first: n,
-            last: n,
-            special: false,
-        })
+    // A dotted name with a season marker is a season's folder
+    // (`Series.Season.04.HDTV`), not one episode.
+    dash.or_else(|| {
+        title
+            .seasons
+            .numbers
+            .is_empty()
+            .then(|| parse_dot_delimited_episode(lower))
+            .flatten()
+    })
+    .map(|n| EpisodeSpan {
+        season: None,
+        first: n,
+        last: n,
+        special: false,
+    })
 }
 
 /// anitomy `AnimeType` gate (issue #203). True when anitomy types the
@@ -443,6 +454,58 @@ mod tests {
             ),
             Some(8)
         );
+    }
+
+    #[test]
+    fn a_number_written_again_past_the_name_is_the_episode() {
+        assert_eq!(
+            first(
+                "[EA]Vinland_Saga_Season_2_02_[1080p].mkv",
+                &["Vinland Saga Season 2"]
+            ),
+            Some(2)
+        );
+        assert_eq!(
+            first(
+                "[EA]Kaiju_No_8_Season_2_08_[1080p].mkv",
+                &["Kaiju No. 8 Season 2"]
+            ),
+            Some(8)
+        );
+    }
+
+    #[test]
+    fn a_found_name_with_nothing_readable_after_it_keeps_the_plain_reading() {
+        assert_eq!(
+            first(
+                "[EA]Fruits_Basket_2019_05_[1080p].mkv",
+                &["Fruits Basket (2019)"]
+            ),
+            Some(5)
+        );
+        assert_eq!(
+            first(
+                "Hunter.x.Hunter.2011.148.1080p.BluRay.x264.mkv",
+                &["Hunter x Hunter (2011)"]
+            ),
+            Some(148)
+        );
+        assert_eq!(
+            first("[Group] K Project 05 (BD 1080p).mkv", &["K"]),
+            Some(5)
+        );
+        assert_eq!(
+            first("[EA]Mushoku_Tensei_II_05_[1080p].mkv", &["Mushoku Tensei"]),
+            Some(5)
+        );
+        assert_eq!(
+            first(
+                "[Group] Haibane Renmei 1 [BD 1080p].mkv",
+                &["Haibane Renmei"]
+            ),
+            Some(1)
+        );
+        assert_eq!(first("[Group] Show - 5 Pilot.mkv", &["Show"]), Some(5));
     }
 
     #[test]

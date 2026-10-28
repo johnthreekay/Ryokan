@@ -546,9 +546,10 @@ fn split_version(s: &str) -> Option<(u32, Option<u32>)> {
 }
 
 fn ep_prefix(lower: &str) -> Option<Class> {
-    // E05, EP05, EPS05, EPI05, E01-E02, E1-E2-E3, E1E2, E001-E130, EP1157.
+    // E05, EP05, EPS05, EPI05, Episode05, E01-E02, E1-E2-E3, E1E2, E001-E130, EP1157.
     let rest = lower
-        .strip_prefix("eps")
+        .strip_prefix("episode")
+        .or_else(|| lower.strip_prefix("eps"))
         .or_else(|| lower.strip_prefix("epi"))
         .or_else(|| lower.strip_prefix("ep"))
         .or_else(|| lower.strip_prefix('e'))?;

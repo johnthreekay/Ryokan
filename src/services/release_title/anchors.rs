@@ -89,24 +89,30 @@ impl SeriesAnchors {
         })
     }
 
-    /// Whether any alias is found word for word in `words`.
-    pub(super) fn finds_name(&self, words: &[Word]) -> bool {
-        self.seqs.iter().any(|seq| {
-            seq.len() <= words.len()
-                && words
-                    .windows(seq.len())
-                    .any(|win| win.iter().zip(seq).all(|(a, b)| &a.text == b))
-        })
-    }
-
-    /// Whether an alias found in `words` holds every number in `nums`
-    /// (`Tatsuki Fujimoto 17-26`), so those numbers are the name's.
+    /// Whether every number in `nums` is the name's: each is written in
+    /// the title only inside aliases found there (`Tatsuki Fujimoto
+    /// 17-26`, `Mob Psycho 100`). One written again past the name is not
+    /// (`[EA]Vinland_Saga_Season_2_02_` for "Vinland Saga Season 2").
     pub(super) fn name_holds_numbers(&self, words: &[Word], nums: &[i32]) -> bool {
-        self.seqs.iter().any(|seq| {
-            nums.iter().all(|n| seq.contains(&n.to_string()))
-                && words
-                    .windows(seq.len())
-                    .any(|win| win.iter().zip(seq).all(|(a, b)| &a.text == b))
+        let mut inside = vec![false; words.len()];
+        for seq in &self.seqs {
+            if seq.len() > words.len() {
+                continue;
+            }
+            for (start, win) in words.windows(seq.len()).enumerate() {
+                if win.iter().zip(seq).all(|(a, b)| &a.text == b) {
+                    inside[start..start + seq.len()].fill(true);
+                }
+            }
+        }
+        nums.iter().all(|&n| {
+            let mut at = words
+                .iter()
+                .enumerate()
+                .filter(|(_, w)| w.num.is_some_and(|(v, _)| v as i64 == i64::from(n)))
+                .map(|(i, _)| inside[i])
+                .peekable();
+            at.peek().is_some() && at.all(|held| held)
         })
     }
 

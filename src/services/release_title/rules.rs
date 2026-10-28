@@ -94,6 +94,20 @@ impl Ctx<'_> {
     /// Whether what follows token `i` ends an episode number: the end,
     /// a bracket, a dash, a separator, or a non-title word (metadata, end
     /// / special / extra / batch markers). A plain word is title text.
+    /// Whether token `i` marks an episode: a tag, `E05`, `OVA 01`, a dash
+    /// followed by a number, or a number after `Episode`.
+    fn marks_episode(&self, i: usize) -> bool {
+        matches!(
+            self.class[i],
+            Class::Tag { .. } | Class::EpPrefix(..) | Class::SpecialNum(_)
+        ) || self.toks[i].kind == Kind::SegDash
+            && self.next(i).is_some_and(|n| self.episode_num(n).is_some())
+            || self.episode_num(i).is_some()
+                && self
+                    .prev(i)
+                    .is_some_and(|p| self.class[p] == Class::EpisodeWord)
+    }
+
     fn boundary_after(&self, i: usize) -> bool {
         let Some(j) = self.next(i) else {
             return true;
@@ -220,6 +234,7 @@ impl Ctx<'_> {
             rule,
             tight: true,
             glued: true,
+            opens_before_dash: false,
         }
     }
 
@@ -261,7 +276,21 @@ pub(super) fn parse(title: &str) -> ParsedTitle {
     let norm = normalize(title);
     let text: Vec<char> = norm.text.chars().collect();
     let lexed = lex(&norm.text);
-    let class: Vec<Class> = lexed.toks.iter().map(classify).collect();
+    let mut class: Vec<Class> = lexed.toks.iter().map(classify).collect();
+    // `3x3 Eyes`: a one-digit `NxN` that runs on into title words is the
+    // name, not a tag (`Series Title 1x1`, `- 2x4 -` stay tags).
+    for (i, tok) in lexed.toks.iter().enumerate() {
+        if matches!(class[i], Class::Tag { .. })
+            && tok.lower.starts_with(|c: char| c.is_ascii_digit())
+            && tok.lower.rsplit('x').next().is_some_and(|ep| ep.len() < 2)
+            && lexed
+                .toks
+                .get(i + 1)
+                .is_some_and(|n| n.depth == tok.depth && n.is_word() && classify(n) == Class::Plain)
+        {
+            class[i] = Class::Plain;
+        }
+    }
     let mut ctx = Ctx {
         text: &text,
         toks: &lexed.toks,
@@ -686,18 +715,25 @@ fn dash_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         };
         let season = ctx.season_marker_before(d);
         if let Some((b, m)) = ctx.range_after(k, true)
-            && ctx.boundary_after(m)
+            && (ctx.boundary_after(m)
+                || ctx.tight_from(k)
+                    && ctx
+                        .next(m)
+                        .is_some_and(|w| ctx.toks[w].is_word() && ctx.class[w] == Class::Plain))
         {
-            // `Show - 1-5 - 07`: a digit pair in the episode title; the
-            // next dash holds the episode.
-            let later_episode = ctx.next(m).is_some_and(|d2| {
-                ctx.toks[d2].kind == Kind::SegDash
-                    && ctx.next(d2).is_some_and(|e| ctx.episode_num(e).is_some())
-            });
-            if !later_episode {
-                return Some(ctx.range_claim(k, a, b, season, ClaimRule::Dash));
+            // `Show - 1-5 - 07 Title`: a digit pair in the episode title;
+            // the next dash holds the episode.
+            let later_episode = ctx
+                .next(m)
+                .filter(|&d2| ctx.toks[d2].kind == Kind::SegDash)
+                .and_then(|d2| ctx.next(d2))
+                .and_then(|e| ctx.episode_num(e));
+            if let Some(e) = later_episode {
+                return Some(ctx.claim(e, e, season, ClaimRule::Dash));
             }
-            continue;
+            // `- 05-06 The Title`: a range written tight is one even
+            // before episode-title words.
+            return Some(ctx.range_claim(k, a, b, season, ClaimRule::Dash));
         }
         if ctx.boundary_after(k) {
             // `Show 01 - 119 [Batch]`: a zero-padded number before the
@@ -723,6 +759,7 @@ fn dash_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                 let mut claim = ctx.claim(left, a, season, ClaimRule::Dash);
                 claim.tight = false;
                 claim.glued = false;
+                claim.opens_before_dash = true;
                 return Some(claim);
             }
             return Some(ctx.claim(a, a, season, ClaimRule::Dash));
@@ -1026,7 +1063,10 @@ fn half_episode(ctx: &Ctx) -> bool {
                 Kind::Open(_) | Kind::Close(_) | Kind::SegDash
             ) || matches!(ctx.class[n], Class::Special | Class::End)
         });
-        if slot || (ctx.toks[i].depth == 0 && before_meta && i > 0) {
+        // `- S01E05 - Chapter 7.5`: past a marked episode a decimal is
+        // the episode title's.
+        let marked_before = (0..i).any(|j| !ctx.skip[j] && ctx.marks_episode(j));
+        if slot || (ctx.toks[i].depth == 0 && before_meta && i > 0 && !marked_before) {
             return true;
         }
     }
@@ -1047,16 +1087,7 @@ fn extra(ctx: &Ctx) -> bool {
         }
         let tok = &ctx.toks[i];
         let class = ctx.class[i];
-        if matches!(
-            class,
-            Class::Tag { .. } | Class::EpPrefix(..) | Class::SpecialNum(_)
-        ) || tok.kind == Kind::SegDash
-            && ctx.next(i).is_some_and(|n| ctx.episode_num(n).is_some())
-            || ctx.episode_num(i).is_some()
-                && ctx
-                    .prev(i)
-                    .is_some_and(|p| ctx.class[p] == Class::EpisodeWord)
-        {
+        if ctx.marks_episode(i) {
             structure_before = true;
         }
         if class == Class::Extra {
@@ -1069,6 +1100,34 @@ fn extra(ctx: &Ctx) -> bool {
                 "ncop" | "nced" | "ncoped" | "creditless" | "textless"
             ) {
                 return true;
+            }
+            // Inside a phrase of title words the word is the name or the
+            // episode title, not an extras label: before any episode mark
+            // when more words follow (`Today's Menu for the Emiya Family -
+            // S01E05`), after one when the phrase opens a segment of its
+            // own (`- S01E05 - Happy Ending`). `- 12 Minute Preview` is a
+            // label.
+            let title_word = |j: usize| {
+                ctx.toks[j].depth == tok.depth
+                    && ctx.toks[j].is_word()
+                    && matches!(ctx.class[j], Class::Plain | Class::Of)
+            };
+            let mut start = i;
+            while let Some(p) = ctx.prev(start).filter(|&p| title_word(p)) {
+                start = p;
+            }
+            let in_phrase = start < i;
+            let opens_segment = ctx
+                .prev(start)
+                .is_some_and(|p| ctx.toks[p].kind == Kind::SegDash);
+            if in_phrase
+                && if structure_before {
+                    opens_segment
+                } else {
+                    ctx.next(i).is_some_and(title_word)
+                }
+            {
+                continue;
             }
             let bracketed = tok.depth > 0;
             if (bracketed || first_word_seen) && (!structure_before || ctx.boundary_after(i)) {
@@ -1429,9 +1488,31 @@ fn special(ctx: &Ctx, claim: Option<&EpisodeClaim>, seasons: &Seasons) -> (bool,
         {
             return (true, false);
         }
+        // `Show OVA-01`: a marker glued to its number is a special's.
+        if let Some(d) = next
+            && ctx.toks[d].kind == Kind::SegDash
+            && ctx.toks[d].sep == Sep::None
+            && ctx
+                .next(d)
+                .is_some_and(|n| ctx.toks[n].sep == Sep::None && ctx.num(n).is_some())
+        {
+            return (true, false);
+        }
+        // `- 05 - Something Special`: past an episode's dash the marker
+        // ends the episode title.
+        let past_episode_dash = claim.is_some()
+            && (0..i).any(|j| {
+                !ctx.skip[j] && ctx.toks[j].depth == 0 && ctx.toks[j].kind == Kind::SegDash
+            });
         // `R.O.D (Read or Die) OVA (BD`, `Mob Psycho 100 Specials (BD`,
         // `... Kekkon Special - 01 ~ 03`: a marker ending the title text.
-        if tok.depth == 0 && !metadata_seen && ends && prev.is_some() && !real_season {
+        if tok.depth == 0
+            && !metadata_seen
+            && ends
+            && prev.is_some()
+            && !real_season
+            && !past_episode_dash
+        {
             return (true, true);
         }
     }
@@ -1509,6 +1590,9 @@ fn keywords(ctx: &Ctx, out: &mut ParsedTitle) {
 /// (`Mob Psycho 100 (BD)`, `Dark_Gathering_24_[`), or at the very end
 /// (`MAX 13`).
 fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
+    // The last bare number before the metadata, as Sonarr's bare absolute
+    // pattern reads it: `Show 99 (extra) 12 (1080p)` is 12.
+    let mut found = None;
     for k in 0..ctx.toks.len() {
         if ctx.skip[k] || ctx.toks[k].depth > 0 {
             continue;
@@ -1516,12 +1600,27 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
         // Past the title: metadata at top level ends the search
         // (`1080p NF WEB-DL AAC2.0 H.264 (Japanese Sub)` has no title number).
         if ctx.class[k].is_meta() {
-            return None;
+            return found;
+        }
+        // `Show 2 (2023) - 05 The Title`: a number after a later dash is
+        // the episode, so one before it is the title's.
+        if ctx.toks[k].kind == Kind::SegDash && ctx.next(k).is_some_and(|n| ctx.num(n).is_some()) {
+            found = None;
+            continue;
         }
         let Some((value, digits, _)) = ctx.num(k) else {
             continue;
         };
         if digits > 4 || is_year(value, digits) {
+            continue;
+        }
+        // `H.264` split by mixed delimiters: the codec's number (`Beyblade
+        // X 136` is the title's).
+        if ctx.toks[k].sep == Sep::Dot
+            && ctx
+                .prev(k)
+                .is_some_and(|p| matches!(ctx.toks[p].lower.as_str(), "h" | "x"))
+        {
             continue;
         }
         // A marked number (`+ Ep. 0`, `#5`, `Part 2`, `Season 2`, `Vol 3`)
@@ -1541,7 +1640,9 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
             n = ctx.next(v);
         }
         let hit = match n {
-            None => digits >= 2,
+            // A number ending the name only when no bracketed one came
+            // before it.
+            None => digits >= 2 && found.is_none(),
             Some(j) => match ctx.toks[j].kind {
                 Kind::Open(_) => true,
                 Kind::SegDash => ctx.next(j).is_some_and(|w| ctx.toks[w].is_word()),
@@ -1551,10 +1652,10 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
             },
         };
         if hit {
-            return Some(value as i32);
+            found = Some(value as i32);
         }
     }
-    None
+    found
 }
 
 /// A standard height written without `p` (`10-bit 1080 BluRay`), read

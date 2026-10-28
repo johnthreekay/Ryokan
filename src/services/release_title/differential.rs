@@ -315,6 +315,28 @@ fn dump() {
     }
 }
 
+/// Prints the old and new file reading of each line of `RT_FILES`
+/// (`name` or `name<TAB>alias|alias`, the aliases giving the series-aware
+/// reading too).
+#[test]
+#[ignore = "debugging aid: RT_FILES"]
+fn file_dump() {
+    let files = std::env::var("RT_FILES").unwrap_or_default();
+    for line in files.lines().filter(|t| !t.trim().is_empty()) {
+        let (name, aliases) = line.split_once('\t').unwrap_or((line, ""));
+        let lower = name.to_lowercase();
+        let old = legacy::media::parse_episode_span(&lower);
+        let new = crate::services::media::parse_episode_span(&lower);
+        eprintln!("== {name}\n   old={old:?}\n   new={new:?}");
+        if !aliases.is_empty() {
+            let aliases: Vec<&str> = aliases.split('|').collect();
+            let anchors = super::SeriesAnchors::new(&aliases);
+            let named = crate::services::media::parse_episode_span_for(&lower, &anchors);
+            eprintln!("   for={named:?}");
+        }
+    }
+}
+
 /// Every file name in `tests/fixtures/nyaa-filenames/`.
 fn corpus_file_names() -> Vec<String> {
     let mut out = Vec::new();
