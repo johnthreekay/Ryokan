@@ -44,7 +44,7 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # mold is the linker pinned in `.cargo/config.toml` for linux
       # targets; CI's ubuntu-latest doesn't ship it preinstalled, so
       # without this step every link step would fail with
@@ -60,7 +60,7 @@ jobs:
       # boot. taiki-e/install-action grabs a precompiled binary from
       # the GitHub release rather than building from source (~20s vs
       # ~2 min via cargo install).
-      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: cargo-nextest
       - name: Format check
@@ -113,7 +113,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: 1.95.0
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: msrv
       # The repo's `.cargo/config.toml` pins clang+mold as the linker
