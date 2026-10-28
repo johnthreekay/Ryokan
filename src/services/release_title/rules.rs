@@ -1872,8 +1872,9 @@ fn keywords(ctx: &Ctx, out: &mut ParsedTitle) {
 /// A bare number after the title that no rule placed: before a subtitle
 /// dash (`86 - Eighty Six`, `Cyborg 009 - Legend`), before a bracket
 /// (`Mob Psycho 100 (BD)`, `Dark_Gathering_24_[`), at the very end
-/// (`MAX 13`), before metadata (`Dragon.Ball.043.480p`), or before an
-/// episode title (`Show 23 'Title'`, `Show 095 Title Words`).
+/// (`MAX 13`), before metadata (`Dragon.Ball.043.480p`) or an end marker
+/// (`Dark_Gathering_25_Final_`), or before an episode title (`Show 23
+/// 'Title'`, `Show 095 Title Words`).
 fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
     // The last bare number before the metadata, as Sonarr's bare absolute
     // pattern reads it: `Show 99 (extra) 12 (1080p)` is 12.
@@ -1910,16 +1911,25 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
             continue;
         }
         // A marked number (`+ Ep. 0`, `#5`, `Part 2`, `Season 2`, `Vol 3`)
-        // or the right side of a pair (`06-05`) is not the title's.
+        // or the right side of a pair (`06-05`) is not the title's. After
+        // a season already named (`The Final Season 05`, `2nd Season 05`)
+        // the number is the episode, as `title_zone` reads it.
         if ctx.prev(k).is_some_and(|p| {
-            matches!(
-                ctx.class[p],
-                Class::EpisodeWord
-                    | Class::PartWord
-                    | Class::SeasonWord
-                    | Class::VolWord
-                    | Class::Batch
-            ) || matches!(ctx.toks[p].kind, Kind::Hash | Kind::Plus | Kind::RangeOp)
+            let named_season = ctx.class[p] == Class::SeasonWord
+                && ctx.prev(p).is_some_and(|q| {
+                    matches!(ctx.class[q], Class::Ordinal(_) | Class::WordNumber(_))
+                        || ctx.toks[q].lower == "final"
+                });
+            !named_season
+                && matches!(
+                    ctx.class[p],
+                    Class::EpisodeWord
+                        | Class::PartWord
+                        | Class::SeasonWord
+                        | Class::VolWord
+                        | Class::Batch
+                )
+                || matches!(ctx.toks[p].kind, Kind::Hash | Kind::Plus | Kind::RangeOp)
         }) {
             continue;
         }
@@ -1972,8 +1982,11 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
                             && matches!(ctx.class[p], Class::Plain | Class::Of)
                     }) && ctx.toks[k].sep != Sep::None
                         && value > 0;
+                    // `[EA]Dark_Gathering_25_Final_`: a pack's last
+                    // episode, marked as the end.
                     digits >= 2
                         && (ctx.class[j].is_meta()
+                            || ctx.class[j] == Class::End
                             || after_title_word
                                 && (matches!(ctx.toks[j].text.as_str(), "'" | "\"")
                                     || digits <= 3

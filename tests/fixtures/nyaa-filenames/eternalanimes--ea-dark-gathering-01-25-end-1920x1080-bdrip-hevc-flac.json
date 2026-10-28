@@ -127,7 +127,8 @@
     {
       "name": "[EA]Dark_Gathering_25_Final_[1920x1080][BDRIP][HEVC][5C730C8C].mkv",
       "season": null,
-      "episode": null
+      "episode": 25,
+      "note": "issue #296's own pack: a number before an end marker (`_25_Final_`) is the last episode; read nothing before, so an import dropped the finale"
     }
   ]
 }

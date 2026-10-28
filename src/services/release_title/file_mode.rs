@@ -528,6 +528,35 @@ mod tests {
     }
 
     #[test]
+    fn a_number_before_final_is_the_episode() {
+        let plain = |name: &str| parse_episode_span(&name.to_lowercase()).map(|s| s.first);
+        // Issue #296's own pack ends on `_25_Final_`; the import dropped it.
+        assert_eq!(
+            plain("[EA]Dark_Gathering_25_Final_[1920x1080][BDRIP][HEVC][5C730C8C].mkv"),
+            Some(25)
+        );
+        assert_eq!(plain("Kuromukuro 26 END [720p].mkv"), Some(26));
+        // `Final` opening an episode title leaves the number the episode.
+        assert_eq!(plain("Show 05 Final Battle [1080p].mkv"), Some(5));
+        assert_eq!(plain("Show 07 Final Exam.mkv"), Some(7));
+        assert_eq!(
+            plain("[Group] Show - 05 - The Final Battle [1080p].mkv"),
+            Some(5)
+        );
+        // After a season already named, the number is the episode.
+        assert_eq!(
+            plain("[Group] Shingeki no Kyojin The Final Season 05 [1080p].mkv"),
+            Some(5)
+        );
+        // A title's own number before `Final` is vetoed by the series' name,
+        // as `Mob Psycho 100 (BD)` is.
+        assert_eq!(
+            first("Mob Psycho 100 Final [BD].mkv", &["Mob Psycho 100"]),
+            None
+        );
+    }
+
+    #[test]
     fn a_file_under_an_extras_folder_holds_no_episode() {
         use super::{parse_file_path, path_names_extras};
         // From the 29k-title corpus' file lists: the folder is the only
