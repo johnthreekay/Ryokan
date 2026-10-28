@@ -666,27 +666,31 @@ pub async fn match_groups(groups: &mut Vec<SeriesGroup>) {
 
 /// Once a group has its pick, a number the picked series' own name holds
 /// is not a file's episode (`Mob Psycho 100 (BD).mkv`), and where the
-/// name is found a bare reading is the number right after it. Only files
-/// whose reading changes with the names are touched, so the parse step's
-/// folder and `Specials/` decisions stand for every other file.
+/// name is found a bare reading is the number right after it. The
+/// reading is recomputed from each file's name for the current pick (the
+/// plain reading with none), so a hand pick, a typed re-search or "none
+/// of these" replaces the previous pick's reading. A file whose name
+/// reads nothing keeps what the parse step gave it.
 fn reread_with_pick(g: &mut SeriesGroup) {
-    let Some(entry) = g.pick.and_then(|i| g.candidates.get(i)) else {
-        return;
-    };
-    let anchors = SeriesAnchors::new(&[
-        entry.title_romaji.as_str(),
-        entry.title_english.as_str(),
-        entry.title_native.as_str(),
-    ])
-    .with_specials_as_episodes(!media::is_tv_format(&entry.format));
+    let anchors = g.pick.and_then(|i| g.candidates.get(i)).map(|entry| {
+        SeriesAnchors::new(&[
+            entry.title_romaji.as_str(),
+            entry.title_english.as_str(),
+            entry.title_native.as_str(),
+        ])
+        .with_specials_as_episodes(!media::is_tv_format(&entry.format))
+    });
     for f in &mut g.files {
         let lower = f.file_name.to_lowercase();
-        let named = media::parse_episode_span_for(&lower, &anchors);
-        if named == media::parse_episode_span(&lower) {
+        let Some(plain) = media::parse_episode_span(&lower) else {
             continue;
-        }
-        f.episode = named.map(|s| s.first);
-        f.episode_count = named.map_or(1, |s| s.count());
+        };
+        let read = match &anchors {
+            Some(anchors) => media::parse_episode_span_for(&lower, anchors),
+            None => Some(plain),
+        };
+        f.episode = read.map(|s| s.first);
+        f.episode_count = read.map_or(1, |s| s.count());
     }
 }
 
@@ -899,6 +903,7 @@ pub async fn pick_by_id(
     group.skipped = false;
     group.low_confidence = false;
     revert_renumbering(&mut group);
+    reread_with_pick(&mut group);
     resolve_existing(&state.db, &mut group).await;
     store_group(state, session_id, idx, group)
 }
@@ -921,6 +926,7 @@ pub async fn research_group(
     group.skipped = false;
     revert_renumbering(&mut group);
     search_and_rank(&mut group, false).await;
+    reread_with_pick(&mut group);
     resolve_existing(&state.db, &mut group).await;
     store_group(state, session_id, idx, group)
 }
@@ -943,6 +949,7 @@ pub async fn pick_candidate(
     group.skipped = false;
     group.low_confidence = false;
     revert_renumbering(&mut group);
+    reread_with_pick(&mut group);
     resolve_existing(&state.db, &mut group).await;
     store_group(state, session_id, idx, group)
 }
@@ -1033,6 +1040,19 @@ mod tests {
         };
         reread_with_pick(&mut g);
         assert_eq!(g.files[0].episode, None);
+        assert_eq!(g.files[1].episode, Some(5));
+        // "None of these": the plain reading comes back.
+        g.pick = None;
+        reread_with_pick(&mut g);
+        assert_eq!(g.files[0].episode, Some(100));
+        // Another pick whose names the file does not hold reads it plainly.
+        let mut other = g.candidates[0].clone();
+        other.title_romaji = "Something Else".into();
+        other.title_english = String::new();
+        g.candidates.push(other);
+        g.pick = Some(1);
+        reread_with_pick(&mut g);
+        assert_eq!(g.files[0].episode, Some(100));
         assert_eq!(g.files[1].episode, Some(5));
     }
 

@@ -437,15 +437,19 @@ pub async fn expand_from_files(
         parent_eps_covered.iter().copied().collect();
     // A number the parent's own name holds is never a file's episode,
     // and an absolute-numbered file lands in its relative slot, the
-    // numbering `parent_episode_numbers` and the import both use.
-    let parent_cumulative = series::get_by_id(db, parent_series_id)
-        .await
-        .ok()
-        .flatten()
+    // numbering `parent_episode_numbers` and the import both use. The
+    // names are the import's own (`series_anchors`: the row's title and
+    // alternate titles too), so both read a file alike.
+    let parent_row = series::get_by_id(db, parent_series_id).await.ok().flatten();
+    let parent_cumulative = parent_row
+        .as_ref()
         .map(|s| s.cumulative_prior_episodes)
         .unwrap_or(0);
-    let parent_anchors = SeriesAnchors::new(&auto_search::collect_aliases(parent_detail))
-        .with_specials_as_episodes(!media::is_tv_format(&parent_detail.format));
+    let parent_anchors = match &parent_row {
+        Some(row) => crate::services::grab_commit::series_anchors(row),
+        None => SeriesAnchors::new(&auto_search::collect_aliases(parent_detail))
+            .with_specials_as_episodes(!media::is_tv_format(&parent_detail.format)),
+    };
     for &file_idx in &parent_file_indices {
         let Some(name) = filenames.get(file_idx) else {
             continue;

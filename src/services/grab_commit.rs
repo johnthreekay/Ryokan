@@ -281,10 +281,15 @@ pub(crate) fn episode_numbers_for_commit(
         .filter(|n| auto_search::is_media_filename(n))
     {
         let base = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
+        // A file whose number the series' name holds (`Mob Psycho 100
+        // (BD).mkv`) read as no episode, which is still a reading: the
+        // title's range must not stand in for it.
+        if media::parse_episode_span(&base).is_some() {
+            any_parsed = true;
+        }
         let Some(span) = media::parse_episode_span_for(&base, &series.anchors) else {
             continue;
         };
-        any_parsed = true;
         if span.special {
             continue;
         }
@@ -1159,5 +1164,16 @@ mod tests {
             ),
             (1..=24).collect::<Vec<i32>>()
         );
+    }
+
+    #[test]
+    fn a_pick_of_only_name_vetoed_files_is_no_episode() {
+        let mob = series("Mob Psycho 100", 0, Some(12));
+        let eps = episode_numbers_for_commit(
+            "[G] Mob Psycho 100 (BD 1080p)",
+            &["[G] Mob Psycho 100 (BD 1080p)/[G] Mob Psycho 100 (BD 1080p).mkv".to_string()],
+            &mob,
+        );
+        assert!(eps.is_empty(), "{eps:?}");
     }
 }
