@@ -47,26 +47,12 @@ pub(crate) async fn series_still_in_library(db: &SqlitePool, series_id: Option<i
     series::get_by_id(db, sid).await.ok().flatten().is_some()
 }
 
-pub(super) fn batch_episode_numbers(title: &str, detail: &anilist::AnimeDetail) -> Vec<i32> {
-    let mut ep_nums: Vec<i32> = auto_search::parse_release_numbers(title)
-        .into_iter()
-        .collect();
-    if ep_nums.is_empty()
-        && let Some(total) = detail.episodes
-        && total > 0
-        && total <= 1000
-    {
-        ep_nums = (1..=total).collect();
-    }
-    ep_nums.sort_unstable();
-    ep_nums
-}
-
 // AutoExpandGrabContext + the core expansion logic live in
 // `services::auto_expand` so `services::post_processing` can call the
 // same routine as a fallback when the grab-time metadata wait here
 // timed out. Re-export locally so call sites in this file stay terse.
 use crate::services::auto_expand::{AutoExpandGrabContext, expand_from_files};
+use crate::services::grab_commit::{GrabFor, GrabSeries, grab_episode_list};
 
 /// Grab-time outer orchestrator: wait for qBit metadata, then delegate
 /// to [`services::auto_expand::expand_from_files`]. Failure here
@@ -709,19 +695,20 @@ async fn run_auto_search_targets_with_upgrades(
                         .await;
                         // Record for post-processing and episode quality tags.
                         if let Some(sid) = series_id {
-                            let mut ep_nums: Vec<i32> = match &target {
-                                auto_search::SearchTarget::Episode(n) => vec![*n],
-                                auto_search::SearchTarget::Single => vec![1],
+                            // Series-relative, every episode a batch or a
+                            // multi-episode release covers gets a grab tag.
+                            let grab_for = match &target {
+                                auto_search::SearchTarget::Episode(n) => GrabFor::Episode(*n),
+                                auto_search::SearchTarget::Single => GrabFor::Single,
                             };
-                            // For batch releases, parse all episode numbers from
-                            // the title so every covered episode gets a grab tag.
-                            if result.is_batch {
-                                let parsed = auto_search::parse_release_numbers(&result.title);
-                                if !parsed.is_empty() {
-                                    ep_nums = parsed.into_iter().collect();
-                                    ep_nums.sort_unstable();
-                                }
-                            }
+                            let ep_nums = grab_episode_list(
+                                &result.title,
+                                &GrabSeries::load(&state.db, sid)
+                                    .await
+                                    .with_episode_count(detail.episodes),
+                                grab_for,
+                                result.is_batch,
+                            );
                             // `record_grab` returns `None` on the
                             // empty-hash + FK-violation anomaly path
                             // documented on the model, or on a DB

@@ -1,0 +1,392 @@
+{
+  "bucket": "bd-season-packs",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=MTBB+BD&c=1_2",
+    "https://nyaa.si/?page=rss&q=Kaizoku&c=1_2",
+    "https://nyaa.si/?page=rss&q=Collection+BD&c=1_2",
+    "https://nyaa.si/?page=rss&q=smol+BD&c=1_2",
+    "https://nyaa.si/?page=rss&q=Okay-Subs+BD&c=1_2",
+    "https://nyaa.si/?page=rss&q=Kaizoku+BD&c=1_2",
+    "https://nyaa.si/?page=rss&q=Dual-Audio&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[MTBB] Mind Game (2004) (BD 1080p)",
+      "url": "https://nyaa.si/view/2093894",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "year": 2004,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Kaizoku] Jujutsu Kaisen Season 2 (BD 1080p)",
+      "url": "https://nyaa.si/view/1949479",
+      "category": "1_2",
+      "expect": {
+        "group": "Kaizoku",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Monogatari Series Collection v2.5 [by @KonoVitoDa] [BDRip 1080p FLAC] (ENG, ESP, PT-BR) | +Audio Commentary +Extras | MTBB Commie Coalgirls | Beatrice-Raws Kawaiika-Raws | Bakemonogatari Kizumonogatari Nisemonogatari",
+      "url": "https://nyaa.si/view/1771033",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "batch": true,
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "Series Collection is a batch keyword; Collection alone is not"
+    },
+    {
+      "title": "[MTBB-Minis] Monogatari Series (BD 1080p AV1)",
+      "url": "https://nyaa.si/view/1582701",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB-Minis",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[WBDP] [MTBB] Yahari Ore no Seishun Love Comedy wa Machigatteiru Zoku OVA / My Teen Romantic Comedy SNAFU [BD][1080p]",
+      "url": "https://nyaa.si/view/1574157",
+      "category": "1_2",
+      "expect": {
+        "group": "WBDP",
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "OVA ends the first title segment; the series format decides what that means"
+    },
+    {
+      "title": "[smol] Fruits Basket -prelude- (2022) (BD 1080p HEVC Opus) [Dual Audio] | Fruba | Furuba | The Story of Kyoko and Katsuya",
+      "url": "https://nyaa.si/view/1930769",
+      "category": "1_2",
+      "expect": {
+        "group": "smol",
+        "year": 2022,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Okay-Subs] Gunbuster S2 (BD 1080p) | Top wo Nerae 2! Diebuster",
+      "url": "https://nyaa.si/view/2173663",
+      "category": "1_2",
+      "expect": {
+        "group": "Okay-Subs",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Trix] Fena: Pirate Princess Season 1 (COMPLETE) [Dual Audio] (BD 1080p AV1) [Multi Subs] - Kaizoku Oujo 海賊王女 S01 (VOSTFR)",
+      "url": "https://nyaa.si/view/2022642",
+      "category": "1_2",
+      "expect": {
+        "group": "Trix",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Piratess] Kaizoku Oujo (BD 1080p x264 10-bit FLAC) [Dual Audio] (Fena: Pirate Princess)",
+      "url": "https://nyaa.si/view/1514085",
+      "category": "1_2",
+      "expect": {
+        "group": "Piratess",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[-__-'] Mouretsu Uchuu Kaizoku - Abyss of Hyperspace [BD 1080p FLAC 5.1] [0211E4C3].mkv",
+      "url": "https://nyaa.si/view/845687",
+      "category": "1_2",
+      "expect": {
+        "group": "-__-'",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Judas] Seihantai na Kimi to Boku (You and I Are Polar Opposites) (Season 02) [1080p][HEVC x265 10bit][Dual-Audio][Multi-Subs] (Batch)",
+      "url": "https://nyaa.si/view/2178869",
+      "category": "1_2",
+      "expect": {
+        "group": "Judas",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Sono Bisque Doll wa Koi wo Suru S1 (BD 1080p) | My Dress-Up Darling",
+      "url": "https://nyaa.si/view/2092385",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Mob Psycho 100 S2 (BD 1080p)",
+      "url": "https://nyaa.si/view/2078469",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Non Non Biyori Vacation (2018) (BD 1080p) | Non Non Biyori Movie",
+      "url": "https://nyaa.si/view/2065579",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "year": 2018,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Mushoku Tensei S2 (BD 1080p) | Jobless Reincarnation S2",
+      "url": "https://nyaa.si/view/2060535",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Monogatari Series Off & Monster Season S1 (BD 1080p)",
+      "url": "https://nyaa.si/view/1995541",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Steins;Gate 0 (BD 1080p) | Steins;Gate Zero S1",
+      "url": "https://nyaa.si/view/1992716",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "series": {
+        "aliases": [
+          "Steins;Gate 0"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Steins;Gate S1 (BD 1080p)",
+      "url": "https://nyaa.si/view/1960104",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] KIZUMONOGATARI -Koyomi Vamp- (2024) (BD 1080p)",
+      "url": "https://nyaa.si/view/1908830",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "year": 2024,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Shingeki no Kyojin S4 (BD 1080p) | Attack on Titan Final Season | Final Chapters",
+      "url": "https://nyaa.si/view/1838914",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] March Comes in Like a Lion S2 (BD 1080p) | Sangatsu no Lion | 3-gatsu",
+      "url": "https://nyaa.si/view/1820161",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] K-ON! the Movie (2011) (BD 1080p)",
+      "url": "https://nyaa.si/view/1816037",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "year": 2011,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] K-ON! S2 (BD 1080p) | K-ON!!",
+      "url": "https://nyaa.si/view/1816036",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] The Dangers in My Heart - S00E01 (Bonus Dangers) (BD 1080p) | Boku no Kokoro no Yabai Yatsu: Twi-Yaba",
+      "url": "https://nyaa.si/view/1795535",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          1
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Kaguya-sama: Love is War S3 (BD 1080p) | Kaguya-sama wa Kokurasetai: Ultra Romantic",
+      "url": "https://nyaa.si/view/1793262",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] Bakemonogatari (BD 1080p)",
+      "url": "https://nyaa.si/view/1776125",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MTBB] ERASED (BD 1080p) | Boku dake ga Inai Machi",
+      "url": "https://nyaa.si/view/1756170",
+      "category": "1_2",
+      "expect": {
+        "group": "MTBB",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Black Clover (2017) [Stagione 01 Parte 3] [BluRay.1080p.x265.AAC.ITA.TRUEHD.JPN.Subs.Ita.Eng] [78.9GB] [stress]",
+      "url": "https://nyaa.si/view/2177974",
+      "expect": {
+        "group": "stress",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "season_part": 3,
+        "resolution": 1080,
+        "year": 2017
+      },
+      "verified": "hand",
+      "note": "Italian Stagione / Parte; a one-word last bracket is the group"
+    }
+  ]
+}

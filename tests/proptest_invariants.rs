@@ -22,10 +22,10 @@
 //! file builds as a normal integration test.
 
 use proptest::prelude::*;
-use ryokan::services::auto_search::parse_release_numbers;
 use ryokan::services::custom_formats::{compile_from_json, total_cf_score_for_release};
 use ryokan::services::nyaa::{SearchOptions, SearchResult};
 use ryokan::services::quality::nyaa_categories_for_format;
+use ryokan::services::release_title::{self, SeriesAnchors};
 use ryokan::services::scoring::{ScoreComponent, score_result_with_breakdown};
 use ryokan::services::source::{
     self, ClassificationResult, DecisionRule, Resolution, Source, SourceEvidence, WebKind,
@@ -128,7 +128,7 @@ proptest! {
         is_trusted in any::<bool>(),
         prefer_subs in any::<bool>(),
         // Bound title length and charset to keep the title parser /
-        // anitomy / regex_lite work proportional. Unbounded random
+        // regex_lite work proportional. Unbounded random
         // bytes would spend most of each case in tokenization.
         title in "[a-zA-Z0-9 \\-\\[\\]\\(\\)\\.]{0,80}",
     ) {
@@ -330,86 +330,20 @@ proptest! {
 
 // ─── parser-layer fuzz invariants ─────────────────────────────────
 //
-// `services::auto_search::parse_release_numbers` and
-// `services::source_filename::classify_filename` are pure parsers that
-// take arbitrary release-title strings off-the-wire. The most
+// `services::source_filename::classify_filename` is a pure parser that
+// takes arbitrary release-title strings off-the-wire (`release_title`'s
+// own fuzz invariants are further down). The most
 // valuable property test for each is "doesn't panic on any input"
 // — random byte sequences, trolling Unicode, deeply-nested brackets,
 // pathological lengths. Plus a few targeted invariants that the
 // parsers' doc comments imply.
 
 proptest! {
-    /// `parse_release_numbers` must never panic. Fuzzes the public
-    /// release-title parser with arbitrary strings; if the regex
-    /// engine, range parsing, or bracket-strip ever overflows /
-    /// out-of-bounds / divides-by-zero on a hostile input, this
-    /// catches it.
+    /// Never panics on printable ASCII. This was `#[ignore]`d while
+    /// `classify_filename` ran anitomy, whose C++ corrupted memory under
+    /// fuzzing (SIGSEGV / double free within a few thousand cases); the
+    /// crate went in phase 12e of the release-title plan.
     #[test]
-    fn parse_release_numbers_never_panics_on_any_input(
-        title in ".{0,200}",
-    ) {
-        let _ = parse_release_numbers(&title);
-    }
-
-    /// Stripping bracketed metadata is the documented behavior:
-    /// "[1080p]" / "(2024)" / "{tag}" inside the title must be
-    /// ignored before number extraction. Pin that strict equivalence
-    /// — adding bracketed content around a parseable core must not
-    /// change the parsed episode set.
-    #[test]
-    fn parse_release_numbers_ignores_bracketed_content(
-        episode in 1_i32..=300,
-        bracket_payload in "[a-zA-Z0-9 \\.x]{0,40}",
-    ) {
-        let bare = format!("Show - {episode:02}");
-        let bracketed = format!("[Group] Show - {episode:02} [{bracket_payload}]");
-        let bare_set = parse_release_numbers(&bare);
-        let bracketed_set = parse_release_numbers(&bracketed);
-        prop_assert_eq!(
-            bare_set,
-            bracketed_set,
-            "bracketed metadata must not affect the parsed episode set"
-        );
-    }
-
-    /// Determinism: two calls with the same input return the same
-    /// output. Defends against accidental introduction of internal
-    /// state (a once_cell that gets primed differently across calls,
-    /// or thread-local mutability).
-    #[test]
-    fn parse_release_numbers_is_deterministic(title in ".{0,200}") {
-        let a = parse_release_numbers(&title);
-        let b = parse_release_numbers(&title);
-        prop_assert_eq!(a, b);
-    }
-
-    /// **Disabled: `classify_filename` has a memory bug in anitomy's
-    /// C++ FFI** that proptest reliably triggers at ~2000+ cases,
-    /// even on ASCII-only inputs. The crash surfaces as either
-    /// SIGSEGV (`free(): invalid pointer`) or SIGABRT (`double free
-    /// detected in tcache 2`) — clear C++ memory corruption inside
-    /// the bundled anitomy parser.
-    ///
-    /// Confirmed across:
-    ///   * Full Unicode `.{0,200}` strategy (crashed at ~10 cases)
-    ///   * Restricted Hiragana/Katakana/CJK printable (~13 cases)
-    ///   * ASCII-printable-only (~5000 cases)
-    ///
-    /// Real Nyaa release titles haven't surfaced this in production
-    /// telemetry — the bug requires unusual byte-sequence shapes that
-    /// fuzzing reaches but legitimate release names don't. Filing
-    /// against anitomy upstream is the right fix; for now this test
-    /// is `#[ignore]`d to keep the rest of the proptest suite green.
-    /// Remove the ignore once the upstream fix lands.
-    ///
-    /// Run manually to characterize:
-    ///
-    ///     PROPTEST_CASES=10000 cargo test --features test-support \
-    ///         --test proptest_invariants \
-    ///         classify_filename_never_panics_on_realistic_input \
-    ///         -- --include-ignored
-    #[test]
-    #[ignore = "anitomy C++ memory bug; see comment + file upstream"]
     fn classify_filename_never_panics_on_realistic_input(
         title in "[ -~]{0,200}",
     ) {
@@ -419,7 +353,7 @@ proptest! {
     /// Empty / whitespace-only titles return the documented empty
     /// classification (`FilenameClassification::empty`). Pin that
     /// short-circuit so a future refactor doesn't accidentally
-    /// invoke anitomy on whitespace and produce surprising output.
+    /// parse whitespace and produce surprising output.
     #[test]
     fn classify_filename_empty_or_whitespace_returns_empty(
         ws in "[ \\t\\r\\n]{0,20}",
@@ -650,6 +584,84 @@ proptest! {
         s in ".{0,30}",
     ) {
         let _ = Source::from_str(&s);
+    }
+}
+
+// ─── release_title ────────────────────────────────────────────────
+
+/// Metadata tokens a release puts in brackets; none of them names an
+/// episode or a season.
+const BRACKET_METADATA: &[&str] = &[
+    "1080p",
+    "720p",
+    "480p",
+    "2160p",
+    "1920x1080",
+    "HEVC",
+    "x265",
+    "x264",
+    "AAC",
+    "FLAC",
+    "BD",
+    "WEB-DL",
+    "WebRip",
+    "10bit",
+    "Dual Audio",
+    "Multi-Subs",
+    "ABCD1234",
+];
+
+proptest! {
+    /// `release_title::parse` and every reading are total: no panic on
+    /// arbitrary input, deep or unbalanced brackets, or odd Unicode.
+    #[test]
+    fn release_title_parse_never_panics(title in ".{0,300}") {
+        let parsed = release_title::parse(&title);
+        let _ = parsed.is_batch();
+        let _ = parsed.release_episodes();
+        let _ = parsed.for_series(&SeriesAnchors::new(&["Show", "Dark Gathering"]));
+    }
+
+    #[test]
+    fn release_title_parse_is_deterministic(title in ".{0,200}") {
+        let a = release_title::parse(&title);
+        let b = release_title::parse(&title);
+        prop_assert_eq!(a.release_episodes(), b.release_episodes());
+        prop_assert_eq!(a.is_batch(), b.is_batch());
+        prop_assert_eq!(a.seasons, b.seasons);
+        prop_assert_eq!(a.group, b.group);
+    }
+
+    /// Wrapping a dash episode in a group and metadata brackets never
+    /// changes the episode it names.
+    #[test]
+    fn release_title_bracketed_metadata_does_not_move_the_episode(
+        episode in 1_i32..=999,
+        payload in prop::collection::vec(prop::sample::select(BRACKET_METADATA), 0..5),
+    ) {
+        let bare = format!("Show - {episode:02}");
+        let wrapped = format!("[Group] Show - {episode:02} [{}]", payload.join(" "));
+        prop_assert_eq!(
+            release_title::parse(&bare).release_episodes(),
+            release_title::parse(&wrapped).release_episodes()
+        );
+        prop_assert_eq!(
+            release_title::parse(&wrapped).release_episodes(),
+            HashSet::from([episode])
+        );
+    }
+
+    /// A title's own trailing number is never an episode for a series
+    /// whose name carries it.
+    #[test]
+    fn release_title_series_number_stays_in_the_name(
+        number in 2_u32..=999,
+        payload in prop::collection::vec(prop::sample::select(BRACKET_METADATA), 1..4),
+    ) {
+        let name = format!("Some Show {number}");
+        let title = format!("[Group] {name} ({})", payload.join(" "));
+        let reading = release_title::parse(&title).for_series(&SeriesAnchors::new(&[name]));
+        prop_assert!(reading.episodes.is_empty(), "{title} read {:?}", reading.episodes);
     }
 }
 

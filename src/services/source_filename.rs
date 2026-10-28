@@ -1,4 +1,4 @@
-//! Layer 1 — filename token parsing via anitomy.
+//! Layer 1 — filename token parsing.
 //!
 //! Given a torrent title or filename, extract source/resolution/remux info
 //! and emit weighted evidence records. This is the cheapest and most commonly
@@ -20,8 +20,6 @@
 //! This module does NOT fold evidence into a final source decision — that's
 //! the job of [`crate::services::source::aggregate`]. It just emits every
 //! piece of evidence it finds so the aggregator has full context.
-
-use anitomy::ElementCategory;
 
 use crate::services::source::{Origin, Resolution, Source, SourceEvidence, WebKind, contains_word};
 
@@ -66,11 +64,9 @@ impl FilenameClassification {
 
 /// Parse a torrent title and emit classification evidence.
 ///
-/// Uses anitomy to tokenize the title into structured fields (`Source`,
-/// `AudioTerm`, `VideoResolution`, `ReleaseGroup`) and applies weighted
-/// scoring rules on top. Anitomy construction is cheap — roughly equivalent
-/// to one `Vec` allocation — so we build a fresh parser per call rather than
-/// hold shared state.
+/// Resolution and group come from `release_title`; source and audio from
+/// the title's own metadata tokens (`metadata_tokens`) and a raw-title
+/// keyword scan, with weighted scoring rules on top.
 pub fn classify_filename(title: &str) -> FilenameClassification {
     let mut result = FilenameClassification::empty();
     if title.trim().is_empty() {
@@ -84,36 +80,31 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
     } else {
         title.to_string()
     };
-    // Length-bounded; see `media::anitomy_parse`.
-    let elements = crate::services::media::anitomy_parse(&clean);
+    let tokens = metadata_tokens(&clean);
 
-    // ── Resolution ────────────────────────────────────────────────────────
-    if let Some(res_str) = elements.get(ElementCategory::VideoResolution) {
-        result.resolution = Resolution::from_str(res_str);
-        if result.resolution == Resolution::Unknown {
-            // anitomy sometimes captures the dimension form (e.g. "1920x1080")
-            // which Resolution::from_str doesn't understand. Fall through to
-            // the dimension parser.
-            result.resolution = parse_dimensions(res_str);
-        }
-    }
-    if result.resolution == Resolution::Unknown {
-        result.resolution = parse_dimensions(&clean);
-    }
-
-    // ── Release group ─────────────────────────────────────────────────────
-    if let Some(group) = elements.get(ElementCategory::ReleaseGroup) {
-        let trimmed = group.trim();
-        if !trimmed.is_empty() {
-            result.release_group = Some(trimmed.to_string());
-        }
-    }
+    // ── Resolution and release group ──────────────────────────────────────
+    // `release_title` reads both, as every other path does. A height
+    // between the standard ones lands in the tier below it (`540p` is
+    // the 480p tier), the same loose bounds as a `WxH` dimension.
+    let parsed = crate::services::release_title::parse(&clean);
+    result.resolution = parsed
+        .resolution
+        .map(|h| Resolution::from_dimensions(0, h))
+        .unwrap_or(Resolution::Unknown);
+    result.release_group = parsed.group;
+    // The DVD override reads only a disc's own heights: `BD 540p` is a
+    // downscaled BD encode in the 480p tier, not a DVD.
+    let dvd_height = match parsed.resolution {
+        Some(480) => Resolution::R480p,
+        Some(576) => Resolution::R576p,
+        _ => Resolution::Unknown,
+    };
 
     let title_lower = clean.to_ascii_lowercase();
 
     // ── Remux detection ───────────────────────────────────────────────────
-    // anitomy tags some releases with Source="Remux" and some with it baked
-    // into the VideoTerm; a direct substring check catches both.
+    // `REMUX` sits alone or inside another token (`BDRemux`); a direct
+    // substring check catches both.
     result.is_remux = title_lower.contains("remux");
 
     // ── BDMV / BD-Raw detection ───────────────────────────────────────────
@@ -154,14 +145,22 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
     }
 
     // ── Explicit source keyword ───────────────────────────────────────────
-    // Try anitomy's structured Source field first, then fall back to scanning
-    // the raw title for source tokens. Anitomy's keyword list is good but
-    // doesn't catch every variant (e.g. it sometimes misses "WEB-DL" when the
-    // title uses dot-separators, and `PDTV` isn't consistently tagged). The
-    // fallback scanner also lets us pick up a SECOND source signal in the
-    // rare multi-source torrent title, which feeds the review-detection rule.
-    if let Some(src_str) = elements.get(ElementCategory::Source)
-        && let Some((src, conf, detail)) = source_from_keyword(src_str, result.resolution)
+    // The first source keyword among the title's tokens (`BD`, `BDRip`,
+    // `DVD`, `WEB-DL`, `REMUX`, `R2J`, ...; a bare `TV` is a title word
+    // too often to count), then a scan of the raw title for further
+    // source tokens. The scan also lets us pick up a SECOND source signal
+    // in the rare multi-source torrent title, which feeds the
+    // review-detection rule.
+    if let Some((src, conf, detail)) = token_words(&tokens)
+        .filter(|w| {
+            !matches!(
+                w.to_ascii_lowercase().as_str(),
+                // `R2` is a title word too (`Code Geass R2`); a bare `WEB`
+                // is the fallback scan's weaker 0.85 (a title can say it).
+                "tv" | "r2" | "web" | "bdmv" | "bdraw" | "bdiso" | "bd-raw"
+            )
+        })
+        .find_map(|w| source_from_keyword(glued_source(w), dvd_height))
     {
         result
             .evidence
@@ -172,19 +171,19 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
             continue;
         }
         // Skip if we've already emitted evidence for this source — avoids
-        // double-counting when anitomy and the fallback scanner both catch
-        // the same token.
+        // double-counting when the token scan and the fallback scanner both
+        // catch the same token.
         if result.evidence.iter().any(|e| e.source == *mapped_src) {
             continue;
         }
         // Apply the DVD-resolution override for BD-class tokens.
         let (final_src, final_conf, detail) = if *mapped_src == Source::BluRay
-            && matches!(result.resolution, Resolution::R480p | Resolution::R576p)
+            && matches!(dvd_height, Resolution::R480p | Resolution::R576p)
         {
             (
                 Source::Dvd,
                 0.85,
-                format!("{} + {} → DVD override", token, result.resolution.as_str()),
+                format!("{} + {} → DVD override", token, dvd_height.as_str()),
             )
         } else {
             // Bare "web" is a weaker signal than "web-dl"/"webrip": the
@@ -236,14 +235,9 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
     }
 
     // ── Audio codec inference ─────────────────────────────────────────────
-    // Gather every audio term anitomy identified, plus what we can scan from
-    // the raw title. Scanning the raw title catches releases that pack codec
-    // tokens into brackets where anitomy doesn't tag them as AudioTerm.
-    let audio_terms: Vec<String> = elements
-        .get_all(ElementCategory::AudioTerm)
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
+    // Every audio-codec token in the title (and part of a hyphenated one,
+    // `1080p-AAC`), plus what the raw-title scan finds.
+    let audio_terms: Vec<String> = token_words(&tokens).map(str::to_string).collect();
     if let Some((src, conf, detail)) = audio_signal(&audio_terms, &title_lower) {
         result
             .evidence
@@ -257,7 +251,46 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Map a source keyword (as emitted by anitomy's `Source` field) to our
+/// The title's metadata-sized tokens: split on whitespace, brackets,
+/// underscores, dots, commas, `+`, `|` and `/`, keeping hyphenated words
+/// (`WEB-DL`, `Blu-ray`, `E-AC-3`) whole.
+fn metadata_tokens(title: &str) -> Vec<String> {
+    title
+        .split(|c: char| c.is_whitespace() || "[](){}_.,+|/".contains(c))
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Each token, then the parts of a hyphenated one (`DVD-480p` is
+/// `DVD-480p`, `DVD`, `480p`), in title order.
+fn token_words(tokens: &[String]) -> impl Iterator<Item = &str> {
+    tokens.iter().flat_map(|t| {
+        let parts = t
+            .contains('-')
+            .then(|| t.split('-').filter(|p| !p.is_empty()));
+        std::iter::once(t.as_str()).chain(parts.into_iter().flatten())
+    })
+}
+
+/// A source glued to a resolution (`BD1080p`, `DVD480p`) as its source word.
+fn glued_source(word: &str) -> &str {
+    for prefix in ["bd", "dvd"] {
+        // `get` keeps a CJK token (`月面のイブ`) from being cut mid-character.
+        if let (Some(head), Some(rest)) = (word.get(..prefix.len()), word.get(prefix.len()..))
+            && !rest.is_empty()
+            && head.eq_ignore_ascii_case(prefix)
+            && !crate::services::release_title::release_fields(rest)
+                .resolution
+                .is_empty()
+        {
+            return head;
+        }
+    }
+    word
+}
+
+/// Map a source keyword (one title token) to our
 /// `Source` enum and a confidence score.
 ///
 /// Applies the DVD-resolution override: a BD-class keyword combined with a
@@ -301,7 +334,7 @@ fn source_from_keyword(keyword: &str, res: Resolution) -> Option<(Source, f32, S
 /// signal. Lossy Dolby variants (DDP/E-AC-3) are streaming-native. Plain AAC
 /// is suggestive but weaker because older BD rips also used it.
 ///
-/// We merge both anitomy-tagged `AudioTerm`s and a raw-title scan so that
+/// We merge the title's tokens and a raw-title scan so that
 /// releases with codecs packed into brackets (common for mini-encode groups)
 /// still contribute evidence.
 fn audio_signal(audio_terms: &[String], title_lower: &str) -> Option<(Source, f32, String)> {
@@ -312,7 +345,7 @@ fn audio_signal(audio_terms: &[String], title_lower: &str) -> Option<(Source, f3
         classify_audio_token(raw, &mut lossless_hits, &mut web_hits);
     }
 
-    // Raw-title fallback for codec tokens anitomy didn't catch.
+    // Raw-title fallback for codec tokens the token split didn't catch.
     for &token in LOSSLESS_TOKENS {
         if contains_word(title_lower, token) && !lossless_hits.contains(&token) {
             lossless_hits.push(token);
@@ -367,13 +400,11 @@ fn push_unique(list: &mut Vec<&'static str>, item: &'static str) {
 const LOSSLESS_TOKENS: &[&str] = &["flac", "truehd", "dts-hd", "dtshd", "pcm", "lpcm"];
 const WEB_AUDIO_TOKENS: &[&str] = &["ddp", "eac3", "e-ac-3"];
 
-/// Raw-title fallback for source keywords. Anitomy's structured Source field
-/// is accurate when it fires, but misses a few variants in practice —
-/// particularly when release names use dot-separators (e.g.
-/// `Show.S01E01.WEB-DL.DDP`) or rare TV broadcast tags (`PDTV`, `SDTV`).
-/// The scanner runs after anitomy and only contributes evidence for a
-/// source that hasn't already been emitted, so anitomy's stricter parse
-/// takes precedence when both agree.
+/// Raw-title fallback for source keywords the token scan leaves out or
+/// misses (a bare `WEB`, rare TV broadcast tags such as `PDTV` /
+/// `SDTV`). The scanner runs after the token scan and only contributes
+/// evidence for a source that hasn't already been emitted, so the token
+/// scan's answer takes precedence when both agree.
 const SOURCE_FALLBACK_TOKENS: &[(&str, Source)] = &[
     // BluRay variants — BDMV/BD-RAW/BDRAW are caught by the dedicated
     // is_bdmv detector above and emit their own evidence record, so they
@@ -383,9 +414,8 @@ const SOURCE_FALLBACK_TOKENS: &[(&str, Source)] = &[
     ("bluray", Source::BluRay),
     ("blu-ray", Source::BluRay),
     // Web variants — the bare "web" entry catches space-separated
-    // forms like "(WEB 1080p AV1 EAC-3)" that anitomy sometimes
-    // misses as an ElementCategory::Source and that the hyphenated
-    // variants don't cover. The dedup check inside `classify_filename`'s
+    // forms like "(WEB 1080p AV1 EAC-3)" that the token scan leaves to
+    // this weaker 0.85 and that the hyphenated variants don't cover. The dedup check inside `classify_filename`'s
     // fallback loop (`.any(|e| e.source == *mapped_src)`) prevents
     // double-counting when both the specific (web-dl) and the bare
     // (web) token are present in the same title. Bare "web" also gets
@@ -436,57 +466,6 @@ const PLATFORM_TAGS: &[&str] = &[
     "atvp",
     "adn",
 ];
-
-/// Parse a dimension fragment like "1920x1080" or "1280x720" into a
-/// `Resolution`. Returns `Resolution::Unknown` if no dimension pair is found
-/// or the pair doesn't round-trip to a known tier.
-fn parse_dimensions(text: &str) -> Resolution {
-    // Walk the bytes looking for a digit run, an x/X separator, another
-    // digit run. Cheaper than instantiating a regex and easier to reason
-    // about than keeping a LazyLock alive.
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        // Skip non-digits.
-        while i < bytes.len() && !bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        let start = i;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        let w_len = i - start;
-        if !(3..=4).contains(&w_len) {
-            continue;
-        }
-        if i < bytes.len() && (bytes[i] == b'x' || bytes[i] == b'X') {
-            let sep = i;
-            let h_start = sep + 1;
-            let mut j = h_start;
-            while j < bytes.len() && bytes[j].is_ascii_digit() {
-                j += 1;
-            }
-            let h_len = j - h_start;
-            if (3..=4).contains(&h_len) {
-                let w: u32 = std::str::from_utf8(&bytes[start..sep])
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-                let h: u32 = std::str::from_utf8(&bytes[h_start..j])
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-                let r = Resolution::from_dimensions(w, h);
-                if r != Resolution::Unknown {
-                    return r;
-                }
-                i = j;
-                continue;
-            }
-        }
-    }
-    Resolution::Unknown
-}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tests
@@ -700,6 +679,43 @@ mod tests {
         assert!(fc.evidence.is_empty());
         assert_eq!(fc.resolution, Resolution::Unknown);
         assert!(fc.release_group.is_none());
+    }
+
+    #[test]
+    fn a_title_word_r2_or_web_is_no_strong_source() {
+        let geass = classify_filename("[G] Code Geass R2 - 05 [BD 1080p]");
+        assert!(!geass.evidence.iter().any(|e| e.source == Source::Dvd));
+        assert!(geass.evidence.iter().any(|e| e.source == Source::BluRay));
+        let web = classify_filename("Show - S01E05 - Spider's Web [Bluray-1080p].mkv");
+        assert!(
+            web.evidence
+                .iter()
+                .filter(|e| e.source == Source::Web)
+                .all(|e| e.confidence < 0.9)
+        );
+    }
+
+    #[test]
+    fn a_bd_encode_at_540p_is_still_bluray() {
+        let fc = classify_filename("[FAV] Chihayafuru 1-3 [BD 540p x264 AAC]");
+        assert_eq!(fc.resolution, Resolution::R480p);
+        assert!(fc.evidence.iter().any(|e| e.source == Source::BluRay));
+        assert!(!fc.evidence.iter().any(|e| e.source == Source::Dvd));
+        // A disc height is still the DVD override.
+        let dvd = classify_filename("[Group] Show 01 [BD 480p x264 AAC]");
+        assert!(dvd.evidence.iter().any(|e| e.source == Source::Dvd));
+    }
+
+    #[test]
+    fn a_cjk_token_is_never_cut_mid_character() {
+        let fc = classify_filename("(OVA) BOUNTY DOG -月面のイブ- (LD 640x480)");
+        assert_eq!(fc.resolution, Resolution::R480p);
+        assert!(
+            classify_filename("[Group] 月 BD1080p")
+                .evidence
+                .iter()
+                .any(|e| e.source == Source::BluRay)
+        );
     }
 
     #[test]

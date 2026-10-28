@@ -871,67 +871,8 @@ async fn auto_expand_owari_bd_split_with_anilist_count_mismatch() {
 // the small functions that feed them.
 
 mod pure_helpers {
-    use super::super::auto_search::{batch_episode_numbers, display_title_for_progress};
+    use super::super::auto_search::display_title_for_progress;
     use super::empty_anime_detail;
-
-    // ── batch_episode_numbers ────────────────────────────────────────
-
-    #[test]
-    fn batch_episode_numbers_parses_ranges_from_release_titles() {
-        // Real Nyaa batch shape — episode range gets parsed into
-        // every number it covers.
-        let detail = empty_anime_detail(1, "Show");
-        let nums = batch_episode_numbers("[Group] Show 01-12 (BD 1080p)", &detail);
-        assert_eq!(nums, (1..=12).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn batch_episode_numbers_falls_back_to_anilist_count() {
-        // When the title carries no parseable range, we fall back to
-        // AL's reported episode count. The series has 26 episodes so
-        // the fallback list is 1..=26.
-        let detail = empty_anime_detail(1, "Show");
-        // empty_anime_detail seeds episodes: Some(26).
-        let nums = batch_episode_numbers("[Group] Show Complete BD", &detail);
-        assert_eq!(nums, (1..=26).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn batch_episode_numbers_no_fallback_when_episode_count_zero_or_missing() {
-        // detail.episodes == None → the fallback arm shouldn't fire
-        // (we'd produce an empty vec rather than risking a guess).
-        let mut detail = empty_anime_detail(1, "Show");
-        detail.episodes = None;
-        assert!(batch_episode_numbers("[Group] Show Complete BD", &detail).is_empty());
-
-        // detail.episodes == Some(0) is similarly defensive.
-        detail.episodes = Some(0);
-        assert!(batch_episode_numbers("[Group] Show Complete BD", &detail).is_empty());
-    }
-
-    #[test]
-    fn batch_episode_numbers_no_fallback_when_episode_count_unreasonable() {
-        // The 1000-episode cap exists so an AL parse glitch
-        // (e.g. erroneous reported episodes count for One Piece)
-        // can't blow up into a million-element vec. Pin the gate.
-        let mut detail = empty_anime_detail(1, "Show");
-        detail.episodes = Some(1001);
-        assert!(batch_episode_numbers("[Group] Show Complete BD", &detail).is_empty());
-    }
-
-    #[test]
-    fn batch_episode_numbers_returns_sorted_unique_values() {
-        // The sort guarantee matters — downstream upgrade scans
-        // bisect this list. An out-of-order vec would silently miss
-        // upgrades. The parser handles dedup itself, but pin that
-        // contract by feeding a title with overlapping ranges.
-        let detail = empty_anime_detail(1, "Show");
-        let nums = batch_episode_numbers("[Group] Show 03 + 01-05 BD", &detail);
-        // Sorted ascending; dedup handled upstream.
-        let mut sorted = nums.clone();
-        sorted.sort_unstable();
-        assert_eq!(nums, sorted, "result must come back sorted");
-    }
 
     // ── display_title_for_progress ───────────────────────────────────
 
@@ -1058,7 +999,9 @@ mod handler_endpoints {
     use axum::http::StatusCode;
     use axum::response::Json as AxumJson;
 
-    use super::super::interactive::{interactive_search_batches, interactive_search_episode};
+    use super::super::interactive::{
+        InteractiveOrigin, interactive_search_batches, interactive_search_episode,
+    };
     use super::super::{anilist_search, api_series_detail};
     use super::empty_anime_detail;
     use crate::handlers::library::AnilistSearchQuery;
@@ -1845,6 +1788,125 @@ mod handler_endpoints {
             "no-range batch title must fall back to AnimeDetail.episodes (26) \
              and record_grab fans out one tag per episode"
         );
+    }
+
+    #[tokio::test]
+    async fn grab_batch_result_records_no_episodes_for_an_unnumbered_pack() {
+        // The same title posted from a row the batch list marked
+        // unnumbered (no info-hash, so the picker could not open): its
+        // episodes are unknown until its files are read, so none are
+        // recorded. A lone movie file must not be filed as the series.
+        use crate::test_support::{build_test_app_state, in_memory_pool, seed_series};
+
+        let db = in_memory_pool().await;
+        let anilist_id: i64 = 804;
+        let series_id = seed_series(&db, anilist_id, "Batch Show").await;
+        let detail = empty_anime_detail(anilist_id, "Batch Show");
+        crate::models::metadata_cache::upsert(&db, series_id, anilist_id, None, &detail)
+            .await
+            .unwrap();
+
+        let state = build_test_app_state(db.clone(), None);
+        let client = Arc::new(GrabRecordingClient::new());
+        install_grab_pool(
+            &state,
+            client.clone() as Arc<dyn crate::services::download_client::DownloadClient>,
+        )
+        .await;
+
+        let body = serde_json::json!({
+            "url": "https://indexer.example/get/123.nzb",
+            "title": "[Group] Batch Show (BD 1080p)",
+            "group": "Group",
+            "resolution": "1080p",
+            "info_hash": "",
+            "size_bytes": 12_000_000_000_i64,
+            "unnumbered": true,
+        });
+        let result = super::super::grab::grab_batch_result(
+            axum::extract::State(state),
+            axum::extract::Path(anilist_id),
+            axum::extract::Json(body),
+        )
+        .await;
+        let axum::response::Json(resp) = result.expect("batch grab must succeed");
+        assert_eq!(resp["ok"], true);
+
+        let (is_batch, episodes): (i64, String) = sqlx::query_as(
+            "SELECT is_batch, episode_numbers FROM grabbed_torrents WHERE torrent_name = ?",
+        )
+        .bind("[Group] Batch Show (BD 1080p)")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            is_batch, 1,
+            "still a batch grab: its files import by their names"
+        );
+        assert_eq!(episodes, "[]");
+        let tag_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM episode_quality_tags WHERE series_id = ?")
+                .bind(series_id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(tag_count, 0);
+    }
+
+    #[tokio::test]
+    async fn interactive_batch_rows_mark_unnumbered_packs_and_force_the_picker() {
+        // The batch collector offers a title that names no episodes
+        // (`[UTW] Show [BD]`) as a batch; its row says so and its Grab
+        // carries `data-unnumbered`, which opens the file picker even
+        // when grab previews are off. A titled batch carries neither.
+        let db = in_memory_pool().await;
+        let state = build_test_app_state(db, None);
+        let request_id: i64 = 702;
+        let mut titled = empty_search_result(
+            "[Group] Show - 01-12 Batch (1080p)",
+            "abcdef0123456789abcdef0123456789abcdef01",
+        );
+        titled.is_batch = true;
+        let mut unnumbered = empty_search_result(
+            "[UTW] Show [BD][h264-720p AC3]",
+            "fedcba9876543210fedcba9876543210fedcba98",
+        );
+        unnumbered.is_batch = true;
+        interactive_search_cache::insert(
+            &state.interactive_search_cache,
+            interactive_search_cache::Key::Batch(request_id),
+            vec![titled, unnumbered],
+        );
+        for query in [
+            InteractiveOrigin::default(),
+            InteractiveOrigin {
+                from: Some("wanted".into()),
+            },
+        ] {
+            let resp = interactive_search_batches(
+                State(state.clone()),
+                axum_htmx::HxRequest(true),
+                axum::extract::Query(query),
+                Path(request_id),
+            )
+            .await
+            .expect("cache-hit path must succeed");
+            let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .expect("read body");
+            let html = String::from_utf8(bytes.to_vec()).expect("utf-8");
+            assert_eq!(
+                html.matches("no episode numbers</span>").count(),
+                1,
+                "{html}"
+            );
+            assert_eq!(html.matches("data-unnumbered=\"1\"").count(), 1, "{html}");
+            let row = html
+                .split("<tr>")
+                .find(|r| r.contains("[UTW] Show"))
+                .expect("the pack's row");
+            assert!(row.contains("data-unnumbered=\"1\""), "{row}");
+        }
     }
 
     #[tokio::test]

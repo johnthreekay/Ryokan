@@ -328,9 +328,12 @@
         // files for the current pick start checked, so confirming is
         // one click. A user who set the grab preview to never has
         // opted out of the picker, and gets the plain batch grab the
-        // series page gives them (Sonarr has no picker at all).
+        // series page gives them (Sonarr has no picker at all), except
+        // for a pack whose title names no episodes: its files are the
+        // only evidence of what it holds.
+        var unnumbered = btn.dataset.unnumbered === '1';
         if (isBatch
-            && previewMode !== 'never'
+            && (previewMode !== 'never' || unnumbered)
             && typeof window.openGrabPicker === 'function'
             && result.info_hash) {
             window.openGrabPicker(url, {
@@ -368,6 +371,7 @@
                 size_bytes: result.size_bytes || 0,
                 indexer_id: result.indexer_id == null ? null : result.indexer_id,
                 match_provenance: result.match_provenance == null ? null : result.match_provenance,
+                unnumbered: unnumbered,
             }),
         })
         .then(async function (r) {

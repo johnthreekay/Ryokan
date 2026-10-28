@@ -1,0 +1,352 @@
+{
+  "bucket": "year-in-title",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=2024+S01E&c=1_2",
+    "https://nyaa.si/?page=rss&q=2025+S01&c=1_2",
+    "https://nyaa.si/?page=rss&q=%282023%29&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "Cherry Magic! Thirty Years of Virginity Can Make You a Wizard?! / 30歳まで童貞だと魔法使いになれるらしい / 30-sai made Doutei da to Mahou Tsukai ni Nareru Rashii (2024) S01E01-E12 + Extras v2 [1080p JPBD Remux] [Dual Audio] [Multiple Subtitles]",
+      "url": "https://nyaa.si/view/2128343",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "version": 2,
+        "year": 2024,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Ironclad] Fate strange Fake - S01E02 [WEB.1080p.AV1] | Fate/Strange Fake (2024) (Dual-Audio, Multi-Subs) (Weekly)",
+      "url": "https://nyaa.si/view/2062612",
+      "category": "1_2",
+      "expect": {
+        "group": "Ironclad",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          2
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Freehold] 2.5 Dimensional Seduction (2024) S01E24 [BDRip-1080p x265 FLAC AAC Dual-Audio] | 2.5 Jigen no Ririsa",
+      "url": "https://nyaa.si/view/2033316",
+      "category": "1_2",
+      "expect": {
+        "group": "Freehold",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          24
+        ],
+        "year": 2024,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "2.5 in the title is not a half episode"
+    },
+    {
+      "title": "[Yameii] Trillion Game (2024) - S01E26 [English Dub] [CR WEB-DL 1080p] [3DB09715]",
+      "url": "https://nyaa.si/view/1960847",
+      "category": "1_2",
+      "expect": {
+        "group": "Yameii",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          26
+        ],
+        "year": 2024,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Gecko] Enter the Garden S01E02 (2024) [VIU.WEB-DL 1920x1080 AVC 8bit, AAC 2.0, MULTi (EN ID MS TH ZH-S/CHS ZH-T/CHT)][E848C3B1]",
+      "url": "https://nyaa.si/view/1960358",
+      "category": "1_2",
+      "expect": {
+        "group": "Gecko",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          2
+        ],
+        "year": 2024,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[CicakRumah] Lockdown Zone Level X S01E12 | 監禁区域レベルＸ | Kankin Kuiki Level X 2nd Season (2024) [AMZN.WEB-DL 1920x1080 AVC 8bit, EAC3 2.0, SUB (EN)][95375634][END]",
+      "url": "https://nyaa.si/view/1953833",
+      "category": "1_2",
+      "expect": {
+        "group": "CicakRumah",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          12
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "the S01E12 tag outranks 2nd Season in an alternate title"
+    },
+    {
+      "title": "[LostYears] Spice and Wolf - Merchant Meets the Wise Wolf - S01E25 (WEB 1080p x265 10-bit AAC E-AC-3) [Dual Audio] | (Ookami to Koushinryou 2024)",
+      "url": "https://nyaa.si/view/1953708",
+      "category": "1_2",
+      "expect": {
+        "group": "LostYears",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          25
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GLSubs] Ranma 1/2 (2024) - S01E07v3 [1080p] [Dual Audio H264 Improved Subs]",
+      "url": "https://nyaa.si/view/1918545",
+      "category": "1_2",
+      "expect": {
+        "group": "GLSubs",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          7
+        ],
+        "version": 3,
+        "year": 2024,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EMBER] Ranma ½ (2024) S01E12 [1080p] [Dual Audio HEVC WEBRip]",
+      "url": "https://nyaa.si/view/1914510",
+      "category": "1_2",
+      "expect": {
+        "group": "EMBER",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          12
+        ],
+        "year": 2024,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ToonsHub] The Last Dynasty (2025) S01 1080p IVI WEB-DL AAC2.0 H.264 (The Chosen One, Gu Wei Nan Ting, Multi-Subs) [BATCH]",
+      "url": "https://nyaa.si/view/2174203",
+      "category": "1_2",
+      "expect": {
+        "group": "ToonsHub",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "year": 2025,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DKB] Jigoku Sensei Nube (2025) - S01E26 [1080p][END][HEVC x265 10bit][Multi-Subs][weekly]",
+      "url": "https://nyaa.si/view/2090216",
+      "category": "1_2",
+      "expect": {
+        "group": "DKB",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          26
+        ],
+        "year": 2025,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Dooky] Dealing with Mikadono Sisters Is a Breeze (2025) - S01 (CR WEB-DL 1080p H.264 DDP 2.0) [Dual-Audio] | Mikadono San Shimai wa Angai, Choroi. | 帝乃三姉妹は案外, チョロい.",
+      "url": "https://nyaa.si/view/2071812",
+      "category": "1_2",
+      "expect": {
+        "group": "Dooky",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "year": 2025,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Trix] Cats Eye (2025) S01 v2 (Batch) [WEBRip 1080p AV1 AAC] (Dual Audio, Multi Subs, VF, VOSTFR) | Cat's♥Eye Season S1",
+      "url": "https://nyaa.si/view/2071731",
+      "category": "1_2",
+      "expect": {
+        "group": "Trix",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "version": 2,
+        "year": 2025,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Tasokare] Apocalypse Hotel (2025) - S01 (BD 1080p AV1 Opus 2.0) | アポカリプスホテル",
+      "url": "https://nyaa.si/view/2067344",
+      "category": "1_2",
+      "expect": {
+        "group": "Tasokare",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "year": 2025,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[C-Side] This Monster Wants to Eat Me (2025) - S01E05 (WEBRip 1080p AV1 E-AC-3) | WataTabe | Watashi wo Tabetai, Hitodenashi (Weekly)",
+      "url": "https://nyaa.si/view/2061100",
+      "category": "1_2",
+      "expect": {
+        "group": "C-Side",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          5
+        ],
+        "year": 2025,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Kawatare] Takopi's Original Sin (2025) - S01 (BD 1080p HEVC x265 FLAC 2.0) | Takopii no Genzai | タコピーの原罪",
+      "url": "https://nyaa.si/view/2059251",
+      "category": "1_2",
+      "expect": {
+        "group": "Kawatare",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "year": 2025,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[cappybara] BanG Dream! Ave Mujica (2025) - S01 (BD 1080p HEVC x265 Opus 2.0) | Ave Mujica: The Die is Cast",
+      "url": "https://nyaa.si/view/2058842",
+      "category": "1_2",
+      "expect": {
+        "group": "cappybara",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "year": 2025,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Some-Stuffs] Pocket Monsters (2023) 154 (1080p) [2FA35F60]",
+      "url": "https://nyaa.si/view/2177834",
+      "category": "1_2",
+      "expect": {
+        "group": "Some-Stuffs",
+        "ambiguous": 154,
+        "year": 2023,
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Pocket Monsters (2023)"
+        ],
+        "episodes": [
+          154
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "The Legend of Hei 2 (2025) SUBFRENCH 1080p ADN WEB-DL AAC2.0 x264-Tsundere-Raws (VOSTFR, Multi Subs, Luo Xiaohei Zhanji 2, The Legend of Hei II)",
+      "url": "https://nyaa.si/view/2178970",
+      "expect": {
+        "group": "Tsundere-Raws",
+        "batch": false,
+        "ambiguous": 2,
+        "resolution": 1080,
+        "year": 2025
+      },
+      "verified": "hand",
+      "note": "A Roman numeral inside a note is an alternate title, not a season; a sequel number is ambiguous"
+    },
+    {
+      "title": "[ToonsHub] Grotesqqque (2026) (Part 2: YOROSHIKU Girl) 1080p NF WEB-DL AAC2.0 H.264 (Japanese Sub)",
+      "url": "https://nyaa.si/view/2177268",
+      "expect": {
+        "group": "ToonsHub",
+        "batch": false,
+        "seasons": [
+          2
+        ],
+        "season_part": 2,
+        "resolution": 1080,
+        "year": 2026
+      },
+      "verified": "hand",
+      "note": "A Part hint is a season hint, not a pack; the codec number is not a title number"
+    }
+  ]
+}

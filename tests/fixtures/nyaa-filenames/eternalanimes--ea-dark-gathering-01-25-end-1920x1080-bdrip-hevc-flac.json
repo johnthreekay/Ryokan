@@ -1,0 +1,134 @@
+{
+  "category": "eternalanimes",
+  "title": "[EA]Dark_Gathering_01-25_End_[1920x1080][BDRIP][HEVC][Flac]",
+  "url": "https://nyaa.si/view/2164206",
+  "scraped": "2026-10-28",
+  "files": [
+    {
+      "name": "[EA]Dark_Gathering_01_[1920x1080][BDRIP][HEVC][0BCD702D].mkv",
+      "season": null,
+      "episode": 1
+    },
+    {
+      "name": "[EA]Dark_Gathering_02_[1920x1080][BDRIP][HEVC][4495A7FC].mkv",
+      "season": null,
+      "episode": 2
+    },
+    {
+      "name": "[EA]Dark_Gathering_03_[1920x1080][BDRIP][HEVC][2D8221A0].mkv",
+      "season": null,
+      "episode": 3
+    },
+    {
+      "name": "[EA]Dark_Gathering_04_[1920x1080][BDRIP][HEVC][D4443043].mkv",
+      "season": null,
+      "episode": 4
+    },
+    {
+      "name": "[EA]Dark_Gathering_05_[1920x1080][BDRIP][HEVC][252CFA7E].mkv",
+      "season": null,
+      "episode": 5
+    },
+    {
+      "name": "[EA]Dark_Gathering_06_[1920x1080][BDRIP][HEVC][1A45DDA8].mkv",
+      "season": null,
+      "episode": 6
+    },
+    {
+      "name": "[EA]Dark_Gathering_07_[1920x1080][BDRIP][HEVC][690AF985].mkv",
+      "season": null,
+      "episode": 7
+    },
+    {
+      "name": "[EA]Dark_Gathering_08_[1920x1080][BDRIP][HEVC][6702C057].mkv",
+      "season": null,
+      "episode": 8
+    },
+    {
+      "name": "[EA]Dark_Gathering_09_[1920x1080][BDRIP][HEVC][0490A3DD].mkv",
+      "season": null,
+      "episode": 9
+    },
+    {
+      "name": "[EA]Dark_Gathering_10_[1920x1080][BDRIP][HEVC][62718F24].mkv",
+      "season": null,
+      "episode": 10
+    },
+    {
+      "name": "[EA]Dark_Gathering_11_[1920x1080][BDRIP][HEVC][C54222AE].mkv",
+      "season": null,
+      "episode": 11
+    },
+    {
+      "name": "[EA]Dark_Gathering_12_[1920x1080][BDRIP][HEVC][9B4AB165].mkv",
+      "season": null,
+      "episode": 12
+    },
+    {
+      "name": "[EA]Dark_Gathering_13_[1920x1080][BDRIP][HEVC][176A77BC].mkv",
+      "season": null,
+      "episode": 13
+    },
+    {
+      "name": "[EA]Dark_Gathering_14_[1920x1080][BDRIP][HEVC][7862C9BA].mkv",
+      "season": null,
+      "episode": 14
+    },
+    {
+      "name": "[EA]Dark_Gathering_15_[1920x1080][BDRIP][HEVC][5D93FCB1].mkv",
+      "season": null,
+      "episode": 15
+    },
+    {
+      "name": "[EA]Dark_Gathering_16_[1920x1080][BDRIP][HEVC][F4F58A99].mkv",
+      "season": null,
+      "episode": 16
+    },
+    {
+      "name": "[EA]Dark_Gathering_17_[1920x1080][BDRIP][HEVC][3A8007DC].mkv",
+      "season": null,
+      "episode": 17
+    },
+    {
+      "name": "[EA]Dark_Gathering_18_[1920x1080][BDRIP][HEVC][04934652].mkv",
+      "season": null,
+      "episode": 18
+    },
+    {
+      "name": "[EA]Dark_Gathering_19_[1920x1080][BDRIP][HEVC][F889878A].mkv",
+      "season": null,
+      "episode": 19
+    },
+    {
+      "name": "[EA]Dark_Gathering_20_[1920x1080][BDRIP][HEVC][82E3C6E3].mkv",
+      "season": null,
+      "episode": 20
+    },
+    {
+      "name": "[EA]Dark_Gathering_21_[1920x1080][BDRIP][HEVC][2E8361DA].mkv",
+      "season": null,
+      "episode": 21
+    },
+    {
+      "name": "[EA]Dark_Gathering_22_[1920x1080][BDRIP][HEVC][8B334E45].mkv",
+      "season": null,
+      "episode": 22
+    },
+    {
+      "name": "[EA]Dark_Gathering_23_[1920x1080][BDRIP][HEVC][5072B1C2].mkv",
+      "season": null,
+      "episode": 23
+    },
+    {
+      "name": "[EA]Dark_Gathering_24_[1920x1080][BDRIP][HEVC][6BA078F2].mkv",
+      "season": null,
+      "episode": 24
+    },
+    {
+      "name": "[EA]Dark_Gathering_25_Final_[1920x1080][BDRIP][HEVC][5C730C8C].mkv",
+      "season": null,
+      "episode": 25,
+      "note": "issue #296's own pack: a number before an end marker (`_25_Final_`) is the last episode; read nothing before, so an import dropped the finale"
+    }
+  ]
+}

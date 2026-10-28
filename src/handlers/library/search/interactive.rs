@@ -23,7 +23,8 @@ use crate::models::{config, episode_tags};
 use crate::services::{auto_search, logger, progress};
 
 use super::super::reconcile::resolve_series_context;
-use super::auto_search::{AutoSearchQuery, batch_episode_numbers, display_title_for_progress};
+use super::auto_search::{AutoSearchQuery, display_title_for_progress};
+use crate::services::grab_commit::{GrabFor, GrabSeries, grab_episode_list};
 
 /// Pre-computed display fields for one row in the interactive-search
 /// table. Mirrors the AL-search migration's `SearchResultRow` shape:
@@ -55,6 +56,11 @@ struct InteractiveSearchRow {
     grab_episode: Option<i32>,
     /// `E03` / `E05-E06` in the episode-set flow, empty elsewhere.
     episode_label: String,
+    /// Offered as a batch although its title names nothing of what it
+    /// holds (`[UTW] Angel Beats! [BD]`, the batch collector's
+    /// `BatchList::Interactive`): the row says so, and its Grab opens the
+    /// file picker even when grab previews are off.
+    unnumbered_pack: bool,
 }
 
 /// Which page asked for the partial. The Wanted page renders the same
@@ -116,6 +122,8 @@ fn build_interactive_search_partial(
                 result.indexer_name.clone()
             };
             let data_result_json = serde_json::to_string(&result).unwrap_or_else(|_| "{}".into());
+            let unnumbered_pack =
+                result.is_batch && !crate::services::release_title::parse(&result.title).is_batch();
             InteractiveSearchRow {
                 result,
                 score_class,
@@ -123,6 +131,7 @@ fn build_interactive_search_partial(
                 data_result_json,
                 grab_episode: grab_episode_number,
                 episode_label: String::new(),
+                unnumbered_pack,
             }
         })
         .collect();
@@ -573,22 +582,25 @@ pub async fn search_batch_releases(
             )
             .await;
             if let Some(sid) = series_id_for_grab {
-                // Parse episode list from the batch title so every covered
+                // Episode list from the batch title so every covered
                 // episode gets a per-episode `episode_quality_tags` row at
                 // grab time, not just at post-processing time. Without
                 // this the UI shows UNKNOWN for every episode of a
                 // freshly-grabbed batch — and if the user has
                 // post-processing disabled the rows never get created at
-                // all. Mirrors the auto-search-path logic at
-                // `run_auto_search_targets_with_upgrades` (look for
-                // `parse_release_numbers` above).
-                //
-                // Fallback when the title carries no explicit range
-                // (e.g. "Jellyfish Can't Swim in the Night" with no
-                // "01-12" suffix): use the series' known episode count.
-                // Capped at 1000 so a garbage AniList record can't
-                // spawn a million rows.
-                let ep_nums = batch_episode_numbers(&result.title, &detail);
+                // all. Same helper as every grab path
+                // (`grab_commit::grab_episode_list`): series-relative, and
+                // a title with no range (e.g. "Jellyfish Can't Swim in the
+                // Night") falls back to the series' episode count, capped
+                // at 1000.
+                let ep_nums = grab_episode_list(
+                    &result.title,
+                    &GrabSeries::load(&state.db, sid)
+                        .await
+                        .with_episode_count(detail.episodes),
+                    GrabFor::Whole,
+                    true,
+                );
                 let grab_id = crate::models::grabbed_torrents::record_grab(
                     &state.db,
                     &result.info_hash,
@@ -746,7 +758,7 @@ pub async fn interactive_search_episode(
     // Layer 3 (group-map) enrichment. Auto-search already runs the full
     // source pipeline so its classification is complete, but the interactive
     // picker shows results straight from nyaa::parse_results where only
-    // Layer 1 (anitomy filename tokens) has fired. Filling source via the
+    // Layer 1 (filename tokens) has fired. Filling source via the
     // group table here is what lets SubsPlease releases label as WEB-DL
     // and VCB-Studio as BluRay when the filename alone is silent.
     crate::services::nyaa::enrich_results_with_group_map(&state.db, &mut results).await;
@@ -821,7 +833,7 @@ pub async fn interactive_search_batches(
         &auto_search::SearchTarget::Single,
         &cfs,
         &state.indexers,
-        false,
+        auto_search::BatchList::Interactive,
     )
     .await;
 

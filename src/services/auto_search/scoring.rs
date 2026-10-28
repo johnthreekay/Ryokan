@@ -19,10 +19,8 @@ use crate::services::scoring::ScoreComponent;
 use crate::services::seadex;
 use crate::services::source::{self, ClassificationResult, Resolution, Source};
 
-use super::{
-    MatchKind, SearchTarget, distinctive_overlap_ratio, normalize_title, parse_release_numbers,
-    season_mismatch, token_set,
-};
+use super::{MatchKind, SearchTarget, distinctive_overlap_ratio, normalize_title, token_set};
+use crate::services::release_title::{self, SeriesAnchors};
 
 /// Misgrab guardrails: a fuzzy title match loses to an otherwise-equal
 /// verbatim one, and so does anything the fallback passes (extended
@@ -193,6 +191,7 @@ pub(super) fn rescore_for_auto_search(
     classification: &ClassificationResult,
     config: &Config,
     aliases: &[String],
+    anchors: &SeriesAnchors,
     target: &SearchTarget,
     expected_season: i32,
     is_finished: bool,
@@ -208,6 +207,7 @@ pub(super) fn rescore_for_auto_search(
         classification,
         config,
         aliases,
+        anchors,
         target,
         expected_season,
         is_finished,
@@ -240,6 +240,7 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
     classification: &ClassificationResult,
     config: &Config,
     aliases: &[String],
+    anchors: &SeriesAnchors,
     target: &SearchTarget,
     expected_season: i32,
     is_finished: bool,
@@ -318,7 +319,8 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
     }
 
     // Season mismatch penalty (explicit season markers like S03, "3rd Season")
-    if season_mismatch(&result.title, expected_season) {
+    let release = release_title::parse(&result.title);
+    if release.conflicts_with_season(expected_season) {
         add(
             &mut parts,
             "Season Mismatch",
@@ -366,7 +368,7 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
             } else {
                 add(&mut parts, "Single-Episode Target", 10, None);
             }
-            let parsed = parse_release_numbers(&result.title);
+            let parsed = release.for_series(anchors).episodes;
             let relative_match = parsed.contains(ep);
             let absolute_match =
                 absolute_offset > 0 && parsed.contains(&ep.saturating_add(absolute_offset));
@@ -599,6 +601,7 @@ mod tests {
             classification,
             &default_config(),
             &["Show".to_string()],
+            &SeriesAnchors::new(&["Show"]),
             target,
             1,
             is_finished,
@@ -635,6 +638,34 @@ mod tests {
         // Score climbed from 100 by alias + single-ep + episode-match
         // contributions (≥ 50 minimum: 10 + 40).
         assert!(score >= 100 + 10 + 40, "got {score}");
+    }
+
+    #[test]
+    fn rescore_reads_a_bare_episode_after_the_series_name() {
+        // EternalAnimes' dashless `_05_` (#296) earns the episode match;
+        // the old loose reader also did, but `Show 2 (BD)`-style title
+        // numbers no longer do.
+        let c = cls(Source::Web, Resolution::R1080p);
+        let labels = |title: &str| -> Vec<String> {
+            let mut r = candidate(title, "h1");
+            r.score = 0;
+            r.is_batch = false;
+            let (_, parts) = rescore(
+                &r,
+                &c,
+                &SearchTarget::Episode(5),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                0,
+                false,
+            );
+            parts.into_iter().map(|p| p.label).collect()
+        };
+        assert!(
+            labels("[EA]Show_05_[1920x1080][HEVC].mkv")
+                .contains(&"Episode Number Match".to_string())
+        );
+        assert!(!labels("[Group] Show 5 (BD 1080p)").contains(&"Episode Number Match".to_string()));
     }
 
     #[test]
@@ -811,6 +842,7 @@ mod tests {
             &c,
             &default_config(),
             &["Show".to_string()],
+            &SeriesAnchors::new(&["Show"]),
             &SearchTarget::Episode(5),
             1,
             false,
@@ -1010,6 +1042,7 @@ mod tests {
                 &c,
                 &default_config(),
                 &aliases,
+                &SeriesAnchors::new(&aliases),
                 &SearchTarget::Single,
                 1,
                 false,

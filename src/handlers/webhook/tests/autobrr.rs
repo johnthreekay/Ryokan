@@ -371,7 +371,8 @@ async fn a_magnet_push_without_a_hash_takes_the_magnets() {
 #[tokio::test]
 async fn a_torrent_name_over_the_title_cap_is_refused() {
     // A huge title only exists to stress the parsers behind it
-    // (anitomy aborted the process on an ~8,000-character token).
+    // (the anitomy parser Ryokan used to run aborted the process on an
+    // ~8,000-character token).
     let db = in_memory_pool().await;
     seed_autobrr_enabled(&db, KEY).await;
     let app = autobrr_webhook_router(build_test_app_state(db, None));

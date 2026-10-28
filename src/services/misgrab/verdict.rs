@@ -17,9 +17,9 @@ use std::collections::{HashMap, HashSet};
 use crate::models::grabbed_torrents::VerificationDetail;
 use crate::services::auto_search::{
     distinctive_overlap_ratio, is_generic_title_token, is_media_filename, normalize_title,
-    parse_release_season, token_set,
+    token_set,
 };
-use crate::services::library_link;
+use crate::services::{library_link, release_title};
 
 /// A media file "names something" when this many content tokens survive
 /// the noise filters.
@@ -66,6 +66,12 @@ pub(crate) const FILE_NOISE_TOKENS: &[&str] = &[
     "complete",
     "uncensored",
     "uncen",
+    "uncut",
+    "remaster",
+    "remastered",
+    "hdr",
+    "sd",
+    "hq",
     "censored",
     "raw",
     "raws",
@@ -76,6 +82,15 @@ pub(crate) const FILE_NOISE_TOKENS: &[&str] = &[
     "dubbed",
     "eng",
     "jpn",
+    "english",
+    "japanese",
+    "spanish",
+    "latino",
+    "castellano",
+    "french",
+    "german",
+    "italian",
+    "portuguese",
     "jap",
     "multi",
     "dual",
@@ -92,6 +107,9 @@ pub(crate) const FILE_NOISE_TOKENS: &[&str] = &[
     "sp",
     "sample",
     "season",
+    "saison",
+    "temporada",
+    "stagione",
     "ep",
     "eps",
     "vol",
@@ -221,6 +239,13 @@ fn is_structural_token(t: &str) -> bool {
     if t.chars().all(|c| c.is_ascii_digit()) {
         return true;
     }
+    // `2nd`, `4th`: a season's ordinal (`2nd Season`).
+    if let Some(at) = t.find(|c: char| !c.is_ascii_digit())
+        && at > 0
+        && matches!(&t[at..], "st" | "nd" | "rd" | "th")
+    {
+        return true;
+    }
     let lower = t.to_ascii_lowercase();
     let strip =
         |s: &str, prefix: &str| -> Option<String> { s.strip_prefix(prefix).map(|r| r.to_string()) };
@@ -271,14 +296,14 @@ fn is_structural_token(t: &str) -> bool {
     false
 }
 
-/// What a path claims as its title: anitomy's title from the file name
+/// What a path claims as its title: the series title from the file name
 /// and from every folder above it, tokenized the way an alias is. Only
 /// these words may condemn a download. Descriptor words ("Dual
 /// Audio", "10 bits"), the group name, and episode titles ("All
 /// That's Left") are real words too, and on a series whose title is a
 /// number ("86") they used to be the only Latin words in the path.
 ///
-/// `memo` shares the per-segment anitomy parse across files: every
+/// `memo` shares the per-segment parse across files: every
 /// file in a pack sits under the same one or two folders, so a
 /// 100-file batch parses each folder name once instead of 100 times.
 pub(crate) fn claimed_title_tokens(
@@ -306,7 +331,7 @@ fn segment_title_tokens(segment: &str) -> HashSet<String> {
     let normalized = normalize_title(&title);
     // "S01E21-All That's Left": a name that opens with an episode
     // or season marker (or a bare number) goes on to an episode
-    // title, which anitomy cannot tell from a series title. It is
+    // title, which no parser can tell from a series title. It is
     // not a claim about which show this is.
     if normalized
         .split_whitespace()
@@ -426,7 +451,7 @@ pub fn assess(input: &VerdictInput<'_>) -> Verdict {
     if input.expected_season > 0 {
         let explicit: Vec<i32> = media
             .iter()
-            .map(|f| parse_release_season(f))
+            .filter_map(|f| release_title::parse(f).season_hint())
             .filter(|s| *s > 0)
             .collect();
         if !explicit.is_empty() && explicit.iter().all(|s| *s != input.expected_season) {

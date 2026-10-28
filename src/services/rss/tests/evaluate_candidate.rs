@@ -164,6 +164,7 @@ fn batch_with_partial_coverage_is_rejected() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
@@ -198,6 +199,7 @@ fn upgrades_off_for_the_series_takes_only_missing_episodes() {
             &item,
             &incoming,
             &disk,
+            &parsed_eps,
             &parsed_eps,
             &gate,
             &quality_tags,
@@ -235,6 +237,7 @@ fn batch_with_full_coverage_is_accepted() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
@@ -265,6 +268,7 @@ fn finished_batch_no_range_with_disk_content_is_rejected() {
         &item,
         &incoming,
         &disk,
+        &parsed_eps,
         &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
@@ -298,6 +302,7 @@ fn finished_batch_no_range_with_empty_disk_is_accepted() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
@@ -327,6 +332,7 @@ fn airing_batch_no_range_is_rejected() {
         &item,
         &incoming,
         &disk,
+        &parsed_eps,
         &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
@@ -380,12 +386,38 @@ fn v2_from_the_same_group_replaces_the_file_past_the_cutoff() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
     );
     assert_eq!(decision.reject_reason, None);
     assert!(decision.is_upgrade);
     assert_eq!(decision.new_episode_count, 1);
+}
+
+#[test]
+fn a_stored_group_from_an_older_reader_is_read_again_from_the_title() {
+    // A row written before `release_fields` kept another reader's group
+    // (here none); the group is read from the stored title, as the
+    // incoming one is, so the same group's v2 still counts.
+    let policy = source::UpgradePolicy {
+        cutoff: source::cutoff_classification(Source::Web, Resolution::R1080p, false, false),
+        ..bluray_policy()
+    };
+    let (found, item, incoming, disk, parsed_eps, mut quality_tags) =
+        v2_fixture("SubsPlease", "SubsPlease");
+    quality_tags.get_mut(&1).expect("tag").release_group = String::new();
+    let decision = evaluate_candidate(
+        &found,
+        &item,
+        &incoming,
+        &disk,
+        &parsed_eps,
+        &parsed_eps,
+        &gate(&policy, &item),
+        &quality_tags,
+    );
+    assert_eq!(decision.reject_reason, None);
 }
 
 #[test]
@@ -398,6 +430,7 @@ fn v2_from_another_group_is_rejected_with_the_gate_reason() {
         &item,
         &incoming,
         &disk,
+        &parsed_eps,
         &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
@@ -422,6 +455,7 @@ fn v2_is_no_upgrade_when_revisions_are_not_preferred() {
         &item,
         &incoming,
         &disk,
+        &parsed_eps,
         &parsed_eps,
         &gate(&policy, &item),
         &quality_tags,
@@ -448,9 +482,78 @@ fn v2_for_an_old_file_is_rejected_through_rss() {
         &incoming,
         &disk,
         &parsed_eps,
+        &parsed_eps,
         &g,
         &quality_tags,
     );
     let reason = decision.reject_reason.expect("rejected");
     assert!(reason.contains("older than 7 days"), "{reason}");
+}
+
+#[test]
+fn a_multi_episode_file_over_a_file_at_cutoff_is_rejected() {
+    // `- 01-02 (...).mkv` is one file holding two episodes, not a batch,
+    // but importing it replaces episode 1's BluRay file as a batch would.
+    let policy = bluray_policy();
+    let incoming = classification(Source::Web, Resolution::R720p, false, false);
+    let found = series("RELEASING");
+    let item = item_with("[Group] Test Series - 01-02 (WEB 720p).mkv", false);
+    let disk = vec![disk_file(1, "BluRay-1080p")];
+    let quality_tags: HashMap<i32, EpisodeQualityTag> = [{
+        let (ep, mut tag) = web_tag(1);
+        tag.source = "BluRay".to_string();
+        tag.quality_tag = "BluRay-1080p".to_string();
+        (ep, tag)
+    }]
+    .into_iter()
+    .collect();
+    let parsed_eps: HashSet<i32> = [1, 2].into_iter().collect();
+    let decision = evaluate_candidate(
+        &found,
+        &item,
+        &incoming,
+        &disk,
+        &parsed_eps,
+        &parsed_eps,
+        &gate(&policy, &item),
+        &quality_tags,
+    );
+    let reason = decision.reject_reason.expect("refused");
+    assert!(reason.contains("would overwrite 1"), "{reason}");
+}
+
+#[test]
+fn an_unmonitored_episode_on_disk_still_counts_for_the_overwrite_rule() {
+    // Under `future` monitoring E01 on disk is not monitored, so only E02
+    // is actionable; the release still replaces E01's file at import.
+    let policy = bluray_policy();
+    let incoming = classification(Source::Web, Resolution::R720p, false, false);
+    let found = series("RELEASING");
+    let item = item_with("[Group] Test Series - 01-02 (WEB 720p).mkv", false);
+    let disk = vec![disk_file(1, "BluRay-1080p")];
+    let quality_tags: HashMap<i32, EpisodeQualityTag> = [{
+        let (ep, mut tag) = web_tag(1);
+        tag.source = "BluRay".to_string();
+        tag.quality_tag = "BluRay-1080p".to_string();
+        (ep, tag)
+    }]
+    .into_iter()
+    .collect();
+    let monitored: HashSet<i32> = [2].into_iter().collect();
+    let covered: HashSet<i32> = [1, 2].into_iter().collect();
+    let decision = evaluate_candidate(
+        &found,
+        &item,
+        &incoming,
+        &disk,
+        &monitored,
+        &covered,
+        &gate(&policy, &item),
+        &quality_tags,
+    );
+    assert!(
+        decision
+            .reject_reason
+            .is_some_and(|r| r.contains("would overwrite 1"))
+    );
 }

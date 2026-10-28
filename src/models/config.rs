@@ -184,7 +184,7 @@ pub struct Config {
     pub nyaa_download_client_id: Option<i64>,
     /// Manual search page → grab. When ON, a grab from the search
     /// page that doesn't match an existing library series triggers
-    /// an anitomy-parse → AL search → series auto-add path
+    /// a title parse → AL search → series auto-add path
     /// (`services::library_link::resolve_or_add_series_for_grab`).
     /// When OFF, a no-match grab succeeds in the download client
     /// but no library row is created (legacy 1.0–1.6 behavior).

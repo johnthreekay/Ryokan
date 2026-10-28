@@ -56,6 +56,7 @@
             <td>
                 <a class="isearch-release-link" href="{{ r.result.safe_link() }}" target="_blank" rel="noopener">{{ r.result.title }}</a>
                 {% if r.result.is_batch %}<span class="tag tag-batch" style="margin-left:4px">batch</span>{% endif %}
+                {% if r.unnumbered_pack %}<span class="tag tag-unnumbered" style="margin-left:4px" title="The title names no episodes or season. It is usually the whole series, sometimes a movie or a single file: the file picker shows what it holds before anything is grabbed.">no episode numbers</span>{% endif %}
                 {% if r.result.is_trusted %}<span class="tag tag-trusted" style="margin-left:4px">trusted</span>{% endif %}
             </td>
             <td class="col-indexer" style="color:var(--text-dim)">{{ r.indexer_display }}</td>
@@ -76,13 +77,13 @@
                 {% if let Some(ep) = r.grab_episode %}
                 <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" data-wanted-grab="{{ ep }}">Grab</button>
                 {% else %}
-                <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" data-wanted-grab-batch="1">Grab</button>
+                <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" data-wanted-grab-batch="1"{% if r.unnumbered_pack %} data-unnumbered="1"{% endif %}>Grab</button>
                 {% endif %}
                 {% else %}
                 {% if let Some(ep) = r.grab_episode %}
                 <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" onclick="grabInteractiveResult({{ ep }}, this)">Grab</button>
                 {% else %}
-                <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}" onclick="grabInteractiveBatchResult(this)">Grab</button>
+                <button class="btn-grab" type="button" data-result="{{ r.data_result_json }}"{% if r.unnumbered_pack %} data-unnumbered="1"{% endif %} onclick="grabInteractiveBatchResult(this)">Grab</button>
                 {% endif %}
                 {% endif %}
             </td>

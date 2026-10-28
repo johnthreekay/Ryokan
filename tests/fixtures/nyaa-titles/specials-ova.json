@@ -1,0 +1,400 @@
+{
+  "bucket": "specials-ova",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=OVA&c=1_2",
+    "https://nyaa.si/?page=rss&q=DVD&c=1_2",
+    "https://nyaa.si/?page=rss&q=Dual-Audio&c=1_2",
+    "https://nyaa.si/?page=rss&q=Movie+BD&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[Ari-M] Re:Zero (Rezero) Collection (S1+S2+S3+S4+OVAs) [CR Web-dl 1080p x265][Multisub]-HEVC",
+      "url": "https://nyaa.si/view/2179605",
+      "category": "1_2",
+      "expect": {
+        "group": "Ari-M",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[WIP] Hajime no Ippo - S1 + OVA and Specials - Boxer`s Fist, Champion Road, Kimura Tatsuya vs Mashiba Ryo [DVD]",
+      "url": "https://nyaa.si/view/2178831",
+      "category": "1_2",
+      "expect": {
+        "group": "WIP",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "includes_specials": true
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Fuechslein] KILL la KILL - S00E01 (BD 1080p AV1 Opus 2.0) [Dual-Audio] [Multi-Audio] (Japanese, German/Deutsch, English Dubs) [OV] [OmU] [OmeU] [DF] [Synchro] | Erneuter Abschied | Goodbye Once Again (S01E25) (OVA)",
+      "url": "https://nyaa.si/view/2178830",
+      "category": "1_2",
+      "expect": {
+        "group": "Fuechslein",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          1
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Sristi] Shiki (S01 + OVA) [BD Remux 1080p][AVC][FLAC][Dual Audio][Batch]",
+      "url": "https://nyaa.si/view/2178398",
+      "category": "1_2",
+      "expect": {
+        "group": "Sristi",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Arw] R.O.D (Read or Die) OVA (BD 720p h264 Opus Dual-Audio)",
+      "url": "https://nyaa.si/view/2177621",
+      "category": "1_2",
+      "expect": {
+        "group": "Arw",
+        "special": true,
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[izu] Shounan Junai-gumi! (1994) - OVA [VHS] [LOSSLESS] | Young GTO / 湘南純愛組!",
+      "url": "https://nyaa.si/view/2176838",
+      "category": "1_2",
+      "expect": {
+        "group": "izu",
+        "special": true,
+        "year": 1994,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Hinna] Golden Kamuy - S00E58 (BD Remux 1080p H.264 FLAC 2.0) (Golden Kamuy: Inazuma Goutou to Mamushi no Ogin/Shimaenaga / Golden Kamuy OVA: The Lightning Bandit and Ogin the Viper/Long-Tailed Tit)",
+      "url": "https://nyaa.si/view/2176651",
+      "category": "1_2",
+      "expect": {
+        "group": "Hinna",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          58
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Pekomux] Princess Principal Crown Handler 1-4 + OVAs [BDRemux 1080p FLAC]",
+      "url": "https://nyaa.si/view/2176373",
+      "category": "1_2",
+      "expect": {
+        "group": "Pekomux",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 4
+        },
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime Time] KonoSuba - God’s Blessing On This Wonderful World! (Season 1,2,3 + OVA + Movie) [BD] [Dual Audio][1080p][HEVC 10bit x265][OPUS][Multi Sub] [Batch] Kono Subarashii Sekai ni Shukufuku o!",
+      "url": "https://nyaa.si/view/2176360",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Time",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Doomdos] - DRAMAtical Murder (OVA) - 01 [1080p OV WEB-DL]",
+      "url": "https://nyaa.si/view/2174181",
+      "category": "1_2",
+      "expect": {
+        "group": "Doomdos",
+        "episodes": [
+          1
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[PHTM] Attack on Titan - S00 Specials (BD 1080p x264 AAC 2.0) (Multi-Audio) (German/Deutsch) | Shingeki no Kyojin OVA / OAD | No Regrets | Lost Girls",
+      "url": "https://nyaa.si/view/2173638",
+      "category": "1_2",
+      "expect": {
+        "group": "PHTM",
+        "batch": true,
+        "seasons": [
+          0
+        ],
+        "special": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Fuchs] Sound! Euphonium - S00E08 (BD 1080p x265 Opus/AAC 2.0) [Dual-Audio] [Multi-Audio] (Japanese, German/Deutsch, English Dubs) [OV] [OmU] [OmeU] [DF] [Synchro] | Hibike! | Auf die Plätze, fertig, Monaka | Ready, Set, Monaka (S01E14) (OVA)",
+      "url": "https://nyaa.si/view/2150067",
+      "category": "1_2",
+      "expect": {
+        "group": "Fuchs",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          8
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Rayearth OVA - 01–03 (1080p Eisei Gekijou AV1 AAC) | Magic Knight Rayearth OVA (1997) Remastered",
+      "url": "https://nyaa.si/view/2172442",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 3
+        },
+        "special": true,
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "en dash range"
+    },
+    {
+      "title": "[Polarwindz] Mitsuwano OVA (2014) (BD 1080p HEVC Opus)",
+      "url": "https://nyaa.si/view/2171230",
+      "category": "1_2",
+      "expect": {
+        "group": "Polarwindz",
+        "special": true,
+        "year": 2014,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Genesis] Nichijou - S00E01v2 (OVA) (BD 1080p x265 Opus) | Nichijou: My Ordinary Life - Episode 0",
+      "url": "https://nyaa.si/view/2170735",
+      "category": "1_2",
+      "expect": {
+        "group": "Genesis",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          1
+        ],
+        "version": 2,
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[qx] Touhou Gensou Mangekyou OVA 20 [BDRip 1920x1080 x264] [preliminary version]",
+      "url": "https://nyaa.si/view/2167188",
+      "category": "1_2",
+      "expect": {
+        "group": "qx",
+        "episodes": [
+          20
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "(OVA) BOUNTY DOG -月面のイブ- (LD 640x480)",
+      "url": "https://nyaa.si/view/2166825",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "special": true,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "a leading marker bracket is not a group"
+    },
+    {
+      "title": "[SavI0r&FLAV1N] Rinne no Lagrange (Lagrange The Flower of Rin-ne) Complete + OVAs [BD][1080p][AV1][OPUS][Dual Audio]",
+      "url": "https://nyaa.si/view/2158083",
+      "category": "1_2",
+      "expect": {
+        "group": "SavI0r&FLAV1N",
+        "batch": true,
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[FLAV1N] Amagami SS - S01-S02+OVA (BD 1080p AV1 Opus) [Dual-Subs]",
+      "url": "https://nyaa.si/view/2156706",
+      "category": "1_2",
+      "expect": {
+        "group": "FLAV1N",
+        "batch": true,
+        "seasons": [
+          1,
+          2
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[izu & MiraiAnime] Kachou no Koi (2010) - OVA [R2JP DVD-Encode ENG] | 課長の恋 / The President`s Romance",
+      "url": "https://nyaa.si/view/2155963",
+      "category": "1_2",
+      "expect": {
+        "group": "izu & MiraiAnime",
+        "special": true,
+        "year": 2010,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Kekkan] Amnesia - S01 + OVA (BDRip 1080p AV1) / アムネシア / 2013 / 01-12 / 01-13 / Special / Batch / σ",
+      "url": "https://nyaa.si/view/2151399",
+      "category": "1_2",
+      "expect": {
+        "group": "Kekkan",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "includes_specials": true,
+        "episodes": null,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[kikuri] Lucky☆Star (BD 720p AVC Opus) | Lucky Star S01 + OVA",
+      "url": "https://nyaa.si/view/2149490",
+      "category": "1_2",
+      "expect": {
+        "group": "kikuri",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "includes_specials": true,
+        "resolution": 720
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Tsundere] Magical Pokaan S00E01-E03 (DVD 576p x264 8-bit FLAC) | Renkin San-kyuu Magical? Pokaan Specials | OVA",
+      "url": "https://nyaa.si/view/2149275",
+      "category": "1_2",
+      "expect": {
+        "group": "Tsundere",
+        "batch": true,
+        "seasons": [
+          0
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 3
+        },
+        "special": true,
+        "resolution": 576
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[A&C] One Piece - OVA 01 - Defeat the Pirate Ganzack! (VHSrip 414p HEVC) [Multi-Subs] [v2]",
+      "url": "https://nyaa.si/view/2145466",
+      "category": "1_2",
+      "expect": {
+        "group": "A&C",
+        "episodes": [
+          1
+        ],
+        "special": true,
+        "version": 2,
+        "resolution": 414,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Doomdos] - A Returner's Magic Should Be Special - S02E03 [1080p BILIBILI INTERNATIONAL WEB-DL]",
+      "url": "https://nyaa.si/view/2177019",
+      "expect": {
+        "group": "Doomdos",
+        "batch": false,
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "A tag naming a real season beats a title ending in Special"
+    }
+  ]
+}

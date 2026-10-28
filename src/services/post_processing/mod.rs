@@ -243,9 +243,21 @@ pub(crate) struct BatchPlan {
 /// `tv_series` holds the ids of target series whose AniList format is
 /// TV (`media::is_tv_format`): only for those does a special marker in
 /// a file name mean "special" rather than the series' own numbering.
+#[cfg(test)]
 pub(crate) fn validate_batch_episode_map(
     files: &[(usize, i64, Option<i32>, i32, String)],
     tv_series: &HashSet<i64>,
+) -> Result<BatchPlan, String> {
+    validate_batch_episode_map_with_anchors(files, tv_series, &HashMap::new())
+}
+
+/// [`validate_batch_episode_map`] reading each file with its target
+/// series' names (`anchors`), so a number the name holds is never a
+/// file's episode (`Mob Psycho 100 (BD).mkv`).
+pub(crate) fn validate_batch_episode_map_with_anchors(
+    files: &[(usize, i64, Option<i32>, i32, String)],
+    tv_series: &HashSet<i64>,
+    anchors: &HashMap<i64, crate::services::release_title::SeriesAnchors>,
 ) -> Result<BatchPlan, String> {
     struct Entry<'a> {
         file_idx: usize,
@@ -265,7 +277,10 @@ pub(crate) fn validate_batch_episode_map(
             .unwrap_or(name);
         let lower = filename.to_lowercase();
         let in_specials_folder = media::path_names_specials(Path::new(name));
-        let parsed = media::parse_episode_span(&lower);
+        let parsed = match anchors.get(series_id) {
+            Some(names) => media::parse_episode_span_for(&lower, names),
+            None => media::parse_episode_span(&lower),
+        };
         // A special of a TV series takes no slot: the name says so
         // (`OVA 01`, a bare `- OVA` with no number at all), or the
         // pack keeps it in a `Specials/` subfolder whatever it is
@@ -276,6 +291,11 @@ pub(crate) fn validate_batch_episode_map(
                 || (parsed.is_none() && media::has_special_marker(&lower)))
         {
             specials.insert(*file_idx);
+            continue;
+        }
+        // A pack's `Extras/` (menus, previews, PVs) takes no slot, whatever
+        // the files are called there; a special in it was set aside above.
+        if media::path_names_extras(name) {
             continue;
         }
         let Some(span) = parsed else {
@@ -1519,6 +1539,7 @@ async fn import_torrent(
     // duplicate-destination overwrite that this preflight prevents.
     let batch_episode_plan = if requires_episode_map_preflight(grab.is_batch, video_files.len()) {
         let mut cumulative_by_series = HashMap::new();
+        let mut anchors_by_series = HashMap::new();
         let mut tv_series: HashSet<i64> = HashSet::new();
         let mut batch_files = Vec::with_capacity(video_files.len());
         for (file_idx, file) in &video_files {
@@ -1537,6 +1558,10 @@ async fn import_torrent(
                     if media::is_tv_format(&row.format) {
                         tv_series.insert(target_series_id);
                     }
+                    anchors_by_series.insert(
+                        target_series_id,
+                        crate::services::grab_commit::series_anchors(&row),
+                    );
                     let value = row.cumulative_prior_episodes;
                     cumulative_by_series.insert(target_series_id, value);
                     value
@@ -1549,7 +1574,7 @@ async fn import_torrent(
                 file.name.clone(),
             ));
         }
-        validate_batch_episode_map(&batch_files, &tv_series)?
+        validate_batch_episode_map_with_anchors(&batch_files, &tv_series, &anchors_by_series)?
     } else {
         BatchPlan::default()
     };
@@ -1779,7 +1804,10 @@ async fn import_torrent(
         // name here. It goes to the Specials folder as `S00Exx`, with
         // no tag or history row, and never fails the grab.
         let lower_name = filename_only.to_lowercase();
-        let name_span = media::parse_episode_span(&lower_name);
+        let name_span = media::parse_file_path_for(
+            &file.name,
+            &crate::services::grab_commit::series_anchors(&ctx.series),
+        );
         let is_special = batch_episode_plan.specials.contains(file_idx)
             || (!preflight_ran
                 && media::is_tv_format(&ctx.series.format)

@@ -1,0 +1,407 @@
+{
+  "bucket": "cjk-slash",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=01~02&c=1_0",
+    "https://nyaa.si/?page=rss&q=%5BLoliHouse%5D&c=1_0",
+    "https://nyaa.si/?page=rss&q=%5BANi%5D&c=1_0",
+    "https://nyaa.si/?page=rss&q=1080p+WEB-DL+VARYG&c=1_2",
+    "https://nyaa.si/?page=rss&q=Anime+Time&c=1_2",
+    "https://nyaa.si/?page=rss&q=Lilith-Raws&c=1_0",
+    "https://nyaa.si/?page=rss&q=%5BNekomoe+kissaten%5D&c=1_0"
+  ],
+  "cases": [
+    {
+      "title": "[LoliHouse] 暗机 DARK MACHINE / DARK MACHINE THE ANIMATION - 03 [WebRip 1080p HEVC-10bit AAC][简繁内封字幕]",
+      "url": "https://nyaa.si/view/2179593",
+      "category": "1_3",
+      "expect": {
+        "group": "LoliHouse",
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[三明治摆烂组&LoliHouse] 世界最强的魔女，就此开始 / 世界最强魔女，始动 / Sekai Saikyou no Majo, Hajimemashita - 03 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕]",
+      "url": "https://nyaa.si/view/2179277",
+      "category": "1_3",
+      "expect": {
+        "group": "三明治摆烂组&LoliHouse",
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[绿茶字幕组&LoliHouse] 学生会也有洞！ / Seitokai ni mo Ana wa Aru - 02 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕]",
+      "url": "https://nyaa.si/view/2176192",
+      "category": "1_3",
+      "expect": {
+        "group": "绿茶字幕组&LoliHouse",
+        "episodes": [
+          2
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[奶²&LoliHouse] 苍蓝传承 威尔什&榭达 / Aoki Denshou Welsh & Shedar - 04 [WebRip 1080p HEVC-10bit AAC][简日内封字幕]",
+      "url": "https://nyaa.si/view/2178742",
+      "category": "1_3",
+      "expect": {
+        "group": "奶²&LoliHouse",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SweetSub&LoliHouse] 冰之城墙 / Koori no Jouheki - 18 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕]",
+      "url": "https://nyaa.si/view/2177712",
+      "category": "1_3",
+      "expect": {
+        "group": "SweetSub&LoliHouse",
+        "episodes": [
+          18
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[澄空学园&动漫国字幕组&LoliHouse] 弹珠汽水瓶里的千岁同学 / Chitose-kun wa Ramune Bin no Naka - 14 [WebRip 1080p HEVC-10bit AAC][简繁内封字幕]",
+      "url": "https://nyaa.si/view/2177562",
+      "category": "1_3",
+      "expect": {
+        "group": "澄空学园&动漫国字幕组&LoliHouse",
+        "episodes": [
+          14
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[豌豆字幕组&风之圣殿字幕组&LoliHouse] 死神 千年血战篇 / BLEACH Sennen Kessen-hen - 49 [WebRip 1080p HEVC-10bit AAC][简繁外挂字幕]",
+      "url": "https://nyaa.si/view/2176880",
+      "category": "1_3",
+      "expect": {
+        "group": "豌豆字幕组&风之圣殿字幕组&LoliHouse",
+        "episodes": [
+          49
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[豌豆字幕组&LoliHouse] 关于我转生变成史莱姆这档事 第四季 / Tensei Shitara Slime Datta Ken 4th Season [01-24(73-96) 合集][WebRip 1080p HEVC-10bit AAC][简繁外挂字幕][Fin]",
+      "url": "https://nyaa.si/view/2176394",
+      "category": "1_3",
+      "expect": {
+        "group": "豌豆字幕组&LoliHouse",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 24
+        },
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "(73-96) is the absolute alternative of the same range"
+    },
+    {
+      "title": "[LoliHouse] 炒翻天 / 铁锅料理王 / Tetsunabe no Jan! [01-12 合集][WebRip 1080p HEVC-10bit AAC][简繁内封字幕][Fin]",
+      "url": "https://nyaa.si/view/2179020",
+      "category": "1_3",
+      "expect": {
+        "group": "LoliHouse",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Gecko] mofusand the animation - S01E43 (mofusand animation; Mofusand) [ABEMA.WEB-DL 1080P AVC, AAC][1114340A]",
+      "url": "https://nyaa.si/view/2179545",
+      "category": "1_4",
+      "expect": {
+        "group": "Gecko",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          43
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ToonsHub] mofusand animation S01E43 1080p AMZN WEB-DL DDP2.0 H.264",
+      "url": "https://nyaa.si/view/2179544",
+      "category": "1_4",
+      "expect": {
+        "group": "ToonsHub",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          43
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ANi] Sora wa Akai Kawa no Hotori /  赤河戀影 - 17 [1080P][Baha][WEB-DL][AAC AVC][CHT][MP4]",
+      "url": "https://nyaa.si/view/2179468",
+      "category": "1_3",
+      "expect": {
+        "group": "ANi",
+        "episodes": [
+          17
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Suikoden The Anime S01E04 1080p ADN WEB-DL AAC2.0 H.264-VARYG (Gensou Suikoden, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179380",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime Time] Bleach: Thousand-Year Blood War - S01E50 [1080p][HEVC 10bit x265][AAC][Multi Sub] [Weekly] Bleach Sennen Kessen hen",
+      "url": "https://nyaa.si/view/2179160",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Time",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          50
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime-WEB] Toaru Anbu no ITEM (A Certain Underground ITEM) - 02 (WEB 1080p) [Honorific]",
+      "url": "https://nyaa.si/view/2178917",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime-WEB",
+        "episodes": [
+          2
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime Chap] JoJo's Bizarre Adventure Part 7: Steel Ball Run S06E06 [WEB 1080p] {Corrected Names} Episode 06 [Dual Audio]",
+      "url": "https://nyaa.si/view/2178817",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Chap",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          6
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Doomdos] - Persona 4 the Animation No One is Alone - S01E09 [720p OV WEB-DL] [Persona4 the ANIMATION]",
+      "url": "https://nyaa.si/view/2178317",
+      "category": "1_2",
+      "expect": {
+        "group": "Doomdos",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          9
+        ],
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Lilith-Raws] 從 Lv2 開始開外掛的前勇者候補過著悠哉異世界生活 / Lv2 Kara Cheat - 10 [Baha][WebDL 1080p AVC AAC][CHT]",
+      "url": "https://nyaa.si/view/1831790",
+      "category": "1_3",
+      "expect": {
+        "group": "Lilith-Raws",
+        "episodes": [
+          10
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Nekomoe kissaten&VCB-Studio] Heike Monogatari / 平家物語 10-bit 1080p HEVC BDRip [Fin]",
+      "url": "https://nyaa.si/view/1667426",
+      "category": "1_3",
+      "expect": {
+        "group": "Nekomoe kissaten&VCB-Studio",
+        "batch": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Airota&Nekomoe kissaten&LoliHouse] 映画 Yuru Camp ゆるキャン△ Movie [BDRip 1080p HEVC-10bit FLAC ASSx2]",
+      "url": "https://nyaa.si/view/1667276",
+      "category": "1_4",
+      "expect": {
+        "group": "Airota&Nekomoe kissaten&LoliHouse",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "movie"
+    },
+    {
+      "title": "[Nekomoe kissaten] Gleipnir グレイプニル [BDRip 1080p HEVC-10bit AAC 2ASS][v2]",
+      "url": "https://nyaa.si/view/1600174",
+      "category": "1_4",
+      "expect": {
+        "group": "Nekomoe kissaten",
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Nekomoe Kissaten&LoliHouse] Seijo no Maryoku wa Bannou Desu 聖女の魔力は万能です S1 [BDRip 1080p HEVC-10bit FLAC ASSx2]",
+      "url": "https://nyaa.si/view/1576532",
+      "category": "1_4",
+      "expect": {
+        "group": "Nekomoe Kissaten&LoliHouse",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Airota&Nekomoe kissaten&VCB-Studio] Heya Camp /  へやキャン△ 10-bit 1080p HEVC BDRip [Fin]",
+      "url": "https://nyaa.si/view/1565082",
+      "category": "1_3",
+      "expect": {
+        "group": "Airota&Nekomoe kissaten&VCB-Studio",
+        "batch": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[LoliHouse] 幻想水浒传 / Gensou Suikoden - 04 [WebRip 1080p HEVC-10bit AAC][简繁内封字幕]",
+      "url": "https://nyaa.si/view/2179592",
+      "category": "1_3",
+      "expect": {
+        "group": "LoliHouse",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[LoliHouse] 装备我最强 / 装备仔 / Tempal: Item no Chikara / Overgeared - 05 [WebRip 1080p HEVC-10bit AAC][简繁内封字幕]",
+      "url": "https://nyaa.si/view/2179347",
+      "category": "1_3",
+      "expect": {
+        "group": "LoliHouse",
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[LoliHouse] PSYREN -决战游戏- / PSYЯEN - 04 [WebRip 1080p HEVC-10bit AAC][简繁内封字幕]",
+      "url": "https://nyaa.si/view/2179247",
+      "category": "1_3",
+      "expect": {
+        "group": "LoliHouse",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[LoliHouse] 转生哥布林有问题吗？ / Tensei Goblin dakedo Shitsumon Aru? - 05 [WebRip 1080p HEVC-10bit AAC][简繁内封字幕]",
+      "url": "https://nyaa.si/view/2179067",
+      "category": "1_3",
+      "expect": {
+        "group": "LoliHouse",
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    }
+  ]
+}

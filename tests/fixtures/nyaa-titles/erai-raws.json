@@ -1,0 +1,292 @@
+{
+  "bucket": "erai-raws",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=01~02&c=1_0",
+    "https://nyaa.si/?page=rss&q=%5BErai-raws%5D&c=1_2",
+    "https://nyaa.si/?page=rss&q=Special&c=1_2",
+    "https://nyaa.si/?page=rss&q=REPACK&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[Erai-raws] Dark Machine the Animation - 03 [1080p CR WEBRip HEVC AAC][MultiSub][91AB12DA]",
+      "url": "https://nyaa.si/view/2179508",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Chitose-kun wa Ramune Bin no Naka Part 2 - 03 [1080p CR WEBRip HEVC AAC][MultiSub][EDC77E2E]",
+      "url": "https://nyaa.si/view/2179490",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "Part 2 is a season hint (>= 2)"
+    },
+    {
+      "title": "[Erai-raws] Sora wa Akai Kawa no Hotori - 17 [480p CR WEB-DL AVC AAC][MultiSub][E62E44AC]",
+      "url": "https://nyaa.si/view/2179458",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          17
+        ],
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Choujun Choujou-senpai - 04 [1080p CR WEBRip HEVC AAC][MultiSub][76D49B81]",
+      "url": "https://nyaa.si/view/2179419",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Battle Spirits -Re- Zekkai no Kuu - 04 [1080p CR WEBRip HEVC AAC][MultiSub][BA5CA6AE]",
+      "url": "https://nyaa.si/view/2179417",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Kyouran Reijou Nia Liston - 04 [480p HIDIVE WEB-DL AVC AAC][E7D0CB28]",
+      "url": "https://nyaa.si/view/2179294",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          4
+        ],
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Bleach: Sennen Kessen Hen - Kashin Tan - 10 [1080p DSNP WEBRip HEVC AAC][MultiSub][C1513C37]",
+      "url": "https://nyaa.si/view/2179191",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          10
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Doumo, Suki na Hito ni Horegusuri wo Irai sareta Majo desu - 04 [1080p CR WEBRip HEVC AAC][MultiSub][692E5F08]",
+      "url": "https://nyaa.si/view/2179170",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Watashi no Shiawase na Kekkon Special - 01 ~ 03 [1080p NF WEBRip HEVC AAC][MultiSub] [BATCH]",
+      "url": "https://nyaa.si/view/2178967",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 3
+        },
+        "special": true,
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "a marker word ending the title zone marks a special"
+    },
+    {
+      "title": "[Erai-raws] Yowaki Max Reijou nanoni, Ratsuwan Konyakusha-sama no Kake ni Notte Shimatta - 04 [1080p CR WEBRip HEVC AAC][MultiSub][11A5155E]",
+      "url": "https://nyaa.si/view/2178861",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Tensei Kizoku, Kantei Skill de Nariagaru S3 - 05 [1080p CR WEBRip HEVC AAC][MultiSub][F9E634F7]",
+      "url": "https://nyaa.si/view/2178860",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Tempal: Item no Chikara - 05 [1080p CR WEBRip HEVC AAC][MultiSub][46919CB8]",
+      "url": "https://nyaa.si/view/2178859",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Hotel Inhumans Season 2 - 04 [1080p CR WEBRip HEVC AAC][MultiSub][38EB7126]",
+      "url": "https://nyaa.si/view/2178855",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Tank Chair - 04 [1080p AMZN WEBRip HEVC EAC3][MultiSub][E598E49C]",
+      "url": "https://nyaa.si/view/2178854",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Dragon Ball Super: Beerus - 03 (REPACK) [480p CR WEB-DL AVC AAC][MultiSub][32FCEA43]",
+      "url": "https://nyaa.si/view/2178847",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          3
+        ],
+        "version": 2,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Dragon Ball Super: Beerus - 03 [480p CR WEB-DL AVC AAC][A567B1A4]",
+      "url": "https://nyaa.si/view/2178768",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          3
+        ],
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Chii Fuyo - 04 [1080p CR WEBRip HEVC AAC][MultiSub][0B501980]",
+      "url": "https://nyaa.si/view/2179447",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Psyren - 04 [1080p CR WEBRip HEVC AAC][MultiSub][6D1AB897]",
+      "url": "https://nyaa.si/view/2179172",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Tensei Goblin dakedo Shitsumon Aru - 05 [1080p CR WEBRip HEVC AAC][MultiSub][6CB9CE35]",
+      "url": "https://nyaa.si/view/2179171",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    }
+  ]
+}

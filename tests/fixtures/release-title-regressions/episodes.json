@@ -1,0 +1,137 @@
+{
+  "about": "Episode readings asserted by parse_release_numbers (contains / excludes), rss::parse_release, and grab::held_episodes (with the clicked episode).",
+  "cases": [
+    {
+      "fn": "release_parse::parse_release_numbers.contains",
+      "title": "[SubsPlease] One Piece - 1080 (1080p) [ABCD1234].mkv",
+      "expect": [
+        1080
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_numbers.contains",
+      "title": "[SubsPlease] One Piece - 720 (720p) [ABCD1234].mkv",
+      "expect": [
+        720
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_numbers.contains",
+      "title": "[Group] Show 2024 BD - 12 (1080p).mkv",
+      "expect": [
+        12
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_numbers.excludes",
+      "title": "[Group] Show 2024 BD - 12 (1080p).mkv",
+      "expect": [
+        2024
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::parse_release.episodes",
+      "title": "[Kaizoku] Jujutsu Kaisen Season 3 (WEB 1080p HEVC EAC-3) | The Culling Game Part 1",
+      "expect": [],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::parse_release.episodes.contains",
+      "title": "[SubsPlease] Frieren - 01 (1080p) [ABCD1234].mkv",
+      "expect": [
+        1
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::parse_release.episodes.contains",
+      "title": "[Group] Cool Anime S3 - 05 (1080p)",
+      "expect": [
+        5
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::parse_release.episodes",
+      "title": "[Group] Series 3rd Season (WEB 1080p)",
+      "expect": [],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::parse_release.episodes",
+      "title": "[Group] Series Cour 2 (WEB 1080p)",
+      "expect": [],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "grab::held_episodes",
+      "title": "[SakuraCircle] Saimin Seishidou - 05-06 (DVD 720x480)",
+      "episode": 5,
+      "expect": [
+        5,
+        6
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "grab::held_episodes",
+      "title": "[SubsPlease] RWBY - Hyousetsu Teikoku - 01-03 (720p) [CCDDC9CB].mkv",
+      "episode": 2,
+      "expect": [
+        1,
+        2,
+        3
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "grab::held_episodes",
+      "title": "[SubsPlease] RWBY - Hyousetsu Teikoku - 02 (720p) [4A0FE134].mkv",
+      "episode": 2,
+      "expect": [
+        2
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "grab::held_episodes",
+      "title": "[SubsPlease] RWBY - Hyousetsu Teikoku (01-12) (720p) [Batch]",
+      "episode": 4,
+      "expect": [
+        4
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "grab::held_episodes",
+      "title": "Show - 01-12 [BD]",
+      "episode": 4,
+      "expect": [
+        4
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "grab::held_episodes",
+      "title": "Show - 05-06 [1080p]",
+      "episode": 9,
+      "expect": [
+        9
+      ],
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "grab::held_episodes",
+      "title": "[Group] Show Season 2 - 03",
+      "episode": 3,
+      "expect": [
+        3
+      ],
+      "from": "dev 966695a"
+    }
+  ]
+}

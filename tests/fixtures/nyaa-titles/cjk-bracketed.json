@@ -1,0 +1,437 @@
+{
+  "bucket": "cjk-bracketed",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=01~02&c=1_0",
+    "https://nyaa.si/?page=rss&q=%5BLoliHouse%5D&c=1_0",
+    "https://nyaa.si/?page=rss&q=%E5%96%B5%E8%90%8C%E5%A5%B6%E8%8C%B6%E5%B1%8B&c=1_0",
+    "https://nyaa.si/?page=rss&q=%E6%A1%9C%E9%83%BD%E5%AD%97%E5%B9%95%E7%BB%84&c=1_0",
+    "https://nyaa.si/?page=rss&q=TSDM%E5%AD%97%E5%B9%95%E7%BB%84&c=1_0",
+    "https://nyaa.si/?page=rss&q=%E5%8C%97%E5%AE%87%E6%B2%BB%E5%AD%97%E5%B9%95%E7%BB%84&c=1_0",
+    "https://nyaa.si/?page=rss&q=%E7%BB%BF%E8%8C%B6%E5%AD%97%E5%B9%95%E7%BB%84&c=1_0",
+    "https://nyaa.si/?page=rss&q=%E5%8D%83%E5%A4%8F%E5%AD%97%E5%B9%95%E7%BB%84&c=1_0"
+  ],
+  "cases": [
+    {
+      "title": "【喵萌奶茶屋】★10月新番★[賽博浪客 / 電馭叛客：邊緣行者 / Cyberpunk Edgerunners 2][03][1080p][繁日雙語]",
+      "url": "https://nyaa.si/view/2179629",
+      "category": "1_3",
+      "expect": {
+        "group": "喵萌奶茶屋",
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Cyberpunk: Edgerunners 2"
+        ],
+        "episodes": [
+          3
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "【喵萌奶茶屋】★10月新番★[哥布林杀手/Anime Series Title][12END][720p][繁体][招募翻译校对]",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "喵萌奶茶屋",
+        "episodes": [
+          12
+        ],
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "shape from Sonarr's Unicode fixture"
+    },
+    {
+      "title": "[喵萌奶茶屋&LoliHouse] 乱马 1/2 2024年版 / Ranma ½ / Ranma 1/2 (2024) - 28 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕]",
+      "url": "https://nyaa.si/view/2179174",
+      "category": "1_3",
+      "expect": {
+        "group": "喵萌奶茶屋&LoliHouse",
+        "episodes": [
+          28
+        ],
+        "year": 2024,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[喵萌奶茶屋&VCB-Studio] 与爱丽丝梦游仙境 / 穿越吧！不思议少女 10-bit 1080p HEVC BDRip [MOVIE Reseed Fin]",
+      "url": "https://nyaa.si/view/2174511",
+      "category": "1_3",
+      "expect": {
+        "group": "喵萌奶茶屋&VCB-Studio",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "movie"
+    },
+    {
+      "title": "[桜都字幕组] FX战士久留美 / FX Senshi Kurumi-chan [04][1080P][简繁内封]",
+      "url": "https://nyaa.si/view/2179130",
+      "category": "1_3",
+      "expect": {
+        "group": "桜都字幕组",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "【TSDM字幕组】[虽然我是不完美恶女 ～雏宫蝶鼠替换传～][09][MKV][WebRip][HEVC-10bit 1080p AAC][简日内封字幕][Futsutsuka na Akujo dewa Gozaimasu ga][ふつつかな悪女ではございますが ～雛宮蝶鼠とりかえ伝～]",
+      "url": "https://nyaa.si/view/2179340",
+      "category": "1_3",
+      "expect": {
+        "group": "TSDM字幕组",
+        "episodes": [
+          9
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "【TSDM字幕组】[虽然我是不完美恶女 ～雏宫蝶鼠替换传～][08v2][MKV][WebRip][HEVC-10bit 1080p AAC][简日内封字幕][Futsutsuka na Akujo dewa Gozaimasu ga][ふつつかな悪女ではございますが ～雛宮蝶鼠とりかえ伝～]",
+      "url": "https://nyaa.si/view/2179287",
+      "category": "1_3",
+      "expect": {
+        "group": "TSDM字幕组",
+        "episodes": [
+          8
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[北宇治字幕组] GROTESQQQUE - 夜露死駆★少女 / YOROSHIKU Girl / 4649GIRL [Movie][WebRip][HEVC_AAC][繁日內嵌]",
+      "url": "https://nyaa.si/view/2179231",
+      "category": "1_3",
+      "expect": {
+        "group": "北宇治字幕组",
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "movie"
+    },
+    {
+      "title": "[绿茶字幕组] 描绘直至生命尽头 / 画完这个就去死 / Kore Kaite Shine [08][WebRip][1080p][简日内嵌]",
+      "url": "https://nyaa.si/view/2177067",
+      "category": "1_3",
+      "expect": {
+        "group": "绿茶字幕组",
+        "episodes": [
+          8
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[千夏字幕组&VCB-Studio] 吹响吧！上低音号 3 / Hibike! Euphonium 3 / 響け! ユーフォニアム3 10-bit 1080p HEVC BDRip [Fin]",
+      "url": "https://nyaa.si/view/2013815",
+      "category": "1_3",
+      "expect": {
+        "group": "千夏字幕组&VCB-Studio",
+        "batch": true,
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "a bracketed Fin with no episode marks a complete pack"
+    },
+    {
+      "title": "[千夏字幕组&喵萌奶茶屋&VCB-Studio] 街角魔族 / Machikado Mazoku / まちカドまぞく 10-bit 1080p HEVC BDRip [S1 Reseed v3 Fin]",
+      "url": "https://nyaa.si/view/1967893",
+      "category": "1_3",
+      "expect": {
+        "group": "千夏字幕组&喵萌奶茶屋&VCB-Studio",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "version": 3,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[华盟字幕社&千夏字幕组&VCB-Studio] 狼与香辛料 行商邂逅贤狼 / Spice and Wolf：Merchant Meets the Wise Wolf / 狼と香辛料 MERCHANT MEETS THE WISE WOLF 10-bit 1080p HEVC BDRip [Fin]",
+      "url": "https://nyaa.si/view/1960895",
+      "category": "1_3",
+      "expect": {
+        "group": "华盟字幕社&千夏字幕组&VCB-Studio",
+        "batch": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[千夏字幕组&喵萌奶茶屋&LoliHouse] 超超超超超喜歡你的100個女朋友 / Hyakkano - 17v2 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕]",
+      "url": "https://nyaa.si/view/1957296",
+      "category": "1_3",
+      "expect": {
+        "group": "千夏字幕组&喵萌奶茶屋&LoliHouse",
+        "episodes": [
+          17
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[千夏字幕组][轻旅轻营 (摇曳露营) Season 3_Yuru Camp Season 3][第01-12话][BDRip_1080p_AVC][简体][合集]",
+      "url": "https://nyaa.si/view/1932568",
+      "category": "1_3",
+      "expect": {
+        "group": "千夏字幕组",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[喵萌奶茶屋&LoliHouse] 赛博浪客 / 赛博朋克 / 电驭叛客：边缘行者 / Cyberpunk Edgerunners 2 - 01 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕]",
+      "url": "https://nyaa.si/view/2179026",
+      "category": "1_3",
+      "expect": {
+        "group": "喵萌奶茶屋&LoliHouse",
+        "episodes": [
+          1
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[喵萌奶茶屋&LoliHouse] 被放逐的作弊赋予魔法师享受随心所欲的第二人生。~不只是武器，我还能赋予万物「强化点数」，且能照我的意思随时解除，其他人没问题吗？~ / Chii Fuyo - 03 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕]",
+      "url": "https://nyaa.si/view/2176904",
+      "category": "1_3",
+      "expect": {
+        "group": "喵萌奶茶屋&LoliHouse",
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[喵萌奶茶屋&LoliHouse] 药师少女的独语 / 药屋少女的呢喃 / Kusuriya no Hitorigoto - 51 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕]",
+      "url": "https://nyaa.si/view/2176898",
+      "category": "1_3",
+      "expect": {
+        "group": "喵萌奶茶屋&LoliHouse",
+        "episodes": [
+          51
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "【喵萌奶茶屋】★劇場版★[綻放於巴黎之星 / 綻放的巴黎之星 / パリに咲くエトワール / Paris ni Saku Etoile][1080p][繁日雙語]",
+      "url": "https://nyaa.si/view/2171795",
+      "category": "1_3",
+      "expect": {
+        "group": "喵萌奶茶屋",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "movie"
+    },
+    {
+      "title": "[桜都字幕组] 冰之城墙 / Koori no Jouheki [18][1080P][简繁内封]",
+      "url": "https://nyaa.si/view/2178475",
+      "category": "1_3",
+      "expect": {
+        "group": "桜都字幕组",
+        "episodes": [
+          18
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[桜都字幕组] 死神 千年血战篇-祸进谭- / Bleach： Sennen Kessen Hen - Kashin Tan [09][1080P][简体内嵌]",
+      "url": "https://nyaa.si/view/2178416",
+      "category": "1_3",
+      "expect": {
+        "group": "桜都字幕组",
+        "episodes": [
+          9
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[桜都字幕组] 飙马野郎 JOJO的奇妙冒险 / Steel Ball Run： JoJo no Kimyou na Bouken [06][1080P][繁体内嵌]",
+      "url": "https://nyaa.si/view/2178034",
+      "category": "1_3",
+      "expect": {
+        "group": "桜都字幕组",
+        "episodes": [
+          6
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[桜都字幕组] 弹珠汽水瓶里的千岁同学 第二季 / Chitose-kun wa Ramune Bin no Naka (2026) [02][1080P][简繁内封]",
+      "url": "https://nyaa.si/view/2177558",
+      "category": "1_3",
+      "expect": {
+        "group": "桜都字幕组",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          2
+        ],
+        "year": 2026,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[桜都字幕组] 入间同学入魔了 第四季 / Mairimashita! Iruma-kun (2026) [24][1080P][简繁内封]",
+      "url": "https://nyaa.si/view/2171995",
+      "category": "1_3",
+      "expect": {
+        "group": "桜都字幕组",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          24
+        ],
+        "year": 2026,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[桜都字幕组] 二十世纪电气目录 / Nijuuseiki Denki Mokuroku： Eureka Evrika [13][1080P][简体内嵌]",
+      "url": "https://nyaa.si/view/2168096",
+      "category": "1_3",
+      "expect": {
+        "group": "桜都字幕组",
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[桜都字幕组] 无职转生 第三季 ～到了异世界就拿出真本事～ / Mushoku Tensei III： Isekai Ittara Honki Dasu [14][1080P][简繁内封]",
+      "url": "https://nyaa.si/view/2167562",
+      "category": "1_3",
+      "expect": {
+        "group": "桜都字幕组",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          14
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[桜都字幕组] 与奔驰于透明之夜的你，谈一场看不见的恋爱。 / Toumei na Yoru ni Kakeru Kimi to, Me ni Mienai Koi o Shita. [01-12 Fin][1080P][简繁内封]",
+      "url": "https://nyaa.si/view/2166983",
+      "category": "1_3",
+      "expect": {
+        "group": "桜都字幕组",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[北宇治字幕组] 學生會也有洞！ / Seitokai ni mo Ana wa Aru! [03][無修版][WebRip][HEVC_AAC][繁中內嵌]",
+      "url": "https://nyaa.si/view/2178274",
+      "category": "1_3",
+      "expect": {
+        "group": "北宇治字幕组",
+        "episodes": [
+          3
+        ],
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[北宇治字幕组] 再见，菈菈 / 再见，拉拉 / 再見，菈菈 / Sayonara Lara [12][WebRip][HEVC_AAC][简繁日内封]",
+      "url": "https://nyaa.si/view/2169466",
+      "category": "1_3",
+      "expect": {
+        "group": "北宇治字幕组",
+        "episodes": [
+          12
+        ],
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[北宇治字幕组] 再見，菈菈 / Sayonara Lara [11v2][WebRip][HEVC_AAC][繁日內嵌]",
+      "url": "https://nyaa.si/view/2163335",
+      "category": "1_3",
+      "expect": {
+        "group": "北宇治字幕组",
+        "episodes": [
+          11
+        ],
+        "version": 2,
+        "batch": false
+      },
+      "verified": "hand"
+    }
+  ]
+}

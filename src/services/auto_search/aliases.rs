@@ -12,10 +12,12 @@ use std::sync::LazyLock;
 use regex_lite::Regex;
 
 use crate::services::anilist::AnimeDetail;
+use crate::services::media;
+use crate::services::release_title::{self, SeriesAnchors};
 
 use super::pack_detection::is_pack_candidate_relation;
 use super::provenance::{AliasMatch, MatchKind};
-use super::{SearchTarget, episode_match, parse_release_numbers, season_mismatch};
+use super::{SearchTarget, episode_match};
 
 pub fn normalize_title(input: &str) -> String {
     let lower = input.to_lowercase();
@@ -267,22 +269,6 @@ fn ordinal_word_to_n(word: &str) -> Option<u32> {
     }
 }
 
-fn roman_to_n(roman: &str) -> Option<u32> {
-    match roman.to_ascii_uppercase().as_str() {
-        "I" => Some(1),
-        "II" => Some(2),
-        "III" => Some(3),
-        "IV" => Some(4),
-        "V" => Some(5),
-        "VI" => Some(6),
-        "VII" => Some(7),
-        "VIII" => Some(8),
-        "IX" => Some(9),
-        "X" => Some(10),
-        _ => None,
-    }
-}
-
 fn n_to_roman(n: u32) -> Option<&'static str> {
     match n {
         1 => Some("I"),
@@ -344,14 +330,14 @@ fn extract_sequel_position(alias: &str) -> Option<(String, u32)> {
     }
     if let Some(cap) = RE_PART_ROMAN.captures(alias) {
         let base = cap.get(1)?.as_str().trim();
-        let n = roman_to_n(cap.get(2)?.as_str())?;
+        let n = release_title::roman_value(cap.get(2)?.as_str())?;
         if !base.is_empty() {
             return Some((base.to_string(), n));
         }
     }
     if let Some(cap) = RE_ROMAN_TAIL.captures(alias) {
         let base = cap.get(1)?.as_str().trim();
-        let n = roman_to_n(cap.get(2)?.as_str())?;
+        let n = release_title::roman_value(cap.get(2)?.as_str())?;
         // RE_ROMAN_TAIL only captures II..X, so n ≥ 2 here.
         if !base.is_empty() {
             return Some((base.to_string(), n));
@@ -438,7 +424,7 @@ pub fn sequel_variant_aliases(aliases: &[String]) -> Vec<String> {
 ///
 /// The motivating bug: auto-searching for Jujutsu Kaisen S1 E6 grabbed a
 /// release titled `[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen -
-/// 06`, which is actually an S2/S3 arc. The existing season_mismatch()
+/// 06`, which is actually an S2/S3 arc. The season check (`ParsedTitle::conflicts_with_season`)
 /// heuristic only catches explicit `S02` / `Season 2` markers; an arc
 /// title like "Shimetsu Kaiyuu" slips through. But AniList knows that
 /// "Jujutsu Kaisen: Shimetsu Kaiyuu" is a SEQUEL of JJK S1 — so we can
@@ -524,6 +510,10 @@ pub struct SiblingRejectPrecompute {
     /// `HashSet::iter()` per call, which is nondeterministic order and
     /// would silently misbehave on contiguous-substring checks).
     siblings: Vec<(String, HashSet<String>)>,
+    /// The own aliases as `release_title` reads them, for the episode
+    /// check: a bare number right after the series' name is its episode,
+    /// a number inside the name (`Mob Psycho 100`) never is.
+    anchors: SeriesAnchors,
 }
 
 impl SiblingRejectPrecompute {
@@ -547,7 +537,22 @@ impl SiblingRejectPrecompute {
         Self {
             own_token_sets,
             siblings,
+            anchors: SeriesAnchors::new(own_aliases),
         }
+    }
+
+    /// The series' AniList format decides what a special is: for a TV
+    /// entry `OVA 01` names no episode, for an OVA / ONA / special /
+    /// movie entry it is episode 1. Without this call, TV.
+    pub fn with_series_format(mut self, format: &str) -> Self {
+        self.anchors = self
+            .anchors
+            .with_specials_as_episodes(!media::is_tv_format(format));
+        self
+    }
+
+    pub fn anchors(&self) -> &SeriesAnchors {
+        &self.anchors
     }
 }
 
@@ -931,18 +936,19 @@ pub(super) fn best_alias_match(
 
 /// The auto-search title gate, reporting how the release matched.
 /// `None` means the release is not this series (or not this episode).
-/// Whether the release names something beyond the series: anitomy's
-/// title for it, minus every word of the series' own titles and
+/// Whether the release names something beyond the series: its series
+/// title (`release_title`'s `series_title`), minus every word of the series' own titles and
 /// synonyms and the usual structural and noise tokens, still has a
 /// word left. "Dr. Stone New World - 02" contains "Dr. STONE" verbatim
 /// and is season three; "Mob Psycho 100 II" contains "Mob Psycho 100"
 /// and is season two. A verbatim match that names more is not the
 /// series, and the automatic paths skip it (and report it) rather than
 /// grab it. Release-name decorations never count: bracket groups are
-/// dropped by normalization and anitomy's title excludes the rest.
+/// dropped by normalization and the series title excludes the rest.
 ///
-/// One shape is exempt: `Title - Episode Title - 05`. anitomy folds the
-/// episode title into its series title there, so the claim reads
+/// One shape is exempt: `Title - Episode Title - 05`. The series title
+/// keeps the episode title there (it reads up to the episode), so the
+/// claim reads
 /// "Kimetsu no Yaiba - The Hand Demon". When the first dash segment
 /// names the series and nothing else, a later segment is taken as an
 /// episode title unless one of its leftover words reads like a season
@@ -1054,11 +1060,12 @@ pub fn classify_match(
         SearchTarget::Single => Some(alias_match),
         SearchTarget::Episode(target_ep) => {
             // Season check: reject if release has an explicit season that doesn't match
-            if season_mismatch(title, expected_season) {
+            let release = release_title::parse(title);
+            if release.conflicts_with_season(expected_season) {
                 return None;
             }
 
-            let parsed = parse_release_numbers(title);
+            let parsed = release.for_series(&sibling_precompute.anchors).episodes;
             if parsed.is_empty() {
                 return None;
             }
@@ -1151,8 +1158,30 @@ mod tests {
     }
 
     #[test]
+    fn names_more_than_the_series_ignores_season_ordinals_and_release_noise() {
+        // The series title keeps `2nd Season` and edition words; the season
+        // gate judges the season, and an edition is no other show.
+        let chihayafuru = vec!["Chihayafuru 2".to_string()];
+        assert!(!names_more_than_the_series(
+            "[Group] Chihayafuru 2nd Season - 05 [1080p]",
+            &chihayafuru
+        ));
+        let show = vec!["Show".to_string()];
+        assert!(!names_more_than_the_series(
+            "[G] Show Uncut - 05 [1080p]",
+            &show
+        ));
+        // A sequel's own subtitle still names more.
+        let kny = vec!["Kimetsu no Yaiba".to_string()];
+        assert!(names_more_than_the_series(
+            "[G] Kimetsu no Yaiba (Demon Slayer) Mugen Ressha-hen - 05",
+            &kny
+        ));
+    }
+
+    #[test]
     fn names_more_than_the_series_reads_a_folded_episode_title_as_the_series() {
-        // anitomy folds the episode title into its series title for the
+        // The series title runs on into the episode title for the
         // `Title - Episode Title - 05` shape (346-name Nyaa corpus). The
         // first dash segment names the series and nothing else, so the
         // tail is an episode title, not a sequel's subtitle.
@@ -1421,7 +1450,7 @@ mod tests {
         // Regression: auto-searching JJK S1 E6 used to grab
         // `[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06`
         // because the sibling arc title has no explicit "S02"/"Season 2"
-        // marker for `season_mismatch` to catch, but "Jujutsu Kaisen" is
+        // marker for the season check to catch, but "Jujutsu Kaisen" is
         // a substring of the release. The sibling check resolves this:
         // the sibling alias "Jujutsu Kaisen: Shimetsu Kaiyuu" has 4
         // overlapping tokens with the release vs the target's 2, so the
@@ -1555,12 +1584,92 @@ mod tests {
             &own,
             &no_siblings,
             &SearchTarget::Episode(9),
-            // `expected_season` is the season_mismatch target, not the
+            // `expected_season` is the season check's target, not the
             // numbering target — this is 3 because we're asking for S3.
             3,
             false,
             47,
         ));
+    }
+
+    /// `matches_target` for one episode of a series named `aliases`.
+    fn accepts(title: &str, aliases: &[&str], episode: i32, format: &str) -> bool {
+        let own: Vec<String> = aliases.iter().map(|a| a.to_string()).collect();
+        let precompute = SiblingRejectPrecompute::build(&own, &[]).with_series_format(format);
+        matches_target(
+            title,
+            &own,
+            &precompute,
+            &SearchTarget::Episode(episode),
+            1,
+            false,
+            0,
+        )
+    }
+
+    #[test]
+    fn a_number_in_the_series_name_is_never_the_episode() {
+        let kaiju = ["Kaiju No. 8"];
+        assert!(!accepts(
+            "[SubsPlease] Kaiju No. 8 - 09 (1080p) [ABCD1234].mkv",
+            &kaiju,
+            8,
+            "TV"
+        ));
+        assert!(accepts(
+            "[SubsPlease] Kaiju No. 8 - 09 (1080p) [ABCD1234].mkv",
+            &kaiju,
+            9,
+            "TV"
+        ));
+        let mob = ["Mob Psycho 100"];
+        assert!(!accepts(
+            "[Group] Mob Psycho 100 (BD 1080p)",
+            &mob,
+            100,
+            "TV"
+        ));
+    }
+
+    #[test]
+    fn a_title_ending_in_a_digit_names_only_its_dash_episode() {
+        let chihaya = ["Chihayafuru 2"];
+        let title = "[HorribleSubs] Chihayafuru 2 - 05 [720p].mkv";
+        assert!(accepts(title, &chihaya, 5, "TV"));
+        for wrong in 2..=4 {
+            assert!(!accepts(title, &chihaya, wrong, "TV"), "episode {wrong}");
+        }
+    }
+
+    #[test]
+    fn a_bare_number_after_the_series_name_is_its_episode() {
+        // #296: EternalAnimes weeklies carry no dash.
+        let title = "[EA]Dark_Gathering_24_[1920x1080][HEVC][831E9094].mkv";
+        assert!(accepts(title, &["Dark Gathering"], 24, "TV"));
+        assert!(!accepts(title, &["Dark Gathering"], 23, "TV"));
+    }
+
+    #[test]
+    fn a_special_is_an_episode_only_of_a_series_that_is_not_tv() {
+        let title = "[Group] Hellsing Ultimate OVA 03 (BD 1080p)";
+        assert!(accepts(title, &["Hellsing Ultimate"], 3, "OVA"));
+        assert!(!accepts(title, &["Hellsing Ultimate"], 3, "TV"));
+    }
+
+    #[test]
+    fn a_series_named_special_is_not_rejected_as_a_special() {
+        // The automatic passes drop a TV target's specials through this
+        // reading; a series whose own name ends in `Special` keeps its
+        // weeklies.
+        let own = vec!["A Returner's Magic Should Be Special".to_string()];
+        let precompute = SiblingRejectPrecompute::build(&own, &[]).with_series_format("TV");
+        let weekly = release_title::parse(
+            "[Doomdos] - A Returner's Magic Should Be Special - S02E03 [1080p]",
+        );
+        assert!(!weekly.is_special_for(precompute.anchors()));
+        let ova =
+            release_title::parse("[Group] A Returner's Magic Should Be Special - OVA 01 [1080p]");
+        assert!(ova.is_special_for(precompute.anchors()));
     }
 
     // ── #84 — sequel-variant alias generation ─────────────────────────

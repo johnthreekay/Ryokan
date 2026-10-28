@@ -1,0 +1,312 @@
+{
+  "bucket": "subsplease-weekly",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=01~02&c=1_0",
+    "https://nyaa.si/?page=rss&u=subsplease&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[SubsPlease] Dark Machine - The Animation - 03 (1080p) [021AC0BB].mkv",
+      "url": "https://nyaa.si/view/2179484",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Sora wa Akai Kawa no Hotori - 17 (1080p) [0113A1E2].mkv",
+      "url": "https://nyaa.si/view/2179469",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          17
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Chitose-kun wa Ramune Bin no Naka - 16 (1080p) [419838FC].mkv",
+      "url": "https://nyaa.si/view/2179433",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          16
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Choujun! Choujou-senpai - 04 (1080p) [7CD898E7].mkv",
+      "url": "https://nyaa.si/view/2179368",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Doumo, Suki na Hito ni Horegusuri wo Irai sareta Majo desu. - 04 (1080p) [D01B5750].mkv",
+      "url": "https://nyaa.si/view/2179000",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Hotel Inhumans S2 - 04 (1080p) [EF8DA271].mkv",
+      "url": "https://nyaa.si/view/2178685",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Tensei Kizoku, Kantei Skill de Nariagaru - 29 (1080p) [BCC1034E].mkv",
+      "url": "https://nyaa.si/view/2178666",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          29
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Hanaori-san wa Tensei shitemo Kenka ga Shitai - 12v2 (1080p) [40DE25F0].mkv",
+      "url": "https://nyaa.si/view/2179539",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          12
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Hanaori-san wa Tensei shitemo Kenka ga Shitai - 12v2 (480p) [0D729296].mkv",
+      "url": "https://nyaa.si/view/2179537",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          12
+        ],
+        "version": 2,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Chii Fuyo - 04 (1080p) [18E2D3F0].mkv",
+      "url": "https://nyaa.si/view/2179394",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Battle Spirits Re - Zekkai no Kuu - 04 (1080p) [9A9EE2D8].mkv",
+      "url": "https://nyaa.si/view/2179369",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Shiotaiou no Satou-san ga Ore ni dake Amai - 04 (1080p) [1F266638].mkv",
+      "url": "https://nyaa.si/view/2179332",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Kyouran Reijou Nia Liston - 04 (1080p) [1A604A90].mkv",
+      "url": "https://nyaa.si/view/2179300",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Bleach - Sennen Kessen Hen - 50 (1080p) [22C2464E].mkv",
+      "url": "https://nyaa.si/view/2179091",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          50
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] PSYREN - 04 (720p) [D178C50D].mkv",
+      "url": "https://nyaa.si/view/2179053",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          4
+        ],
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Tensei Goblin dakedo Shitsumon Aru - 05 (1080p) [2B245A2C].mkv",
+      "url": "https://nyaa.si/view/2179012",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Dragon Ball Super - Beerus - 03 (1080p) [BB51248B].mkv",
+      "url": "https://nyaa.si/view/2178785",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Dark Summoner to Dekiteiru - 04 (720p) [5913A42F].mkv",
+      "url": "https://nyaa.si/view/2178752",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          4
+        ],
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Kanata kara - 04 (1080p) [89D32FDE].mkv",
+      "url": "https://nyaa.si/view/2178720",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Tempal - Item no Chikara - 05 (720p) [951843BB].mkv",
+      "url": "https://nyaa.si/view/2178629",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          5
+        ],
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Hotel Inhumans Season 2 - 04 [1080p CR WEB-DL AVC AAC][MultiSub][6ECAEB9E]",
+      "url": "https://nyaa.si/view/2178678",
+      "expect": {
+        "group": "Erai-raws",
+        "batch": false,
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "The season number before the dash is not an episode"
+    }
+  ]
+}

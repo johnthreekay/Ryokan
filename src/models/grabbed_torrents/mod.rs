@@ -717,9 +717,9 @@ pub async fn set_indexer_attribution(
 /// title-based `record_grab` registered. The motivating case: a BD
 /// batch like "[Arid] Land of the Lustrous [Dual-Audio][BDRip 1080p
 /// Hi10 FLAC] | Houseki no Kuni" has no episode-range token in the
-/// title, so `parse_release_numbers` returns empty and
-/// `batch_episode_numbers` falls back to `[1]`; `detect_batch_from_title`
-/// also misses it (no `[bd]` / `(bd)` / `season pack` / `batch` /
+/// title, so the title readers of the time (`parse_release_numbers`,
+/// `batch_episode_numbers`, `detect_batch_from_title`, since replaced by
+/// `release_title`) found no range, fell back to `[1]` and missed it (no `[bd]` / `(bd)` / `season pack` / `batch` /
 /// `complete` keyword). The grab row lands as
 /// `episode_numbers=[1], is_batch=0`, and post-processing's
 /// `grab_claims_episode` guard rejects every file beyond ep 1 — the

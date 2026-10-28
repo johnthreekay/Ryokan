@@ -126,12 +126,22 @@ pub struct PreviewFile {
 /// absolute-numbered file (`- 56` when `cumulative_prior_episodes` is
 /// 47) is episode 9, the number the Wanted page asks the picker for and
 /// the import files it under. See `PreviewFile::episodes`.
+#[cfg(test)]
 pub(crate) fn file_episodes(name: &str, cumulative_prior_episodes: i32) -> Vec<i32> {
+    file_episodes_for(name, cumulative_prior_episodes, &Default::default())
+}
+
+/// [`file_episodes`] for a known series: a number its own name holds is
+/// never a file's episode (`Mob Psycho 100 (BD).mkv`).
+pub(crate) fn file_episodes_for(
+    name: &str,
+    cumulative_prior_episodes: i32,
+    anchors: &crate::services::release_title::SeriesAnchors,
+) -> Vec<i32> {
     if !crate::services::auto_search::is_media_filename(name) {
         return Vec::new();
     }
-    let base = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
-    match crate::services::media::parse_episode_span(&base) {
+    match crate::services::media::parse_file_path_for(name, anchors) {
         Some(span) if !span.special => {
             crate::services::grab_commit::file_slot_episodes(span, cumulative_prior_episodes)
                 .collect()
@@ -581,20 +591,26 @@ pub async fn grab_preview_status(
 
     let mut file_list: Vec<PreviewFile> =
         serde_json::from_str(&row.file_list_json).unwrap_or_default();
-    let cumulative_prior_episodes = match row.series_id {
+    let series_row = match row.series_id {
         Some(id) => crate::models::series::get_by_id(&state.db, id)
             .await
             .ok()
-            .flatten()
-            .map(|s| s.cumulative_prior_episodes)
-            .unwrap_or(0),
-        None => 0,
+            .flatten(),
+        None => None,
     };
-    // One regex pass plus an anitomy parse per file; a BD pack has
+    let cumulative_prior_episodes = series_row
+        .as_ref()
+        .map(|s| s.cumulative_prior_episodes)
+        .unwrap_or(0);
+    let anchors = series_row
+        .as_ref()
+        .map(crate::services::grab_commit::series_anchors)
+        .unwrap_or_default();
+    // One or two parses per file; a BD pack has
     // hundreds, so keep it off the async worker.
     let file_list = tokio::task::spawn_blocking(move || {
         for f in &mut file_list {
-            f.episodes = file_episodes(&f.name, cumulative_prior_episodes);
+            f.episodes = file_episodes_for(&f.name, cumulative_prior_episodes, &anchors);
         }
         file_list
     })

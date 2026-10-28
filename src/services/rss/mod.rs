@@ -11,11 +11,13 @@ use crate::{
     models::log::LogCategory,
     models::{config, episode_tags, monitoring, rss, series},
     services::source::{self, ClassificationResult, Resolution, Source},
-    services::{auto_search, logger, media, monitoring as monitoring_service, quality},
+    services::{
+        auto_search, logger, media, monitoring as monitoring_service, quality, release_title,
+    },
 };
 
 pub mod feed;
-use feed::{build_item_key, detect_batch, extract_group, extract_resolution, fetch_feeds};
+use feed::{build_item_key, fetch_feeds};
 
 /// multi-rss commit F — flatten an `RssSource` to the
 /// `(source_str, source_id_opt)` pair `rss_seen.source` +
@@ -79,118 +81,6 @@ static RSS_SYNC_LOCK: LazyLock<tokio::sync::Mutex<()>> =
 // Core-title normalisation
 static RE_CORE_TITLE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:season\s*\d+|\d+(?:st|nd|rd|th)\s+season|s\d{1,2}(?:e\d{1,4})?|part\s*\d+|cour\s*\d+|final|end(?:ing)?s?)\b").unwrap()
-});
-
-// Season number extraction (tried in order)
-static RE_SEASON_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
-        Regex::new(r"(?i)\bseason\s*(\d{1,2})\b").unwrap(),
-        Regex::new(r"(?i)\b(\d{1,2})(?:st|nd|rd|th)\s+season\b").unwrap(),
-        Regex::new(r"(?i)\bs(\d{1,2})\b").unwrap(),
-        Regex::new(r"(?i)\bpart\s*(\d{1,2})\b").unwrap(),
-        Regex::new(r"(?i)\bcour\s*(\d{1,2})\b").unwrap(),
-    ]
-});
-
-// Season+episode range patterns
-static RE_SEASON_EP_RANGE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
-    Regex::new(r"(?i)\bs(\d{1,2})\s*e(\d{1,4})\s*[-~]\s*e?(\d{1,4})(?:v\d+)?\b").unwrap(),
-    Regex::new(r"(?i)\b(\d{1,2})(?:st|nd|rd|th)\s+season\b\s*[-:]\s*(\d{1,4})\s*[-~]\s*(\d{1,4})(?:v\d+)?\b").unwrap(),
-    Regex::new(r"(?i)\bseason\s*(\d{1,2})\b\s*[-:]\s*(\d{1,4})\s*[-~]\s*(\d{1,4})(?:v\d+)?\b").unwrap(),
-    Regex::new(r"(?i)\bpart\s*(\d{1,2})\b\s*[-:]\s*(\d{1,4})\s*[-~]\s*(\d{1,4})(?:v\d+)?\b").unwrap(),
-    Regex::new(r"(?i)\bcour\s*(\d{1,2})\b\s*[-:]\s*(\d{1,4})\s*[-~]\s*(\d{1,4})(?:v\d+)?\b").unwrap(),
-]
-});
-
-// Season+episode single patterns
-static RE_SEASON_EP_SINGLE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
-        Regex::new(r"(?i)\bs(\d{1,2})\s*e(\d{1,4})(?:v\d+)?\b").unwrap(),
-        Regex::new(r"(?i)\bs(\d{1,2})[ ._-]*ep?(\d{1,4})(?:v\d+)?\b").unwrap(),
-    ]
-});
-
-// Season+dash+episode patterns
-static RE_SEASON_DASH: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
-    Regex::new(r"(?i)\bs(\d{1,2})\b\s*[-:]\s*(\d{1,4})(?:v\d+)?(?:\s|\.|\[|\(|$)").unwrap(),
-    Regex::new(r"(?i)\b(\d{1,2})(?:st|nd|rd|th)\s+season\b\s*[-:]\s*(\d{1,4})(?:v\d+)?(?:\s|\.|\[|\(|$)").unwrap(),
-    Regex::new(r"(?i)\bseason\s*(\d{1,2})\b\s*[-:]\s*(\d{1,4})(?:v\d+)?(?:\s|\.|\[|\(|$)").unwrap(),
-    Regex::new(r"(?i)\bpart\s*(\d{1,2})\b\s*[-:]\s*(\d{1,4})(?:v\d+)?(?:\s|\.|\[|\(|$)").unwrap(),
-    Regex::new(r"(?i)\bcour\s*(\d{1,2})\b\s*[-:]\s*(\d{1,4})(?:v\d+)?(?:\s|\.|\[|\(|$)").unwrap(),
-]
-});
-
-// Range pattern (no season prefix)
-static RE_RANGE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b(\d{1,3})\s*[-~]\s*(\d{1,3})(?:v\d+)?\b").unwrap());
-
-// Season-marker patterns that `parse_release` strips before running
-// RE_RANGE and RE_ABSOLUTE against the title. Otherwise the digit in
-// "Season 3" / "Part 1" / "S3" / "3rd Season" / "Cour 2" gets a
-// second life as an absolute episode number when followed by `(` or
-// `[` — e.g. "Season 3 (WEB 1080p ...)" yields episode 3 from the
-// lone "3 (" substring even though that 3 is the season. Sonarr's
-// parser avoids this by requiring specific anchor tokens (`- N (`,
-// `E\d+`, etc.) for absolute-episode extraction; we achieve the same
-// effect by masking the season tokens out of the search window.
-//
-// Masking is safe at this point because the season+episode combined
-// patterns (RE_SEASON_EP_RANGE / _SINGLE / _DASH) have already run
-// and either captured or returned early. If we reach the absolute-
-// episode loop, no season+episode combined pattern matched, so the
-// season digit has no episode counterpart to anchor to.
-/// Pattern fragments for every season-marker phrasing RSS recognizes.
-/// Shared between `RE_SEASON_MARKER_MASK` (this module) and
-/// `RE_BATCH_SEASON_BRACKET` (in `feed.rs`) so a new phrasing only
-/// needs to be added here — adding "Chapter N" or "Volume N" later
-/// updates both the masking pass and the batch-detect anchor in one
-/// place.
-pub(super) const SEASON_TOKEN_FRAGMENTS: &[&str] = &[
-    r"season\s*\d{1,2}",
-    r"\d{1,2}(?:st|nd|rd|th)\s+season",
-    r"part\s*\d{1,2}",
-    r"cour\s*\d{1,2}",
-    r"s\d{1,2}",
-];
-
-pub(super) static RE_SEASON_MARKER_MASK: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    SEASON_TOKEN_FRAGMENTS
-        .iter()
-        .map(|frag| Regex::new(&format!(r"(?i)\b{}\b", frag)).unwrap())
-        .collect()
-});
-
-// Absolute episode patterns (tried in order)
-static RE_ABSOLUTE: LazyLock<Vec<(&str, Regex)>> = LazyLock::new(|| {
-    vec![
-        (
-            "absolute_dash",
-            Regex::new(r"(?i)(?:^|\s)-\s*(\d{1,4})(?:v\d+)?(?:\s|\.|\[|\(|$)").unwrap(),
-        ),
-        (
-            "absolute",
-            Regex::new(r"(?i)\bepisode\s*(\d{1,4})(?:v\d+)?\b").unwrap(),
-        ),
-        (
-            "absolute",
-            Regex::new(r"(?i)\be(?:p\.?|pisode)?\s*(\d{1,4})(?:v\d+)?\b").unwrap(),
-        ),
-        (
-            "absolute",
-            Regex::new(r"(?i)\b(\d{1,4})(?:v\d+)?\s*(?:\(|\[)").unwrap(),
-        ),
-        (
-            "absolute_dash",
-            Regex::new(r"(?i)\b-\s*(\d{1,4})(?:v\d+)?(?:\s+final|\s+end)?(?:\.[a-z0-9]{2,4}|$)")
-                .unwrap(),
-        ),
-        (
-            "absolute",
-            Regex::new(r"(?i)\b(\d{1,4})(?:v\d+)?\s*(?:final|end)\b").unwrap(),
-        ),
-    ]
 });
 
 /// Multi-RSS — provenance attribution for each item the sync
@@ -266,9 +156,12 @@ struct ParsedRelease {
     core_title: String,
     collapsed_title: String,
     collapsed_core_title: String,
+    /// The title as `release_title` reads it, the reading every other
+    /// path uses; episodes come from it per series (`for_series`).
+    title: release_title::ParsedTitle,
     season_hint: Option<i32>,
-    season_relative_eps: HashSet<i32>,
-    absolute_eps: HashSet<i32>,
+    /// The episode claim is bound to a season (`S02E05`, `S2 - 05`).
+    season_bound: bool,
     parse_mode: &'static str,
 }
 
@@ -297,6 +190,8 @@ struct SeriesMeta {
     collapsed_aliases: Vec<String>,
     collapsed_core_aliases: Vec<String>,
     season_num: Option<i32>,
+    /// The series' own names for `release_title`'s series-aware reading.
+    anchors: release_title::SeriesAnchors,
 }
 
 #[derive(Clone)]
@@ -327,7 +222,9 @@ impl SeriesMeta {
 
         let season_num = aliases
             .iter()
-            .find_map(|alias| parse_season_number(&auto_search::normalize_title(alias)));
+            .find_map(|alias| release_title::season_marker(alias));
+        let anchors = release_title::SeriesAnchors::new(&aliases)
+            .with_specials_as_episodes(!media::is_tv_format(&series.format));
 
         let mut expanded = aliases.clone();
         let mut core_aliases = Vec::new();
@@ -360,6 +257,7 @@ impl SeriesMeta {
             collapsed_aliases: auto_search::dedupe_strings(collapsed_aliases),
             collapsed_core_aliases: auto_search::dedupe_strings(collapsed_core_aliases),
             season_num,
+            anchors,
         }
     }
 }
@@ -1014,6 +912,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             &incoming_classification,
             disk_files,
             &actionable_eps,
+            &found.resolved_eps,
             &gate,
             qtags,
         );
@@ -1047,12 +946,10 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         // release would replace it at import, so the rules for a file
         // apply here too (`judge_queued_revision`).
         let incoming_version = media::parse_release_revision(&item.title).version;
-        let history_reason = if canonical_history.contains(&found, item.is_batch, incoming_version)
-        {
+        let history_reason = if canonical_history.contains(&found, incoming_version) {
             Some("Logical episode is already queued or was grabbed earlier".to_string())
         } else if !decision.is_upgrade
-            && let Some(queued) =
-                canonical_history.lower_revision(&found, item.is_batch, incoming_version)
+            && let Some(queued) = canonical_history.lower_revision(&found, incoming_version)
         {
             judge_queued_revision(&policy, queued, &item.group).err()
         } else {
@@ -1311,7 +1208,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                         build_match_diag(&cand.item, Some(&cand.found), cand.score)
                     )
                 };
-                canonical_history.insert(&cand.found, cand.item.is_batch, &cand.item.title);
+                canonical_history.insert(&cand.found, &cand.item.title);
                 let _ = rss::record_decision(
                     &state.db,
                     rss::DecisionRecord {
@@ -1580,6 +1477,7 @@ pub async fn match_library_title(
     // Synthetic RssItem for the matcher — `source` doesn't matter
     // here because this path is title-only matching for the
     // post-grab attribution helper, not a sync-time fetch.
+    let fields = release_title::release_fields(title);
     let pseudo = RssItem {
         title: title.to_string(),
         link: String::new(),
@@ -1587,8 +1485,8 @@ pub async fn match_library_title(
         torrent: String::new(),
         magnet: String::new(),
         info_hash: String::new(),
-        group: extract_group(title),
-        resolution: extract_resolution(title),
+        group: fields.group,
+        resolution: fields.resolution,
         is_batch,
         source: RssSource::Nyaa,
     };
@@ -1618,14 +1516,14 @@ struct CanonicalHistory {
 }
 
 impl CanonicalHistory {
-    fn insert(&mut self, found: &MatchResult, is_batch: bool, title: &str) {
-        let key = logical_episode_key(found, is_batch);
+    fn insert(&mut self, found: &MatchResult, title: &str) {
+        let key = logical_episode_key(found);
         if key.is_empty() {
             return;
         }
         self.items.entry(key).or_default().push(HistoryRelease {
             revision: media::parse_release_revision(title).version,
-            group: extract_group(title),
+            group: release_title::release_fields(title).group,
         });
     }
 
@@ -1634,6 +1532,7 @@ impl CanonicalHistory {
     fn insert_title(&mut self, title: &str, all_meta: &[SeriesMeta]) {
         // Same synthetic-item pattern as `find_series_for_title` —
         // matcher inputs only, no real grab.
+        let fields = release_title::release_fields(title);
         let pseudo = RssItem {
             title: title.to_string(),
             link: String::new(),
@@ -1641,19 +1540,19 @@ impl CanonicalHistory {
             torrent: String::new(),
             magnet: String::new(),
             info_hash: String::new(),
-            group: extract_group(title),
-            resolution: extract_resolution(title),
-            is_batch: detect_batch(title),
+            group: fields.group,
+            resolution: fields.resolution,
+            is_batch: fields.is_batch,
             source: RssSource::Nyaa,
         };
         if let Some(found) = best_series_match(&pseudo, all_meta) {
-            self.insert(&found, pseudo.is_batch, title);
+            self.insert(&found, title);
         }
     }
 
     /// True when this revision of the item was queued or grabbed.
-    fn contains(&self, found: &MatchResult, is_batch: bool, revision: u32) -> bool {
-        let key = logical_episode_key(found, is_batch);
+    fn contains(&self, found: &MatchResult, revision: u32) -> bool {
+        let key = logical_episode_key(found);
         !key.is_empty()
             && self
                 .items
@@ -1664,13 +1563,8 @@ impl CanonicalHistory {
     /// The highest revision of the item below `revision` that was
     /// queued or grabbed, if any: what a `v2` would replace before the
     /// `v1` reaches the disk.
-    fn lower_revision(
-        &self,
-        found: &MatchResult,
-        is_batch: bool,
-        revision: u32,
-    ) -> Option<&HistoryRelease> {
-        let key = logical_episode_key(found, is_batch);
+    fn lower_revision(&self, found: &MatchResult, revision: u32) -> Option<&HistoryRelease> {
+        let key = logical_episode_key(found);
         if key.is_empty() {
             return None;
         }
@@ -1736,12 +1630,13 @@ fn compare_candidates(a: &PendingCandidate, b: &PendingCandidate) -> Ordering {
 /// the history (`CanonicalHistory`), where it keeps a later `v2` from
 /// being swallowed as "already grabbed".
 fn logical_bucket_key(cand: &PendingCandidate) -> String {
-    logical_episode_key(&cand.found, cand.item.is_batch)
+    logical_episode_key(&cand.found)
 }
 
-/// The logical item a release delivers: series family, batch or
-/// single, and the episode set. Empty when no episode resolved.
-fn logical_episode_key(found: &MatchResult, is_batch: bool) -> String {
+/// The logical item a release delivers: series family and the episode
+/// set. Empty when no episode resolved. A pack and a single file holding
+/// the same episodes are one item, so a sweep never grabs both.
+fn logical_episode_key(found: &MatchResult) -> String {
     let episode_key = if !found.canonical_abs_eps.is_empty() {
         format_episode_set(&found.canonical_abs_eps)
     } else {
@@ -1750,12 +1645,7 @@ fn logical_episode_key(found: &MatchResult, is_batch: bool) -> String {
     if episode_key == "none" {
         return String::new();
     }
-    format!(
-        "{}|{}|{}",
-        found.family_key,
-        if is_batch { "batch" } else { "single" },
-        episode_key,
-    )
+    format!("{}|{}", found.family_key, episode_key)
 }
 
 /// The series' SeaDex picks for scoring one item: `hashes` feed the
@@ -1840,7 +1730,7 @@ async fn score_candidate(
 
     match parse_mode {
         "season_episode" | "season_dash_episode" | "season_episode_range" => score += 25,
-        "absolute" | "absolute_dash" => score += 15,
+        "absolute" | "absolute_dash" | "after_name" => score += 15,
         "range" => score += 10,
         _ => score -= 10,
     }
@@ -1920,16 +1810,29 @@ pub(crate) struct UpgradeGate<'a> {
     pub incoming_cf_score: i32,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn evaluate_candidate(
     found: &series::Series,
     item: &RssItem,
     incoming: &ClassificationResult,
     disk_files: &[media::EpisodeFile],
     parsed_eps: &HashSet<i32>,
+    covered_eps: &HashSet<i32>,
     gate: &UpgradeGate<'_>,
     quality_tags: &HashMap<i32, crate::models::episode_tags::EpisodeQualityTag>,
 ) -> CandidateDecision {
     let existing_ep_numbers: HashSet<i32> = disk_files.iter().flat_map(|f| f.episodes()).collect();
+    // The import replaces every on-disk episode the release holds,
+    // monitored or not (`future` monitoring leaves every on-disk episode
+    // out of `parsed_eps`), so the overwrite rules read `covered_eps`.
+    let not_upgradeable = covered_eps
+        .iter()
+        .filter(|ep| {
+            existing_ep_numbers.contains(ep)
+                && episode_is_upgradeable(ep, covered_eps, disk_files, incoming, gate, quality_tags)
+                    .is_err()
+        })
+        .count() as i32;
 
     if item.is_batch {
         if !parsed_eps.is_empty() {
@@ -1967,7 +1870,6 @@ fn evaluate_candidate(
                 })
                 .count() as i32;
             let actionable = new_count + upgrade_count;
-            let covered = parsed_eps.len() as i32;
 
             if actionable == 0 {
                 return CandidateDecision {
@@ -1978,12 +1880,14 @@ fn evaluate_candidate(
                     is_upgrade: false,
                 };
             }
-            if actionable < covered {
-                let not_actionable = covered - actionable;
+            if not_upgradeable > 0 {
+                let covered = covered_eps.len() as i32;
                 return CandidateDecision {
                     reject_reason: Some(format!(
                         "Batch would overwrite {} non-upgradeable episode(s) on disk (pack covers {} total, only {} are missing-or-upgradeable). Manual search bypasses this gate if you explicitly want to replace those episodes.",
-                        not_actionable, covered, actionable
+                        not_upgradeable,
+                        covered,
+                        covered - not_upgradeable
                     )),
                     new_episode_count: 0,
                     is_upgrade: false,
@@ -2074,6 +1978,20 @@ fn evaluate_candidate(
             is_upgrade: false,
         };
     }
+    // One file holding several episodes (`- 05-06 (...).mkv`) replaces
+    // every on-disk episode it covers, so each must be missing or an
+    // upgrade, as for a batch.
+    if covered_eps.len() > 1 && not_upgradeable > 0 {
+        return CandidateDecision {
+            reject_reason: Some(format!(
+                "Multi-episode release would overwrite {not_upgradeable} non-upgradeable episode(s) on disk (it covers {}, only {} are missing-or-upgradeable). Manual search bypasses this gate if you explicitly want to replace those episodes.",
+                covered_eps.len(),
+                covered_eps.len() as i32 - not_upgradeable
+            )),
+            new_episode_count: 0,
+            is_upgrade: false,
+        };
+    }
 
     CandidateDecision {
         reject_reason: None,
@@ -2131,13 +2049,18 @@ fn episode_is_upgradeable(
     let existing_classification = auto_search::resolve_existing_classification(existing, tag);
     // A file with no tag row has no release title: no group (so no
     // revision) and no score. The renamed library file is not a
-    // release title and is not scored.
+    // release title and is not scored. The group is read from the stored
+    // title the way the incoming one is: a row written before
+    // `release_fields` holds another reader's group.
     let (release_title, release_group, scorable) = match tag {
-        Some(t) if !t.release_title.is_empty() => {
-            (t.release_title.as_str(), t.release_group.as_str(), true)
-        }
-        _ => (existing.filename.as_str(), "", false),
+        Some(t) if !t.release_title.is_empty() => (
+            t.release_title.as_str(),
+            release_title::release_fields(&t.release_title).group,
+            true,
+        ),
+        _ => (existing.filename.as_str(), String::new(), false),
     };
+    let release_group = release_group.as_str();
     // Size 0 on both sides: RssItem carries no size, so a Size spec
     // matching only the file on disk would tilt the comparison.
     let existing_cf_score = scorable.then(|| {
@@ -2173,12 +2096,16 @@ fn is_finished_status(status: &str) -> bool {
     matches!(status, "FINISHED" | "FINISHED_AIRING")
 }
 
+/// Tie-break between equal match scores: exact alias, the item's own
+/// season, placed episodes, then the oldest row.
+type MatchTie = (bool, bool, bool, std::cmp::Reverse<i64>);
+
 fn best_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> Option<MatchResult> {
     let parsed = parse_release(item);
     let item_tokens = auto_search::token_set(&parsed.normalized_title);
     let item_core_tokens = auto_search::token_set(&parsed.core_title);
 
-    let mut best: Option<(f32, MatchResult)> = None;
+    let mut best: Option<(f32, MatchTie, MatchResult)> = None;
 
     let item_view = ItemView {
         normalized: &parsed.normalized_title,
@@ -2202,7 +2129,9 @@ fn best_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> Option<MatchRes
         }
 
         let siblings = related_family(meta, all_meta);
-        let (resolved_eps, resolution_mode) = resolve_episode_numbers(&parsed, meta, &siblings);
+        let reading = parsed.title.for_series(&meta.anchors);
+        let (resolved_eps, resolution_mode) =
+            resolve_episode_numbers(&parsed, &reading.episodes, meta, &siblings);
         let canonical_abs_eps = canonical_absolute_numbers(meta, &siblings, &resolved_eps);
         let family_key = canonical_family_key(&siblings);
 
@@ -2211,10 +2140,14 @@ fn best_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> Option<MatchRes
             match meta.season_num {
                 Some(season) if season == item_season => score += 0.55,
                 Some(_) => score -= 0.45,
+                // A series named by no season is its first: an item naming
+                // season 2+ is another entry's, episodes or not (a pack with
+                // none used to clear the bar and grab for a finished series).
+                None if item_season > 1 => score -= 0.45,
                 None => score -= 0.10,
             }
         }
-        if !parsed.season_relative_eps.is_empty() || !parsed.absolute_eps.is_empty() {
+        if !reading.episodes.is_empty() {
             if resolved_eps.is_empty() {
                 score -= 0.45;
             } else {
@@ -2229,22 +2162,41 @@ fn best_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> Option<MatchRes
             continue;
         }
 
+        let mut matched = parsed.clone();
+        if reading.via == release_title::ReadingSource::AfterName {
+            matched.parse_mode = "after_name";
+        }
+        // Ties: an exact alias, then the item's own season, then episodes
+        // this series can place, then the oldest row. List order used to
+        // decide.
+        let tie = (
+            alias_score >= 1.0,
+            parsed.season_hint.is_some() && parsed.season_hint == meta.season_num,
+            !resolved_eps.is_empty(),
+            std::cmp::Reverse(meta.series.id),
+        );
         let result = MatchResult {
             series: meta.series.clone(),
-            parsed: parsed.clone(),
+            parsed: matched,
             resolved_eps,
             canonical_abs_eps,
             family_key,
             alias_score,
             resolution_mode,
         };
-        match &best {
-            Some((best_score, _)) if *best_score >= score => {}
-            _ => best = Some((score, result)),
+        let better = match &best {
+            None => true,
+            Some((best_score, best_tie, _)) => {
+                score > *best_score + f32::EPSILON
+                    || ((score - *best_score).abs() <= f32::EPSILON && tie > *best_tie)
+            }
+        };
+        if better {
+            best = Some((score, tie, result));
         }
     }
 
-    best.map(|(_, result)| result)
+    best.map(|(_, _, result)| result)
 }
 
 fn canonical_family_key(family: &[SeriesMeta]) -> String {
@@ -2431,169 +2383,50 @@ fn collapse_alias(value: &str) -> String {
     value.chars().filter(|ch| ch.is_alphanumeric()).collect()
 }
 
-fn parse_season_number(value: &str) -> Option<i32> {
-    for re in RE_SEASON_PATTERNS.iter() {
-        if let Some(value) = re
-            .captures(value)
-            .and_then(|caps| caps.get(1))
-            .and_then(|m| m.as_str().parse::<i32>().ok())
-        {
-            return Some(value);
-        }
-    }
-    None
-}
-
 fn parse_release(item: &RssItem) -> ParsedRelease {
     let normalized_title = auto_search::normalize_title(&item.title);
     let core_title = normalize_core_title(&normalized_title);
     let collapsed_title = collapse_alias(&normalized_title);
     let collapsed_core_title = collapse_alias(&core_title);
-    let lower = item.title.to_lowercase();
-
-    let mut season_hint = parse_season_number(&normalized_title);
-    let mut season_relative_eps = HashSet::new();
-    let mut absolute_eps = HashSet::new();
-    let mut parse_mode = "unknown";
-
-    // Season+episode range patterns
-    for re in RE_SEASON_EP_RANGE.iter() {
-        if let Some(caps) = re.captures(&lower) {
-            season_hint = caps
-                .get(1)
-                .and_then(|m| m.as_str().parse::<i32>().ok())
-                .or(season_hint);
-            let start = caps
-                .get(2)
-                .and_then(|m| m.as_str().parse::<i32>().ok())
-                .unwrap_or(0);
-            let end = caps
-                .get(3)
-                .and_then(|m| m.as_str().parse::<i32>().ok())
-                .unwrap_or(0);
-            if start > 0 && end >= start && end - start <= 200 {
-                for ep in start..=end {
-                    season_relative_eps.insert(ep);
-                }
-                parse_mode = "season_episode_range";
-                return ParsedRelease {
-                    normalized_title,
-                    core_title,
-                    collapsed_title,
-                    collapsed_core_title,
-                    season_hint,
-                    season_relative_eps,
-                    absolute_eps,
-                    parse_mode,
-                };
-            }
+    let title = release_title::parse(&item.title);
+    let claim = title.episodes.as_ref();
+    let season_bound = claim.is_some_and(|c| c.season.is_some());
+    let parse_mode = match claim {
+        None => "unknown",
+        Some(c) if season_bound && c.spans_several() => "season_episode_range",
+        Some(_) if season_bound => "season_episode",
+        Some(c) if c.spans_several() => "range",
+        // `Show Part 2 - 05`: a dash episode under a season hint the claim
+        // does not bind.
+        Some(c) if c.rule == release_title::ClaimRule::Dash && title.season_hint().is_some() => {
+            "season_dash_episode"
         }
-    }
-
-    // Season+episode single patterns
-    for re in RE_SEASON_EP_SINGLE.iter() {
-        if let Some(caps) = re.captures(&lower) {
-            season_hint = caps
-                .get(1)
-                .and_then(|m| m.as_str().parse::<i32>().ok())
-                .or(season_hint);
-            if let Some(ep) = caps.get(2).and_then(|m| m.as_str().parse::<i32>().ok()) {
-                season_relative_eps.insert(ep);
-                parse_mode = "season_episode";
-                return ParsedRelease {
-                    normalized_title,
-                    core_title,
-                    collapsed_title,
-                    collapsed_core_title,
-                    season_hint,
-                    season_relative_eps,
-                    absolute_eps,
-                    parse_mode,
-                };
-            }
-        }
-    }
-
-    // Season+dash+episode patterns
-    for re in RE_SEASON_DASH.iter() {
-        if let Some(caps) = re.captures(&lower) {
-            season_hint = caps
-                .get(1)
-                .and_then(|m| m.as_str().parse::<i32>().ok())
-                .or(season_hint);
-            if let Some(ep) = caps.get(2).and_then(|m| m.as_str().parse::<i32>().ok()) {
-                season_relative_eps.insert(ep);
-                parse_mode = "season_dash_episode";
-                return ParsedRelease {
-                    normalized_title,
-                    core_title,
-                    collapsed_title,
-                    collapsed_core_title,
-                    season_hint,
-                    season_relative_eps,
-                    absolute_eps,
-                    parse_mode,
-                };
-            }
-        }
-    }
-
-    // Mask season markers out of the search window for the absolute-
-    // episode and plain-range passes. See RE_SEASON_MARKER_MASK.
-    let mut masked = lower.clone();
-    for re in RE_SEASON_MARKER_MASK.iter() {
-        masked = re.replace_all(&masked, " ").to_string();
-    }
-
-    // Plain range (no season prefix)
-    if let Some(caps) = RE_RANGE.captures(&masked) {
-        let start = caps
-            .get(1)
-            .and_then(|m| m.as_str().parse::<i32>().ok())
-            .unwrap_or(0);
-        let end = caps
-            .get(2)
-            .and_then(|m| m.as_str().parse::<i32>().ok())
-            .unwrap_or(0);
-        if start > 0 && end >= start && end - start <= 200 {
-            for ep in start..=end {
-                absolute_eps.insert(ep);
-            }
-            parse_mode = "range";
-        }
-    }
-
-    // Absolute episode patterns (run against the season-masked title
-    // so e.g. the "3" in "Season 3 (web ..." doesn't get picked up as
-    // absolute episode 3 via the digit-before-paren pattern).
-    if absolute_eps.is_empty() {
-        for (mode, re) in RE_ABSOLUTE.iter() {
-            for caps in re.captures_iter(&masked) {
-                if let Some(value) = caps.get(1).and_then(|m| m.as_str().parse::<i32>().ok()) {
-                    absolute_eps.insert(value);
-                }
-            }
-            if !absolute_eps.is_empty() {
-                parse_mode = mode;
-                break;
-            }
-        }
-    }
-
+        Some(c) if c.rule == release_title::ClaimRule::Dash => "absolute_dash",
+        Some(_) => "absolute",
+    };
     ParsedRelease {
         normalized_title,
         core_title,
         collapsed_title,
         collapsed_core_title,
-        season_hint,
-        season_relative_eps,
-        absolute_eps,
+        season_hint: title.season_hint(),
+        season_bound,
         parse_mode,
+        title,
     }
 }
 
+/// The series-relative episodes `reading` (the title's episodes for
+/// this series) holds. A season-bound claim (`S02E05`) is relative. An
+/// unbound number past the series' absolute offset is absolute: the
+/// offset is `cumulative_prior_episodes` when the PREQUEL walk or a
+/// curated rule set it, else the episodes of the tracked seasons before
+/// this one. A series named by its season (`2nd Season`) takes no
+/// unbound number at or below that offset: `Show - 05` is the first
+/// season's.
 fn resolve_episode_numbers(
     parsed: &ParsedRelease,
+    reading: &HashSet<i32>,
     meta: &SeriesMeta,
     family: &[SeriesMeta],
 ) -> (HashSet<i32>, &'static str) {
@@ -2608,75 +2441,46 @@ fn resolve_episode_numbers(
             _ => {}
         }
     }
-
-    if !parsed.season_relative_eps.is_empty() {
-        if parsed.season_hint.is_some() {
-            return (parsed.season_relative_eps.clone(), "explicit_season");
-        }
-        let direct_fit = meta
-            .series
+    let Some(&first) = reading.iter().min() else {
+        return (HashSet::new(), "unresolved");
+    };
+    let fits = |eps: &HashSet<i32>| {
+        meta.series
             .episodes
-            .map(|eps| {
-                parsed
-                    .season_relative_eps
-                    .iter()
-                    .all(|n| *n >= 1 && *n <= eps)
-            })
-            .unwrap_or(true);
-        if direct_fit {
-            return (parsed.season_relative_eps.clone(), "season_relative");
-        }
-    }
-
-    if !parsed.absolute_eps.is_empty() {
-        if parsed.season_hint.is_some() {
-            let direct_fit = meta
-                .series
-                .episodes
-                .map(|eps| parsed.absolute_eps.iter().all(|n| *n >= 1 && *n <= eps))
-                .unwrap_or(true);
-            if direct_fit {
-                return (parsed.absolute_eps.clone(), "season_hint_relative");
-            }
-            return (HashSet::new(), "season_hint_abs_miss");
-        }
-
-        if let Some(target_season) = meta.season_num {
-            let mut offset = 0i32;
-            for entry in family {
-                let season = entry.season_num.unwrap_or(1);
-                if season >= target_season {
-                    break;
-                }
-                offset += entry.series.episodes.unwrap_or(0).max(0);
-            }
-            let mut mapped = HashSet::new();
-            for number in &parsed.absolute_eps {
-                let relative = *number - offset;
-                if relative < 1 {
-                    return (HashSet::new(), "absolute_miss");
-                }
-                if let Some(total) = meta.series.episodes
-                    && relative > total
-                {
-                    return (HashSet::new(), "absolute_miss");
-                }
-                mapped.insert(relative);
-            }
-            if !mapped.is_empty() {
-                return (mapped, "absolute_mapped");
-            }
-        } else if meta
-            .series
-            .episodes
-            .map(|eps| parsed.absolute_eps.iter().all(|n| *n >= 1 && *n <= eps))
+            .map(|total| eps.iter().all(|n| (1..=total).contains(n)))
             .unwrap_or(true)
-        {
-            return (parsed.absolute_eps.clone(), "absolute_direct");
-        }
+    };
+    if parsed.season_bound {
+        return (reading.clone(), "explicit_season");
     }
-
-    (HashSet::new(), "unresolved")
+    if parsed.season_hint.is_some() {
+        return if fits(reading) {
+            (reading.clone(), "season_hint_relative")
+        } else {
+            (HashSet::new(), "season_hint_abs_miss")
+        };
+    }
+    let offset = if meta.series.cumulative_prior_episodes > 0 {
+        meta.series.cumulative_prior_episodes
+    } else {
+        family_offset_for(meta, family)
+    };
+    if offset > 0 && first > offset {
+        let mapped: HashSet<i32> = reading.iter().map(|n| n - offset).collect();
+        return if fits(&mapped) {
+            (mapped, "absolute_mapped")
+        } else {
+            (HashSet::new(), "absolute_miss")
+        };
+    }
+    if offset > 0 && meta.season_num.is_some_and(|s| s > 1) {
+        return (HashSet::new(), "absolute_miss");
+    }
+    if fits(reading) {
+        (reading.clone(), "absolute_direct")
+    } else {
+        (HashSet::new(), "unresolved")
+    }
 }
 
 fn ordinal_suffix(value: i32) -> String {
@@ -2707,8 +2511,18 @@ fn format_episode_set(values: &HashSet<i32>) -> String {
 
 fn build_match_diag(item: &RssItem, found: Option<&MatchResult>, score: i32) -> String {
     let parsed = parse_release(item);
-    let raw_numbers_str = format_episode_set(&parsed.absolute_eps);
-    let season_numbers_str = format_episode_set(&parsed.season_relative_eps);
+    let title_eps = parsed.title.release_episodes();
+    let (season_numbers_str, raw_numbers_str) = if parsed.season_bound {
+        (
+            format_episode_set(&title_eps),
+            format_episode_set(&HashSet::new()),
+        )
+    } else {
+        (
+            format_episode_set(&HashSet::new()),
+            format_episode_set(&title_eps),
+        )
+    };
     let resolved_eps_str = found
         .map(|m| format_episode_set(&m.resolved_eps))
         .unwrap_or_else(|| "none".to_string());

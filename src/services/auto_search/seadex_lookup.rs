@@ -237,6 +237,17 @@ pub async fn seadex_warm_cache_from_db(db: &SqlitePool) {
                 continue;
             }
         };
+        // A row persisted before the batch flag came from `release_title`
+        // carries the old detector's answer, and its base score and
+        // breakdown were built on it: skip the row, so the next lookup
+        // fetches and scores it afresh.
+        if payload
+            .candidates
+            .iter()
+            .any(|c| c.is_batch != crate::services::release_title::parse(&c.title).is_batch())
+        {
+            continue;
+        }
         seadex_cache_put_with_ttl(
             anilist_id,
             payload,

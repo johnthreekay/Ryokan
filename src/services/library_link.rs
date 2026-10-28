@@ -13,9 +13,9 @@
 //!    the user already has the series and the release title parses
 //!    cleanly. No API calls.
 //!
-//! 2. **anitomy + AL search** — the fallback when (1) misses. anitomy
-//!    parses the release title into a structured `anime_title`, then
-//!    `services::anilist::search_anime` looks it up. AL search has
+//! 2. **Title + AL search** — the fallback when (1) misses. The
+//!    release title's own name for the show (`release_title`'s
+//!    `series_title`) goes to `services::anilist::search_anime`. AL search has
 //!    its own AL→Jikan fallback + caching, so we don't need to handle
 //!    rate-limit / outage logic here.
 //!
@@ -31,15 +31,14 @@
 //!    Gated by `config.manual_search_auto_add` (default ON) and a
 //!    safety check that the parsed title shares a substantive token
 //!    with the AL hit's title (catches AL search returning a totally
-//!    unrelated #1 result for very short or anitomy-mangled queries).
+//!    unrelated #1 result for very short or mangled queries).
 //!
 //! ## Episode-number resolution
 //!
 //! Each branch of [`LibraryLinkOutcome`] also returns the episode
 //! numbers the grab covers, derived via
-//! [`auto_search::parse_release_numbers`] with a batch fallback to
-//! the series's known episode count (matching
-//! `interactive::search_batch_releases::batch_episode_numbers`).
+//! [`grab_episode_list`] (series-relative, with a batch fallback to
+//! the series's known episode count), the helper every grab path uses.
 //! Callers use these to populate `episode_quality_tags` /
 //! `grabbed_torrents.episode_numbers` immediately so the series page
 //! shows progress before post-processing finishes.
@@ -47,12 +46,11 @@
 use std::collections::HashSet;
 use std::sync::LazyLock;
 
-use anitomy::ElementCategory;
-
 use crate::AppState;
 use crate::models::log::LogCategory;
 use crate::models::{config, series};
-use crate::services::{anilist, auto_search, logger, metadata_sync, rss};
+use crate::services::grab_commit::{GrabFor, GrabSeries, grab_episode_list};
+use crate::services::{anilist, logger, metadata_sync, rss};
 
 /// Result of [`resolve_or_add_series_for_grab`]. Each variant
 /// carries enough context for the grab handler to (a) write the
@@ -67,7 +65,7 @@ pub enum LibraryLinkOutcome {
         series: series::Series,
         episode_numbers: Vec<i32>,
     },
-    /// Existing series matched via anitomy → AL search → AL-ID
+    /// Existing series matched via the parsed title → AL search → AL-ID
     /// lookup. Fixes the case where the release title's wording
     /// doesn't match any of the local series's title slots but the
     /// AL hit pins it down via id. Distinct from `LinkedExisting`
@@ -108,7 +106,7 @@ pub enum LibraryLinkOutcome {
     /// AL would push them toward "fix the metadata" workflows that
     /// don't apply here.
     DetailFetchFailed { al_id: i64, al_title: String },
-    /// No fuzzy match, anitomy gave up or returned a useless title,
+    /// No fuzzy match, the title named no show or a useless one,
     /// and AL search came up empty. The grab succeeds in the
     /// download client but no library bookkeeping happens.
     NoMatch { parsed_title: Option<String> },
@@ -142,21 +140,13 @@ impl LibraryLinkOutcome {
     // the toast for users who later change their title preference.
 }
 
-/// anitomy-extract the `AnimeTitle` token from a release title. anitomy
-/// never panics on non-NUL input but returns `Err(elements)` when it
-/// couldn't confidently identify a title field. Either way, we just
-/// peek at `AnimeTitle`. Returns `None` when anitomy didn't emit one
-/// at all or the result trimmed to empty.
+/// What a release title says about which show it is
+/// (`release_title`'s `series_title`: markers, subtitles and alternates
+/// kept, up to the episode or the metadata). `None` when it names none
+/// (`S02E04E05.720p`) or is blank.
 pub fn extract_anime_title(release_title: &str) -> Option<String> {
-    if release_title.trim().is_empty() {
-        return None;
-    }
-    // Defensive NUL strip — anitomy rejects NUL bytes; production
-    // titles shouldn't contain them but a corrupted feed byte
-    // shouldn't panic the resolver.
-    let elements = crate::services::media::anitomy_parse(release_title);
-    elements
-        .get(ElementCategory::AnimeTitle)
+    crate::services::release_title::parse(release_title)
+        .series_title
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
@@ -177,6 +167,8 @@ static SUBSTANTIVE_STOPWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(||
         "avc", "hevc", "h264", "h265", "x264", "x265", "aac", "flac", "opus", "ass", "srt",
         // Resolution / quality fields.
         "1080", "1080p", "2160", "2160p", "720p", "480p",
+        // Season and part words the parsed series title keeps.
+        "season", "seasons", "saison", "part", "cour",
         // English fillers that survive the 3-char filter.
         "the", "and", "for", "with", "from", "but", "you", "all", "any", "are", "was", "has",
         "have", "had", "her", "his", "him", "she", "they", "them", "our", "out", "who", "not",
@@ -187,7 +179,7 @@ static SUBSTANTIVE_STOPWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(||
 /// True when `parsed` and `candidate` share at least one substantive
 /// alphanumeric token (≥3 chars, lowercase, not in the stop-word set).
 /// Catches AL search returning a totally unrelated #1 result for very
-/// short or anitomy-mangled parsed titles. The 3-char threshold drops
+/// short or mangled parsed titles. The 3-char threshold drops
 /// articles ("the", "of", "a"); the stop-word set drops 3+-char tokens
 /// that would produce spurious matches between unrelated shows
 /// ("ova", "amv", "raw", "1080p", and common English fillers). Numeric
@@ -296,38 +288,6 @@ pub async fn title_language(db: &sqlx::SqlitePool) -> String {
         .unwrap_or_else(|| "english".to_string())
 }
 
-/// Derive episode numbers for a grab the same way
-/// `interactive::batch_episode_numbers` does: parse explicit numbers
-/// out of the title; when batch and parse came up empty, fall back
-/// to `1..=episodes` so a no-suffix complete-series release gets
-/// every episode tagged. Capped at 1000 — a garbage AniList record
-/// reporting tens of thousands of episodes shouldn't spawn millions
-/// of `episode_quality_tags` rows. Pre-fix the cap zeroed the result
-/// (silently dropped the fallback), which left grabs with no
-/// per-episode tag rows and no breadcrumb pointing at why; truncate
-/// to the cap instead so the protective intent fires without losing
-/// the fallback's purpose entirely.
-fn parse_grab_episodes(
-    title: &str,
-    is_batch: bool,
-    fallback_episode_count: Option<i32>,
-) -> Vec<i32> {
-    const FALLBACK_CAP: i32 = 1000;
-    let mut ep_nums: Vec<i32> = auto_search::parse_release_numbers(title)
-        .into_iter()
-        .collect();
-    if is_batch
-        && ep_nums.is_empty()
-        && let Some(total) = fallback_episode_count
-        && total > 0
-    {
-        let bounded = total.min(FALLBACK_CAP);
-        ep_nums = (1..=bounded).collect();
-    }
-    ep_nums.sort_unstable();
-    ep_nums
-}
-
 /// Orchestrator. See module docs for the resolution chain.
 pub async fn resolve_or_add_series_for_grab(
     state: &AppState,
@@ -342,7 +302,7 @@ pub async fn resolve_or_add_series_for_grab(
         };
     }
 
-    // 2. anitomy parse.
+    // 2. The title's own name for the show.
     let Some(parsed_title) = extract_anime_title(title) else {
         return LibraryLinkOutcome::NoMatch { parsed_title: None };
     };
@@ -368,7 +328,12 @@ pub async fn resolve_or_add_series_for_grab(
 
     // 4. AL-ID lookup against existing library — the case-(b) fix.
     if let Ok(Some(existing)) = series::get_by_anilist_id(&state.db, top.id).await {
-        let eps = parse_grab_episodes(title, is_batch, existing.episodes);
+        let eps = grab_episode_list(
+            title,
+            &GrabSeries::from_row(&existing),
+            GrabFor::Whole,
+            is_batch,
+        );
         return LibraryLinkOutcome::LinkedByAnilist {
             series: existing,
             episode_numbers: eps,
@@ -388,7 +353,12 @@ pub async fn resolve_or_add_series_for_grab(
             0 => {}
             1 => {
                 let existing = rows.into_iter().next().expect("one row");
-                let eps = parse_grab_episodes(title, is_batch, existing.episodes);
+                let eps = grab_episode_list(
+                    title,
+                    &GrabSeries::from_row(&existing),
+                    GrabFor::Whole,
+                    is_batch,
+                );
                 return LibraryLinkOutcome::LinkedByAnilist {
                     series: existing,
                     episode_numbers: eps,
@@ -525,7 +495,12 @@ pub async fn resolve_or_add_series_for_grab(
         }
     });
 
-    let eps = parse_grab_episodes(title, is_batch, detail.episodes);
+    let eps = grab_episode_list(
+        title,
+        &GrabSeries::from_row(&series_row).with_episode_count(detail.episodes),
+        GrabFor::Whole,
+        is_batch,
+    );
     LibraryLinkOutcome::AutoAdded {
         series: series_row,
         episode_numbers: eps,
@@ -547,10 +522,9 @@ mod tests {
     fn extract_anime_title_handles_batch_with_range() {
         let parsed =
             extract_anime_title("[Vodes] Ousama Ranking S01 (BDRip 1080p HEVC FLAC) [Dual-Audio]");
-        // anitomy may capture the whole "Ousama Ranking" or include
-        // the season — either is fine, test just confirms a usable
-        // title comes out.
-        let parsed = parsed.expect("anitomy should pull a title from a clean BD batch");
+        // The season marker may ride along; the test only confirms a
+        // usable title comes out.
+        let parsed = parsed.expect("a title from a clean BD batch");
         assert!(
             parsed.to_lowercase().contains("ousama") || parsed.to_lowercase().contains("ranking"),
             "expected the parsed title to contain a substantive token from the release title; got {:?}",
@@ -598,7 +572,7 @@ mod tests {
 
     #[test]
     fn share_substantive_token_rejects_stopword_only_overlap() {
-        // The function gets parsed (anitomy-extracted) titles, not raw
+        // The function gets parsed series titles, not raw
         // filenames — so realistic inputs are short title strings, not
         // full release lines.
         //
@@ -661,35 +635,5 @@ mod tests {
         // No usable title at all — caller is responsible for
         // checking `.is_empty()` before persisting / rendering.
         assert_eq!(pick_title("english", "", "", ""), "");
-    }
-
-    #[test]
-    fn parse_grab_episodes_uses_fallback_for_batch_with_no_range_in_title() {
-        // No range in title, batch, fallback=12 → 1..=12.
-        let eps = parse_grab_episodes("[Vodes] Some Series (BDRip)", true, Some(12));
-        assert_eq!(eps, (1..=12).collect::<Vec<i32>>());
-    }
-
-    #[test]
-    fn parse_grab_episodes_truncates_oversized_fallback_to_cap() {
-        // A garbage AniList record reporting 100k episodes shouldn't
-        // spawn a million tag rows — truncate to the 1000-row cap
-        // rather than zero out the fallback. Pre-fix this returned
-        // empty, leaving the grab with no per-episode tags and no
-        // breadcrumb pointing at why.
-        let eps = parse_grab_episodes("[Vodes] Some Series (BDRip)", true, Some(100_000));
-        assert_eq!(
-            eps,
-            (1..=1000).collect::<Vec<i32>>(),
-            "fallback >1000 should truncate to the 1000-cap, not zero out"
-        );
-    }
-
-    #[test]
-    fn parse_grab_episodes_ignores_fallback_when_not_batch() {
-        // Non-batch with no parseable episode numbers and a fallback
-        // count should still return empty — fallback is batch-only.
-        let eps = parse_grab_episodes("[Vodes] Some Movie (BDRip)", false, Some(12));
-        assert!(eps.is_empty());
     }
 }
