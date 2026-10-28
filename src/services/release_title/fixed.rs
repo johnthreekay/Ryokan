@@ -332,6 +332,12 @@ fn unnumbered_packs() {
         "[EA]Dark_Gathering_24_[1920x1080][HEVC]",
         "Dark Gathering"
     ));
+    // Any other bare number is something the title names: `Mob Psycho
+    // 100 3 [BD]` is the third season's pack (seen live in the batch list
+    // of the first season).
+    assert!(!pack("[Ñ] Mob Psycho 100 3 [BD 1080p]", "Mob Psycho 100"));
+    assert!(!pack("[Group] Chihayafuru 2 [BD]", "Chihayafuru"));
+    assert!(pack("[Group] Chihayafuru 2 [BD]", "Chihayafuru 2"));
     assert!(!pack("[Group] Show - 05 [1080p]", "Show"));
     assert!(!pack("[Group] Show Season 2 [BD]", "Show"));
     assert!(!pack("[Group] Show (01-12) [BD]", "Show"));

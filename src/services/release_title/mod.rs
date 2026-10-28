@@ -433,10 +433,16 @@ impl ParsedTitle {
     /// batch list offers one, and its grab opens the file picker; the
     /// automatic batch grab never takes it. A number the series' own name
     /// holds is no episode (`Mob Psycho 100 (BD)` is a pack of "Mob
-    /// Psycho 100").
+    /// Psycho 100"); any other bare number is something the title names
+    /// (`Mob Psycho 100 3 [BD]` is the third season's pack, not the
+    /// first's).
     pub fn is_unnumbered_pack_for(&self, anchors: &SeriesAnchors) -> bool {
         let special = self.is_special_for(anchors) && !anchors.specials_are_episodes();
-        !self.is_batch()
+        let bare_number_is_the_names = self
+            .ambiguous_number
+            .is_none_or(|n| anchors.name_holds_numbers(&self.anchor_words, &[n]));
+        bare_number_is_the_names
+            && !self.is_batch()
             && !self.single_file
             && !self.movie
             && !self.extra

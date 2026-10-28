@@ -56,7 +56,7 @@
             <td>
                 <a class="isearch-release-link" href="{{ r.result.safe_link() }}" target="_blank" rel="noopener">{{ r.result.title }}</a>
                 {% if r.result.is_batch %}<span class="tag tag-batch" style="margin-left:4px">batch</span>{% endif %}
-                {% if r.unnumbered_pack %}<span class="tag" style="margin-left:4px" title="The title names no episodes or season. It is usually the whole series, sometimes a movie or a single file: the file picker shows what it holds before anything is grabbed.">no episode numbers</span>{% endif %}
+                {% if r.unnumbered_pack %}<span class="tag tag-unnumbered" style="margin-left:4px" title="The title names no episodes or season. It is usually the whole series, sometimes a movie or a single file: the file picker shows what it holds before anything is grabbed.">no episode numbers</span>{% endif %}
                 {% if r.result.is_trusted %}<span class="tag tag-trusted" style="margin-left:4px">trusted</span>{% endif %}
             </td>
             <td class="col-indexer" style="color:var(--text-dim)">{{ r.indexer_display }}</td>
