@@ -497,6 +497,11 @@ fn tag(lower: &str) -> Option<Class> {
     let mut last = first;
     let mut version = version;
     for part in parts {
+        // `S01E138-S01E198`: the same season written again.
+        let part = match part.strip_prefix('s').and_then(|p| p.split_once('e')) {
+            Some((s, ep)) if digits(s) == Some(season) => ep,
+            _ => part,
+        };
         let part = part.strip_prefix('e').unwrap_or(part);
         let (n, v) = split_version(part)?;
         last = n;

@@ -162,6 +162,16 @@ impl Ctx<'_> {
         Some(self.extend_glued(b, m))
     }
 
+    /// `Ep. 1 to 11`, `Episode 1 to 12`: a range written with `to`, read
+    /// only after an episode marker.
+    fn to_range(&self, k: usize) -> Option<(u32, usize)> {
+        let (a, _, _) = self.num(k)?;
+        let to = self.next(k).filter(|&w| self.toks[w].lower == "to")?;
+        let m = self.next(to)?;
+        let b = self.episode_num(m)?;
+        (b > a).then_some((b, m))
+    }
+
     /// Follows a glued run of further numbers (`01-02-03`, `S01E05-06`).
     fn extend_glued(&self, mut last: u32, mut at: usize) -> (u32, usize) {
         while let Some(op) = self.next(at)
@@ -800,7 +810,10 @@ fn tag_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                         && let Some(a) = ctx.episode_num(k)
                     {
                         // `Qin's Moon S6 ep 1-6`.
-                        let last = ctx.range_after(k, false).map_or(a, |(b, _)| b);
+                        let last = ctx
+                            .range_after(k, false)
+                            .or_else(|| ctx.to_range(k))
+                            .map_or(a, |(b, _)| b);
                         return Some(ctx.range_claim(k, a, last, Some(season), ClaimRule::Tag));
                     }
                 }
@@ -939,7 +952,10 @@ fn prefix_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                 k = ctx.next(k)?;
             }
             if let Some(a) = ctx.episode_num(k) {
-                let last = ctx.range_after(k, true).map(|(b, _)| b).unwrap_or(a);
+                let last = ctx
+                    .range_after(k, true)
+                    .or_else(|| ctx.to_range(k))
+                    .map_or(a, |(b, _)| b);
                 return Some(ctx.range_claim(
                     k,
                     a,
@@ -992,7 +1008,10 @@ fn episode_word_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                 claim.list = list;
                 return Some(claim);
             }
-            let last = ctx.range_after(k, true).map(|(b, _)| b).unwrap_or(a);
+            let last = ctx
+                .range_after(k, true)
+                .or_else(|| ctx.to_range(k))
+                .map_or(a, |(b, _)| b);
             return Some(ctx.range_claim(
                 k,
                 a,

@@ -285,3 +285,24 @@ fn thousands_in_title() {
         Some("Magnerobo Ga-Keen")
     );
 }
+
+/// Two range shapes from the 29k-title corpus that AnimeTosho's file
+/// lists showed were packs: a tag range that writes the season again, and
+/// `to` after an episode marker.
+#[test]
+fn tag_and_to_ranges() {
+    let t = parse("Ninjala S01E138-S01E198 (WEBDL 1080p x264 AAC) [S1PH3R] + EP110");
+    assert!(t.is_batch());
+    assert_eq!(
+        t.episodes.as_ref().map(|c| (c.first, c.last)),
+        Some((138, 198))
+    );
+    let t = parse("Qin's Moon S1 ep. 1 to 11 (Remastered)");
+    assert!(t.is_batch());
+    assert_eq!(
+        episodes("Show Episode 1 to 12 [BD]"),
+        (1..=12).collect::<Vec<_>>()
+    );
+    // A different season written after the dash is not this tag's range.
+    assert_eq!(episodes("Show S01E12-S02E01 [1080p]"), vec![12]);
+}

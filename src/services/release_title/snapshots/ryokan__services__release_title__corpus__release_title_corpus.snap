@@ -1117,7 +1117,7 @@ Series Title.S6E1-E2-E3.Episode Name.1080p.WEB-DL
 Series Title.S6E1-E2.Episode Name.1080p.WEB-DL
     eps=1-2 season=6 group=- res=1080 amb=- [batch] series=Series Title
 Series Title.S6E1-S6E2.Episode Name.1080p.WEB-DL
-    eps=1 season=6 group=- res=1080 amb=- [] series=Series Title
+    eps=1-2 season=6 group=- res=1080 amb=- [batch] series=Series Title
 Series Title.S6E1E2.Episode Name.1080p.WEB-DL
     eps=1-2 season=6 group=- res=1080 amb=- [batch] series=Series Title
 Series Title? E11-E12 1080p HDTV AAC H.264-NEXT
