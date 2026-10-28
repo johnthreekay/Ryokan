@@ -202,11 +202,16 @@ pub fn release_fields(title: &str) -> ReleaseFields {
 }
 
 /// The season a series name advertises (`2nd Season`, `Season 3`,
-/// `Made in Abyss III`, `Part 2`), read the way a release title is. For
-/// AniList titles and aliases: the auto-search's expected season and the
-/// RSS matcher's series season both come from here.
+/// `Made in Abyss III`, `Part 2`), read the way a release title is, plus a
+/// Roman numeral before a subtitle colon (`DanMachi IV: Fuka Shou`), which
+/// release titles do not read. For AniList titles and aliases: the
+/// auto-search's expected season and the RSS matcher's series season both
+/// come from here.
 pub fn season_marker(name: &str) -> Option<i32> {
-    parse(name).season_hint().filter(|s| *s > 0)
+    parse(name)
+        .season_hint()
+        .filter(|s| *s > 0)
+        .or_else(|| rules::roman_before_colon(name).map(|n| n as i32))
 }
 
 impl ParsedTitle {
@@ -261,10 +266,12 @@ impl ParsedTitle {
 
     /// Whether the title names a season other than `expected`: never when
     /// it names none; a multi-season pack conflicts only when `expected`
-    /// is outside it. An expected season of 0 is read as 1.
+    /// is outside it. An expected season of 0 is read as 1. Season 0 is
+    /// the specials season, never a conflict (`S00E01` of an OVA entry, a
+    /// TV special): what a special means is the series' format's call.
     pub fn conflicts_with_season(&self, expected: i32) -> bool {
         let expected = expected.max(1);
-        !self.seasons.numbers.is_empty() && !self.seasons.numbers.contains(&expected)
+        self.seasons.numbers.iter().any(|&n| n > 0) && !self.seasons.numbers.contains(&expected)
     }
 
     /// What one file's name holds, the import's question: the episode
@@ -533,6 +540,24 @@ mod tests {
         assert!(!super::parse("[Group] Show - 05 - Something Special [1080p]").special);
         assert!(super::parse("[Group] Show - Christmas Special [1080p]").special);
         assert!(super::parse("[Group] Kekkon Special - 01 [1080p]").special);
+    }
+
+    #[test]
+    fn a_roman_numeral_before_a_subtitle_colon_is_the_season() {
+        assert_eq!(
+            super::season_marker(
+                "Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka IV: Fuka Shou - Yakusai-hen"
+            ),
+            Some(4)
+        );
+        assert_eq!(super::season_marker("Lupin III: Part 6"), Some(6));
+    }
+
+    #[test]
+    fn season_zero_conflicts_with_no_season() {
+        assert!(!super::parse("Attack.on.Titan.S00E01.OAD.1080p.BluRay").conflicts_with_season(1));
+        assert!(!super::parse("My Happy Marriage S00E02 1080p").conflicts_with_season(2));
+        assert!(super::parse("Show S03E02 1080p").conflicts_with_season(2));
     }
 
     #[test]

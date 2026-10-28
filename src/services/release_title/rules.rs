@@ -1361,11 +1361,33 @@ fn season_word_numbers(ctx: &Ctx, i: usize, out: &mut Vec<u32>) {
 /// bracket, dash, `|`, the end, or metadata follows) or is followed by an
 /// episode number, never mid-title (`Lupin III vs`, `Lupin III: The
 /// Castle`, `Date A Live IV x DanMachi`).
+/// A Roman numeral ending a series name before a subtitle colon
+/// (`DanMachi IV: Fuka Shou`), the season of an AniList name. Not read in
+/// release titles, where `Lupin III: The Castle of Cagliostro` is a name;
+/// `Lupin III: Part 6` is never one either way.
+pub(super) fn roman_before_colon(name: &str) -> Option<u32> {
+    let norm = normalize(name);
+    let lexed = lex(&norm.text);
+    let toks = &lexed.toks;
+    (1..toks.len().saturating_sub(1)).find_map(|i| {
+        let Class::Roman(n) = classify(&toks[i]) else {
+            return None;
+        };
+        (toks[i].depth == 0
+            && toks[i - 1].is_word()
+            && toks[i + 1].kind == Kind::Colon
+            && toks
+                .get(i + 2)
+                .is_none_or(|t| classify(t) != Class::PartWord))
+        .then_some(n)
+    })
+}
+
 fn roman_is_marker(ctx: &Ctx, i: usize) -> bool {
-    // `Lupin III - Part 6 - 05`: the part after the dash is the season and
-    // the numeral is the name.
+    // `Lupin III - Part 6 - 05`, `Lupin III: Part 6`: the part after the
+    // dash or colon is the season and the numeral is the name.
     if let Some(d) = ctx.next(i)
-        && ctx.toks[d].kind == Kind::SegDash
+        && matches!(ctx.toks[d].kind, Kind::SegDash | Kind::Colon)
         && ctx.next(d).is_some_and(|w| ctx.class[w] == Class::PartWord)
     {
         return false;

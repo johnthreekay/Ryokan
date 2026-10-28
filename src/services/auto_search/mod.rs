@@ -1860,6 +1860,11 @@ fn apply_interactive_filter_and_push(
     if let SearchTarget::Episode(target_ep) = ctx.target
         && !result.is_batch
     {
+        // A half episode or an extra reads no episode and would sit on
+        // every episode's list; the import gives it no slot either.
+        if release.half_episode || release.extra {
+            return;
+        }
         let parsed = release
             .for_series(ctx.sibling_precompute.anchors())
             .episodes;
@@ -1871,16 +1876,19 @@ fn apply_interactive_filter_and_push(
     candidates.push(result);
 }
 
-/// The anchors scoring reads episodes with: the primary aliases plus the
-/// franchise aliases, since the franchise pass admits absolute-numbered
+/// The anchors scoring reads episodes with: every alias a gate pass can
+/// admit a release through. The franchise aliases admit absolute-numbered
 /// releases named only by the franchise (`Jujutsu Kaisen - 56` for a
-/// sequel cour).
+/// sequel cour), the extended ones a release named by a synonym
+/// (`[EA]<synonym>_09_`); without them scoring read no episode and took
+/// the unparseable penalty.
 fn scoring_anchors(
     detail: &AnimeDetail,
     aliases: &[String],
     franchise_aliases: &[String],
 ) -> SeriesAnchors {
-    SeriesAnchors::new(&[aliases, franchise_aliases].concat())
+    let extended = collect_extended_aliases(detail);
+    SeriesAnchors::new(&[aliases, franchise_aliases, &extended].concat())
         .with_specials_as_episodes(!media::is_tv_format(&detail.format))
 }
 
