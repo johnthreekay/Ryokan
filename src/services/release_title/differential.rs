@@ -338,7 +338,7 @@ fn file_dump() {
 }
 
 /// Every file name in `tests/fixtures/nyaa-filenames/`.
-fn corpus_file_names() -> Vec<String> {
+pub(super) fn corpus_file_names() -> Vec<String> {
     let mut out = Vec::new();
     for path in json_files(&fixtures().join("nyaa-filenames")) {
         if let Some(files) = load(&path)["files"].as_array() {

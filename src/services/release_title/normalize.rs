@@ -55,13 +55,24 @@ fn map_char(c: char) -> char {
 }
 
 /// Drops `★10月新番★`-style decoration: a short CJK note between a pair
-/// of stars. Stars in a title (`夜露死駆★少女`, `KERORO☆ ... Gunsou☆`)
-/// stay.
+/// of stars, or after one star up to the next bracket when it is a season
+/// note (`★01月新番[Title][01]`). Stars in a title (`夜露死駆★少女`,
+/// `KERORO☆ ... Gunsou☆`) stay.
 fn drop_star_decoration(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(open) = rest.find(['★', '☆']) {
         let after = &rest[open + '★'.len_utf8()..];
+        let upto = after
+            .find(['[', '【', '(', '★', '☆'])
+            .unwrap_or(after.len());
+        let season_note = &after[..upto];
+        if season_note.contains("新番") && season_note.trim().chars().count() <= 12 {
+            out.push_str(&rest[..open]);
+            out.push(' ');
+            rest = after[upto..].trim_start_matches(['★', '☆']);
+            continue;
+        }
         let Some(close) = after.find(['★', '☆']) else {
             break;
         };
@@ -125,6 +136,12 @@ mod tests {
         );
         assert!(n.single_file);
         assert!(!normalize("Show.S01.1080p.WEB").single_file);
+    }
+
+    #[test]
+    fn an_unpaired_star_season_note_is_dropped() {
+        let n = normalize("【动漫国字幕组】★01月新番[Anime Series Title～！][01][1080P]");
+        assert!(!n.text.contains("新番"), "{}", n.text);
     }
 
     #[test]

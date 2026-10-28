@@ -120,8 +120,15 @@ pub struct ParsedTitle {
     pub group: Option<String>,
     /// CRC32 from a bracket, uppercased.
     pub hash: Option<String>,
-    /// Best-effort primary title text.
+    /// Best-effort primary title text: the first alternate, markers and
+    /// subtitles cut (a search query's shape).
     pub title: Option<String>,
+    /// Everything the title says about which show it is: markers,
+    /// subtitles and alternates kept, up to the episode or the metadata
+    /// (`Kimetsu no Yaiba - Yuukaku-hen`). What anitomy's `AnimeTitle`
+    /// gave the sequel gate, the Search auto-add, manual import and the
+    /// misgrab verdict.
+    pub series_title: Option<String>,
     pub year: Option<i32>,
     /// Vertical resolution (1080 for `1080p` or `1920x1080`).
     pub resolution: Option<u32>,
@@ -600,6 +607,55 @@ mod tests {
         );
         assert_eq!(group("Show 01-26 DVD-Rip"), "");
         assert_eq!(group("Show - 01 (1080p) [A1B2C3D4] | Alt Title"), "");
+    }
+
+    #[test]
+    fn series_title_keeps_what_names_the_show() {
+        let st = |t: &str| super::parse(t).series_title;
+        assert_eq!(
+            st("[DIY] Mob Psycho 100 II (BD 1080p)").as_deref(),
+            Some("Mob Psycho 100 II")
+        );
+        assert_eq!(
+            st("[SubsPlease] Kimetsu no Yaiba - Yuukaku-hen - 05 (1080p)").as_deref(),
+            Some("Kimetsu no Yaiba - Yuukaku-hen")
+        );
+        // A bare number ending the zone is the episode's place, as anitomy read it.
+        assert_eq!(
+            st("[G] Mob Psycho 100 (BD 1080p)").as_deref(),
+            Some("Mob Psycho")
+        );
+        assert_eq!(
+            st("[EA]Dark_Gathering_25_Final_[1920x1080]").as_deref(),
+            Some("Dark Gathering")
+        );
+        assert_eq!(
+            st("[ACX]Series Title 01 Episode Name [Kosaka]").as_deref(),
+            Some("Series Title")
+        );
+        assert_eq!(
+            st("86 (Eighty Six) - S01E01 - Undertaker.mkv").as_deref(),
+            Some("86")
+        );
+        assert_eq!(
+            st("[Doomdos] - Shin Tennis no Oujisama U-17 World Cup - S01E04 [1080p]").as_deref(),
+            Some("Shin Tennis no Oujisama U-17 World Cup")
+        );
+        assert!(
+            st("[喵萌奶茶屋&LoliHouse] 乱马 1/2 2024年版 / Ranma ½ / Ranma 1/2 (2024) - 28 [WebRip 1080p]")
+                .is_some_and(|t| t.ends_with("Ranma 1/2"))
+        );
+        // Bracket-only titles: the first title bracket with Latin letters.
+        assert_eq!(
+            st("[Airota][Yuru Camp Season 3][01][BDRip 1080p AVC AAC]").as_deref(),
+            Some("Yuru Camp Season 3")
+        );
+        assert_eq!(
+            st("[SweetSub][冰之城墙][Koori no Jouheki][18][WebRip][1080P]").as_deref(),
+            Some("Koori no Jouheki")
+        );
+        // A name that opens with its episode names no show.
+        assert_eq!(st("S02E04E05.720p.BluRay-FUTV"), None);
     }
 
     #[test]

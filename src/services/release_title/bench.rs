@@ -429,3 +429,30 @@ fn classify_dump() {
         );
     }
 }
+
+/// Prints, as JSON lines, every corpus title and file-name segment where
+/// anitomy's `AnimeTitle` and `release_title`'s title text differ (as
+/// lowercase words), for moving the title consumers off anitomy.
+#[test]
+#[ignore]
+fn title_dump() {
+    let mut names = all_titles();
+    for name in super::differential::corpus_file_names() {
+        names.extend(name.split('/').map(String::from));
+    }
+    names.sort();
+    names.dedup();
+    for name in names {
+        let an = anitomy_parse(&name)
+            .get(ElementCategory::AnimeTitle)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let rt = parse(&name).series_title;
+        if an.as_deref().map(words) != rt.as_deref().map(words) {
+            eprintln!(
+                "{}",
+                serde_json::json!({"name": name, "anitomy": an, "release_title": rt})
+            );
+        }
+    }
+}

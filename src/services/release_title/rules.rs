@@ -365,6 +365,7 @@ pub(super) fn parse(title: &str) -> ParsedTitle {
         out.resolution = bare_resolution(&ctx, out.episodes.as_ref());
     }
     out.title = primary_title(&ctx);
+    out.series_title = series_title(&ctx);
     out.anchor_words = title_words(ctx.toks, &ctx.skip, &ctx.class);
     out
 }
@@ -1719,6 +1720,180 @@ fn bare_resolution(ctx: &Ctx, claim: Option<&EpisodeClaim>) -> Option<u32> {
 // ── Title ──────────────────────────────────────────────────────────────
 
 /// Depth-0 text up to the first structural or metadata token.
+/// Everything the title says about which show it is, up to the episode or
+/// the metadata: season and part markers, ` - ` subtitles and ` / `
+/// alternates kept (`Mob Psycho 100 II`, `Kimetsu no Yaiba - Yuukaku-hen`,
+/// `FX战士久留美 / FX Senshi Kurumi-chan`), round-bracket notes and a bare
+/// number ending the zone left out (`Mob Psycho 100 (BD)` is `Mob
+/// Psycho`, as anitomy read it). A title written only in brackets
+/// (`[Airota][Yuru Camp Season 3][01]`) is read from the first bracket
+/// holding a title word. The readers that took anitomy's `AnimeTitle`
+/// read this.
+fn series_title(ctx: &Ctx) -> Option<String> {
+    let top: Vec<usize> = (0..ctx.toks.len())
+        .filter(|&i| !ctx.skip[i] && ctx.toks[i].depth == 0)
+        .collect();
+    if top
+        .iter()
+        .any(|&i| ctx.toks[i].is_word() || ctx.num(i).is_some())
+    {
+        return title_zone(ctx, &top);
+    }
+    // Bracket-only: the title brackets before the first bracket that is
+    // not one (`[2019]`, `[01]`, `[1080P]`); the first with Latin letters
+    // when several (`[GM-Team][国漫][Anime Title]`, `[SweetSub][冰之城墙][Koori
+    // no Jouheki]`), as anitomy read them.
+    let mut titles: Vec<String> = Vec::new();
+    for g in ctx.groups {
+        let content: Vec<usize> = ctx
+            .content(g)
+            .into_iter()
+            .filter(|&i| !ctx.skip[i])
+            .collect();
+        if content.is_empty() {
+            continue;
+        }
+        // `[10月新番]`, `[国漫]`: a fansub's season or genre note.
+        let note = {
+            let text = ctx.inner_text(g);
+            text.contains("新番") || matches!(text.as_str(), "国漫" | "國漫")
+        };
+        let titled = !note
+            && content.iter().any(|&i| {
+                ctx.toks[i].is_word() && ctx.class[i] == Class::Plain && !is_crc(&ctx.toks[i].text)
+            });
+        match titled.then(|| title_zone(ctx, &content)).flatten() {
+            Some(title) => titles.push(title),
+            None if !titles.is_empty() => break,
+            None => {}
+        }
+    }
+    let latin = titles
+        .iter()
+        .position(|t| t.chars().any(|c| c.is_ascii_alphabetic()));
+    latin
+        .or((!titles.is_empty()).then_some(0))
+        .map(|at| titles.swap_remove(at))
+}
+
+/// The title words of one run of tokens (top level, or one bracket's
+/// content), up to the first token that opens the episode or the
+/// metadata.
+fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
+    // A word that can follow a title number and keep the title going
+    // (`Mob Psycho 100 III`, `100 Season 1`, `Kaiju No. 8 Specials`), unlike
+    // metadata, a version, `Final` / `END`, or an episode mark.
+    let title_word = |j: usize| {
+        ctx.toks[j].is_word()
+            && !ctx.class[j].is_meta()
+            && !matches!(
+                ctx.class[j],
+                Class::Tag { .. }
+                    | Class::EpPrefix(..)
+                    | Class::SpecialNum(_)
+                    | Class::HalfTag(_)
+                    | Class::Version(_)
+                    | Class::Batch
+                    | Class::End
+                    | Class::Extra
+                    | Class::CjkEpisode
+            )
+    };
+    let mut out = String::new();
+    let mut sep = " ";
+    for (at, &i) in run.iter().enumerate() {
+        let tok = &ctx.toks[i];
+        let next = run.get(at + 1).copied();
+        let next_num = next.is_some_and(|n| ctx.num(n).is_some());
+        if matches!(tok.kind, Kind::Open(_) | Kind::Close(_)) {
+            if out.is_empty() {
+                continue;
+            }
+            break;
+        }
+        // `U-17`, `Ranma 1/2`: a dash glued to a word and a number, or a
+        // slash glued between two numbers, is part of the name.
+        let prev_num = at > 0 && ctx.num(run[at - 1]).is_some();
+        let glued = tok.sep == Sep::None
+            && !out.is_empty()
+            && next.is_some_and(|n| ctx.toks[n].sep == Sep::None && next_num);
+        let glued_dash = glued && tok.kind == Kind::SegDash;
+        let glued_slash = glued && tok.kind == Kind::Alt && prev_num;
+        let cjk_episode = tok.text == "第"
+            && run
+                .get(at + 2)
+                .is_some_and(|&c| ctx.class[c] == Class::CjkEpisode);
+        let episode_mark = matches!(
+            ctx.class[i],
+            Class::Tag { .. }
+                | Class::EpPrefix(..)
+                | Class::SpecialNum(_)
+                | Class::HalfTag(_)
+                | Class::CjkEpisode
+        ) || cjk_episode
+            || (ctx.class[i] == Class::EpisodeWord
+                && next.is_some_and(|n| {
+                    ctx.num(n).is_some() || matches!(ctx.toks[n].kind, Kind::Decimal { .. })
+                }))
+            || (matches!(tok.kind, Kind::SegDash | Kind::Hash) && next_num && !glued_dash);
+        let metadata =
+            ctx.class[i].is_meta() || matches!(ctx.class[i], Class::Version(_) | Class::Batch);
+        if episode_mark || metadata {
+            // Metadata before the title is skipped (`REPACK Show.S01E01`);
+            // a name that opens with its episode names no show
+            // (`S02E04E05.720p.BluRay-FUTV`: the rest is metadata or the
+            // episode's own title).
+            if out.is_empty() && metadata {
+                continue;
+            }
+            break;
+        }
+        let word = tok.is_word();
+        let number = ctx.num(i);
+        match tok.kind {
+            Kind::SegDash if glued_dash => sep = "-",
+            Kind::Alt if glued_slash => sep = "/",
+            Kind::SegDash if !out.is_empty() => sep = " - ",
+            Kind::Alt if !out.is_empty() => sep = " / ",
+            _ if word || number.is_some() => {
+                if let Some((_, digits, _)) = number {
+                    // A number ending the zone (`Mob Psycho 100 (BD)`, `Show
+                    // 05 [1080p]`), opening a range (`01-25`) or a padded
+                    // one before more words (`Title 01 Episode Name`) is the
+                    // episode's place, unless a season, part or volume word
+                    // marks it; a title never opens with its episode (`86
+                    // (Eighty Six)`).
+                    let marked = run[..at].last().is_some_and(|&p| {
+                        matches!(
+                            ctx.class[p],
+                            Class::SeasonWord | Class::PartWord | Class::VolWord
+                        )
+                    });
+                    let continues = next.is_some_and(|n| {
+                        title_word(n)
+                            || ctx.num(n).is_some()
+                            || matches!(ctx.toks[n].kind, Kind::SegDash | Kind::Alt)
+                    });
+                    let padded = digits >= 2 && tok.text.starts_with('0');
+                    let episode_like =
+                        !continues || padded && next.is_some_and(|n| ctx.toks[n].is_word());
+                    if episode_like && !marked && !out.is_empty() && !matches!(sep, "-" | "/") {
+                        break;
+                    }
+                }
+                if !out.is_empty() {
+                    out.push_str(sep);
+                }
+                out.push_str(&tok.text);
+                sep = " ";
+            }
+            _ => {}
+        }
+    }
+    let out = out.trim().to_string();
+    (!out.is_empty()).then_some(out)
+}
+
 fn primary_title(ctx: &Ctx) -> Option<String> {
     let mut words: Vec<&str> = Vec::new();
     for i in 0..ctx.toks.len() {
