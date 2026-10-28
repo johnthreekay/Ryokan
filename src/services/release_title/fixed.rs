@@ -265,3 +265,16 @@ fn year_not_episode() {
         [176]
     );
 }
+
+/// A thousands separator keeps the number in the show's name (`Saving
+/// 80,000 Gold`, cut at `Saving` before, so the search gate's extra-words
+/// check had nothing to compare).
+#[test]
+fn thousands_in_title() {
+    assert_eq!(
+        parse(r###"[sandoe41] Saving 80,000 Gold in Another World for My Retirement [Season 01v2][1080P][BDRip][HEVC-10bit][FLAC]"###)
+            .series_title
+            .as_deref(),
+        Some("Saving 80,000 Gold in Another World for My Retirement")
+    );
+}

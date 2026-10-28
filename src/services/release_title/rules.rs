@@ -917,7 +917,10 @@ fn prefix_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
             && matches!(ctx.toks[i].lower.as_str(), "ep" | "epi" | "eps")
         {
             let mut k = ctx.next(i)?;
-            if ctx.toks[k].kind == Kind::Colon {
+            // `Ep: 05`, `Ep-04 Blood Line Fever`.
+            if ctx.toks[k].kind == Kind::Colon
+                || ctx.toks[k].kind == Kind::SegDash && ctx.toks[k].sep == Sep::None
+            {
                 k = ctx.next(k)?;
             }
             if let Some(a) = ctx.episode_num(k) {
@@ -1884,8 +1887,24 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
                     .next(j)
                     .is_some_and(|w| ctx.toks[w].is_word() && ctx.class[w] != Class::Movie),
                 // Scene names put metadata right after it:
-                // `Dragon.Ball.043.V2.480p.DBox`.
-                _ => digits >= 2 && ctx.class[j].is_meta(),
+                // `Dragon.Ball.043.V2.480p.DBox`; an episode title follows a
+                // quote (`Fullmetal Alchemist 23 'Heart of Steel'`) or a
+                // zero-padded number (`Holo no Graffiti 095 Going Wild`,
+                // never a 4-digit title number such as `Gundam 0083`).
+                _ => {
+                    digits >= 2
+                        && (ctx.class[j].is_meta()
+                            || matches!(ctx.toks[j].text.as_str(), "'" | "\"")
+                            || digits <= 3
+                                && ctx.toks[k].text.starts_with('0')
+                                && ctx.toks[j].is_word()
+                                && ctx.class[j] == Class::Plain
+                                // A title word comes first (`009 Re-Cyborg`
+                                // opens with the title's own number), and
+                                // `80,000` is one number.
+                                && ctx.prev(k).is_some_and(|p| ctx.toks[p].is_word() && ctx.toks[p].depth == 0)
+                                && ctx.toks[k].sep != Sep::None)
+                }
             },
         };
         if hit {
@@ -2164,6 +2183,10 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
                         title_word(n)
                             || ctx.num(n).is_some()
                             || matches!(ctx.toks[n].kind, Kind::SegDash | Kind::Alt)
+                            // `Saving 80,000 Gold`.
+                            || ctx.toks[n].kind == Kind::Comma
+                                && ctx.toks[n].sep == Sep::None
+                                && run.get(at + 2).is_some_and(|&m| ctx.num(m).is_some() && ctx.toks[m].sep == Sep::None)
                             || matches!(
                                 ctx.class[n],
                                 Class::Tag { .. } | Class::EpPrefix(..) | Class::EpisodeWord
@@ -2173,9 +2196,15 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
                     // marks it (`2nd Season 01-12`).
                     let opens_range = next.is_some_and(|n| ctx.toks[n].kind == Kind::RangeOp);
                     let padded = digits >= 2 && tok.text.starts_with('0');
+                    // The `000` of `80,000` goes on the number before it.
+                    let thousands = digits == 3
+                        && tok.sep == Sep::None
+                        && at >= 2
+                        && ctx.toks[run[at - 1]].kind == Kind::Comma
+                        && ctx.num(run[at - 2]).is_some();
                     let episode_like =
                         !continues || padded && next.is_some_and(|n| ctx.toks[n].is_word());
-                    if (episode_like && !marked || opens_range)
+                    if (episode_like && !marked && !thousands || opens_range)
                         && !out.is_empty()
                         && !matches!(sep, Some("-" | "/"))
                     {

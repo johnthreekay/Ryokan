@@ -1,6 +1,5 @@
 ---
 source: src/services/release_title/corpus.rs
-assertion_line: 107
 expression: "lines.join(\"\\n\")"
 ---
 (OVA) BOUNTY DOG -月面のイブ- (LD 640x480)
@@ -1416,7 +1415,7 @@ So Whats Wrong with Getting Reborn as a Goblin S01E05 SUBFRENCH 1080p CR WEB-DL 
 So Whats Wrong with Getting Reborn as a Goblin S01E05 SUBFRENCH 720p CR WEB-DL AAC2.0 x264-Tsundere-Raws (VOSTFR, Tensei Goblin dakedo Shitsumon Aru, Tengobu)
     eps=5 season=1 group=Tsundere-Raws res=720 amb=- [] series=So Whats Wrong with Getting Reborn as a Goblin
 Soap opera 01 BLM(01.11.2023) 1080p HDTV AC3 x264 TURG
-    eps=- season=- group=- res=1080 amb=- [] series=Soap opera
+    eps=- season=- group=- res=1080 amb=1 [] series=Soap opera
 Some Anime Show (2011) Episode 99-100 [1080p] [Dual.Audio] [x265]
     eps=99-100 season=- group=- res=1080 amb=- [batch] series=Some Anime Show
 Some Anime Show - 031 - The Resolution to Kill [Lunar]
@@ -1518,7 +1517,7 @@ Tank.Chair.S01E04.VOSTFR.1080p.WEBRiP.x265-KAF
 Tensei Shitara Ken Deshita 2 | Reincarnated as a Sword 2 | О моём перерождении в меч [ТВ-2] [2026, TV, 04 из 12] WEBRip 1080p Raw+Rus [2026]
     eps=4 season=2 group=- res=1080 amb=- [] series=Tensei Shitara Ken Deshita 2 / Reincarnated as a Sword 2 / О моём перерождении в меч
 Terrible.Anime.Title.001.DBOX.480p.x264-iKaos [v3] [6AFFEF6B]
-    eps=- season=- group=iKaos res=480 amb=- [] series=Terrible Anime Title
+    eps=- season=- group=iKaos res=480 amb=1 [] series=Terrible Anime Title
 The 100 Girlfriends Who Really Really Really Really REALLY Love You S03 1080p CR WEB-DL MULTi AAC2.0 H.264-VARYG (Kimi no Koto ga Dai Dai Dai Dai Daisuki na 100-nin no Kanojo 3rd Season, Multi-Audio, Multi-Subs, Batch)
     eps=- season=3 group=VARYG res=1080 amb=- [batch] series=The 100 Girlfriends Who Really Really Really Really REALLY Love You S03
 The Angel Next Door Spoils Me Rotten S02E12 The Angels Big Day Arrives 1080p CR WEB-DL MULTi AAC2.0 H.264-VARYG (Otonari no Tenshi-sama ni Itsunomanika Dame Ningen ni Sareteita Ken 2nd Season, Multi-Audio, Multi-Subs)
@@ -1690,7 +1689,7 @@ The.Series.2017.S05E02.1080p.WEB-DL.DD5.1.H264-EVL-Scrambled
 The.Series.S02.SUBPACK.DVDRip.XviD-REWARD
     eps=- season=2 group=REWARD res=- amb=- [batch] series=The Series S02 SUBPACK
 The.Series.S03.Extras.01.Deleted.Scenes.720p
-    eps=- season=3 group=- res=720 amb=- [batch] series=The Series S03 Extras
+    eps=- season=3 group=- res=720 amb=1 [batch] series=The Series S03 Extras
 The.Series.S03.Extras.02.720p
     eps=- season=3 group=- res=720 amb=2 [batch] series=The Series S03 Extras
 The.Series.S03E04.2160p.Amazon.WEBRip.DTS-HD.MA.5.1.x264
@@ -1884,7 +1883,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [ACX]Series Title 01 Episode Name [Kosaka] [9C57891E].mkv
     eps=- season=- group=ACX res=- amb=- [file] series=Series Title
 [ACX]Some Anime Show 01 Role Play [Kosaka] [9C57891E].mkv
-    eps=- season=- group=ACX res=- amb=- [file] series=Some Anime Show
+    eps=- season=- group=ACX res=- amb=1 [file] series=Some Anime Show
 [ADEREEX] Hokuto no Ken - 1 - 152 (25th Anniversary DVD BOX 480p x264 FLAC)
     eps=1-152 season=- group=ADEREEX res=480 amb=- [batch] series=Hokuto no Ken
 [AI-Raws] .hack//Roots #01 BDRip 1080p MKV
@@ -6328,7 +6327,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [sandoe41] Death March kara Hajimaru Isekai Kyousoukyoku Season One NCOP-NCED
     eps=- season=1 group=sandoe41 res=- amb=- [extra] series=Death March kara Hajimaru Isekai Kyousoukyoku Season One NCOP-NCED
 [sandoe41] Saving 80,000 Gold in Another World for My Retirement [Season 01v2][1080P][BDRip][HEVC-10bit][FLAC]
-    eps=- season=1 group=sandoe41 res=1080 amb=- [batch] series=Saving
+    eps=- season=1 group=sandoe41 res=1080 amb=- [batch] series=Saving 80,000 Gold in Another World for My Retirement
 [shincaps] Doraemon (2005) - 183 (CS-EX1 1440x1080 MPEG2 AAC).ts
     eps=183 season=- group=shincaps res=1080 amb=- [file] series=Doraemon
 [shincaps] Magical Explorer - 01-02 (ANIPLUS 1920x1080 H264 AAC).ts

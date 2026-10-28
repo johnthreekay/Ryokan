@@ -473,6 +473,32 @@ mod tests {
     }
 
     #[test]
+    fn an_episode_title_after_a_bare_number_leaves_it_the_episode() {
+        // From the 29k-title corpus' file lists, which neither the old
+        // parser nor the new one read.
+        let first = |name: &str| parse_episode_span(&name.to_lowercase()).map(|s| s.first);
+        assert_eq!(first("Ep-04 Blood Line Fever.mkv"), Some(4));
+        assert_eq!(
+            first(
+                "[FMA1394] Fullmetal Alchemist 23 'Heart of Steel' [Dual Audio] [US BD] [892C8762].mkv"
+            ),
+            Some(23)
+        );
+        assert_eq!(
+            first("[TardS] Holo no Graffiti 095 Going Wild in a Shopping Mall  (WEB 1080p).mp4"),
+            Some(95)
+        );
+        // A title's own number stays the title's: four digits, unpadded,
+        // or opening the name.
+        assert_eq!(
+            first("Mobile Suit Gundam 0083 Stardust Memory [BD].mkv"),
+            None
+        );
+        assert_eq!(first("[CW] 009 Re-Cyborg (2012) [BD 1080p].mkv"), None);
+        assert_eq!(first("Show 99 Luftballons [1080p].mkv"), None);
+    }
+
+    #[test]
     fn a_file_under_an_extras_folder_holds_no_episode() {
         use super::{parse_file_path, path_names_extras};
         // From the 29k-title corpus' file lists: the folder is the only
