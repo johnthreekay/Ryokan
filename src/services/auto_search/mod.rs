@@ -627,10 +627,21 @@ pub async fn find_best_batch_for_target_with_diag(
         target,
         cfs,
         indexers_cache,
-        true,
+        BatchList::AutoGrab,
     )
     .await;
     (scored.into_iter().next(), rejected)
+}
+
+/// Who a batch list is for. The automatic batch grab takes only releases
+/// whose titles say they are packs and name the series exactly; the
+/// interactive list also takes fuzzy title matches and unnumbered packs
+/// (`ParsedTitle::is_unnumbered_pack_for`), whose files the user sees in
+/// the picker before anything is grabbed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BatchList {
+    AutoGrab,
+    Interactive,
 }
 
 /// Collection + scoring variant focused on batch releases.
@@ -647,7 +658,7 @@ pub async fn collect_scored_batches_for_target(
     target: &SearchTarget,
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
-    require_verbatim: bool,
+    list: BatchList,
 ) -> Vec<SearchResult> {
     collect_scored_batches_for_target_with_diag(
         db,
@@ -656,14 +667,14 @@ pub async fn collect_scored_batches_for_target(
         target,
         cfs,
         indexers_cache,
-        require_verbatim,
+        list,
     )
     .await
     .0
 }
 
 /// `collect_scored_batches_for_target` plus the titles the exact title
-/// gate turned away (empty when `require_verbatim` is false).
+/// gate turned away (empty for the interactive list).
 pub async fn collect_scored_batches_for_target_with_diag(
     db: &SqlitePool,
     detail: &AnimeDetail,
@@ -671,8 +682,9 @@ pub async fn collect_scored_batches_for_target_with_diag(
     target: &SearchTarget,
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
-    require_verbatim: bool,
+    list: BatchList,
 ) -> (Vec<SearchResult>, Vec<String>) {
+    let require_verbatim = list == BatchList::AutoGrab;
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
     let (aliases, canonical_aliases) =
@@ -824,6 +836,26 @@ pub async fn collect_scored_batches_for_target_with_diag(
     // III") which are common in SeaDex picks. Without this exemption,
     // a curated full-season BD pack gets dropped here before it can be
     // scored.
+    //
+    // The interactive list also offers a release that names the series
+    // exactly and nothing of what it holds (`[UTW] Angel Beats! [BD]`):
+    // usually the whole series, sometimes a movie or one file, so it is
+    // offered as a batch whose grab always opens the file picker. A
+    // sequel or spin-off named by its subtitle is not this series' pack.
+    if list == BatchList::Interactive {
+        let anchors = sibling_precompute.anchors();
+        for c in candidates.iter_mut() {
+            if !c.is_batch
+                && c.match_provenance
+                    .as_ref()
+                    .is_some_and(|p| p.kind == MatchKind::Verbatim)
+                && !names_more_than_the_series(&c.title, &aliases)
+                && release_title::parse(&c.title).is_unnumbered_pack_for(anchors)
+            {
+                c.is_batch = true;
+            }
+        }
+    }
     candidates.retain(|c| c.is_batch || is_seadex_match(&c.info_hash, &seadex_hashes));
 
     let mut scored: Vec<SearchResult> = Vec::with_capacity(candidates.len());

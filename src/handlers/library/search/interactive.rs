@@ -56,6 +56,11 @@ struct InteractiveSearchRow {
     grab_episode: Option<i32>,
     /// `E03` / `E05-E06` in the episode-set flow, empty elsewhere.
     episode_label: String,
+    /// Offered as a batch although its title names nothing of what it
+    /// holds (`[UTW] Angel Beats! [BD]`, the batch collector's
+    /// `BatchList::Interactive`): the row says so, and its Grab opens the
+    /// file picker even when grab previews are off.
+    unnumbered_pack: bool,
 }
 
 /// Which page asked for the partial. The Wanted page renders the same
@@ -117,6 +122,8 @@ fn build_interactive_search_partial(
                 result.indexer_name.clone()
             };
             let data_result_json = serde_json::to_string(&result).unwrap_or_else(|_| "{}".into());
+            let unnumbered_pack =
+                result.is_batch && !crate::services::release_title::parse(&result.title).is_batch();
             InteractiveSearchRow {
                 result,
                 score_class,
@@ -124,6 +131,7 @@ fn build_interactive_search_partial(
                 data_result_json,
                 grab_episode: grab_episode_number,
                 episode_label: String::new(),
+                unnumbered_pack,
             }
         })
         .collect();
@@ -825,7 +833,7 @@ pub async fn interactive_search_batches(
         &auto_search::SearchTarget::Single,
         &cfs,
         &state.indexers,
-        false,
+        auto_search::BatchList::Interactive,
     )
     .await;
 

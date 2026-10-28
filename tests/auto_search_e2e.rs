@@ -2001,3 +2001,70 @@ async fn an_untracked_series_page_searches_by_its_anilist_id() {
 
     unset_nyaa_base();
 }
+
+#[tokio::test]
+async fn interactive_batch_list_offers_unnumbered_packs_and_the_auto_grab_does_not() {
+    // `[UTW] Angel Beats! [BD][h264-720p AC3]` names the series and
+    // nothing of what it holds: usually the whole series, sometimes a
+    // movie or one file. The interactive batch list offers it (its grab
+    // opens the file picker); the automatic batch grab never takes it.
+    // A weekly, a movie and a sequel named by its subtitle are no pack.
+    use ryokan::services::auto_search::{BatchList, collect_scored_batches_for_target};
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    let rows = [
+        (1, "[UTW] Test Show [BD][h264-720p AC3]"),
+        (2, "[Group] Test Show (01-12) [BD 1080p]"),
+        (3, "[Group] Test Show - 05 (1080p) [WEB].mkv"),
+        (4, "[Group] Test Show The Movie [BD 1080p]"),
+        (5, "[UTW] Test Show Another Story [BD][h264-720p AC3]"),
+    ]
+    .iter()
+    .map(|(n, title)| nyaa_row(&format!("{n:040x}"), 9000 + n, title, "8.0 GiB", 20))
+    .collect::<String>();
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page(&rows)))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let state = build_state().await;
+    let detail = detail_for(1002, "Test Show");
+    let cfg = default_config();
+    let cfs: Vec<ryokan::services::custom_formats::CompiledCustomFormat> = vec![];
+    let titles = |list: BatchList| {
+        let (state, detail, cfg, cfs) = (&state, &detail, &cfg, &cfs);
+        async move {
+            let results = collect_scored_batches_for_target(
+                &state.db,
+                detail,
+                cfg,
+                &SearchTarget::Single,
+                cfs,
+                &state.indexers,
+                list,
+            )
+            .await;
+            assert!(results.iter().all(|r| r.is_batch), "{results:?}");
+            let mut titles: Vec<String> = results.into_iter().map(|r| r.title).collect();
+            titles.sort();
+            titles
+        }
+    };
+
+    assert_eq!(
+        titles(BatchList::Interactive).await,
+        vec![
+            "[Group] Test Show (01-12) [BD 1080p]".to_string(),
+            "[UTW] Test Show [BD][h264-720p AC3]".to_string(),
+        ]
+    );
+    assert_eq!(
+        titles(BatchList::AutoGrab).await,
+        vec!["[Group] Test Show (01-12) [BD 1080p]".to_string()]
+    );
+
+    unset_nyaa_base();
+}

@@ -207,8 +207,11 @@ function grabInteractiveBatchResult(btn) {
     // Issue #83 — every result in the interactive batch search is a
     // batch by definition, so the file-picker modal opens unless the
     // user has opted out globally via `grab_preview_mode = 'never'`.
+    // A pack whose title names no episodes opens it regardless: its
+    // files are the only evidence of what it holds.
     const previewMode = window.GRAB_PREVIEW_MODE || 'batches_only';
-    if (previewMode !== 'never'
+    const unnumbered = btn.dataset.unnumbered === '1';
+    if ((previewMode !== 'never' || unnumbered)
         && typeof window.openGrabPicker === 'function'
         && result.info_hash) {
         window.openGrabPicker(url, {

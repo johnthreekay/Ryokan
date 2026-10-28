@@ -999,7 +999,9 @@ mod handler_endpoints {
     use axum::http::StatusCode;
     use axum::response::Json as AxumJson;
 
-    use super::super::interactive::{interactive_search_batches, interactive_search_episode};
+    use super::super::interactive::{
+        InteractiveOrigin, interactive_search_batches, interactive_search_episode,
+    };
     use super::super::{anilist_search, api_series_detail};
     use super::empty_anime_detail;
     use crate::handlers::library::AnilistSearchQuery;
@@ -1786,6 +1788,62 @@ mod handler_endpoints {
             "no-range batch title must fall back to AnimeDetail.episodes (26) \
              and record_grab fans out one tag per episode"
         );
+    }
+
+    #[tokio::test]
+    async fn interactive_batch_rows_mark_unnumbered_packs_and_force_the_picker() {
+        // The batch collector offers a title that names no episodes
+        // (`[UTW] Show [BD]`) as a batch; its row says so and its Grab
+        // carries `data-unnumbered`, which opens the file picker even
+        // when grab previews are off. A titled batch carries neither.
+        let db = in_memory_pool().await;
+        let state = build_test_app_state(db, None);
+        let request_id: i64 = 702;
+        let mut titled = empty_search_result(
+            "[Group] Show - 01-12 Batch (1080p)",
+            "abcdef0123456789abcdef0123456789abcdef01",
+        );
+        titled.is_batch = true;
+        let mut unnumbered = empty_search_result(
+            "[UTW] Show [BD][h264-720p AC3]",
+            "fedcba9876543210fedcba9876543210fedcba98",
+        );
+        unnumbered.is_batch = true;
+        interactive_search_cache::insert(
+            &state.interactive_search_cache,
+            interactive_search_cache::Key::Batch(request_id),
+            vec![titled, unnumbered],
+        );
+        for query in [
+            InteractiveOrigin::default(),
+            InteractiveOrigin {
+                from: Some("wanted".into()),
+            },
+        ] {
+            let resp = interactive_search_batches(
+                State(state.clone()),
+                axum_htmx::HxRequest(true),
+                axum::extract::Query(query),
+                Path(request_id),
+            )
+            .await
+            .expect("cache-hit path must succeed");
+            let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .expect("read body");
+            let html = String::from_utf8(bytes.to_vec()).expect("utf-8");
+            assert_eq!(
+                html.matches("no episode numbers</span>").count(),
+                1,
+                "{html}"
+            );
+            assert_eq!(html.matches("data-unnumbered=\"1\"").count(), 1, "{html}");
+            let row = html
+                .split("<tr>")
+                .find(|r| r.contains("[UTW] Show"))
+                .expect("the pack's row");
+            assert!(row.contains("data-unnumbered=\"1\""), "{row}");
+        }
     }
 
     #[tokio::test]

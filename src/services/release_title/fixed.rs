@@ -310,3 +310,33 @@ fn tag_and_to_ranges() {
     // A different season written after the dash is not this tag's range.
     assert_eq!(episodes("Show S01E12-S02E01 [1080p]"), vec![12]);
 }
+
+/// A title that names the show and nothing of what it holds is an
+/// unnumbered pack: the interactive batch list offers it. Anything that
+/// names an episode, a season, a movie, an extra, a special or one file
+/// is not one.
+#[test]
+fn unnumbered_packs() {
+    use super::SeriesAnchors;
+    let pack = |title: &str, alias: &str| {
+        parse(title).is_unnumbered_pack_for(&SeriesAnchors::new(&[alias]))
+    };
+    assert!(pack(
+        "[UTW] Angel Beats! [BD][h264-720p AC3]",
+        "Angel Beats!"
+    ));
+    // The series' own number is no episode.
+    assert!(pack("[Group] Mob Psycho 100 (BD 1080p)", "Mob Psycho 100"));
+    // A bare number after the name is the episode once the name is known.
+    assert!(!pack(
+        "[EA]Dark_Gathering_24_[1920x1080][HEVC]",
+        "Dark Gathering"
+    ));
+    assert!(!pack("[Group] Show - 05 [1080p]", "Show"));
+    assert!(!pack("[Group] Show Season 2 [BD]", "Show"));
+    assert!(!pack("[Group] Show (01-12) [BD]", "Show"));
+    assert!(!pack("[Group] Show The Movie [BD 1080p]", "Show"));
+    assert!(!pack("[Group] Show NCOP [BD 1080p]", "Show"));
+    assert!(!pack("[Group] Show OVA [BD 1080p]", "Show"));
+    assert!(!pack("[Group] Show [BD 1080p].mkv", "Show"));
+}

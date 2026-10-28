@@ -425,6 +425,27 @@ impl ParsedTitle {
             && !(self.special_from_title_word && anchors.name_ends_in_marker(&self.anchor_words))
     }
 
+    /// A release that names the show and nothing of what it holds: no
+    /// episode, season, special, extra or movie, and not one video file
+    /// (`[UTW] Angel Beats! [BD][h264-720p AC3]`). Over the 29k-title
+    /// corpus such disc titles held four or more files 68% of the time
+    /// and one file (a movie, an archive) 19%, so only the interactive
+    /// batch list offers one, and its grab opens the file picker; the
+    /// automatic batch grab never takes it. A number the series' own name
+    /// holds is no episode (`Mob Psycho 100 (BD)` is a pack of "Mob
+    /// Psycho 100").
+    pub fn is_unnumbered_pack_for(&self, anchors: &SeriesAnchors) -> bool {
+        let special = self.is_special_for(anchors) && !anchors.specials_are_episodes();
+        !self.is_batch()
+            && !self.single_file
+            && !self.movie
+            && !self.extra
+            && !self.half_episode
+            && !special
+            && self.seasons.numbers.is_empty()
+            && self.for_series(anchors).episodes.is_empty()
+    }
+
     /// The episodes for a known series: the title's own claim (unless a
     /// bare range or marker number belongs to the name), else a bare
     /// number right after the longest alias found word for word. A
