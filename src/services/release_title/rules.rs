@@ -813,6 +813,21 @@ fn tag_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
 
 fn dash_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
     for d in 0..ctx.toks.len() {
+        // `Hunter X hunter 1999 -02- Encounter`: a number between two glued
+        // dashes is the dash's episode.
+        if !ctx.skip[d]
+            && ctx.toks[d].kind == Kind::LeadDash
+            && ctx.toks[d].depth == 0
+            && let Some(k) = ctx.next(d)
+            && ctx.toks[k].sep == Sep::None
+            && let Some(a) = ctx.episode_num(k)
+            && let Some(c) = ctx.next(k)
+            && ctx.toks[c].text == "-"
+            && ctx.toks[c].sep == Sep::None
+            && ctx.next(c).is_none_or(|w| ctx.toks[w].sep != Sep::None)
+        {
+            return Some(ctx.claim(a, a, ctx.season_marker_before(d), ClaimRule::Dash));
+        }
         if ctx.skip[d] || ctx.toks[d].kind != Kind::SegDash || ctx.toks[d].depth > 0 {
             continue;
         }
@@ -2186,7 +2201,10 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
                             // `Saving 80,000 Gold`.
                             || ctx.toks[n].kind == Kind::Comma
                                 && ctx.toks[n].sep == Sep::None
-                                && run.get(at + 2).is_some_and(|&m| ctx.num(m).is_some() && ctx.toks[m].sep == Sep::None)
+                                && run.get(at + 2).is_some_and(|&m| {
+                                    ctx.num(m).is_some_and(|(_, d, _)| d == 3)
+                                        && ctx.toks[m].sep == Sep::None
+                                })
                             || matches!(
                                 ctx.class[n],
                                 Class::Tag { .. } | Class::EpPrefix(..) | Class::EpisodeWord

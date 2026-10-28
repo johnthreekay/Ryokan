@@ -277,4 +277,11 @@ fn thousands_in_title() {
             .as_deref(),
         Some("Saving 80,000 Gold in Another World for My Retirement")
     );
+    // A list of episodes is not a number.
+    assert_eq!(
+        parse(r###"[ARR] Magnerobo Ga-Keen 13,15-26,28-39 [640p DVD AC3 x264]"###)
+            .series_title
+            .as_deref(),
+        Some("Magnerobo Ga-Keen")
+    );
 }

@@ -488,6 +488,10 @@ mod tests {
             first("[TardS] Holo no Graffiti 095 Going Wild in a Shopping Mall  (WEB 1080p).mp4"),
             Some(95)
         );
+        assert_eq!(
+            first("[Samir755] Hunter X hunter 1999 -85- Jan × Ken × Rock.mkv"),
+            Some(85)
+        );
         // A title's own number stays the title's: four digits, unpadded,
         // or opening the name.
         assert_eq!(
