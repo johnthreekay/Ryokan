@@ -149,15 +149,20 @@ fn classify_text(text: &str) -> Class {
     lex(text).toks.first().map(classify).unwrap_or(Class::Plain)
 }
 
-/// Normalized words of an alias: depth-0 text only (bracketed parts such
-/// as a year are dropped, as release titles drop them), lowercased, with
-/// compounds split on `-`.
+/// Normalized words of an alias, lowercased, with compounds split on
+/// `-`. Round-bracket parts (`(2023)`) are dropped, as release titles drop
+/// them; square-bracket text is part of the name (`[Oshi no Ko]`).
 fn alias_words(alias: &str) -> Vec<String> {
     let norm = normalize(alias);
     let lexed = lex(&norm.text);
     let mut out = Vec::new();
     for tok in &lexed.toks {
-        if tok.depth > 0 {
+        let in_square = lexed
+            .groups
+            .iter()
+            .find(|g| g.id == tok.group)
+            .is_some_and(|g| g.kind == '[');
+        if tok.depth > 0 && !in_square {
             continue;
         }
         match tok.kind {
@@ -298,6 +303,18 @@ mod tests {
                 .into_iter()
                 .collect::<Vec<_>>(),
             [3]
+        );
+    }
+
+    #[test]
+    fn a_bracketed_name_is_still_the_name() {
+        assert_eq!(read("[EA]Oshi_no_Ko_05_[1080p]", &["[Oshi no Ko]"]), [5]);
+        assert_eq!(
+            read(
+                "[Some-Stuffs] Pocket Monsters (2023) 154 (1080p)",
+                &["Pocket Monsters (2023)"]
+            ),
+            [154]
         );
     }
 

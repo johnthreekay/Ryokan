@@ -449,6 +449,67 @@ mod tests {
     }
 
     #[test]
+    fn a_huge_season_range_is_no_range() {
+        // An unbounded range end used to expand into a vector of its size:
+        // nine digits is gigabytes, an abort on every RSS sync.
+        let start = std::time::Instant::now();
+        for title in [
+            "Season 1-999999999",
+            "S1-999999999",
+            "Season 1 - Season 999999999",
+        ] {
+            assert!(super::parse(title).seasons.numbers.len() <= 2, "{title}");
+        }
+        assert!(start.elapsed() < std::time::Duration::from_secs(1));
+        assert_eq!(
+            super::parse("[Group] Show Seasons 1-3 (BD)")
+                .seasons
+                .numbers,
+            [1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn a_padded_season_or_title_number_opens_no_range() {
+        let claim = |t: &str| super::parse(t).episodes.map(|c| (c.first, c.last));
+        assert_eq!(claim("[Group] Show Season 02 - 05 [1080p]"), Some((5, 5)));
+        assert_eq!(claim("[Group] Cyborg 009 - 12 [DVD]"), Some((12, 12)));
+        assert_eq!(
+            claim("[HorribleSubs] Some Anime Show 01 - 119 [1080p] [Batch]"),
+            Some((1, 119))
+        );
+    }
+
+    #[test]
+    fn a_part_after_a_roman_numeral_is_the_season() {
+        assert_eq!(
+            super::parse("[SubsPlease] Lupin III - Part 6 - 05 (1080p)").season_hint(),
+            Some(6)
+        );
+    }
+
+    #[test]
+    fn extras_listed_after_a_plus_keep_the_pack() {
+        for title in [
+            "[Group] Show S01 [BD 1080p] + NCOP/NCED",
+            "[Group] Show S01 [BD 1080p] + NCOP, NCED",
+        ] {
+            let p = super::parse(title);
+            assert!(!p.extra && p.is_batch(), "{title}");
+        }
+    }
+
+    #[test]
+    fn every_bracket_v_tail_is_a_revision() {
+        assert_eq!(
+            super::parse("[Group]Vinland Saga - 05 [1080p]v2")
+                .revision
+                .version,
+            2
+        );
+    }
+
+    #[test]
     fn roman_numerals_decode_in_any_case() {
         assert_eq!(roman_value("iv"), Some(4));
         assert_eq!(roman_value("X"), Some(10));

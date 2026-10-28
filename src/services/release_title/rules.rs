@@ -38,6 +38,11 @@ fn english_ordinal(lower: &str) -> bool {
     lower.ends_with("st") || lower.ends_with("nd") || lower.ends_with("rd") || lower.ends_with("th")
 }
 
+/// Largest season a range reads (`S01-S04`, `Seasons 1-3`): a range end
+/// past it is not a season, and an unbounded one would expand into a
+/// vector the size of the number.
+const MAX_SEASON: u32 = 99;
+
 fn is_year(value: u32, digits: u8) -> bool {
     digits == 4 && (1900..=2100).contains(&value)
 }
@@ -351,19 +356,21 @@ fn revision(title: &str) -> super::ReleaseRevision {
     let mut rev = crate::services::media::parse_release_revision(title);
     if rev.version == 1 {
         let lower = title.to_lowercase();
-        for marker in ["]v", ")v"] {
-            if let Some(at) = lower.find(marker) {
+        // Every `]v` / `)v`, not just the first: `[Group]Vinland ... [1080p]v2`.
+        let found = lower
+            .match_indices("]v")
+            .chain(lower.match_indices(")v"))
+            .find_map(|(at, _)| {
                 let rest = &lower[at + 2..];
                 let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
                 let after = rest[digits.len()..].chars().next();
-                if (1..=2).contains(&digits.len())
-                    && after.is_none_or(|c| c.is_whitespace() || "._-)]".contains(c))
-                    && let Ok(v) = digits.parse::<u32>()
-                {
-                    rev.version = v;
-                    break;
-                }
-            }
+                ((1..=2).contains(&digits.len())
+                    && after.is_none_or(|c| c.is_whitespace() || "._-)]".contains(c)))
+                .then(|| digits.parse::<u32>().ok())
+                .flatten()
+            });
+        if let Some(v) = found {
+            rev.version = v;
         }
     }
     rev
@@ -701,7 +708,17 @@ fn dash_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                 && ctx.toks[p].text.starts_with('0')
                 && left >= 1
                 && left < a
-                && ctx.prev(p).is_some_and(|w| ctx.toks[w].is_word())
+                // `Cyborg 009 - 12`: a padded title number is wider than
+                // the episode after it.
+                && ctx.num(k).is_some_and(|(_, a_digits, _)| digits <= a_digits)
+                // `Season 02 - 05`: the padded number is the season's.
+                && ctx.prev(p).is_some_and(|w| {
+                    ctx.toks[w].is_word()
+                        && !matches!(
+                            ctx.class[w],
+                            Class::SeasonWord | Class::PartWord | Class::VolWord | Class::EpisodeWord
+                        )
+                })
             {
                 let mut claim = ctx.claim(left, a, season, ClaimRule::Dash);
                 claim.tight = false;
@@ -1082,7 +1099,8 @@ fn after_plus(ctx: &Ctx, i: usize) -> bool {
     while let Some(p) = ctx.prev(at) {
         match ctx.toks[p].kind {
             Kind::Plus => return true,
-            Kind::Amp => at = p,
+            // `+ NCOP & NCED`, `+ NCOP/NCED`, `+ NCOP, NCED`.
+            Kind::Amp | Kind::Alt | Kind::Comma => at = p,
             Kind::Word
                 if matches!(ctx.class[p], Class::Extra | Class::Special | Class::Sp)
                     || ctx.toks[p].lower == "and" =>
@@ -1223,7 +1241,7 @@ fn season_range_end(ctx: &Ctx, i: usize, start: u32) -> Option<u32> {
         if op == Kind::RangeOp
             && let Some((b, _, _)) = ctx.num(j)
         {
-            return (b > start).then_some(b);
+            return (b > start && b <= MAX_SEASON).then_some(b);
         }
     }
     // Exactly two markers: a third (`S01 S03 S04`) makes it a list.
@@ -1263,6 +1281,7 @@ fn season_word_numbers(ctx: &Ctx, i: usize, out: &mut Vec<u32>) {
             if let Some(e) = ctx.next(m)
                 && let Some((v, _, _)) = ctx.num(e)
                 && v > n
+                && v <= MAX_SEASON
             {
                 out.extend(n + 1..=v);
             }
@@ -1270,7 +1289,7 @@ fn season_word_numbers(ctx: &Ctx, i: usize, out: &mut Vec<u32>) {
         }
         let Some((v, _, _)) = ctx.num(m) else { return };
         match ctx.toks[op].kind {
-            Kind::RangeOp if v > n => out.extend(n + 1..=v),
+            Kind::RangeOp if v > n && v <= MAX_SEASON => out.extend(n + 1..=v),
             Kind::Comma | Kind::Alt | Kind::Amp | Kind::Plus => out.push(v),
             _ => return,
         }
@@ -1284,6 +1303,14 @@ fn season_word_numbers(ctx: &Ctx, i: usize, out: &mut Vec<u32>) {
 /// episode number, never mid-title (`Lupin III vs`, `Lupin III: The
 /// Castle`, `Date A Live IV x DanMachi`).
 fn roman_is_marker(ctx: &Ctx, i: usize) -> bool {
+    // `Lupin III - Part 6 - 05`: the part after the dash is the season and
+    // the numeral is the name.
+    if let Some(d) = ctx.next(i)
+        && ctx.toks[d].kind == Kind::SegDash
+        && ctx.next(d).is_some_and(|w| ctx.class[w] == Class::PartWord)
+    {
+        return false;
+    }
     // Inside a note (`(..., The Legend of Hei II)`) it is an alternate
     // title; only top level or a bracket of its own (`[II]`) counts.
     if ctx.toks[i].depth > 0
