@@ -17,7 +17,7 @@ disagrees, the parser is wrong, or the case moves to a reviewed known-gap list
 with a reason. Do not regenerate expectations from parser output.
 
 Cases added later were promoted from `sample/` while reviewing the
-differential (`src/services/release_title/differential.rs`): each pins a rule
+differential against the old parsers (since deleted): each pins a rule
 that review added, was written from the title, and carries a `note`.
 
 ## Buckets

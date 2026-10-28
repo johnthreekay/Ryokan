@@ -9,9 +9,8 @@
 //! then two residual shapes the title rules leave open, then the
 //! special-marker regexes; extras are the title rules' own `extra` (the
 //! anitomy `AnimeType` gate went in phase 12b). It replaced the old branch
-//! regexes (phase 11b of the parser plan); `release_title::legacy::media`
-//! keeps them for `differential::file_report`, and every difference over
-//! the corpora was reviewed (the filename corpus notes each change).
+//! regexes (phase 11b of the parser plan); every difference over the
+//! corpora was reviewed (the filename corpus notes each change).
 
 use std::sync::LazyLock;
 

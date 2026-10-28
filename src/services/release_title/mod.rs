@@ -18,10 +18,10 @@ mod anchors;
 #[cfg(test)]
 mod bench;
 #[cfg(test)]
-mod differential;
+mod corpus;
 pub(crate) mod file_mode;
 #[cfg(test)]
-mod legacy;
+mod fixed;
 mod lexer;
 mod normalize;
 mod rules;

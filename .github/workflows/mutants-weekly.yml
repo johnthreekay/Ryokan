@@ -14,15 +14,19 @@
 # pinning a mutation" failure modes between active sessions.
 #
 # Why shards: a GitHub-hosted job is capped at 6 hours, and the
-# curated subset (~712 mutants) runs at roughly 30 mutants an hour on
+# curated subset (~960 mutants) runs at roughly 30 mutants an hour on
 # ubuntu-latest with two jobs (every mutant is an incremental rebuild
 # plus the full nextest suite). Eighteen weekly runs in a row were
 # cancelled at the cap with a third of the mutants done. The matrix
-# below splits the mutants round-robin across 8 shards (~90 each,
-# about 3 hours per shard), and a second job merges the shards'
+# below splits the mutants round-robin across 8 shards (~120 each,
+# about 4 hours per shard), and a second job merges the shards'
 # `mutants.out` files before the baseline diff. Each shard runs its own
 # unmutated baseline, so the per-mutant test timeout stays auto-derived
 # from the runner's real test time rather than a guessed constant.
+#
+# `release_title/rules.rs` (about 850 mutants on its own) stays out: it
+# would push every shard past the cap, and the corpus snapshot test
+# (`release_title::corpus`) fails on any change to a title's reading.
 #
 # Per-PR mutation gating is NOT viable. Weekly cron is the right
 # cadence; manual `workflow_dispatch` is available for ad-hoc runs.
@@ -113,7 +117,9 @@ jobs:
             --file 'src/services/source/mod.rs' \
             --file 'src/handlers/library/crud/mod.rs' \
             --file 'src/services/anibridge.rs' \
-            --file 'src/services/metadata_sync.rs'
+            --file 'src/services/metadata_sync.rs' \
+            --file 'src/services/release_title/mod.rs' \
+            --file 'src/services/release_title/anchors.rs'
           code=$?
           echo "cargo-mutants exit code: $code"
           case "$code" in

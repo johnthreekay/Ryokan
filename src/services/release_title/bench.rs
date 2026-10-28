@@ -2,7 +2,7 @@
 //! anitomy benchmark lived here until the crate was dropped in phase
 //! 12e).
 
-use super::differential::{sample_titles, verified_titles};
+use super::corpus::{sample_titles, verified_titles};
 use crate::services::source_filename::classify_filename;
 
 fn all_titles() -> Vec<String> {
