@@ -632,7 +632,7 @@ impl Release {
     ) -> crate::services::rss::RssItem {
         let group = extract_group_from_title(&self.title);
         let resolution = extract_resolution_from_title(&self.title);
-        let is_batch = detect_batch_from_title(&self.title);
+        let is_batch = crate::services::release_title::parse(&self.title).is_batch();
         crate::services::rss::RssItem {
             title: self.title.clone(),
             link: self.link.clone(),
@@ -670,7 +670,7 @@ impl Release {
     pub fn into_search_result(self) -> crate::services::nyaa::SearchResult {
         let group = extract_group_from_title(&self.title);
         let resolution = extract_resolution_from_title(&self.title);
-        let is_batch = detect_batch_from_title(&self.title);
+        let is_batch = crate::services::release_title::parse(&self.title).is_batch();
         let indexer_id = self.indexer_id;
         let indexer_name = self.indexer_name;
         crate::services::nyaa::SearchResult {
@@ -748,38 +748,6 @@ fn extract_resolution_from_title(title: &str) -> String {
         }
     }
     String::new()
-}
-
-fn detect_batch_from_title(title: &str) -> bool {
-    // PR #107 review fix #9: tighten "complete" matching with a
-    // word-boundary-equivalent check. The earlier substring scan
-    // matched "Incomplete Edition" and similar negated forms.
-    // Now require the keyword to be flanked by whitespace, brackets,
-    // or string boundaries — matches the way real release titles
-    // tag a batch ("Show - Complete", "[Group] Show Complete BD").
-    let lower = title.to_ascii_lowercase();
-    if lower.contains("[bd]") || lower.contains("(bd)") || lower.contains("season pack") {
-        return true;
-    }
-    for needle in ["batch", "complete"] {
-        if let Some(idx) = lower.find(needle) {
-            let before_ok = idx == 0
-                || lower
-                    .as_bytes()
-                    .get(idx - 1)
-                    .is_some_and(|&b| !b.is_ascii_alphabetic());
-            let after = idx + needle.len();
-            let after_ok = after == lower.len()
-                || lower
-                    .as_bytes()
-                    .get(after)
-                    .is_some_and(|&b| !b.is_ascii_alphabetic());
-            if before_ok && after_ok {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 fn format_bytes_human(bytes: u64) -> String {
@@ -1059,24 +1027,6 @@ mod tests {
     #[test]
     fn extract_resolution_returns_empty_when_no_marker() {
         assert_eq!(super::extract_resolution_from_title("Show - 01.mkv"), "");
-    }
-
-    #[test]
-    fn detect_batch_word_boundary_blocks_incomplete_edition() {
-        // PR #107 review fix #9: "Incomplete" used to trigger because
-        // the substring contains "complete". The word-boundary check
-        // rejects it now.
-        assert!(!super::detect_batch_from_title(
-            "Show Incomplete Edition.mkv"
-        ));
-        // Real "Complete" still triggers.
-        assert!(super::detect_batch_from_title("Show Complete BD.mkv"));
-        // Other markers stay positive.
-        assert!(super::detect_batch_from_title("[Group] Show Batch.mkv"));
-        assert!(super::detect_batch_from_title(
-            "[Group] Show Season Pack.mkv"
-        ));
-        assert!(super::detect_batch_from_title("Show [BD]"));
     }
 
     #[test]

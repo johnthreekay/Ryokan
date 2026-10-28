@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub mod feed;
-use feed::{build_item_key, detect_batch, extract_group, extract_resolution, fetch_feeds};
+use feed::{build_item_key, extract_group, extract_resolution, fetch_feeds};
 
 /// multi-rss commit F — flatten an `RssSource` to the
 /// `(source_str, source_id_opt)` pair `rss_seen.source` +
@@ -1645,7 +1645,7 @@ impl CanonicalHistory {
             info_hash: String::new(),
             group: extract_group(title),
             resolution: extract_resolution(title),
-            is_batch: detect_batch(title),
+            is_batch: release_title::parse(title).is_batch(),
             source: RssSource::Nyaa,
         };
         if let Some(found) = best_series_match(&pseudo, all_meta) {

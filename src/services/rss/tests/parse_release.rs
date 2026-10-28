@@ -10,7 +10,7 @@ fn item(title: &str) -> RssItem {
         info_hash: String::new(),
         group: extract_group(title),
         resolution: extract_resolution(title),
-        is_batch: detect_batch(title),
+        is_batch: crate::services::release_title::parse(title).is_batch(),
         source: RssSource::Nyaa,
     }
 }

@@ -32,7 +32,15 @@ use super::parse;
 ///   through `for_series`, which is this reading plus the series' name.
 /// - `season`: the season check (`conflicts_with_season`) in the same
 ///   gates, and the misgrab verdict's season note.
-const MIGRATED_LENSES: &[&str] = &["numbers.loose", "season"];
+/// - `batch.nyaa`, `batch.rss`, `batch.torznab`: every source's batch
+///   flag is `is_batch`.
+const MIGRATED_LENSES: &[&str] = &[
+    "numbers.loose",
+    "season",
+    "batch.nyaa",
+    "batch.rss",
+    "batch.torznab",
+];
 
 pub(super) fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
