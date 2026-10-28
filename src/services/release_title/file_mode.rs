@@ -242,6 +242,9 @@ const EXTRAS_FOLDERS: &[&str] = &[
     "特典",
     "特典映像",
     "映像特典",
+    // A BD's picture gallery (DBD-Raws: `图集/[...][图集][01].mkv`).
+    "图集",
+    "圖集",
     "scans",
     "fonts",
     "ost",
@@ -619,6 +622,9 @@ mod tests {
         }
         assert!(path_names_extras("【特典映像】/Clip 01.mkv"));
         assert!(path_names_extras("（特典）/Clip 01.mkv"));
+        assert!(path_names_extras(
+            "图集/[DBD-Raws][终末的女武神][图集][01][1080P][BDRip][HEVC-10bit][FLAC].mkv"
+        ));
         // A special stays a special there.
         assert!(parse_file_path("Extras/[G] Show - OVA 01.mkv").is_some_and(|s| s.special));
         // A show folder that mentions extras is still the show's.
