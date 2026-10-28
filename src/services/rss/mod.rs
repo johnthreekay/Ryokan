@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub mod feed;
-use feed::{build_item_key, extract_group, extract_resolution, fetch_feeds};
+use feed::{build_item_key, fetch_feeds};
 
 /// multi-rss commit F — flatten an `RssSource` to the
 /// `(source_str, source_id_opt)` pair `rss_seen.source` +
@@ -1478,6 +1478,7 @@ pub async fn match_library_title(
     // Synthetic RssItem for the matcher — `source` doesn't matter
     // here because this path is title-only matching for the
     // post-grab attribution helper, not a sync-time fetch.
+    let fields = release_title::release_fields(title);
     let pseudo = RssItem {
         title: title.to_string(),
         link: String::new(),
@@ -1485,8 +1486,8 @@ pub async fn match_library_title(
         torrent: String::new(),
         magnet: String::new(),
         info_hash: String::new(),
-        group: extract_group(title),
-        resolution: extract_resolution(title),
+        group: fields.group,
+        resolution: fields.resolution,
         is_batch,
         source: RssSource::Nyaa,
     };
@@ -1523,7 +1524,7 @@ impl CanonicalHistory {
         }
         self.items.entry(key).or_default().push(HistoryRelease {
             revision: media::parse_release_revision(title).version,
-            group: extract_group(title),
+            group: release_title::release_fields(title).group,
         });
     }
 
@@ -1532,6 +1533,7 @@ impl CanonicalHistory {
     fn insert_title(&mut self, title: &str, all_meta: &[SeriesMeta]) {
         // Same synthetic-item pattern as `find_series_for_title` —
         // matcher inputs only, no real grab.
+        let fields = release_title::release_fields(title);
         let pseudo = RssItem {
             title: title.to_string(),
             link: String::new(),
@@ -1539,9 +1541,9 @@ impl CanonicalHistory {
             torrent: String::new(),
             magnet: String::new(),
             info_hash: String::new(),
-            group: extract_group(title),
-            resolution: extract_resolution(title),
-            is_batch: release_title::parse(title).is_batch(),
+            group: fields.group,
+            resolution: fields.resolution,
+            is_batch: fields.is_batch,
             source: RssSource::Nyaa,
         };
         if let Some(found) = best_series_match(&pseudo, all_meta) {

@@ -87,27 +87,16 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
     // Length-bounded; see `media::anitomy_parse`.
     let elements = crate::services::media::anitomy_parse(&clean);
 
-    // ── Resolution ────────────────────────────────────────────────────────
-    if let Some(res_str) = elements.get(ElementCategory::VideoResolution) {
-        result.resolution = Resolution::from_str(res_str);
-        if result.resolution == Resolution::Unknown {
-            // anitomy sometimes captures the dimension form (e.g. "1920x1080")
-            // which Resolution::from_str doesn't understand. Fall through to
-            // the dimension parser.
-            result.resolution = parse_dimensions(res_str);
-        }
-    }
-    if result.resolution == Resolution::Unknown {
-        result.resolution = parse_dimensions(&clean);
-    }
-
-    // ── Release group ─────────────────────────────────────────────────────
-    if let Some(group) = elements.get(ElementCategory::ReleaseGroup) {
-        let trimmed = group.trim();
-        if !trimmed.is_empty() {
-            result.release_group = Some(trimmed.to_string());
-        }
-    }
+    // ── Resolution and release group ──────────────────────────────────────
+    // `release_title` reads both, as every other path does. A height
+    // between the standard ones lands in the tier below it (`540p` is
+    // the 480p tier), the same loose bounds as a `WxH` dimension.
+    let parsed = crate::services::release_title::parse(&clean);
+    result.resolution = parsed
+        .resolution
+        .map(|h| Resolution::from_dimensions(0, h))
+        .unwrap_or(Resolution::Unknown);
+    result.release_group = parsed.group;
 
     let title_lower = clean.to_ascii_lowercase();
 
@@ -436,57 +425,6 @@ const PLATFORM_TAGS: &[&str] = &[
     "atvp",
     "adn",
 ];
-
-/// Parse a dimension fragment like "1920x1080" or "1280x720" into a
-/// `Resolution`. Returns `Resolution::Unknown` if no dimension pair is found
-/// or the pair doesn't round-trip to a known tier.
-fn parse_dimensions(text: &str) -> Resolution {
-    // Walk the bytes looking for a digit run, an x/X separator, another
-    // digit run. Cheaper than instantiating a regex and easier to reason
-    // about than keeping a LazyLock alive.
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        // Skip non-digits.
-        while i < bytes.len() && !bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        let start = i;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        let w_len = i - start;
-        if !(3..=4).contains(&w_len) {
-            continue;
-        }
-        if i < bytes.len() && (bytes[i] == b'x' || bytes[i] == b'X') {
-            let sep = i;
-            let h_start = sep + 1;
-            let mut j = h_start;
-            while j < bytes.len() && bytes[j].is_ascii_digit() {
-                j += 1;
-            }
-            let h_len = j - h_start;
-            if (3..=4).contains(&h_len) {
-                let w: u32 = std::str::from_utf8(&bytes[start..sep])
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-                let h: u32 = std::str::from_utf8(&bytes[h_start..j])
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-                let r = Resolution::from_dimensions(w, h);
-                if r != Resolution::Unknown {
-                    return r;
-                }
-                i = j;
-                continue;
-            }
-        }
-    }
-    Resolution::Unknown
-}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tests

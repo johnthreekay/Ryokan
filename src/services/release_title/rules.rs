@@ -502,7 +502,42 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
             }
         }
     }
+    if found.is_none() {
+        found = group_before_alternate_title(ctx);
+    }
     found
+}
+
+/// `... (1080p TVer Web-DL) [Lord Karasuma] / Detective Conan ...`: one or
+/// two plain words in a square bracket that follows a metadata bracket
+/// and comes right before an alternate title (` / `, ` | `).
+fn group_before_alternate_title(ctx: &Ctx) -> Option<String> {
+    ctx.groups.iter().filter(|g| g.kind == '[').find_map(|g| {
+        let content = ctx.content(g);
+        let words_ok = (1..=2).contains(&content.len())
+            && content.iter().all(|&t| {
+                ctx.toks[t].is_word()
+                    && ctx.class[t] == Class::Plain
+                    && ctx.toks[t].text.chars().all(|c| c.is_ascii_alphanumeric())
+            });
+        let after_meta = ctx.prev(g.open).is_some_and(|p| {
+            matches!(ctx.toks[p].kind, Kind::Close(_))
+                && ctx
+                    .group(ctx.toks[p].group)
+                    .is_some_and(|m| ctx.content(m).iter().any(|&t| ctx.class[t].is_meta()))
+        });
+        let before_alt = g.close < ctx.toks.len()
+            && ctx
+                .next(g.close)
+                .is_some_and(|n| ctx.toks[n].kind == Kind::Alt);
+        (words_ok && after_meta && before_alt).then(|| {
+            content
+                .iter()
+                .map(|&t| ctx.toks[t].text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+    })
 }
 
 fn classify_word(lower: &str) -> Class {

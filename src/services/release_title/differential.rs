@@ -36,6 +36,9 @@ use super::parse;
 ///   flag is `is_batch`.
 /// - `rss.season`, `rss.episodes`: the RSS matcher's `parse_release`
 ///   (and `match_library_title`) reads the parsed title.
+/// - `group.feed`, `group.torznab`, `resolution.feed`: every source's
+///   group and resolution are `release_fields` (and `classify_filename`
+///   reads the same parse).
 const MIGRATED_LENSES: &[&str] = &[
     "numbers.loose",
     "season",
@@ -44,6 +47,9 @@ const MIGRATED_LENSES: &[&str] = &[
     "batch.torznab",
     "rss.season",
     "rss.episodes",
+    "group.feed",
+    "group.torznab",
+    "resolution.feed",
 ];
 
 pub(super) fn fixtures() -> PathBuf {

@@ -49,7 +49,7 @@ fn item(title: &str) -> RssItem {
         torrent: String::new(),
         magnet: String::new(),
         info_hash: String::new(),
-        group: extract_group(title),
+        group: crate::services::release_title::release_fields(title).group,
         resolution: "1080".to_string(),
         is_batch: false,
         source: RssSource::Nyaa,

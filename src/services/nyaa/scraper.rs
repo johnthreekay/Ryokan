@@ -204,7 +204,7 @@ struct ClassifiedFields {
 /// parser is sync. Interactive paths that want Layer 3 enrichment call
 /// [`enrich_results_with_group_map`] after parsing.
 fn classify_search_result(title: &str) -> ClassifiedFields {
-    use crate::services::source::{ClassificationResult, DecisionRule, Resolution, Source};
+    use crate::services::source::{ClassificationResult, DecisionRule, Source};
     use crate::services::source_filename::classify_filename;
 
     let fc = classify_filename(title);
@@ -240,16 +240,13 @@ fn classify_search_result(title: &str) -> ClassifiedFields {
         other => other.to_string(),
     };
 
-    // Bare-digit resolution ("1080") for back-compat with existing
-    // templates that render `{{ r.resolution }}p` tags.
-    let resolution = match fc.resolution {
-        Resolution::Unknown => String::new(),
-        r => r.as_str().trim_end_matches('p').to_string(),
-    };
+    // Group and bare-digit resolution ("1080", which existing templates
+    // render as `{{ r.resolution }}p`) as every source reads them.
+    let fields = release_title::release_fields(title);
 
     ClassifiedFields {
-        group: fc.release_group.unwrap_or_default(),
-        resolution,
+        group: fields.group,
+        resolution: fields.resolution,
         quality_label,
         source: match winning_source {
             Source::Unknown => String::new(),

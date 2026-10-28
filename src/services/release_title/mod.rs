@@ -171,6 +171,25 @@ pub fn parse(title: &str) -> ParsedTitle {
     rules::parse(title)
 }
 
+/// What a release source stores beside a title, from one parse: the
+/// group (empty when none), the resolution as bare digits (`"1080"`,
+/// empty when none) and the batch flag.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseFields {
+    pub group: String,
+    pub resolution: String,
+    pub is_batch: bool,
+}
+
+pub fn release_fields(title: &str) -> ReleaseFields {
+    let parsed = parse(title);
+    ReleaseFields {
+        is_batch: parsed.is_batch(),
+        resolution: parsed.resolution.map(|r| r.to_string()).unwrap_or_default(),
+        group: parsed.group.unwrap_or_default(),
+    }
+}
+
 /// The season a series name advertises (`2nd Season`, `Season 3`,
 /// `Made in Abyss III`, `Part 2`), read the way a release title is. For
 /// AniList titles and aliases: the auto-search's expected season and the
@@ -307,6 +326,29 @@ mod tests {
         assert_eq!(season_marker("Steins;Gate 0"), None);
         assert_eq!(season_marker("Kimetsu no Yaiba: Yuukaku-hen"), None);
         assert_eq!(season_marker("Lupin III: Part 6"), Some(6));
+    }
+
+    #[test]
+    fn release_fields_read_group_and_resolution() {
+        let f = |t: &str| super::release_fields(t);
+        assert_eq!(f("[SubsPlease] Show - 01").group, "SubsPlease");
+        assert_eq!(f("Show - 01").group, "");
+        assert_eq!(f("[unclosed group rest").group, "");
+        assert_eq!(f("[漢字組] Show").group, "漢字組");
+        assert_eq!(f("[] Show").group, "");
+        assert_eq!(
+            f("Show - 01 1080p H.264-VARYG (Dual-Audio, Multi-Subs)").group,
+            "VARYG"
+        );
+        assert_eq!(
+            f("[Group] Show 1080p HEVC + 720p AVC dual-track").resolution,
+            "1080"
+        );
+        assert_eq!(f("[Group] Show 1080P").resolution, "1080");
+        assert_eq!(f("[Group] Show - 01").resolution, "");
+        assert_eq!(f("[Group] Show 10-bit 1080 BluRay").resolution, "1080");
+        assert_eq!(f("[Group] Show - 01 (1920x1080p)").resolution, "1080");
+        assert!(f("[Group] Show - 01-12 (1080p)").is_batch);
     }
 
     #[test]

@@ -630,9 +630,11 @@ impl Release {
         indexer_name: &str,
         indexer_kind: &str,
     ) -> crate::services::rss::RssItem {
-        let group = extract_group_from_title(&self.title);
-        let resolution = extract_resolution_from_title(&self.title);
-        let is_batch = crate::services::release_title::parse(&self.title).is_batch();
+        let crate::services::release_title::ReleaseFields {
+            group,
+            resolution,
+            is_batch,
+        } = crate::services::release_title::release_fields(&self.title);
         crate::services::rss::RssItem {
             title: self.title.clone(),
             link: self.link.clone(),
@@ -668,9 +670,11 @@ impl Release {
     /// good enough for scoring, not as accurate as the full
     /// anitomy pass.
     pub fn into_search_result(self) -> crate::services::nyaa::SearchResult {
-        let group = extract_group_from_title(&self.title);
-        let resolution = extract_resolution_from_title(&self.title);
-        let is_batch = crate::services::release_title::parse(&self.title).is_batch();
+        let crate::services::release_title::ReleaseFields {
+            group,
+            resolution,
+            is_batch,
+        } = crate::services::release_title::release_fields(&self.title);
         let indexer_id = self.indexer_id;
         let indexer_name = self.indexer_name;
         crate::services::nyaa::SearchResult {
@@ -712,42 +716,6 @@ impl Release {
             indexer_name,
         }
     }
-}
-
-fn extract_group_from_title(title: &str) -> String {
-    // First `[Group]` bracket is the convention. Second-bracket
-    // (e.g., `[BD 1080p]`) is metadata; ignore. Empty when no
-    // bracketed group is present.
-    let bytes = title.as_bytes();
-    let mut start = None;
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b'[' {
-            start = Some(i + 1);
-        } else if b == b']'
-            && let Some(s) = start
-        {
-            let inner = &title[s..i];
-            if !inner.is_empty() && !inner.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-                return inner.to_string();
-            }
-            start = None;
-        }
-    }
-    String::new()
-}
-
-fn extract_resolution_from_title(title: &str) -> String {
-    // PR #107 review fix #10: case-insensitive single pass instead
-    // of two separate lists. Covers 2160P / 480P uppercase that the
-    // earlier list missed.
-    let lower = title.to_ascii_lowercase();
-    for needle in ["2160p", "1080p", "720p", "480p"] {
-        if lower.contains(needle) {
-            let digits: String = needle.chars().take_while(|c| c.is_ascii_digit()).collect();
-            return digits;
-        }
-    }
-    String::new()
 }
 
 fn format_bytes_human(bytes: u64) -> String {
@@ -987,47 +955,6 @@ mod tests {
     }
 
     // ── Helper unit tests (PR #107 review fix #10) ──────────────────
-
-    #[test]
-    fn extract_group_pulls_first_bracketed_segment() {
-        assert_eq!(
-            super::extract_group_from_title("[GroupX] Show - 01 [BD 1080p].mkv"),
-            "GroupX"
-        );
-    }
-
-    #[test]
-    fn extract_group_skips_pure_numeric_brackets() {
-        // Some indexers prefix with a numeric ID (`[1234]` etc.).
-        // Skip those — they're not the release group.
-        assert_eq!(
-            super::extract_group_from_title("[12345] [GroupX] Show.mkv"),
-            "GroupX"
-        );
-    }
-
-    #[test]
-    fn extract_group_returns_empty_when_no_brackets() {
-        assert_eq!(super::extract_group_from_title("Show - 01.mkv"), "");
-    }
-
-    #[test]
-    fn extract_resolution_handles_uppercase_p() {
-        // PR #107 review fix #10: 2160P / 480P with uppercase P
-        // weren't covered by the original list; the case-insensitive
-        // pass catches both.
-        assert_eq!(
-            super::extract_resolution_from_title("Show 2160P.mkv"),
-            "2160"
-        );
-        assert_eq!(super::extract_resolution_from_title("Show 480P.mkv"), "480");
-        assert_eq!(super::extract_resolution_from_title("Show [1080P]"), "1080");
-    }
-
-    #[test]
-    fn extract_resolution_returns_empty_when_no_marker() {
-        assert_eq!(super::extract_resolution_from_title("Show - 01.mkv"), "");
-    }
 
     #[test]
     fn format_bytes_human_zero_renders_empty() {

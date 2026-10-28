@@ -8,10 +8,9 @@
 //! Public (to `super`) surface:
 //! - `fetch_feeds` / `fetch_feed` — network I/O
 //! - `build_item_key` — the dedup key sync uses to detect already-seen items
-//! - `extract_group` / `extract_resolution` — also called by `parse_release`
-//!   in the parent to re-derive these fields from an arbitrary title string
-//!   rather than a feed item. The batch flag comes from
-//!   `release_title::ParsedTitle::is_batch`, as on every other source.
+//!
+//! An item's group, resolution and batch flag come from
+//! `release_title::release_fields`, as on every other source.
 
 use std::{collections::HashMap, sync::LazyLock, time::Duration};
 
@@ -237,9 +236,11 @@ pub(super) fn parse_feed(xml: &str, source: RssSource) -> Vec<RssItem> {
             &extract_tag(block, "nyaa:infohash"),
         ))
         .unwrap_or_default();
-        let group = extract_group(&title);
-        let resolution = extract_resolution(&title);
-        let is_batch = crate::services::release_title::parse(&title).is_batch();
+        let crate::services::release_title::ReleaseFields {
+            group,
+            resolution,
+            is_batch,
+        } = crate::services::release_title::release_fields(&title);
 
         items.push(RssItem {
             title,
@@ -373,25 +374,6 @@ fn decode_xml(value: &str) -> String {
     out
 }
 
-pub(super) fn extract_group(title: &str) -> String {
-    if let Some(start) = title.find('[')
-        && let Some(end) = title[start..].find(']')
-    {
-        return title[start + 1..start + end].to_string();
-    }
-    String::new()
-}
-
-pub(super) fn extract_resolution(title: &str) -> String {
-    let lower = title.to_lowercase();
-    for res in ["2160", "1080", "720", "576", "480"] {
-        if lower.contains(&format!("{}p", res)) || lower.contains(&format!(" {} ", res)) {
-            return res.to_string();
-        }
-    }
-    String::new()
-}
-
 #[cfg(test)]
 mod parser_tests {
     //! Coverage for the RSS feed parser primitives (`decode_xml`,
@@ -518,67 +500,6 @@ mod parser_tests {
         assert_eq!(
             strip_cdata("<![CDATA[never closed"),
             "<![CDATA[never closed"
-        );
-    }
-
-    // ── extract_group ────────────────────────────────────────────────
-
-    #[test]
-    fn extract_group_finds_first_bracket_pair() {
-        assert_eq!(extract_group("[SubsPlease] Show - 01"), "SubsPlease");
-    }
-
-    #[test]
-    fn extract_group_returns_empty_when_no_brackets() {
-        assert_eq!(extract_group("Show - 01"), "");
-    }
-
-    #[test]
-    fn extract_group_returns_empty_when_unmatched_open() {
-        assert_eq!(extract_group("[unclosed group rest"), "");
-    }
-
-    #[test]
-    fn extract_group_handles_unicode_in_name() {
-        assert_eq!(extract_group("[漢字組] Show"), "漢字組");
-    }
-
-    #[test]
-    fn extract_group_handles_empty_brackets() {
-        assert_eq!(extract_group("[] Show"), "");
-    }
-
-    // ── extract_resolution ────────────────────────────────────────────
-
-    #[test]
-    fn extract_resolution_picks_highest_listed_first() {
-        // Loop order is 2160 → 1080 → 720 → 576 → 480; first hit
-        // wins. A title carrying both "1080p" and "720p" returns the
-        // bigger one.
-        assert_eq!(
-            extract_resolution("[Group] Show 1080p HEVC + 720p AVC dual-track"),
-            "1080"
-        );
-    }
-
-    #[test]
-    fn extract_resolution_handles_uppercase_p() {
-        assert_eq!(extract_resolution("[Group] Show 1080P"), "1080");
-    }
-
-    #[test]
-    fn extract_resolution_returns_empty_when_absent() {
-        assert_eq!(extract_resolution("[Group] Show - 01"), "");
-    }
-
-    #[test]
-    fn extract_resolution_matches_bare_token_with_spaces() {
-        // The fallback `" {res} "` pattern catches resolutions
-        // expressed without the `p` suffix when surrounded by
-        // whitespace. `10-bit 1080 BluRay` is a real shape.
-        assert_eq!(
-            extract_resolution("[Group] Show 10-bit 1080 BluRay"),
-            "1080"
         );
     }
 

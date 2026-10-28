@@ -8,8 +8,8 @@ fn item(title: &str) -> RssItem {
         torrent: String::new(),
         magnet: String::new(),
         info_hash: String::new(),
-        group: extract_group(title),
-        resolution: extract_resolution(title),
+        group: crate::services::release_title::release_fields(title).group,
+        resolution: crate::services::release_title::release_fields(title).resolution,
         is_batch: crate::services::release_title::parse(title).is_batch(),
         source: RssSource::Nyaa,
     }

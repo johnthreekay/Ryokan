@@ -1,6 +1,6 @@
 # services/release_title/AGENTS.md
 
-One parser for anime release titles, replacing the separate batch detectors, episode readers, season readers and group / resolution extractors that disagreed with each other (issue #296 and the plan behind it). Pure: no I/O, no regex in the hot path. Call sites move onto it one at a time, each move gated by the differential below. Moved so far: the search gates (`auto_search::classify_match`, the interactive filter, the TV-specials rejection, scoring, the Wanted episode-set selection).
+One parser for anime release titles, replacing the separate batch detectors, episode readers, season readers and group / resolution extractors that disagreed with each other (issue #296 and the plan behind it). Pure: no I/O, no regex in the hot path. Call sites move onto it one at a time, each move gated by the differential below. Moved so far: the search gates (`auto_search::classify_match`, the interactive filter, the TV-specials rejection, scoring, the Wanted episode-set selection), the season readers (`conflicts_with_season`, `season_marker`), every grab's episode list (`grab_commit::grab_episode_list`), every source's batch flag, the RSS matcher, and every source's group and resolution (`release_fields`, also behind `source_filename::classify_filename`).
 
 ## Shape
 
