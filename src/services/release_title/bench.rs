@@ -7,7 +7,8 @@
 //!
 //! Each field is compared the way its consumer reads it today: group and
 //! resolution through `source_filename::classify_filename` (anitomy plus
-//! its fallbacks), the extras gate through `file_mode::is_non_episodic_extra`,
+//! its fallbacks), the extras gate through the old `is_non_episodic_extra`
+//! (kept in `legacy::media`),
 //! title and year straight from anitomy as `library_link` and manual
 //! import take them.
 
@@ -17,7 +18,6 @@ use std::time::Instant;
 use anitomy::ElementCategory;
 
 use super::differential::{fixtures, json_files, load, sample_titles, verified_titles};
-use super::file_mode::is_non_episodic_extra;
 use super::{legacy, parse};
 use crate::services::media::anitomy_parse;
 use crate::services::source::Resolution;
@@ -200,7 +200,7 @@ fn agreement() {
             extra.add(
                 title,
                 &want_extra,
-                &is_non_episodic_extra(&title.to_lowercase()),
+                &legacy::media::is_non_episodic_extra(&title.to_lowercase()),
                 &rt.extra,
             );
             if let Some(want) = expect.get("year") {
@@ -347,7 +347,7 @@ fn sample_disagreements() {
                 ),
             ));
         }
-        let an_extra = is_non_episodic_extra(&title.to_lowercase());
+        let an_extra = legacy::media::is_non_episodic_extra(&title.to_lowercase());
         if an_extra != rt.extra {
             out.push((
                 "extra",

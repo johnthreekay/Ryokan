@@ -6,19 +6,17 @@
 //! rules with the file-name shape rules: a loose range keeps its first
 //! number or names nothing, a run longer than [`MAX_FILE_SPAN`] is no
 //! file, only a tag sets a season, a title-word `Special` is the name),
-//! then two residual shapes the title rules leave open, then the anitomy
-//! extras gate and the special-marker regexes. It replaced the old branch
+//! then two residual shapes the title rules leave open, then the
+//! special-marker regexes; extras are the title rules' own `extra` (the
+//! anitomy `AnimeType` gate went in phase 12b). It replaced the old branch
 //! regexes (phase 11b of the parser plan); `release_title::legacy::media`
 //! keeps them for `differential::file_report`, and every difference over
 //! the corpora was reviewed (the filename corpus notes each change).
 
 use std::sync::LazyLock;
 
-use anitomy::ElementCategory;
 use regex_lite::Regex;
 use serde::Serialize;
-
-use crate::services::media::anitomy_parse;
 
 /// Sonarr's shape: the episode number followed by the marker
 /// (`- 01 OVA [1080p]`, `05 Special`). The marker has to end the
@@ -67,17 +65,6 @@ pub(crate) static RE_PROPER: LazyLock<Regex> =
 
 pub(crate) static RE_REPACK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\b(?:REPACK|RERIP)\b").expect("RE_REPACK compiles"));
-
-/// anitomy `AnimeType` values that mark a file as a non-episodic extra
-/// (issue #203): promotional videos, creditless openings / endings,
-/// previews. Deliberately NOT `OAD` / `OVA` / `Special` / `SP` /
-/// `Movie`: those are frequently wanted content and, with no special
-/// slot in the Season-1 model yet, stay with the collision check.
-/// anitomy has no `CM` / `Menu` / `Trailer` keywords today; they are
-/// listed so the gate picks them up if a later anitomy adds them.
-pub(crate) const NON_EPISODIC_ANIME_TYPES: &[&str] = &[
-    "pv", "cm", "ncop", "nced", "op", "ed", "opening", "ending", "preview", "menu", "trailer",
-];
 
 /// Parse the rightmost bare two- or three-digit dot-delimited token.
 ///
@@ -194,12 +181,6 @@ pub const MAX_FILE_SPAN: i32 = 6;
 /// function; only the return shape differs.
 pub fn parse_episode_span(lower: &str) -> Option<EpisodeSpan> {
     let mut parsed = file_reading(lower)?;
-    // The anitomy gate runs last and only when a number was found, so
-    // the (comparatively) expensive tokenizer pass is skipped for the
-    // NC / bare-marker shapes the regex branches already reject.
-    if is_non_episodic_extra(lower) {
-        return None;
-    }
     if !parsed.special && (parsed.season == Some(0) || has_special_marker(lower)) {
         parsed.special = true;
     }
@@ -209,7 +190,7 @@ pub fn parse_episode_span(lower: &str) -> Option<EpisodeSpan> {
 /// [`parse_episode_span`] for a file whose series is known: a number
 /// its own name holds is never the episode (`Mob Psycho 100 (BD).mkv`),
 /// and where the name is found, a bare reading is the number right after
-/// it. The extras gate and the special markers decide first, as without
+/// it. The extras rule and the special markers decide first, as without
 /// the series.
 pub fn parse_episode_span_for(lower: &str, anchors: &super::SeriesAnchors) -> Option<EpisodeSpan> {
     let span = parse_episode_span(lower)?;
@@ -304,61 +285,6 @@ fn file_reading(lower: &str) -> Option<EpisodeSpan> {
         first: n,
         last: n,
         special: false,
-    })
-}
-
-/// anitomy `AnimeType` gate (issue #203). True when anitomy types the
-/// name as one of [`NON_EPISODIC_ANIME_TYPES`] and the keyword sits in
-/// the episode position: after the first ` - ` separator, or anywhere
-/// past the title's first word when the name has no separator.
-///
-/// anitomy contributes only the type here; its `EpisodeNumber` is never
-/// consulted because its codec handling is weaker than the homegrown
-/// branches (`H.265` parses as episode 265 there; see PR #198).
-///
-/// The position check is the one guard anitomy needs. It keeps the
-/// keyword inside `AnimeTitle` in every case (`ed edd n eddy`,
-/// `runway de waratte - character pv`), so a keyword that *leads* the
-/// title (`Ed Edd n Eddy - 01`, `OP Rewrite - 03`) is typed as ED / OP
-/// exactly like a real extra. What separates them is where the keyword
-/// sits: extras carry it after the dash (`- Character PV 1`,
-/// `- Creditless Ending 2`) or in a dash-less name (`Creditless Opening
-/// 1`), title words sit before it. Subtitle words are safe either way:
-/// anitomy reads `- 05 - Opening Night` as an episode title, not a type.
-pub(crate) fn is_non_episodic_extra(lower: &str) -> bool {
-    // anitomy rejects NUL bytes; nothing real carries them.
-    if lower.contains('\0') {
-        return false;
-    }
-    let elements = anitomy_parse(lower);
-    let title_start = elements
-        .get(ElementCategory::AnimeTitle)
-        .and_then(|t| lower.find(&t.to_ascii_lowercase()))
-        .unwrap_or(0);
-    // Earliest byte offset a keyword may start at to count: right after
-    // the first ` - ` / `_-_` separator, else past the title's first
-    // character (so a title-leading keyword never qualifies).
-    let min_at = lower
-        .find(" - ")
-        .or_else(|| lower.find("_-_"))
-        .map(|i| i + 3)
-        .unwrap_or(title_start + 1);
-    elements
-        .get_all(ElementCategory::AnimeType)
-        .into_iter()
-        .map(|t| t.to_ascii_lowercase())
-        .any(|t| NON_EPISODIC_ANIME_TYPES.contains(&t.as_str()) && keyword_from(lower, &t, min_at))
-}
-
-/// True when `keyword` occurs as a whole word in `haystack` starting at
-/// byte offset `min_at` or later.
-pub(crate) fn keyword_from(haystack: &str, keyword: &str, min_at: usize) -> bool {
-    let bytes = haystack.as_bytes();
-    haystack.match_indices(keyword).any(|(at, _)| {
-        let before_ok = at == 0 || !bytes[at - 1].is_ascii_alphanumeric();
-        let end = at + keyword.len();
-        let after_ok = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
-        before_ok && after_ok && at >= min_at
     })
 }
 

@@ -1111,7 +1111,7 @@ pub(crate) mod media {
         None
     }
 
-    fn is_non_episodic_extra(lower: &str) -> bool {
+    pub(crate) fn is_non_episodic_extra(lower: &str) -> bool {
         // anitomy rejects NUL bytes; nothing real carries them.
         if lower.contains('\0') {
             return false;

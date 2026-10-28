@@ -1467,6 +1467,8 @@ mod tests {
         // A label is still an extra.
         assert_eq!(span("[Group] Show - NCOP [1080p].mkv"), None);
         assert_eq!(span("[Group] Show - 12 - Preview [1080p].mkv"), None);
+        // A BD menu (the anitomy gate this replaced read it as episode 1).
+        assert_eq!(span("[Group] Show Menu 01 [BD].mkv"), None);
     }
 
     #[test]
