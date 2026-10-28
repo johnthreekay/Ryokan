@@ -634,10 +634,10 @@ pub async fn find_best_batch_for_target_with_diag(
 }
 
 /// Who a batch list is for. The automatic batch grab takes only releases
-/// whose titles say they are packs and name the series exactly; the
-/// interactive list also takes fuzzy title matches and unnumbered packs
-/// (`ParsedTitle::is_unnumbered_pack_for`), whose files the user sees in
-/// the picker before anything is grabbed.
+/// whose titles say they are packs and name the series exactly (or a
+/// SeaDex pick, as before); the interactive list also takes fuzzy title
+/// matches and unnumbered packs (`ParsedTitle::is_unnumbered_pack_for`),
+/// whose files the user sees in the picker before anything is grabbed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BatchList {
     AutoGrab,
@@ -841,17 +841,30 @@ pub async fn collect_scored_batches_for_target_with_diag(
     // exactly and nothing of what it holds (`[UTW] Angel Beats! [BD]`):
     // usually the whole series, sometimes a movie or one file, so it is
     // offered as a batch whose grab always opens the file picker. A
-    // sequel or spin-off named by its subtitle is not this series' pack.
+    // sequel or spin-off named by its subtitle is not this series' pack,
+    // nor is a remake whose year the title gives (`Fruits Basket (2019)`
+    // for the 2001 series). A SeaDex pick of that shape, kept below
+    // anyway, is marked the same way.
     if list == BatchList::Interactive {
         let anchors = sibling_precompute.anchors();
+        let start = detail.season_year;
+        let end = detail.end_year.or(start);
         for c in candidates.iter_mut() {
-            if !c.is_batch
-                && c.match_provenance
-                    .as_ref()
-                    .is_some_and(|p| p.kind == MatchKind::Verbatim)
-                && !names_more_than_the_series(&c.title, &aliases)
-                && release_title::parse(&c.title).is_unnumbered_pack_for(anchors)
-            {
+            if c.is_batch {
+                continue;
+            }
+            let kind = c.match_provenance.as_ref().map(|p| p.kind);
+            let named = kind == Some(MatchKind::Verbatim)
+                && !names_more_than_the_series(&c.title, &aliases);
+            if !named && kind != Some(MatchKind::SeadexCurated) {
+                continue;
+            }
+            let parsed = release_title::parse(&c.title);
+            let year_fits = match (parsed.year, start, end) {
+                (Some(y), Some(s), Some(e)) => (s - 1..=e + 1).contains(&y),
+                _ => true,
+            };
+            if year_fits && parsed.is_unnumbered_pack_for(anchors) {
                 c.is_batch = true;
             }
         }

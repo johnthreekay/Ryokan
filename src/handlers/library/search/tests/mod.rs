@@ -1791,6 +1791,69 @@ mod handler_endpoints {
     }
 
     #[tokio::test]
+    async fn grab_batch_result_records_no_episodes_for_an_unnumbered_pack() {
+        // The same title posted from a row the batch list marked
+        // unnumbered (no info-hash, so the picker could not open): its
+        // episodes are unknown until its files are read, so none are
+        // recorded. A lone movie file must not be filed as the series.
+        use crate::test_support::{build_test_app_state, in_memory_pool, seed_series};
+
+        let db = in_memory_pool().await;
+        let anilist_id: i64 = 804;
+        let series_id = seed_series(&db, anilist_id, "Batch Show").await;
+        let detail = empty_anime_detail(anilist_id, "Batch Show");
+        crate::models::metadata_cache::upsert(&db, series_id, anilist_id, None, &detail)
+            .await
+            .unwrap();
+
+        let state = build_test_app_state(db.clone(), None);
+        let client = Arc::new(GrabRecordingClient::new());
+        install_grab_pool(
+            &state,
+            client.clone() as Arc<dyn crate::services::download_client::DownloadClient>,
+        )
+        .await;
+
+        let body = serde_json::json!({
+            "url": "https://indexer.example/get/123.nzb",
+            "title": "[Group] Batch Show (BD 1080p)",
+            "group": "Group",
+            "resolution": "1080p",
+            "info_hash": "",
+            "size_bytes": 12_000_000_000_i64,
+            "unnumbered": true,
+        });
+        let result = super::super::grab::grab_batch_result(
+            axum::extract::State(state),
+            axum::extract::Path(anilist_id),
+            axum::extract::Json(body),
+        )
+        .await;
+        let axum::response::Json(resp) = result.expect("batch grab must succeed");
+        assert_eq!(resp["ok"], true);
+
+        let (is_batch, episodes): (i64, String) = sqlx::query_as(
+            "SELECT is_batch, episode_numbers FROM grabbed_torrents WHERE torrent_name = ?",
+        )
+        .bind("[Group] Batch Show (BD 1080p)")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            is_batch, 1,
+            "still a batch grab: its files import by their names"
+        );
+        assert_eq!(episodes, "[]");
+        let tag_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM episode_quality_tags WHERE series_id = ?")
+                .bind(series_id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(tag_count, 0);
+    }
+
+    #[tokio::test]
     async fn interactive_batch_rows_mark_unnumbered_packs_and_force_the_picker() {
         // The batch collector offers a title that names no episodes
         // (`[UTW] Show [BD]`) as a batch; its row says so and its Grab

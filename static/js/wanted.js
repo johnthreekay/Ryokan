@@ -371,6 +371,7 @@
                 size_bytes: result.size_bytes || 0,
                 indexer_id: result.indexer_id == null ? null : result.indexer_id,
                 match_provenance: result.match_provenance == null ? null : result.match_provenance,
+                unnumbered: unnumbered,
             }),
         })
         .then(async function (r) {

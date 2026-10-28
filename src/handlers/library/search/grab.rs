@@ -63,6 +63,12 @@ pub async fn grab_batch_result(
         ))?,
     };
     let size_bytes = body["size_bytes"].as_i64().unwrap_or(0);
+    // A pack the batch list offered although its title names nothing of
+    // what it holds (`data-unnumbered`; it reaches this endpoint only
+    // when the picker could not open, a result with no info-hash). Its
+    // episodes are unknown until its files are read, so none are
+    // recorded here: a lone movie file must not be filed as the series.
+    let unnumbered = body["unnumbered"].as_bool().unwrap_or(false);
     // Multi-client routing — the search-result row carries `indexer_id`
     // (None for Nyaa-direct, Some for torznab/newznab fan-out). The
     // frontend round-trips it on grab so the dispatch routes through
@@ -208,7 +214,7 @@ pub async fn grab_batch_result(
                 .await
                 .with_episode_count(detail.episodes),
             GrabFor::Whole,
-            true,
+            !unnumbered,
         );
         let grab_id = crate::models::grabbed_torrents::record_grab(
             &state.db,

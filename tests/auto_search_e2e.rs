@@ -2008,7 +2008,8 @@ async fn interactive_batch_list_offers_unnumbered_packs_and_the_auto_grab_does_n
     // nothing of what it holds: usually the whole series, sometimes a
     // movie or one file. The interactive batch list offers it (its grab
     // opens the file picker); the automatic batch grab never takes it.
-    // A weekly, a movie and a sequel named by its subtitle are no pack.
+    // A weekly, a movie, a sequel named by its subtitle and a title
+    // giving another year are no pack of this series.
     use ryokan::services::auto_search::{BatchList, collect_scored_batches_for_target};
     let _gate = ENV_LOCK.lock().await;
 
@@ -2019,6 +2020,8 @@ async fn interactive_batch_list_offers_unnumbered_packs_and_the_auto_grab_does_n
         (3, "[Group] Test Show - 05 (1080p) [WEB].mkv"),
         (4, "[Group] Test Show The Movie [BD 1080p]"),
         (5, "[UTW] Test Show Another Story [BD][h264-720p AC3]"),
+        // A remake's year: the series aired in 2024.
+        (6, "[UTW] Test Show (2009) [BD][h264-720p AC3]"),
     ]
     .iter()
     .map(|(n, title)| nyaa_row(&format!("{n:040x}"), 9000 + n, title, "8.0 GiB", 20))
