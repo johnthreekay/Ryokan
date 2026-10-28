@@ -13,9 +13,9 @@
 //!    the user already has the series and the release title parses
 //!    cleanly. No API calls.
 //!
-//! 2. **anitomy + AL search** — the fallback when (1) misses. anitomy
-//!    parses the release title into a structured `anime_title`, then
-//!    `services::anilist::search_anime` looks it up. AL search has
+//! 2. **Title + AL search** — the fallback when (1) misses. The
+//!    release title's own name for the show (`release_title`'s
+//!    `series_title`) goes to `services::anilist::search_anime`. AL search has
 //!    its own AL→Jikan fallback + caching, so we don't need to handle
 //!    rate-limit / outage logic here.
 //!
@@ -31,7 +31,7 @@
 //!    Gated by `config.manual_search_auto_add` (default ON) and a
 //!    safety check that the parsed title shares a substantive token
 //!    with the AL hit's title (catches AL search returning a totally
-//!    unrelated #1 result for very short or anitomy-mangled queries).
+//!    unrelated #1 result for very short or mangled queries).
 //!
 //! ## Episode-number resolution
 //!
@@ -45,8 +45,6 @@
 
 use std::collections::HashSet;
 use std::sync::LazyLock;
-
-use anitomy::ElementCategory;
 
 use crate::AppState;
 use crate::models::log::LogCategory;
@@ -67,7 +65,7 @@ pub enum LibraryLinkOutcome {
         series: series::Series,
         episode_numbers: Vec<i32>,
     },
-    /// Existing series matched via anitomy → AL search → AL-ID
+    /// Existing series matched via the parsed title → AL search → AL-ID
     /// lookup. Fixes the case where the release title's wording
     /// doesn't match any of the local series's title slots but the
     /// AL hit pins it down via id. Distinct from `LinkedExisting`
@@ -108,7 +106,7 @@ pub enum LibraryLinkOutcome {
     /// AL would push them toward "fix the metadata" workflows that
     /// don't apply here.
     DetailFetchFailed { al_id: i64, al_title: String },
-    /// No fuzzy match, anitomy gave up or returned a useless title,
+    /// No fuzzy match, the title named no show or a useless one,
     /// and AL search came up empty. The grab succeeds in the
     /// download client but no library bookkeeping happens.
     NoMatch { parsed_title: Option<String> },
@@ -142,21 +140,13 @@ impl LibraryLinkOutcome {
     // the toast for users who later change their title preference.
 }
 
-/// anitomy-extract the `AnimeTitle` token from a release title. anitomy
-/// never panics on non-NUL input but returns `Err(elements)` when it
-/// couldn't confidently identify a title field. Either way, we just
-/// peek at `AnimeTitle`. Returns `None` when anitomy didn't emit one
-/// at all or the result trimmed to empty.
+/// What a release title says about which show it is
+/// (`release_title`'s `series_title`: markers, subtitles and alternates
+/// kept, up to the episode or the metadata). `None` when it names none
+/// (`S02E04E05.720p`) or is blank.
 pub fn extract_anime_title(release_title: &str) -> Option<String> {
-    if release_title.trim().is_empty() {
-        return None;
-    }
-    // Defensive NUL strip — anitomy rejects NUL bytes; production
-    // titles shouldn't contain them but a corrupted feed byte
-    // shouldn't panic the resolver.
-    let elements = crate::services::media::anitomy_parse(release_title);
-    elements
-        .get(ElementCategory::AnimeTitle)
+    crate::services::release_title::parse(release_title)
+        .series_title
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
@@ -187,7 +177,7 @@ static SUBSTANTIVE_STOPWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(||
 /// True when `parsed` and `candidate` share at least one substantive
 /// alphanumeric token (≥3 chars, lowercase, not in the stop-word set).
 /// Catches AL search returning a totally unrelated #1 result for very
-/// short or anitomy-mangled parsed titles. The 3-char threshold drops
+/// short or mangled parsed titles. The 3-char threshold drops
 /// articles ("the", "of", "a"); the stop-word set drops 3+-char tokens
 /// that would produce spurious matches between unrelated shows
 /// ("ova", "amv", "raw", "1080p", and common English fillers). Numeric
@@ -310,7 +300,7 @@ pub async fn resolve_or_add_series_for_grab(
         };
     }
 
-    // 2. anitomy parse.
+    // 2. The title's own name for the show.
     let Some(parsed_title) = extract_anime_title(title) else {
         return LibraryLinkOutcome::NoMatch { parsed_title: None };
     };
@@ -530,10 +520,9 @@ mod tests {
     fn extract_anime_title_handles_batch_with_range() {
         let parsed =
             extract_anime_title("[Vodes] Ousama Ranking S01 (BDRip 1080p HEVC FLAC) [Dual-Audio]");
-        // anitomy may capture the whole "Ousama Ranking" or include
-        // the season — either is fine, test just confirms a usable
-        // title comes out.
-        let parsed = parsed.expect("anitomy should pull a title from a clean BD batch");
+        // The season marker may ride along; the test only confirms a
+        // usable title comes out.
+        let parsed = parsed.expect("a title from a clean BD batch");
         assert!(
             parsed.to_lowercase().contains("ousama") || parsed.to_lowercase().contains("ranking"),
             "expected the parsed title to contain a substantive token from the release title; got {:?}",
@@ -581,7 +570,7 @@ mod tests {
 
     #[test]
     fn share_substantive_token_rejects_stopword_only_overlap() {
-        // The function gets parsed (anitomy-extracted) titles, not raw
+        // The function gets parsed series titles, not raw
         // filenames — so realistic inputs are short title strings, not
         // full release lines.
         //

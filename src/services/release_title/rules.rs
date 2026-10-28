@@ -1876,11 +1876,51 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
             )
     };
     let mut out = String::new();
-    let mut sep = " ";
+    // What joins the next piece: the dash or slash read just before it,
+    // else its own separator (glued pieces stay glued: `Sound!`, `Let's`,
+    // `喜歡你的100個`).
+    let mut sep: Option<&str> = None;
+    let push = |out: &mut String, sep: &mut Option<&str>, tok: &super::lexer::Tok| {
+        let joiner = sep.take().unwrap_or(match tok.sep {
+            Sep::None | Sep::Start => "",
+            _ => " ",
+        });
+        if !out.is_empty() {
+            out.push_str(joiner);
+        }
+        out.push_str(&tok.text);
+    };
+    // Where trailing punctuation began (`Master Mosquiton \`99`), cut at
+    // the end; a word or number clears it.
+    let mut punct_from: Option<usize> = None;
+    let mut inner_bracket = false;
     for (at, &i) in run.iter().enumerate() {
         let tok = &ctx.toks[i];
         let next = run.get(at + 1).copied();
         let next_num = next.is_some_and(|n| ctx.num(n).is_some());
+        if inner_bracket {
+            // The `】` of a bracket inside a word, already read.
+            inner_bracket = false;
+            continue;
+        }
+        if let Kind::Open(_) = tok.kind
+            && !out.is_empty()
+            && tok.sep == Sep::None
+            && let Some(g) = ctx.group(tok.group)
+            && ctx
+                .toks
+                .get(g.close + 1)
+                .is_some_and(|t| t.sep == Sep::None && t.is_word())
+        {
+            // `用【循環利息】強制收回借出的魔力`: a bracket glued inside a
+            // word is part of it.
+            out.push('[');
+            out.push_str(&ctx.inner_text(g));
+            out.push(']');
+            inner_bracket = true;
+            punct_from = None;
+            continue;
+        }
         if matches!(tok.kind, Kind::Open(_) | Kind::Close(_)) {
             if out.is_empty() {
                 continue;
@@ -1927,10 +1967,21 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
         let word = tok.is_word();
         let number = ctx.num(i);
         match tok.kind {
-            Kind::SegDash if glued_dash => sep = "-",
-            Kind::Alt if glued_slash => sep = "/",
-            Kind::SegDash if !out.is_empty() => sep = " - ",
-            Kind::Alt if !out.is_empty() => sep = " / ",
+            Kind::SegDash if glued_dash => sep = Some("-"),
+            Kind::Alt if glued_slash => sep = Some("/"),
+            Kind::SegDash if !out.is_empty() => sep = Some(" - "),
+            Kind::Alt if !out.is_empty() => sep = Some(" / "),
+            // `KIZUMONOGATARI -Koyomi Vamp-`.
+            Kind::LeadDash if !out.is_empty() => sep = Some(" "),
+            // In-title punctuation (`Sound!`, `Let's & Go!!`, `Diamond no
+            // Ace: Act II`, `Tensei Kizoku, Kantei Skill`).
+            Kind::Other | Kind::Amp | Kind::Comma | Kind::Colon if !out.is_empty() => {
+                let start = out.len();
+                push(&mut out, &mut sep, tok);
+                if !matches!(tok.text.as_str(), "!" | "?") {
+                    punct_from.get_or_insert(start);
+                }
+            }
             _ if word || number.is_some() => {
                 if let Some((_, digits, _)) = number {
                     // A number ending the zone (`Mob Psycho 100 (BD)`, `Show
@@ -1945,28 +1996,45 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
                             Class::SeasonWord | Class::PartWord | Class::VolWord
                         )
                     });
+                    // Before an episode mark the number is the title's (`Log
+                    // Horizon 2 Ep11`, `Series at Age 29 S01E03`).
                     let continues = next.is_some_and(|n| {
                         title_word(n)
                             || ctx.num(n).is_some()
                             || matches!(ctx.toks[n].kind, Kind::SegDash | Kind::Alt)
+                            || matches!(
+                                ctx.class[n],
+                                Class::Tag { .. } | Class::EpPrefix(..) | Class::EpisodeWord
+                            )
                     });
+                    // A range belongs to the episodes or the pack, whatever
+                    // marks it (`2nd Season 01-12`).
+                    let opens_range = next.is_some_and(|n| ctx.toks[n].kind == Kind::RangeOp);
                     let padded = digits >= 2 && tok.text.starts_with('0');
                     let episode_like =
                         !continues || padded && next.is_some_and(|n| ctx.toks[n].is_word());
-                    if episode_like && !marked && !out.is_empty() && !matches!(sep, "-" | "/") {
+                    if (episode_like && !marked || opens_range)
+                        && !out.is_empty()
+                        && !matches!(sep, Some("-" | "/"))
+                    {
                         break;
                     }
                 }
-                if !out.is_empty() {
-                    out.push_str(sep);
-                }
-                out.push_str(&tok.text);
-                sep = " ";
+                push(&mut out, &mut sep, tok);
+                punct_from = None;
             }
             _ => {}
         }
     }
-    let out = out.trim().to_string();
+    // Punctuation the zone stopped behind (`Title:`, `Title,`) is not the
+    // title's.
+    if let Some(at) = punct_from {
+        out.truncate(at);
+    }
+    let out = out
+        .trim_end_matches(|c: char| c.is_whitespace() || matches!(c, ':' | ',' | '&' | '-' | '~'))
+        .trim()
+        .to_string();
     (!out.is_empty()).then_some(out)
 }
 

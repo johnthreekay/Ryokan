@@ -1,9 +1,10 @@
 //! Per-file parsing for the manual-import wizard (#122): which series
 //! a file belongs to, and which episode it is.
 //!
-//! Title extraction reuses `library_link::extract_anime_title` (the
-//! anitomy `AnimeTitle` token the grab-time resolver already trusts)
-//! and falls back to the parent folder when the filename carries no
+//! Title, year and group come from `release_title` (the title through
+//! `library_link::extract_anime_title`, the reading the grab-time
+//! resolver trusts) and the title falls back to the parent folder when
+//! the filename carries no
 //! title at all (`01.mkv`, `S01E05.mkv`, `Episode 07.mkv`), skipping
 //! season-style folders (`Season 01`, `Specials`) on the way up so
 //! `Anime/Naruto/Season 01/01.mkv` resolves to "Naruto". Episode and
@@ -14,7 +15,6 @@
 use std::path::Path;
 use std::sync::LazyLock;
 
-use anitomy::ElementCategory;
 use regex_lite::Regex;
 
 use crate::services::{library_link, media};
@@ -59,7 +59,7 @@ static RE_SEASON_FOLDER: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Trailing season marker on a title: `Title S3`, `Title S03`,
 /// `Title Season 3`, `Title 3rd Season`, `Title II`. SubsPlease names
-/// sequels `Title S3 - 18`, and anitomy leaves the `S3` inside the
+/// sequels `Title S3 - 18`, and the series title keeps the `S3` inside the
 /// title, which AniList's search then refuses to match at all.
 static RE_TITLE_SEASON: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -75,7 +75,7 @@ static RE_TITLE_ROMAN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s+(II|III|IV)$").expect("RE_TITLE_ROMAN compiles"));
 
 /// Trailing special marker on a title: `Title - OVA`, `Title OAD`,
-/// `Title Specials`. anitomy leaves the marker inside the title when
+/// `Title Specials`. The series title keeps the marker when
 /// it sits between the show and the number (`Title - OVA 02`), which
 /// would put the file in a group of its own beside its series.
 static RE_TITLE_SPECIAL: LazyLock<Regex> = LazyLock::new(|| {
@@ -94,7 +94,7 @@ static RE_YEAR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^|[^0-9])((?:19|20)\d{2})(?:[^0-9]|$)").expect("RE_YEAR compiles")
 });
 
-/// anitomy "titles" that are really episode markers. `Episode 07.mkv`
+/// Parsed "titles" that are really episode markers. `Episode 07.mkv`
 /// parses with `AnimeTitle = "Episode"`; that must fall through to the
 /// folder.
 const NOT_A_TITLE: &[&str] = &[
@@ -212,9 +212,9 @@ pub fn year_hint(s: &str) -> Option<i32> {
 }
 
 /// Strip bracket / paren groups and collapse whitespace: the raw-folder
-/// fallback when anitomy can't find a title in a folder name like
-/// `[Judas] Naruto (2002) [BD 1080p]` (anitomy usually can; this is
-/// the last resort).
+/// fallback when the release-title reading finds no title in a folder
+/// name like `[Judas] Naruto (2002) [BD 1080p]` (it usually does; this
+/// is the last resort).
 fn clean_folder_name(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut depth = 0i32;
@@ -230,7 +230,8 @@ fn clean_folder_name(name: &str) -> String {
 }
 
 /// Release-shaped tokens that mean a folder name carries more than a
-/// title (`Naruto Shippuden 1080p BD`) and needs anitomy to trim it.
+/// title (`Naruto Shippuden 1080p BD`) and needs the release-title
+/// reading to trim it.
 static RE_RELEASE_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)(?:^|[^a-z0-9])(?:\d{3,4}p|bd|bluray|blu-ray|bdrip|bdmv|web|webrip|web-dl|webdl|dvd|dvdrip|hdtv|x264|x265|h264|h265|h\.264|h\.265|hevc|avc|av1|flac|aac|opus|dual|remux|10bit|8bit|hi10p|batch|complete)(?:[^a-z0-9]|$)",
@@ -240,10 +241,10 @@ static RE_RELEASE_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Title hint from a folder name. Bracket groups (`[Group]`, `(2019)`,
 /// `[BD 1080p]`) are stripped first; when nothing release-shaped is
-/// left the remainder IS the title. anitomy only runs when release
-/// tokens survive the strip, because on a bare folder name it reads a
-/// trailing number as an episode (`Mob Psycho 100` becomes `Mob
-/// Psycho`), and folders don't carry episode numbers.
+/// left the remainder IS the title. The release-title reading only runs
+/// when release tokens survive the strip, because it leaves out a bare
+/// number ending the title (`Mob Psycho 100` becomes `Mob Psycho`), and
+/// folders don't carry episode numbers.
 fn title_from_folder(name: &str) -> Option<String> {
     let cleaned = clean_folder_name(name);
     if cleaned.is_empty() {
@@ -294,20 +295,16 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         .unwrap_or(&file_name)
         .to_string();
 
-    // One anitomy pass for the title/year/group trio. The project's
-    // tuned episode parser (`media::parse_episode_number`) owns the
-    // episode/season decision, not anitomy's EpisodeNumber.
-    let elements = crate::services::media::anitomy_parse(&file_name);
-    let mut title = elements
-        .get(ElementCategory::AnimeTitle)
+    // One release-title parse for the title/year/group trio; the file
+    // parser (`media::parse_episode_span`) owns the episode and season.
+    let parsed = crate::services::release_title::parse(&file_name);
+    let mut title = parsed
+        .series_title
         .map(|s| s.trim().to_string())
         .filter(|s| looks_like_title(s));
-    let mut year = elements
-        .get(ElementCategory::AnimeYear)
-        .and_then(|y| y.trim().parse::<i32>().ok())
-        .or_else(|| year_hint(&stem));
-    let group = elements
-        .get(ElementCategory::ReleaseGroup)
+    let mut year = parsed.year.or_else(|| year_hint(&stem));
+    let group = parsed
+        .group
         .map(|g| g.trim().to_string())
         .filter(|g| !g.is_empty());
 
@@ -351,7 +348,7 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         }
     }
     // The marker that flagged the special (`- OVA 02`) is part of
-    // anitomy's title; it names the Specials folder, not the show, and
+    // the series title; it names the Specials folder, not the show, and
     // left in place it groups the file apart from its own series.
     if special && let Some(t) = title.take() {
         title = Some(strip_special_marker(&t));

@@ -271,14 +271,14 @@ fn is_structural_token(t: &str) -> bool {
     false
 }
 
-/// What a path claims as its title: anitomy's title from the file name
+/// What a path claims as its title: the series title from the file name
 /// and from every folder above it, tokenized the way an alias is. Only
 /// these words may condemn a download. Descriptor words ("Dual
 /// Audio", "10 bits"), the group name, and episode titles ("All
 /// That's Left") are real words too, and on a series whose title is a
 /// number ("86") they used to be the only Latin words in the path.
 ///
-/// `memo` shares the per-segment anitomy parse across files: every
+/// `memo` shares the per-segment parse across files: every
 /// file in a pack sits under the same one or two folders, so a
 /// 100-file batch parses each folder name once instead of 100 times.
 pub(crate) fn claimed_title_tokens(
@@ -306,7 +306,7 @@ fn segment_title_tokens(segment: &str) -> HashSet<String> {
     let normalized = normalize_title(&title);
     // "S01E21-All That's Left": a name that opens with an episode
     // or season marker (or a bare number) goes on to an episode
-    // title, which anitomy cannot tell from a series title. It is
+    // title, which no parser can tell from a series title. It is
     // not a claim about which show this is.
     if normalized
         .split_whitespace()

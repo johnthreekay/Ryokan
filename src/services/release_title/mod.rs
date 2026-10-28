@@ -657,6 +657,32 @@ mod tests {
         );
         // A name that opens with its episode names no show.
         assert_eq!(st("S02E04E05.720p.BluRay-FUTV"), None);
+        // Punctuation, a lead dash, a bracket inside a word, a title number
+        // before the episode mark, and a range start.
+        assert_eq!(
+            st("[Fuchs] Sound! Euphonium - S00E08 (BD 1080p)").as_deref(),
+            Some("Sound! Euphonium")
+        );
+        assert_eq!(
+            st("[MTBB] KIZUMONOGATARI -Koyomi Vamp- (2024) (BD 1080p)").as_deref(),
+            Some("KIZUMONOGATARI Koyomi Vamp")
+        );
+        assert_eq!(
+            st("[ANi] 用【循環利息】強制收回借出的魔力 - 04 [1080P]").as_deref(),
+            Some("用[循環利息]強制收回借出的魔力")
+        );
+        assert_eq!(
+            st("[Exiled-Destiny]_Log_Horizon_2_Ep11_[BD_720P]").as_deref(),
+            Some("Log Horizon 2")
+        );
+        assert_eq!(
+            st("[Group] Show 2nd Season 01-12 (BD 1080p)").as_deref(),
+            Some("Show 2nd Season")
+        );
+        assert_eq!(
+            st("Master Mosquiton `99 (1999, eng softsubs)").as_deref(),
+            Some("Master Mosquiton")
+        );
     }
 
     #[test]

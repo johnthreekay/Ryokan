@@ -1,3 +1,4 @@
+#[cfg(test)]
 use anitomy::Anitomy;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -34,6 +35,7 @@ pub fn sanitize_folder_name(s: &str) -> String {
 /// thread stack and aborts the process, and a release title from an
 /// indexer, an RSS feed or autobrr can be that long. Real titles stay
 /// under 300 bytes, so nothing real is cut.
+#[cfg(test)]
 pub(crate) const ANITOMY_MAX_INPUT: usize = 1024;
 
 /// Longest release title Ryokan accepts from an indexer, a feed or an
@@ -42,10 +44,12 @@ pub(crate) const ANITOMY_MAX_INPUT: usize = 1024;
 /// to stress the parsers behind it.
 pub(crate) const MAX_RELEASE_TITLE_BYTES: usize = 1024;
 
-/// Every anitomy parse goes through here: NUL bytes (anitomy rejects
-/// them) removed and the input cut to [`ANITOMY_MAX_INPUT`] bytes on a
+/// Every anitomy parse goes through here (test-only now: the frozen old
+/// parsers and the phase 3 benchmark; phase 12e removes it): NUL bytes
+/// (anitomy rejects them) removed and the input cut to [`ANITOMY_MAX_INPUT`] bytes on a
 /// char boundary. anitomy reports `Err` when it finds no title but
 /// fills the elements either way, so both are returned.
+#[cfg(test)]
 pub(crate) fn anitomy_parse(input: &str) -> anitomy::Elements {
     match Anitomy::new().parse(anitomy_input(input)) {
         Ok(elements) | Err(elements) => elements,
@@ -54,6 +58,7 @@ pub(crate) fn anitomy_parse(input: &str) -> anitomy::Elements {
 
 /// What [`anitomy_parse`] hands anitomy: at most [`ANITOMY_MAX_INPUT`]
 /// bytes, cut on a char boundary, with NUL bytes removed.
+#[cfg(test)]
 fn anitomy_input(input: &str) -> std::borrow::Cow<'_, str> {
     let mut end = input.len().min(ANITOMY_MAX_INPUT);
     while !input.is_char_boundary(end) {

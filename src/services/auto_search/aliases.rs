@@ -936,18 +936,19 @@ pub(super) fn best_alias_match(
 
 /// The auto-search title gate, reporting how the release matched.
 /// `None` means the release is not this series (or not this episode).
-/// Whether the release names something beyond the series: anitomy's
-/// title for it, minus every word of the series' own titles and
+/// Whether the release names something beyond the series: its series
+/// title (`release_title`'s `series_title`), minus every word of the series' own titles and
 /// synonyms and the usual structural and noise tokens, still has a
 /// word left. "Dr. Stone New World - 02" contains "Dr. STONE" verbatim
 /// and is season three; "Mob Psycho 100 II" contains "Mob Psycho 100"
 /// and is season two. A verbatim match that names more is not the
 /// series, and the automatic paths skip it (and report it) rather than
 /// grab it. Release-name decorations never count: bracket groups are
-/// dropped by normalization and anitomy's title excludes the rest.
+/// dropped by normalization and the series title excludes the rest.
 ///
-/// One shape is exempt: `Title - Episode Title - 05`. anitomy folds the
-/// episode title into its series title there, so the claim reads
+/// One shape is exempt: `Title - Episode Title - 05`. The series title
+/// keeps the episode title there (it reads up to the episode), so the
+/// claim reads
 /// "Kimetsu no Yaiba - The Hand Demon". When the first dash segment
 /// names the series and nothing else, a later segment is taken as an
 /// episode title unless one of its leftover words reads like a season
@@ -1158,7 +1159,7 @@ mod tests {
 
     #[test]
     fn names_more_than_the_series_reads_a_folded_episode_title_as_the_series() {
-        // anitomy folds the episode title into its series title for the
+        // The series title runs on into the episode title for the
         // `Title - Episode Title - 05` shape (346-name Nyaa corpus). The
         // first dash segment names the series and nothing else, so the
         // tail is an episode title, not a sequel's subtitle.
