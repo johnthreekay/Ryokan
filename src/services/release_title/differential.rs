@@ -28,17 +28,17 @@ use super::parse;
 /// Lenses whose call sites already read the new parser.
 const MIGRATED_LENSES: &[&str] = &[];
 
-fn fixtures() -> PathBuf {
+pub(super) fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-fn load(path: &Path) -> Value {
+pub(super) fn load(path: &Path) -> Value {
     let raw =
         std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
 
-fn json_files(dir: &Path) -> Vec<PathBuf> {
+pub(super) fn json_files(dir: &Path) -> Vec<PathBuf> {
     let mut paths: Vec<_> = std::fs::read_dir(dir)
         .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.path()).collect())
         .unwrap_or_default();
@@ -48,7 +48,7 @@ fn json_files(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// Titles whose new answers other tests already check.
-fn verified_titles() -> BTreeSet<String> {
+pub(super) fn verified_titles() -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for dir in ["nyaa-titles", "sonarr-parser", "release-title-regressions"] {
         for path in json_files(&fixtures().join(dir)) {
@@ -64,7 +64,7 @@ fn verified_titles() -> BTreeSet<String> {
     out
 }
 
-fn sample_titles() -> Vec<String> {
+pub(super) fn sample_titles() -> Vec<String> {
     load(&fixtures().join("nyaa-titles/sample/listing-sample.json"))
         .as_array()
         .expect("sample array")

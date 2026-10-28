@@ -971,7 +971,7 @@ fn parse_episode_span_inner(lower: &str) -> Option<EpisodeSpan> {
 /// `- Creditless Ending 2`) or in a dash-less name (`Creditless Opening
 /// 1`), title words sit before it. Subtitle words are safe either way:
 /// anitomy reads `- 05 - Opening Night` as an episode title, not a type.
-fn is_non_episodic_extra(lower: &str) -> bool {
+pub(crate) fn is_non_episodic_extra(lower: &str) -> bool {
     // anitomy rejects NUL bytes; nothing real carries them.
     if lower.contains('\0') {
         return false;

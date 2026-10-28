@@ -16,6 +16,8 @@
 
 mod anchors;
 #[cfg(test)]
+mod bench;
+#[cfg(test)]
 mod differential;
 #[cfg(test)]
 mod legacy;
