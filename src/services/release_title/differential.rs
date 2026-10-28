@@ -34,12 +34,16 @@ use super::parse;
 ///   gates, and the misgrab verdict's season note.
 /// - `batch.nyaa`, `batch.rss`, `batch.torznab`: every source's batch
 ///   flag is `is_batch`.
+/// - `rss.season`, `rss.episodes`: the RSS matcher's `parse_release`
+///   (and `match_library_title`) reads the parsed title.
 const MIGRATED_LENSES: &[&str] = &[
     "numbers.loose",
     "season",
     "batch.nyaa",
     "batch.rss",
     "batch.torznab",
+    "rss.season",
+    "rss.episodes",
 ];
 
 pub(super) fn fixtures() -> PathBuf {
