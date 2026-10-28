@@ -11,16 +11,17 @@ use axum::{
 use crate::AppState;
 use crate::models::episode_tags;
 use crate::models::log::LogCategory;
+use crate::services::grab_commit::{GrabFor, GrabSeries, grab_episode_list};
 use crate::services::{auto_expand::AutoExpandGrabContext, auto_search, logger};
 
 use super::super::reconcile::resolve_series_context;
-use super::auto_search::{auto_expand_library_from_pack, batch_episode_numbers};
+use super::auto_search::auto_expand_library_from_pack;
 
 /// Grab a specific batch release chosen from interactive batch search.
 ///
 /// Mirrors `grab_interactive_result` but without an episode number —
 /// batches cover a range of episodes — the episode list is resolved
-/// from the release title via [`batch_episode_numbers`] at grab time
+/// from the release title via [`grab_episode_list`] at grab time
 /// so per-episode `episode_tags::record_grab` writes land immediately
 /// and the UI shows the batch's quality tier without waiting on
 /// post-processing.
@@ -201,7 +202,14 @@ pub async fn grab_batch_result(
         // without this, batch grabs leave every episode showing
         // UNKNOWN in the UI, and with post-processing disabled the
         // rows never get created at all.
-        let ep_nums = batch_episode_numbers(&title, &detail);
+        let ep_nums = grab_episode_list(
+            &title,
+            &GrabSeries::load(&state.db, sid)
+                .await
+                .with_episode_count(detail.episodes),
+            GrabFor::Whole,
+            true,
+        );
         let grab_id = crate::models::grabbed_torrents::record_grab(
             &state.db,
             &effective_hash,
@@ -482,7 +490,12 @@ pub async fn grab_interactive_result(
         // so the grab row and the grabbed tags cover the run and every
         // episode shows as downloading. The import writes the final rows
         // from the file name either way.
-        let held = held_episodes(&title, episode_number);
+        let held = grab_episode_list(
+            &title,
+            &GrabSeries::load(&state.db, sid).await,
+            GrabFor::Episode(episode_number),
+            false,
+        );
         let grab_id = crate::models::grabbed_torrents::record_grab(
             &state.db,
             &effective_hash,
@@ -544,70 +557,4 @@ pub async fn grab_interactive_result(
         "ok": true,
         "selective_files": selective_outcome,
     })))
-}
-
-/// The episodes an interactive grab records (issue #246): the run the
-/// release title names when it reads as a multi-episode file by the
-/// same strict rule the import applies to the file name
-/// (`media::parse_episode_span`: no whitespace around the dash, two
-/// digits on both sides, ascending, at most `MAX_FILE_SPAN`) and that
-/// run includes the requested episode; else the requested episode
-/// alone. The release-side `parse_release_numbers` is not used here on
-/// purpose: its range regex tolerates whitespace, so `Show Season 2 -
-/// 03` would read as episodes 2-3 and leave a stale grabbed tag on an
-/// episode the file never delivers.
-pub(crate) fn held_episodes(title: &str, episode_number: i32) -> Vec<i32> {
-    match crate::services::media::parse_episode_span(&title.to_lowercase()) {
-        Some(span) if span.is_multi() && span.episodes().contains(&episode_number) => {
-            span.episodes().collect()
-        }
-        _ => vec![episode_number],
-    }
-}
-
-#[cfg(test)]
-mod held_episodes_tests {
-    use super::held_episodes;
-
-    #[test]
-    fn a_range_title_holds_the_run_around_the_requested_episode() {
-        assert_eq!(
-            held_episodes("[SakuraCircle] Saimin Seishidou - 05-06 (DVD 720x480)", 5),
-            vec![5, 6]
-        );
-        assert_eq!(
-            held_episodes(
-                "[SubsPlease] RWBY - Hyousetsu Teikoku - 01-03 (720p) [CCDDC9CB].mkv",
-                2
-            ),
-            vec![1, 2, 3]
-        );
-    }
-
-    #[test]
-    fn a_single_or_pack_title_records_the_requested_episode_only() {
-        assert_eq!(
-            held_episodes(
-                "[SubsPlease] RWBY - Hyousetsu Teikoku - 02 (720p) [4A0FE134].mkv",
-                2
-            ),
-            vec![2]
-        );
-        // A pack keeps its range in parentheses; a run wider than one
-        // file is not a file; a run that does not include the requested
-        // episode is not this grab.
-        assert_eq!(
-            held_episodes(
-                "[SubsPlease] RWBY - Hyousetsu Teikoku (01-12) (720p) [Batch]",
-                4
-            ),
-            vec![4]
-        );
-        assert_eq!(held_episodes("Show - 01-12 [BD]", 4), vec![4]);
-        assert_eq!(held_episodes("Show - 05-06 [1080p]", 9), vec![9]);
-        // Season and part markers before the dash are not a run.
-        assert_eq!(held_episodes("[Group] Show Season 2 - 03", 3), vec![3]);
-        assert_eq!(held_episodes("[Group] Show Part 2 - 05", 5), vec![5]);
-        assert_eq!(held_episodes("[Group] Show 3 - 05", 5), vec![5]);
-    }
 }

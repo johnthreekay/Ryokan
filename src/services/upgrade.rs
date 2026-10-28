@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::AppState;
 use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, metadata_cache, series};
+use crate::services::grab_commit::{GrabFor, GrabSeries, grab_episode_list};
 use crate::services::source::{self, ClassificationResult, Resolution};
 use crate::services::{auto_search, logger, media};
 
@@ -468,20 +469,22 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                     )
                     .await;
 
-                    // Record for post-processing and quality tags.
-                    let mut ep_nums: Vec<i32> = match &target {
-                        auto_search::SearchTarget::Episode(n) => vec![*n],
-                        auto_search::SearchTarget::Single => vec![1],
+                    // Record for post-processing and quality tags, series-relative.
+                    let grab_for = match &target {
+                        auto_search::SearchTarget::Episode(n) => GrabFor::Episode(*n),
+                        auto_search::SearchTarget::Single => GrabFor::Whole,
                     };
+                    let ep_nums = grab_episode_list(
+                        &result.title,
+                        &GrabSeries::from_row(row).with_episode_count(detail.episodes),
+                        grab_for,
+                        result.is_batch,
+                    );
                     if result.is_batch {
-                        let parsed = auto_search::parse_release_numbers(&result.title);
-                        if !parsed.is_empty() {
-                            ep_nums = parsed.into_iter().collect();
-                            ep_nums.sort_unstable();
-                        }
                         // Mark every episode this batch will cover as
                         // satisfied so the rest of this series's loop
-                        // doesn't re-find / re-grab the same pack.
+                        // doesn't re-find / re-grab the same pack. Both
+                        // sides are series-relative episode numbers.
                         covered_by_batch.extend(&ep_nums);
                     }
                     let grab_id = crate::models::grabbed_torrents::record_grab(

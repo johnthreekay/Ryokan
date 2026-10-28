@@ -23,7 +23,8 @@ use crate::models::{config, episode_tags};
 use crate::services::{auto_search, logger, progress};
 
 use super::super::reconcile::resolve_series_context;
-use super::auto_search::{AutoSearchQuery, batch_episode_numbers, display_title_for_progress};
+use super::auto_search::{AutoSearchQuery, display_title_for_progress};
+use crate::services::grab_commit::{GrabFor, GrabSeries, grab_episode_list};
 
 /// Pre-computed display fields for one row in the interactive-search
 /// table. Mirrors the AL-search migration's `SearchResultRow` shape:
@@ -573,22 +574,25 @@ pub async fn search_batch_releases(
             )
             .await;
             if let Some(sid) = series_id_for_grab {
-                // Parse episode list from the batch title so every covered
+                // Episode list from the batch title so every covered
                 // episode gets a per-episode `episode_quality_tags` row at
                 // grab time, not just at post-processing time. Without
                 // this the UI shows UNKNOWN for every episode of a
                 // freshly-grabbed batch — and if the user has
                 // post-processing disabled the rows never get created at
-                // all. Mirrors the auto-search-path logic at
-                // `run_auto_search_targets_with_upgrades` (look for
-                // `parse_release_numbers` above).
-                //
-                // Fallback when the title carries no explicit range
-                // (e.g. "Jellyfish Can't Swim in the Night" with no
-                // "01-12" suffix): use the series' known episode count.
-                // Capped at 1000 so a garbage AniList record can't
-                // spawn a million rows.
-                let ep_nums = batch_episode_numbers(&result.title, &detail);
+                // all. Same helper as every grab path
+                // (`grab_commit::grab_episode_list`): series-relative, and
+                // a title with no range (e.g. "Jellyfish Can't Swim in the
+                // Night") falls back to the series' episode count, capped
+                // at 1000.
+                let ep_nums = grab_episode_list(
+                    &result.title,
+                    &GrabSeries::load(&state.db, sid)
+                        .await
+                        .with_episode_count(detail.episodes),
+                    GrabFor::Whole,
+                    true,
+                );
                 let grab_id = crate::models::grabbed_torrents::record_grab(
                     &state.db,
                     &result.info_hash,

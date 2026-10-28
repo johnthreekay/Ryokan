@@ -30,12 +30,15 @@ use crate::AppState;
 use crate::models::grabbed_torrents;
 use crate::models::log::LogCategory;
 use crate::models::pending_grabs::PendingGrab;
+use crate::models::series::Series;
 use crate::services::anilist;
 use crate::services::auto_expand::{self, AutoExpandGrabContext};
 use crate::services::auto_search;
 use crate::services::logger;
 use crate::services::notifications;
+use crate::services::release_title::{self, SeriesAnchors};
 use crate::services::source::ClassificationResult;
+use crate::services::{media, post_processing};
 
 /// Write the `grabbed_torrents` row and kick off sibling auto-expand
 /// for a pending grab that's now live on the download client. Returns
@@ -92,13 +95,8 @@ pub async fn commit_grab_and_expand(
     // The series' absolute-numbering offset, so a pack whose files are
     // numbered `25..48` for the second season records episodes 1..24
     // the way the Wanted page asked for them and the import files them.
-    let cumulative_prior_episodes = crate::models::series::get_by_id(&state.db, series_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|s| s.cumulative_prior_episodes)
-        .unwrap_or(0);
-    let ep_nums = episode_numbers_for_commit(release_title, &filenames, cumulative_prior_episodes);
+    let series = GrabSeries::load(&state.db, series_id).await;
+    let ep_nums = episode_numbers_for_commit(release_title, &filenames, &series);
 
     let grab_id = match grabbed_torrents::record_grab(
         &state.db,
@@ -258,11 +256,10 @@ pub async fn commit_grab_and_expand(
 /// numbers when any of them parse (a picker grab that kept two files
 /// of a twelve-episode batch is a grab for those two, so the Wanted
 /// page and the series page show only those as downloading and the
-/// import claims only those), else the release title's numbers (a
-/// single-file release, or a pack whose files carry no numbers).
-/// `parse_release_numbers` handles single (`... - 05 ...`), range
-/// (`01-12`), and absolute-numbered (`25-48`) titles; an unparseable
-/// title yields an empty list, which post-processing tolerates.
+/// import claims only those), else the episodes the release title
+/// names for the series ([`relative_title_episodes`]: a single, a
+/// range, an absolute-numbered range); an unparseable title yields an
+/// empty list, which post-processing tolerates.
 ///
 /// A special (`OVA 01`) is no episode slot, and a pick made only of
 /// specials is a grab for no episode at all: the title's range must
@@ -274,8 +271,9 @@ pub async fn commit_grab_and_expand(
 pub(crate) fn episode_numbers_for_commit(
     release_title: &str,
     filenames: &[String],
-    cumulative_prior_episodes: i32,
+    series: &GrabSeries,
 ) -> Vec<i32> {
+    let cumulative_prior_episodes = series.cumulative_prior_episodes;
     let mut any_parsed = false;
     let mut eps: Vec<i32> = Vec::new();
     for name in filenames
@@ -293,20 +291,145 @@ pub(crate) fn episode_numbers_for_commit(
         eps.extend(file_slot_episodes(span, cumulative_prior_episodes));
     }
     if eps.is_empty() && !any_parsed {
-        eps = auto_search::parse_release_numbers(release_title)
-            .into_iter()
-            .map(|n| {
-                n - crate::services::post_processing::fallback_ep_offset(
-                    n,
-                    cumulative_prior_episodes,
-                )
-            })
-            .filter(|e| *e > 0)
-            .collect();
+        eps = relative_title_episodes(release_title, series, None);
     }
     eps.sort_unstable();
     eps.dedup();
     eps
+}
+
+/// The series a grab records its episode list for: its names (so a bare
+/// number right after one is read, a number inside one never is), its
+/// format, its absolute-numbering offset and its episode count.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct GrabSeries {
+    anchors: SeriesAnchors,
+    cumulative_prior_episodes: i32,
+    episode_count: Option<i32>,
+}
+
+impl GrabSeries {
+    pub(crate) fn from_row(row: &Series) -> Self {
+        let mut names = vec![
+            row.title.clone(),
+            row.title_romaji.clone(),
+            row.title_english.clone(),
+            row.title_native.clone(),
+        ];
+        names.extend(row.alternate_title_list());
+        names.retain(|n| !n.trim().is_empty());
+        Self {
+            anchors: SeriesAnchors::new(&names)
+                .with_specials_as_episodes(!media::is_tv_format(&row.format)),
+            cumulative_prior_episodes: row.cumulative_prior_episodes,
+            episode_count: row.episodes,
+        }
+    }
+
+    /// The AniList detail's episode count, when it has one: the row's
+    /// count can lag a metadata refresh.
+    pub(crate) fn with_episode_count(mut self, count: Option<i32>) -> Self {
+        if count.is_some_and(|n| n > 0) {
+            self.episode_count = count;
+        }
+        self
+    }
+
+    /// The library row's reading, or none of it (no names, no offset,
+    /// no count) when the row cannot be read.
+    pub(crate) async fn load(db: &SqlitePool, series_id: i64) -> Self {
+        crate::models::series::get_by_id(db, series_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|row| Self::from_row(&row))
+            .unwrap_or_default()
+    }
+}
+
+/// What a grab is for, in [`grab_episode_list`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GrabFor {
+    /// One episode was searched for or clicked.
+    Episode(i32),
+    /// A batch, or a search for the whole series.
+    Whole,
+}
+
+/// Most episodes a pack that names none records from the series'
+/// count: a garbage AniList count must not write a million tag rows.
+const WHOLE_SERIES_CAP: i32 = 1000;
+
+/// The series-relative episodes `title` names for `series`. A tag
+/// (`S02E05`) is relative already. Otherwise a run past
+/// `cumulative_prior_episodes` is absolute, judged on its first number
+/// the way the import judges a file (`fallback_ep_offset`), unless the
+/// episode that was searched for (`searched`) shows which numbering
+/// the release used.
+pub(crate) fn relative_title_episodes(
+    title: &str,
+    series: &GrabSeries,
+    searched: Option<i32>,
+) -> Vec<i32> {
+    let parsed = release_title::parse(title);
+    let mut raw: Vec<i32> = parsed
+        .for_series(&series.anchors)
+        .episodes
+        .into_iter()
+        .collect();
+    raw.sort_unstable();
+    let Some(&first) = raw.first() else {
+        return raw;
+    };
+    let cumulative = series.cumulative_prior_episodes;
+    let tagged = parsed.episodes.as_ref().is_some_and(|c| c.season.is_some());
+    let offset = match searched {
+        _ if tagged => 0,
+        Some(ep) if raw.contains(&ep) => 0,
+        Some(ep) if cumulative > 0 && raw.contains(&(ep + cumulative)) => cumulative,
+        _ => post_processing::fallback_ep_offset(first, cumulative),
+    };
+    raw.into_iter()
+        .map(|n| n - offset)
+        .filter(|n| *n > 0)
+        .collect()
+}
+
+/// The episodes a grab records (the grab row's list and its `grabbed`
+/// tags), series-relative so a sequel's pack `25-48` is its episodes
+/// 1-24. One episode searched for or clicked: a single release holds
+/// the run its title names around it (`- 05-06`, one file with both,
+/// #246), else that episode alone. A pack: the episodes its title
+/// names, else every episode of the series (up to
+/// [`WHOLE_SERIES_CAP`]). A whole-series release that names nothing
+/// is episode 1 only for a series of one episode (a movie).
+pub(crate) fn grab_episode_list(
+    title: &str,
+    series: &GrabSeries,
+    target: GrabFor,
+    is_batch: bool,
+) -> Vec<i32> {
+    let searched = match target {
+        GrabFor::Episode(ep) => Some(ep),
+        GrabFor::Whole => None,
+    };
+    let relative = relative_title_episodes(title, series, searched);
+    match target {
+        GrabFor::Episode(ep) if !is_batch => {
+            if relative.contains(&ep) && relative.len() <= media::MAX_FILE_SPAN as usize {
+                relative
+            } else {
+                vec![ep]
+            }
+        }
+        _ if !relative.is_empty() => relative,
+        _ if is_batch && series.episode_count.is_some_and(|n| n > 0) => {
+            (1..=series.episode_count.unwrap_or(0).min(WHOLE_SERIES_CAP)).collect()
+        }
+        GrabFor::Episode(ep) => vec![ep],
+        GrabFor::Whole if series.episode_count == Some(1) => vec![1],
+        GrabFor::Whole => Vec::new(),
+    }
 }
 
 /// The library slots a file's parsed span lands in: the import's own
@@ -434,6 +557,14 @@ async fn run_auto_expand(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A series known only by its absolute-numbering offset.
+    fn offset(cumulative_prior_episodes: i32) -> GrabSeries {
+        GrabSeries {
+            cumulative_prior_episodes,
+            ..GrabSeries::default()
+        }
+    }
     use crate::test_support::{build_test_app_state, in_memory_pool, seed_series};
 
     fn pending_grab_for(series_id: Option<i64>, info_hash: &str) -> PendingGrab {
@@ -544,11 +675,14 @@ mod tests {
             "Show/Extras/[Group] Show - NCOP1.mkv".to_string(),
             "Show/readme.txt".to_string(),
         ];
-        assert_eq!(episode_numbers_for_commit(title, &picked, 0), vec![2, 3]);
+        assert_eq!(
+            episode_numbers_for_commit(title, &picked, &offset(0)),
+            vec![2, 3]
+        );
         // No selected file parses: the title's range stands.
         let unnumbered = vec!["Show/movie.mkv".to_string()];
         assert_eq!(
-            episode_numbers_for_commit(title, &unnumbered, 0),
+            episode_numbers_for_commit(title, &unnumbered, &offset(0)),
             (1..=12).collect::<Vec<i32>>()
         );
         // A single-file release: file and title agree.
@@ -556,7 +690,7 @@ mod tests {
             episode_numbers_for_commit(
                 "[Group] Show - 05 (1080p).mkv",
                 &["[Group] Show - 05 (1080p).mkv".to_string()],
-                0
+                &offset(0)
             ),
             vec![5]
         );
@@ -568,13 +702,16 @@ mod tests {
         // the title's range and tag all twelve as downloading.
         let title = "[Group] Show - 01-12 (BD 1080p) [Batch]";
         let ova = vec!["Show/[Group] Show - OVA 01 (BD 1080p).mkv".to_string()];
-        assert!(episode_numbers_for_commit(title, &ova, 0).is_empty());
+        assert!(episode_numbers_for_commit(title, &ova, &offset(0)).is_empty());
         // A special beside an episode: only the episode counts.
         let mixed = vec![
             "Show/[Group] Show - OVA 01 (BD 1080p).mkv".to_string(),
             "Show/[Group] Show - 04 (BD 1080p).mkv".to_string(),
         ];
-        assert_eq!(episode_numbers_for_commit(title, &mixed, 0), vec![4]);
+        assert_eq!(
+            episode_numbers_for_commit(title, &mixed, &offset(0)),
+            vec![4]
+        );
     }
 
     #[test]
@@ -586,11 +723,14 @@ mod tests {
             "Show/[Group] Show - 25 (BD 1080p).mkv".to_string(),
             "Show/[Group] Show - 27 (BD 1080p).mkv".to_string(),
         ];
-        assert_eq!(episode_numbers_for_commit(title, &picked, 24), vec![1, 3]);
+        assert_eq!(
+            episode_numbers_for_commit(title, &picked, &offset(24)),
+            vec![1, 3]
+        );
         // The title fallback takes the same offset.
         let unnumbered = vec!["Show/movie.mkv".to_string()];
         assert_eq!(
-            episode_numbers_for_commit(title, &unnumbered, 24),
+            episode_numbers_for_commit(title, &unnumbered, &offset(24)),
             (1..=24).collect::<Vec<i32>>()
         );
         // A `SxxExx` name is already relative; a number under the
@@ -599,7 +739,10 @@ mod tests {
             "Show/Show - S02E02.mkv".to_string(),
             "Show/[Group] Show - 03 (BD 1080p).mkv".to_string(),
         ];
-        assert_eq!(episode_numbers_for_commit(title, &relative, 24), vec![2, 3]);
+        assert_eq!(
+            episode_numbers_for_commit(title, &relative, &offset(24)),
+            vec![2, 3]
+        );
     }
 
     #[tokio::test]
@@ -713,5 +856,179 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(is_batch, 1);
+    }
+    /// A series known by one name, its offset and its episode count.
+    fn series(
+        name: &str,
+        cumulative_prior_episodes: i32,
+        episode_count: Option<i32>,
+    ) -> GrabSeries {
+        GrabSeries {
+            anchors: SeriesAnchors::new(&[name]),
+            cumulative_prior_episodes,
+            episode_count,
+        }
+    }
+
+    #[test]
+    fn a_single_release_holds_the_run_around_the_requested_episode() {
+        let show = series("Show", 0, Some(12));
+        let one =
+            |title: &str, ep: i32| grab_episode_list(title, &show, GrabFor::Episode(ep), false);
+        assert_eq!(
+            one("[SakuraCircle] Saimin Seishidou - 05-06 (DVD 720x480)", 5),
+            vec![5, 6]
+        );
+        assert_eq!(
+            one(
+                "[SubsPlease] RWBY - Hyousetsu Teikoku - 01-03 (720p) [CCDDC9CB].mkv",
+                2
+            ),
+            vec![1, 2, 3]
+        );
+        assert_eq!(
+            one(
+                "[SubsPlease] RWBY - Hyousetsu Teikoku - 02 (720p) [4A0FE134].mkv",
+                2
+            ),
+            vec![2]
+        );
+        // A run wider than one file, or one without the requested
+        // episode, is not this grab's.
+        assert_eq!(
+            one(
+                "[SubsPlease] RWBY - Hyousetsu Teikoku (01-12) (720p) [Batch]",
+                4
+            ),
+            vec![4]
+        );
+        assert_eq!(one("Show - 01-12 [BD]", 4), vec![4]);
+        assert_eq!(one("Show - 05-06 [1080p]", 9), vec![9]);
+        // Season and part markers before the dash are not a run.
+        assert_eq!(one("[Group] Show Season 2 - 03", 3), vec![3]);
+        assert_eq!(one("[Group] Show Part 2 - 05", 5), vec![5]);
+        assert_eq!(one("[Group] Show 3 - 05", 5), vec![5]);
+    }
+
+    #[test]
+    fn a_pack_records_its_episodes_series_relative() {
+        // A sequel's absolute-numbered pack records the episodes the
+        // series and the import use, not 25-48.
+        let sequel = series("Show", 24, Some(24));
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Show - 25-48 (BD 1080p) [Batch]",
+                &sequel,
+                GrabFor::Whole,
+                true
+            ),
+            (1..=24).collect::<Vec<i32>>()
+        );
+        // An absolute weekly found for a relative target records it.
+        let jjk = series("Jujutsu Kaisen", 47, Some(23));
+        assert_eq!(
+            grab_episode_list(
+                "[SubsPlease] Jujutsu Kaisen - 56 (1080p)",
+                &jjk,
+                GrabFor::Episode(9),
+                false
+            ),
+            vec![9]
+        );
+        // EternalAnimes' dashless pack (#296).
+        let dark = series("Dark Gathering", 0, Some(25));
+        assert_eq!(
+            grab_episode_list(
+                "[EA]Dark_Gathering_01-25_End_[1920x1080][BDRIP][HEVC][Flac]",
+                &dark,
+                GrabFor::Whole,
+                true
+            ),
+            (1..=25).collect::<Vec<i32>>()
+        );
+    }
+
+    #[test]
+    fn a_pack_that_names_no_episodes_takes_the_series_count() {
+        let show = series("Show", 0, Some(26));
+        assert_eq!(
+            grab_episode_list("[Group] Show Complete BD", &show, GrabFor::Whole, true),
+            (1..=26).collect::<Vec<i32>>()
+        );
+        // No count, no guess.
+        assert!(
+            grab_episode_list(
+                "[Group] Show Complete BD",
+                &series("Show", 0, None),
+                GrabFor::Whole,
+                true
+            )
+            .is_empty()
+        );
+        assert!(
+            grab_episode_list(
+                "[Group] Show Complete BD",
+                &series("Show", 0, Some(0)),
+                GrabFor::Whole,
+                true
+            )
+            .is_empty()
+        );
+        // A garbage count is cut to the cap rather than dropped.
+        assert_eq!(
+            grab_episode_list(
+                "[Vodes] Some Series (BDRip)",
+                &series("Some Series", 0, Some(100_000)),
+                GrabFor::Whole,
+                true
+            ),
+            (1..=WHOLE_SERIES_CAP).collect::<Vec<i32>>()
+        );
+        // The fallback is for packs only; a movie's lone release is its
+        // episode 1.
+        assert!(
+            grab_episode_list(
+                "[Vodes] Some Movie (BDRip)",
+                &series("Some Movie", 0, Some(12)),
+                GrabFor::Whole,
+                false
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            grab_episode_list(
+                "[Vodes] Some Movie (BDRip)",
+                &series("Some Movie", 0, Some(1)),
+                GrabFor::Whole,
+                false
+            ),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn a_title_number_of_the_series_is_never_recorded() {
+        // `Kaiju No. 8 - 09` holds episode 9 alone; a pack of `Mob
+        // Psycho 100` that names no episodes takes the series' count.
+        let kaiju = series("Kaiju No. 8", 0, Some(12));
+        assert_eq!(
+            grab_episode_list(
+                "[SubsPlease] Kaiju No. 8 - 09 (1080p)",
+                &kaiju,
+                GrabFor::Episode(9),
+                false
+            ),
+            vec![9]
+        );
+        let mob = series("Mob Psycho 100", 0, Some(12));
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Mob Psycho 100 (BD 1080p)",
+                &mob,
+                GrabFor::Whole,
+                true
+            ),
+            (1..=12).collect::<Vec<i32>>()
+        );
     }
 }

@@ -37,9 +37,8 @@
 //!
 //! Each branch of [`LibraryLinkOutcome`] also returns the episode
 //! numbers the grab covers, derived via
-//! [`auto_search::parse_release_numbers`] with a batch fallback to
-//! the series's known episode count (matching
-//! `interactive::search_batch_releases::batch_episode_numbers`).
+//! [`grab_episode_list`] (series-relative, with a batch fallback to
+//! the series's known episode count), the helper every grab path uses.
 //! Callers use these to populate `episode_quality_tags` /
 //! `grabbed_torrents.episode_numbers` immediately so the series page
 //! shows progress before post-processing finishes.
@@ -52,7 +51,8 @@ use anitomy::ElementCategory;
 use crate::AppState;
 use crate::models::log::LogCategory;
 use crate::models::{config, series};
-use crate::services::{anilist, auto_search, logger, metadata_sync, rss};
+use crate::services::grab_commit::{GrabFor, GrabSeries, grab_episode_list};
+use crate::services::{anilist, logger, metadata_sync, rss};
 
 /// Result of [`resolve_or_add_series_for_grab`]. Each variant
 /// carries enough context for the grab handler to (a) write the
@@ -296,38 +296,6 @@ pub async fn title_language(db: &sqlx::SqlitePool) -> String {
         .unwrap_or_else(|| "english".to_string())
 }
 
-/// Derive episode numbers for a grab the same way
-/// `interactive::batch_episode_numbers` does: parse explicit numbers
-/// out of the title; when batch and parse came up empty, fall back
-/// to `1..=episodes` so a no-suffix complete-series release gets
-/// every episode tagged. Capped at 1000 — a garbage AniList record
-/// reporting tens of thousands of episodes shouldn't spawn millions
-/// of `episode_quality_tags` rows. Pre-fix the cap zeroed the result
-/// (silently dropped the fallback), which left grabs with no
-/// per-episode tag rows and no breadcrumb pointing at why; truncate
-/// to the cap instead so the protective intent fires without losing
-/// the fallback's purpose entirely.
-fn parse_grab_episodes(
-    title: &str,
-    is_batch: bool,
-    fallback_episode_count: Option<i32>,
-) -> Vec<i32> {
-    const FALLBACK_CAP: i32 = 1000;
-    let mut ep_nums: Vec<i32> = auto_search::parse_release_numbers(title)
-        .into_iter()
-        .collect();
-    if is_batch
-        && ep_nums.is_empty()
-        && let Some(total) = fallback_episode_count
-        && total > 0
-    {
-        let bounded = total.min(FALLBACK_CAP);
-        ep_nums = (1..=bounded).collect();
-    }
-    ep_nums.sort_unstable();
-    ep_nums
-}
-
 /// Orchestrator. See module docs for the resolution chain.
 pub async fn resolve_or_add_series_for_grab(
     state: &AppState,
@@ -368,7 +336,12 @@ pub async fn resolve_or_add_series_for_grab(
 
     // 4. AL-ID lookup against existing library — the case-(b) fix.
     if let Ok(Some(existing)) = series::get_by_anilist_id(&state.db, top.id).await {
-        let eps = parse_grab_episodes(title, is_batch, existing.episodes);
+        let eps = grab_episode_list(
+            title,
+            &GrabSeries::from_row(&existing),
+            GrabFor::Whole,
+            is_batch,
+        );
         return LibraryLinkOutcome::LinkedByAnilist {
             series: existing,
             episode_numbers: eps,
@@ -388,7 +361,12 @@ pub async fn resolve_or_add_series_for_grab(
             0 => {}
             1 => {
                 let existing = rows.into_iter().next().expect("one row");
-                let eps = parse_grab_episodes(title, is_batch, existing.episodes);
+                let eps = grab_episode_list(
+                    title,
+                    &GrabSeries::from_row(&existing),
+                    GrabFor::Whole,
+                    is_batch,
+                );
                 return LibraryLinkOutcome::LinkedByAnilist {
                     series: existing,
                     episode_numbers: eps,
@@ -525,7 +503,12 @@ pub async fn resolve_or_add_series_for_grab(
         }
     });
 
-    let eps = parse_grab_episodes(title, is_batch, detail.episodes);
+    let eps = grab_episode_list(
+        title,
+        &GrabSeries::from_row(&series_row).with_episode_count(detail.episodes),
+        GrabFor::Whole,
+        is_batch,
+    );
     LibraryLinkOutcome::AutoAdded {
         series: series_row,
         episode_numbers: eps,
@@ -661,35 +644,5 @@ mod tests {
         // No usable title at all — caller is responsible for
         // checking `.is_empty()` before persisting / rendering.
         assert_eq!(pick_title("english", "", "", ""), "");
-    }
-
-    #[test]
-    fn parse_grab_episodes_uses_fallback_for_batch_with_no_range_in_title() {
-        // No range in title, batch, fallback=12 → 1..=12.
-        let eps = parse_grab_episodes("[Vodes] Some Series (BDRip)", true, Some(12));
-        assert_eq!(eps, (1..=12).collect::<Vec<i32>>());
-    }
-
-    #[test]
-    fn parse_grab_episodes_truncates_oversized_fallback_to_cap() {
-        // A garbage AniList record reporting 100k episodes shouldn't
-        // spawn a million tag rows — truncate to the 1000-row cap
-        // rather than zero out the fallback. Pre-fix this returned
-        // empty, leaving the grab with no per-episode tags and no
-        // breadcrumb pointing at why.
-        let eps = parse_grab_episodes("[Vodes] Some Series (BDRip)", true, Some(100_000));
-        assert_eq!(
-            eps,
-            (1..=1000).collect::<Vec<i32>>(),
-            "fallback >1000 should truncate to the 1000-cap, not zero out"
-        );
-    }
-
-    #[test]
-    fn parse_grab_episodes_ignores_fallback_when_not_batch() {
-        // Non-batch with no parseable episode numbers and a fallback
-        // count should still return empty — fallback is batch-only.
-        let eps = parse_grab_episodes("[Vodes] Some Movie (BDRip)", false, Some(12));
-        assert!(eps.is_empty());
     }
 }

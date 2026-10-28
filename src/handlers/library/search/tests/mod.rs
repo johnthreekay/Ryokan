@@ -871,67 +871,8 @@ async fn auto_expand_owari_bd_split_with_anilist_count_mismatch() {
 // the small functions that feed them.
 
 mod pure_helpers {
-    use super::super::auto_search::{batch_episode_numbers, display_title_for_progress};
+    use super::super::auto_search::display_title_for_progress;
     use super::empty_anime_detail;
-
-    // ── batch_episode_numbers ────────────────────────────────────────
-
-    #[test]
-    fn batch_episode_numbers_parses_ranges_from_release_titles() {
-        // Real Nyaa batch shape — episode range gets parsed into
-        // every number it covers.
-        let detail = empty_anime_detail(1, "Show");
-        let nums = batch_episode_numbers("[Group] Show 01-12 (BD 1080p)", &detail);
-        assert_eq!(nums, (1..=12).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn batch_episode_numbers_falls_back_to_anilist_count() {
-        // When the title carries no parseable range, we fall back to
-        // AL's reported episode count. The series has 26 episodes so
-        // the fallback list is 1..=26.
-        let detail = empty_anime_detail(1, "Show");
-        // empty_anime_detail seeds episodes: Some(26).
-        let nums = batch_episode_numbers("[Group] Show Complete BD", &detail);
-        assert_eq!(nums, (1..=26).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn batch_episode_numbers_no_fallback_when_episode_count_zero_or_missing() {
-        // detail.episodes == None → the fallback arm shouldn't fire
-        // (we'd produce an empty vec rather than risking a guess).
-        let mut detail = empty_anime_detail(1, "Show");
-        detail.episodes = None;
-        assert!(batch_episode_numbers("[Group] Show Complete BD", &detail).is_empty());
-
-        // detail.episodes == Some(0) is similarly defensive.
-        detail.episodes = Some(0);
-        assert!(batch_episode_numbers("[Group] Show Complete BD", &detail).is_empty());
-    }
-
-    #[test]
-    fn batch_episode_numbers_no_fallback_when_episode_count_unreasonable() {
-        // The 1000-episode cap exists so an AL parse glitch
-        // (e.g. erroneous reported episodes count for One Piece)
-        // can't blow up into a million-element vec. Pin the gate.
-        let mut detail = empty_anime_detail(1, "Show");
-        detail.episodes = Some(1001);
-        assert!(batch_episode_numbers("[Group] Show Complete BD", &detail).is_empty());
-    }
-
-    #[test]
-    fn batch_episode_numbers_returns_sorted_unique_values() {
-        // The sort guarantee matters — downstream upgrade scans
-        // bisect this list. An out-of-order vec would silently miss
-        // upgrades. The parser handles dedup itself, but pin that
-        // contract by feeding a title with overlapping ranges.
-        let detail = empty_anime_detail(1, "Show");
-        let nums = batch_episode_numbers("[Group] Show 03 + 01-05 BD", &detail);
-        // Sorted ascending; dedup handled upstream.
-        let mut sorted = nums.clone();
-        sorted.sort_unstable();
-        assert_eq!(nums, sorted, "result must come back sorted");
-    }
 
     // ── display_title_for_progress ───────────────────────────────────
 
