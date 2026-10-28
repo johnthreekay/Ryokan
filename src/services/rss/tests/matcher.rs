@@ -115,3 +115,33 @@ fn an_exact_tie_goes_to_the_oldest_row_not_list_order() {
         .expect("matches");
     assert_eq!(found.series.id, 3);
 }
+
+#[test]
+fn a_later_season_pack_never_matches_a_series_named_by_no_season() {
+    // Nothing on disk for a finished series makes the blind-batch path
+    // grab whatever matches: another season's pack must not.
+    let mut mob = series(1, "Mob Psycho 100", 12, 0);
+    mob.status = "FINISHED".to_string();
+    let mut kaiju = series(2, "Kaiju No. 8", 12, 0);
+    kaiju.status = "FINISHED".to_string();
+    let meta = vec![
+        SeriesMeta::from_series(&mob),
+        SeriesMeta::from_series(&kaiju),
+    ];
+    for title in [
+        "[DIY] Mob Psycho 100 III (BD 1080p HEVC FLAC) [Dual-Audio]",
+        "[Group] Kaiju No. 8 S2 (BD 1080p)",
+    ] {
+        let mut pack = item(title);
+        pack.is_batch = true;
+        assert!(best_series_match(&pack, &meta).is_none(), "{title}");
+    }
+    // Its own first season still matches.
+    assert!(best_series_match(&item("[Group] Kaiju No. 8 S1 (BD 1080p)"), &meta).is_some());
+}
+
+#[test]
+fn a_part_dash_episode_scores_as_a_season_dash_episode() {
+    let item = item("[Group] Show Part 2 - 05 (1080p)");
+    assert_eq!(parse_release(&item).parse_mode, "season_dash_episode");
+}

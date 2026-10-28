@@ -454,3 +454,34 @@ fn v2_for_an_old_file_is_rejected_through_rss() {
     let reason = decision.reject_reason.expect("rejected");
     assert!(reason.contains("older than 7 days"), "{reason}");
 }
+
+#[test]
+fn a_multi_episode_file_over_a_file_at_cutoff_is_rejected() {
+    // `- 01-02 (...).mkv` is one file holding two episodes, not a batch,
+    // but importing it replaces episode 1's BluRay file as a batch would.
+    let policy = bluray_policy();
+    let incoming = classification(Source::Web, Resolution::R720p, false, false);
+    let found = series("RELEASING");
+    let item = item_with("[Group] Test Series - 01-02 (WEB 720p).mkv", false);
+    let disk = vec![disk_file(1, "BluRay-1080p")];
+    let quality_tags: HashMap<i32, EpisodeQualityTag> = [{
+        let (ep, mut tag) = web_tag(1);
+        tag.source = "BluRay".to_string();
+        tag.quality_tag = "BluRay-1080p".to_string();
+        (ep, tag)
+    }]
+    .into_iter()
+    .collect();
+    let parsed_eps: HashSet<i32> = [1, 2].into_iter().collect();
+    let decision = evaluate_candidate(
+        &found,
+        &item,
+        &incoming,
+        &disk,
+        &parsed_eps,
+        &gate(&policy, &item),
+        &quality_tags,
+    );
+    let reason = decision.reject_reason.expect("refused");
+    assert!(reason.contains("would overwrite 1"), "{reason}");
+}

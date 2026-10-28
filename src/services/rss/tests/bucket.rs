@@ -101,24 +101,32 @@ fn a_v1_and_its_v2_share_a_bucket_and_the_v2_wins_at_equal_score() {
     // grabbed" once the v1 is in the history, and it still finds the
     // v1 for the queue check.
     let mut history = CanonicalHistory::default();
-    history.insert(&v1.found, v1.item.is_batch, &v1.item.title);
-    assert!(history.contains(&v1.found, false, 1));
-    assert!(!history.contains(&v2.found, false, 2));
+    history.insert(&v1.found, &v1.item.title);
+    assert!(history.contains(&v1.found, 1));
+    assert!(!history.contains(&v2.found, 2));
     assert_eq!(
-        history
-            .lower_revision(&v2.found, false, 2)
-            .map(|r| r.revision),
+        history.lower_revision(&v2.found, 2).map(|r| r.revision),
         Some(1)
     );
 }
 
 #[test]
-fn another_episode_or_a_batch_is_another_bucket() {
+fn another_episode_set_is_another_bucket() {
     let e5 = candidate("[Group] Test Series - 05 (1080p)", 100);
     let e6 = candidate("[Group] Test Series - 06 (1080p)", 100);
     assert_ne!(logical_bucket_key(&e5), logical_bucket_key(&e6));
     let mut pack = candidate("[Group] Test Series - 01-12 (1080p) [Batch]", 100);
     pack.item.is_batch = true;
-    assert!(logical_bucket_key(&pack).contains("|batch|"));
-    assert!(logical_bucket_key(&e5).contains("|single|"));
+    assert_ne!(logical_bucket_key(&pack), logical_bucket_key(&e5));
+}
+
+#[test]
+fn a_pack_and_a_file_holding_one_span_are_one_bucket() {
+    // A single file with two episodes is not a batch, but it delivers
+    // what a `05-06` pack does; one sweep must not grab both.
+    let file = candidate("[A] Test Series - 05-06 (1080p).mkv", 100);
+    let mut pack = candidate("[B] Test Series - 05-06 [1080p]", 100);
+    pack.item.is_batch = true;
+    assert!(!file.item.is_batch);
+    assert_eq!(logical_bucket_key(&file), logical_bucket_key(&pack));
 }

@@ -225,7 +225,7 @@ pub async fn seadex_warm_cache_from_db(db: &SqlitePool) {
         if remaining_secs <= 0 {
             continue;
         }
-        let mut payload: SeaDexPayload = match serde_json::from_str(&json) {
+        let payload: SeaDexPayload = match serde_json::from_str(&json) {
             Ok(p) => p,
             Err(e) => {
                 // Schema drift in SearchResult or SeaDexPayload would
@@ -237,10 +237,16 @@ pub async fn seadex_warm_cache_from_db(db: &SqlitePool) {
                 continue;
             }
         };
-        // A row persisted before the batch flag came from
-        // `release_title` carries the old detector's answer.
-        for candidate in &mut payload.candidates {
-            candidate.is_batch = crate::services::release_title::parse(&candidate.title).is_batch();
+        // A row persisted before the batch flag came from `release_title`
+        // carries the old detector's answer, and its base score and
+        // breakdown were built on it: skip the row, so the next lookup
+        // fetches and scores it afresh.
+        if payload
+            .candidates
+            .iter()
+            .any(|c| c.is_batch != crate::services::release_title::parse(&c.title).is_batch())
+        {
+            continue;
         }
         seadex_cache_put_with_ttl(
             anilist_id,

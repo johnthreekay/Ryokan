@@ -76,26 +76,22 @@ fn the_history_keeps_a_v2_apart_from_its_v1_and_still_finds_the_v1() {
     let v1 = found_for(v1_title);
     let v2 = found_for("[Group] Test Series - 05v2 (1080p)");
     let mut history = CanonicalHistory::default();
-    history.insert(&v1, false, v1_title);
+    history.insert(&v1, v1_title);
 
-    assert!(history.contains(&v1, false, 1), "the v1 itself is history");
-    assert!(!history.contains(&v2, false, 2), "the v2 is a new release");
+    assert!(history.contains(&v1, 1), "the v1 itself is history");
+    assert!(!history.contains(&v2, 2), "the v2 is a new release");
     assert_eq!(
-        history.lower_revision(&v2, false, 2),
+        history.lower_revision(&v2, 2),
         Some(&HistoryRelease {
             revision: 1,
             group: "Group".to_string(),
         }),
         "the queued v1 is what the v2 is judged against"
     );
-    assert_eq!(
-        history.lower_revision(&v1, false, 1),
-        None,
-        "nothing below a v1"
-    );
+    assert_eq!(history.lower_revision(&v1, 1), None, "nothing below a v1");
     let other = found_for("[Group] Test Series - 06v2 (1080p)");
     assert_eq!(
-        history.lower_revision(&other, false, 2),
+        history.lower_revision(&other, 2),
         None,
         "another episode is another item"
     );
@@ -108,12 +104,12 @@ fn insert_title_matches_the_library_the_way_the_sweep_does() {
     history.insert_title("[Group] Some Other Show - 05 (1080p)", &meta());
     let v2 = found_for("[Group] Test Series - 05v2 (1080p)");
     assert_eq!(
-        history.lower_revision(&v2, false, 2).map(|r| r.revision),
+        history.lower_revision(&v2, 2).map(|r| r.revision),
         Some(1),
         "a grabbed title or a queued torrent name lands under its item"
     );
     assert!(
-        !history.contains(&v2, false, 2),
+        !history.contains(&v2, 2),
         "a title naming no series inserts nothing, and the v2 is not the v1"
     );
 }

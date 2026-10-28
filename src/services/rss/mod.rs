@@ -945,12 +945,10 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         // release would replace it at import, so the rules for a file
         // apply here too (`judge_queued_revision`).
         let incoming_version = media::parse_release_revision(&item.title).version;
-        let history_reason = if canonical_history.contains(&found, item.is_batch, incoming_version)
-        {
+        let history_reason = if canonical_history.contains(&found, incoming_version) {
             Some("Logical episode is already queued or was grabbed earlier".to_string())
         } else if !decision.is_upgrade
-            && let Some(queued) =
-                canonical_history.lower_revision(&found, item.is_batch, incoming_version)
+            && let Some(queued) = canonical_history.lower_revision(&found, incoming_version)
         {
             judge_queued_revision(&policy, queued, &item.group).err()
         } else {
@@ -1209,7 +1207,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                         build_match_diag(&cand.item, Some(&cand.found), cand.score)
                     )
                 };
-                canonical_history.insert(&cand.found, cand.item.is_batch, &cand.item.title);
+                canonical_history.insert(&cand.found, &cand.item.title);
                 let _ = rss::record_decision(
                     &state.db,
                     rss::DecisionRecord {
@@ -1517,8 +1515,8 @@ struct CanonicalHistory {
 }
 
 impl CanonicalHistory {
-    fn insert(&mut self, found: &MatchResult, is_batch: bool, title: &str) {
-        let key = logical_episode_key(found, is_batch);
+    fn insert(&mut self, found: &MatchResult, title: &str) {
+        let key = logical_episode_key(found);
         if key.is_empty() {
             return;
         }
@@ -1547,13 +1545,13 @@ impl CanonicalHistory {
             source: RssSource::Nyaa,
         };
         if let Some(found) = best_series_match(&pseudo, all_meta) {
-            self.insert(&found, pseudo.is_batch, title);
+            self.insert(&found, title);
         }
     }
 
     /// True when this revision of the item was queued or grabbed.
-    fn contains(&self, found: &MatchResult, is_batch: bool, revision: u32) -> bool {
-        let key = logical_episode_key(found, is_batch);
+    fn contains(&self, found: &MatchResult, revision: u32) -> bool {
+        let key = logical_episode_key(found);
         !key.is_empty()
             && self
                 .items
@@ -1564,13 +1562,8 @@ impl CanonicalHistory {
     /// The highest revision of the item below `revision` that was
     /// queued or grabbed, if any: what a `v2` would replace before the
     /// `v1` reaches the disk.
-    fn lower_revision(
-        &self,
-        found: &MatchResult,
-        is_batch: bool,
-        revision: u32,
-    ) -> Option<&HistoryRelease> {
-        let key = logical_episode_key(found, is_batch);
+    fn lower_revision(&self, found: &MatchResult, revision: u32) -> Option<&HistoryRelease> {
+        let key = logical_episode_key(found);
         if key.is_empty() {
             return None;
         }
@@ -1636,12 +1629,13 @@ fn compare_candidates(a: &PendingCandidate, b: &PendingCandidate) -> Ordering {
 /// the history (`CanonicalHistory`), where it keeps a later `v2` from
 /// being swallowed as "already grabbed".
 fn logical_bucket_key(cand: &PendingCandidate) -> String {
-    logical_episode_key(&cand.found, cand.item.is_batch)
+    logical_episode_key(&cand.found)
 }
 
-/// The logical item a release delivers: series family, batch or
-/// single, and the episode set. Empty when no episode resolved.
-fn logical_episode_key(found: &MatchResult, is_batch: bool) -> String {
+/// The logical item a release delivers: series family and the episode
+/// set. Empty when no episode resolved. A pack and a single file holding
+/// the same episodes are one item, so a sweep never grabs both.
+fn logical_episode_key(found: &MatchResult) -> String {
     let episode_key = if !found.canonical_abs_eps.is_empty() {
         format_episode_set(&found.canonical_abs_eps)
     } else {
@@ -1650,12 +1644,7 @@ fn logical_episode_key(found: &MatchResult, is_batch: bool) -> String {
     if episode_key == "none" {
         return String::new();
     }
-    format!(
-        "{}|{}|{}",
-        found.family_key,
-        if is_batch { "batch" } else { "single" },
-        episode_key,
-    )
+    format!("{}|{}", found.family_key, episode_key)
 }
 
 /// The series' SeaDex picks for scoring one item: `hashes` feed the
@@ -1974,6 +1963,20 @@ fn evaluate_candidate(
             is_upgrade: false,
         };
     }
+    // One file holding several episodes (`- 05-06 (...).mkv`) replaces
+    // every on-disk episode it covers, so each must be missing or an
+    // upgrade, as for a batch.
+    let not_actionable = on_disk.len() as i32 - upgrade_count;
+    if parsed_eps.len() > 1 && not_actionable > 0 {
+        return CandidateDecision {
+            reject_reason: Some(format!(
+                "Multi-episode release would overwrite {not_actionable} non-upgradeable episode(s) on disk (it covers {}, only {actionable} are missing-or-upgradeable). Manual search bypasses this gate if you explicitly want to replace those episodes.",
+                parsed_eps.len()
+            )),
+            new_episode_count: 0,
+            is_upgrade: false,
+        };
+    }
 
     CandidateDecision {
         reject_reason: None,
@@ -2117,6 +2120,10 @@ fn best_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> Option<MatchRes
             match meta.season_num {
                 Some(season) if season == item_season => score += 0.55,
                 Some(_) => score -= 0.45,
+                // A series named by no season is its first: an item naming
+                // season 2+ is another entry's, episodes or not (a pack with
+                // none used to clear the bar and grab for a finished series).
+                None if item_season > 1 => score -= 0.45,
                 None => score -= 0.10,
             }
         }
@@ -2369,6 +2376,11 @@ fn parse_release(item: &RssItem) -> ParsedRelease {
         Some(c) if season_bound && c.spans_several() => "season_episode_range",
         Some(_) if season_bound => "season_episode",
         Some(c) if c.spans_several() => "range",
+        // `Show Part 2 - 05`: a dash episode under a season hint the claim
+        // does not bind.
+        Some(c) if c.rule == release_title::ClaimRule::Dash && title.season_hint().is_some() => {
+            "season_dash_episode"
+        }
         Some(c) if c.rule == release_title::ClaimRule::Dash => "absolute_dash",
         Some(_) => "absolute",
     };
