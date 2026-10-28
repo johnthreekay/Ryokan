@@ -42,7 +42,7 @@ expression: "lines.join(\"\\n\")"
 2009x09 [SDTV].avi
     eps=9 season=2009 group=SDTV res=- amb=- [file] series=-
 2020.Series.2011.12.02.PDTV.XviD-C4TV
-    eps=- season=- group=C4TV res=- amb=2 [] series=2020 Series 2011 12
+    eps=- season=- group=C4TV res=- amb=- [] series=2020 Series 2011 12
 210810 ABC123 Series Title ep05.mp4
     eps=5 season=- group=- res=- amb=- [file] series=210810 ABC123 Series Title
 221201 Series Title! ABC123 ep219[720p.h264].mp4
@@ -194,7 +194,7 @@ Aoashi S02E04 SUBFRENCH 1080p CR WEB-DL AAC2.0 x264-Tsundere-Raws (VOSTFR, Aoash
 Aoashi S02E04 SUBFRENCH 720p CR WEB-DL AAC2.0 x264-Tsundere-Raws (VOSTFR, Aoashi Season 2)
     eps=4 season=2 group=Tsundere-Raws res=720 amb=- [] series=Aoashi
 App.Sonarr.Made.in.Canada.Part.Two.720p.HDTV.x264-2HD
-    eps=- season=- group=- res=720 amb=- [] series=App Sonarr Made in Canada Part Two
+    eps=- season=- group=2HD res=720 amb=- [] series=App Sonarr Made in Canada Part Two
 As a Reincarnated Aristocrat Ill Use My Appraisal Skill to Rise in the World S03E03 Zaht and Braham 1080p CR WEB-DL DUAL AAC2.0 H.264-VARYG (Dual-Audio, Multi-Subs)
     eps=3 season=3 group=VARYG res=1080 amb=- [] series=As a Reincarnated Aristocrat Ill Use My Appraisal Skill to Rise in the World
 As a Reincarnated Aristocrat Ill Use My Appraisal Skill to Rise in the World S03E05 SUBFRENCH 1080p CR WEB-DL AAC2.0 x264-Tsundere-Raws (VOSTFR, Tensei Kizoku, Kantei Skill de Nariagaru 3rd Season)
@@ -222,7 +222,7 @@ Bakugan Battle Brawlers Mechtanium Surge 26 SUB - Battle of Destiny (854x480 You
 Bastof Syndrome NCOP NCED DVDRIP
     eps=- season=- group=- res=- amb=- [extra] series=Bastof Syndrome NCOP NCED
 Big.Special.Show.S05.HDTV.x264-2HD
-    eps=- season=5 group=- res=- amb=- [batch] series=Big Special Show S05
+    eps=- season=5 group=2HD res=- amb=- [batch] series=Big Special Show S05
 Black Clover (2017) [Stagione 01 Parte 3] [BluRay.1080p.x265.AAC.ITA.TRUEHD.JPN.Subs.Ita.Eng] [78.9GB] [stress]
     eps=- season=1 group=stress res=1080 amb=- [batch] series=Black Clover
 Black Clover S02E01 MULTi AD 1080p CR WEB-DL AAC2.0 H.264-Tsundere-Raws (VF, FRENCH, SUBFRENCH, VOSTFR, Black Clover Season 2, Black Clover 2nd Season)
@@ -346,7 +346,7 @@ Dragon Ball Super Beerus S01E03 SUBFRENCH 720p CR WEB-DL AAC2.0 H.264-Tsundere-R
 Dragon Ball Super Beerus S01E03 The God of Destruction Heads to Earth 1080p CR WEB-DL AAC2.0 H.264-VARYG (Dragon Ball Super: Beerus, Multi-Subs)
     eps=3 season=1 group=VARYG res=1080 amb=- [] series=Dragon Ball Super Beerus
 Dragon Ball Z Movie 13 Remaster [Colors Corrected V1] (Bluray 1080p x265 10Bit Opus 2.0 Multi) - Ryūjin 竜神
-    eps=- season=- group=- res=1080 amb=- [] series=Dragon Ball Z Movie 13 Remaster
+    eps=- season=- group=- res=1080 amb=13 [] series=Dragon Ball Z Movie 13
 Dragon Ball Z [TV] [01-240] Rus (rus, eng. sub.)
     eps=- season=- group=- res=- amb=- [batch] series=Dragon Ball Z
 Dragon.Ball.Super.Beerus.S01E03.CR.1080p.WEBRip.10bits.x265-Rapta
@@ -536,7 +536,7 @@ Link Click S04E12 SUBFRENCH 720p CR WEB-DL AAC2.0 x264-Tsundere-Raws (VOSTFR, Sh
 Love.After.World.Domination.S01.v2.1080p.BluRay.Dual-Audio.Opus.5.1.x265-YURASUKA (Koi wa Sekai Seifuku no Ato de)
     eps=- season=1 group=YURASUKA res=1080 amb=- [batch] series=Love After World Domination S01
 Lupin III - TV Series [Dual Audio Only] (BDRip UNCENSORED 1080p x265 HEVC OPUS 2.0x2)[MICO XD]
-    eps=- season=3 group=MICO XD res=1080 amb=- [batch] series=Lupin III - TV Series
+    eps=- season=- group=MICO XD res=1080 amb=- [] series=Lupin III - TV Series
 MAGICAL GIRL RAISING PROJECT restart S01E03 1080p AMZN WEB-DL DDP2.0 H.264-VARYG (Mahou Shoujo Ikusei Keikaku: restart, Multi-Subs)
     eps=3 season=1 group=VARYG res=1080 amb=- [] series=MAGICAL GIRL RAISING PROJECT restart
 Magic Repo Man Dumped by My Party Ill Cash In With a Cute Support Fairy to Become the Strongest S01E04 1080p CR WEB-DL AAC2.0 H.264-VARYG (Multi-Subs)
@@ -794,7 +794,7 @@ Series (1997) - S01E01-02 - Children of the Gods (Showtime) (1080p.BD.DD5.1.x265
 Series (2005) S21E12 (1080p AMZN WEB-DL x265 SDR DDP 5.1 English - Goki TAoE)
     eps=12 season=21 group=- res=1080 amb=- [] series=Series
 Series (2008) S05E01 (1080p BDRip DDP2.0 x265) - Vialle
-    eps=1 season=5 group=- res=1080 amb=- [] series=Series
+    eps=1 season=5 group=Vialle res=1080 amb=- [] series=Series
 Series (2009) - [06x16] - Room 147.mp4
     eps=16 season=6 group=- res=- amb=- [file] series=Series
 Series (2013) S01 (1080p BDRip x265 10bit DTS-HD MA 5 1 - WEM)[TAoE]
@@ -1444,7 +1444,7 @@ SomeShow.S20E13.1080p.BluRay.DTS-ES.5.1.x264
 SomeShow.S20E13.1080p.BluRay.DTS-MA.5.1.x264
     eps=13 season=20 group=MA res=1080 amb=- [] series=SomeShow
 SomeShow.S20E13.1080p.BluRay.DTS-X.MA.5.1.x264
-    eps=13 season=20 group=X res=1080 amb=- [] series=SomeShow
+    eps=13 season=20 group=- res=1080 amb=- [] series=SomeShow
 Some_Anime_Show_e66_time_is_money_part_one_marking_time
     eps=66 season=- group=- res=- amb=- [] series=Some Anime Show
 Sonarr.and.Series.S02.720p.x264-DIMENSION
@@ -1600,9 +1600,9 @@ The Ramparts of Ice S02E04 Relief 1080p NF WEB-DL DUAL AAC2.0 H.264-VARYG (Koori
 The Ramparts of Ice S02E04 Relief 1080p NF WEB-DL MULTi AAC2.0 H.264-VARYG (Koori no Jouheki 2nd Season, Multi-Audio, Multi-Subs)
     eps=4 season=2 group=VARYG res=1080 amb=- [] series=The Ramparts of Ice
 The Series (2023) S03E01 (1080p DS4K NF Webrip DV HDR DDP5.1 x265) - Vialle.mkv
-    eps=1 season=3 group=- res=2160 amb=- [file] series=The Series
+    eps=1 season=3 group=Vialle res=2160 amb=- [file] series=The Series
 The Series (2023) S03E01 (1080p DS4K NF Webrip DV HDR DDP5.1 x265) - VialleFAKE.mkv
-    eps=1 season=3 group=- res=2160 amb=- [file] series=The Series
+    eps=1 season=3 group=VialleFAKE res=2160 amb=- [file] series=The Series
 The Series (2025) - S03E01 - We're Already Here (1080p AMZN WEB-DL x265 Celdra)
     eps=1 season=3 group=- res=1080 amb=- [] series=The Series
 The Series (2025) S03E01 (1080p AMZN WEB-DL x265 SDR DDP 5.1 English - Celdra QxR)
@@ -1728,7 +1728,7 @@ Title.the.Series.S02.Special-Inside.Chesters.Mill.720p.HDTV.x264-BAJSKORV
 Title.the.Series.S02.Special-Inside.Chesters.Mill.HDTV.x264-BAJSKORV
     eps=- season=2 group=BAJSKORV res=- amb=- [batch] series=Title the Series S02 Special-Inside Chesters Mill
 Title.the.Series.S05.Special.HDTV.x264-2HD
-    eps=- season=5 group=- res=- amb=- [batch] series=Title the Series S05 Special
+    eps=- season=5 group=2HD res=- amb=- [batch] series=Title the Series S05 Special
 Title.the.Series.S11E00.A.Christmas.Carol.Special.720p.HDTV-FieldOfView
     eps=0 season=11 group=FieldOfView res=720 amb=- [] series=Title the Series
 Titles.s06.01.1999.BDRip.1080p.Ukr.Eng.AC3.Hurtom.TNU.Tenax555
@@ -4268,9 +4268,9 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [JPN-ENG] Kuroko no Basuke a.k.a Kuroko's Basketball [2012-2017] [S01-S03 + Movie - Last Game] COMPLETE (Series+Manga+OSTs+Extras) 1080p BDRip x265 PCM 2.0 Kira [SEV]
     eps=- season=- group=SEV res=1080 amb=- [batch] series=Kuroko no Basuke a k a Kuroko's Basketball
 [JibaRAWS] Yu-Gi-Oh! Duel Monsters GX 20th Remaster - 080 (TVer WEB-DL 1920x1080) (Yugioh)
-    eps=80 season=- group=JibaRAWS res=1080 amb=- [] series=Yu-Gi-Oh! Duel Monsters GX 20th Remaster
+    eps=80 season=- group=JibaRAWS res=1080 amb=- [] series=Yu-Gi-Oh! Duel Monsters GX 20th
 [JibaRAWS] Yu-Gi-Oh! Duel Monsters GX 20th Remaster - 080 (TX 1280x720) (Yugioh)
-    eps=80 season=- group=JibaRAWS res=720 amb=- [] series=Yu-Gi-Oh! Duel Monsters GX 20th Remaster
+    eps=80 season=- group=JibaRAWS res=720 amb=- [] series=Yu-Gi-Oh! Duel Monsters GX 20th
 [Judas] Ao no Hako (Blue Box) - S02E04 [1080p][HEVC x265 10bit][Dual-Audio][Multi-Subs] (Weekly)
     eps=4 season=2 group=Judas res=1080 amb=- [] series=Ao no Hako
 [Judas] Black Clover - S02E04 [1080p][HEVC x265 10bit][Multi-Subs] (Weekly)
@@ -4910,7 +4910,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [ReinForce] Otaku ni Yasashii Gal wa Inai (BDRip 1920x1080 x264 FLAC)
     eps=- season=- group=ReinForce res=1080 amb=- [] series=Otaku ni Yasashii Gal wa Inai
 [ReinForce] Otonari no Tenshi-sama ni Itsunomanika Dame Ningen ni Sareteita Ken 2 Vol 4 (BDRip 1920x1080 x264 FLAC)
-    eps=- season=- group=ReinForce res=1080 amb=- [] series=Otonari no Tenshi-sama ni Itsunomanika Dame Ningen ni Sareteita Ken 2 Vol 4
+    eps=- season=- group=ReinForce res=1080 amb=- [batch] series=Otonari no Tenshi-sama ni Itsunomanika Dame Ningen ni Sareteita Ken 2 Vol 4
 [ReleaseGroup] SeriesTitle S01E1 Webdl 1080p
     eps=1 season=1 group=ReleaseGroup res=1080 amb=- [] series=SeriesTitle
 [Rillant] Digimon the Movies - Digimon Movie Collection 1 [BD 1080p H265]
@@ -6398,9 +6398,9 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [三明治摆烂组] 亂世千金倪亞·利斯頓轉生為嬌弱千金的弒神武人華麗無雙錄 / Kyouran Reijou Nia Liston / 凶乱令嬢ニア・リストン - 03 - [繁日內嵌][WebRip AVC 8bit 1080P]
     eps=3 season=- group=三明治摆烂组 res=1080 amb=- [] series=亂世千金倪亞 / 利斯頓轉生為嬌弱千金的弒神武人華麗無雙錄 / Kyouran Reijou Nia Liston / 凶乱令嬢ニア・リストン
 [三明治摆烂组] 轉生就是劍 第二季 / 轉生成為魔劍了 第二季 / Tensei Shitara Ken Deshita S2 / 転生したら剣でしたⅡ - 04 - [繁日內嵌][WebRip AVC 8bit 1080P]
-    eps=4 season=2 group=三明治摆烂组 res=1080 amb=- [] series=轉生就是劍 第二季 / 轉生成為魔劍了 第二季 / Tensei Shitara Ken Deshita S2 / 転生したら剣でしたⅡ
+    eps=4 season=2 group=三明治摆烂组 res=1080 amb=- [] series=轉生就是劍 第二季 / 轉生成為魔劍了 第二季 / Tensei Shitara Ken Deshita S2 / 転生したら剣でしたII
 [三明治摆烂组] 转生就是剑 第二季 / 转生成为魔剑了 第二季 / Tensei Shitara Ken Deshita S2 / 転生したら剣でしたⅡ - 04 - [简日内嵌][WebRip AVC 8bit 1080P]
-    eps=4 season=2 group=三明治摆烂组 res=1080 amb=- [] series=转生就是剑 第二季 / 转生成为魔剑了 第二季 / Tensei Shitara Ken Deshita S2 / 転生したら剣でしたⅡ
+    eps=4 season=2 group=三明治摆烂组 res=1080 amb=- [] series=转生就是剑 第二季 / 转生成为魔剑了 第二季 / Tensei Shitara Ken Deshita S2 / 転生したら剣でしたII
 [亿次研同好会&云光字幕组] FX战士久留美 FX Senshi Kurumi-chan [03][1080P][HEVC-10bit][简繁日内封]
     eps=3 season=- group=亿次研同好会&云光字幕组 res=1080 amb=- [] series=FX战士久留美 FX Senshi Kurumi-chan
 [亿次研同好会&云光字幕组] FX战士久留美 FX Senshi Kurumi-chan [03][1080P][简日内嵌]

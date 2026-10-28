@@ -31,7 +31,15 @@ pub(super) fn normalize(input: &str) -> Normalized {
     }
     let mut text = String::with_capacity(end);
     for c in input[..end].chars() {
-        text.push(map_char(c));
+        // `Clevatess Ⅱ`: a Roman-numeral character spelled out.
+        match c {
+            '\u{2160}'..='\u{216B}' => text.push_str(
+                [
+                    "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII",
+                ][c as usize - 0x2160],
+            ),
+            _ => text.push(map_char(c)),
+        }
     }
     let text = drop_star_decoration(&text);
     let (text, single_file) = cut_extension(text.trim());

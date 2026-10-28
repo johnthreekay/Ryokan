@@ -529,14 +529,18 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
                 .map(|(at, _)| (&tok.text[..at], &tok.text[at + 1..]))
                 .rfind(|(head, _)| {
                     let head_lower = head.to_lowercase();
-                    matches!(head_lower.as_str(), "264" | "265")
-                        || matches!(
-                            classify_word(&head_lower),
-                            Class::Meta | Class::Resolution(_)
-                        )
+                    // `H.264-VARYG`, and a channel layout (`DTS-HD.MA.5.1-NAN0`).
+                    matches!(
+                        head_lower.as_str(),
+                        "264" | "265" | "1.0" | "2.0" | "2.1" | "5.1" | "6.1" | "7.1"
+                    ) || matches!(
+                        classify_word(&head_lower),
+                        Class::Meta | Class::Resolution(_)
+                    )
                 });
+            // A one-letter tail is no group (`2.0-E.N.D` names `E.N.D`).
             if let Some((_, tail)) = split
-                && !tail.is_empty()
+                && tail.chars().count() > 1
                 && classify_word(&tail.to_lowercase()) == Class::Plain
                 // `DVD-Rip`, `BD-Rip`: one source word, no group.
                 && !tail.eq_ignore_ascii_case("rip")
@@ -549,13 +553,47 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
                 found = Some(tail.to_string());
             }
         }
+        // ` -Báleygr`, and ` -Tsundere-Raws (AMZN) (...)`, ` -NanDesuKa (CR)`:
+        // only notes may follow the group.
         if tok.kind == Kind::LeadDash
             && let Some(n) = ctx.next(i)
             && ctx.toks[n].is_word()
             && ctx.class[n] == Class::Plain
-            && ctx.next(n).is_none()
+            && only_brackets_after(ctx, n)
         {
             found = Some(ctx.toks[n].text.clone());
+        }
+    }
+    if found.is_none() {
+        // `DTS-HD.MA.5.1-BLURANiUM`, `..._[1080p,BluRay,x264]_-_THORA`: one
+        // plain word ending the title after a dash that follows metadata.
+        let last_word = (0..ctx.toks.len()).rev().find(|&j| {
+            !ctx.skip[j]
+                && ctx.toks[j].depth == 0
+                && !matches!(ctx.toks[j].kind, Kind::Open(_) | Kind::Close(_))
+        });
+        if let Some(w) = last_word
+            && ctx.toks[w].is_word()
+            && ctx.class[w] == Class::Plain
+            && only_brackets_after(ctx, w)
+            && let Some(d) = ctx.prev(w)
+            && (matches!(
+                ctx.toks[d].kind,
+                Kind::RangeOp | Kind::SegDash | Kind::LeadDash
+            ) || ctx.toks[d].text == "-")
+            && let Some(before) = ctx.prev(d)
+        {
+            let glued_to_metadata = ctx.toks[w].sep == Sep::None
+                && (matches!(ctx.toks[before].kind, Kind::Decimal { .. })
+                    || ctx.class[before].is_meta());
+            let after_metadata_bracket = ctx.toks[d].kind == Kind::SegDash
+                && matches!(ctx.toks[before].kind, Kind::Close(_))
+                && ctx
+                    .group(ctx.toks[before].group)
+                    .is_some_and(|g| ctx.content(g).iter().any(|&c| ctx.class[c].is_meta()));
+            if glued_to_metadata || after_metadata_bracket {
+                found = Some(ctx.toks[w].text.clone());
+            }
         }
     }
     if found.is_none() {
@@ -564,11 +602,17 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
         // after another bracket. A round one (`_(BD_720p)_(Kametsu)`)
         // only right after another bracket too.
         let last = ctx.toks.len().checked_sub(1)?;
+        // `[Orange-Flash]`, `(ReinForce-Tactical)`: a hyphen joins plain
+        // parts, never metadata ones (`Multi-Subs`, `Dual-Audio`).
         let plain = |t: usize| {
+            let text = &ctx.toks[t].text;
             ctx.toks[t].is_word()
                 && ctx.class[t] == Class::Plain
-                && !is_crc(&ctx.toks[t].text)
-                && ctx.toks[t].text.chars().all(|c| c.is_ascii_alphanumeric())
+                && !is_crc(text)
+                && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                && text.split('-').all(|part| {
+                    !part.is_empty() && classify_word(&part.to_lowercase()) == Class::Plain
+                })
         };
         if let Kind::Close(close @ (']' | ')')) = ctx.toks[last].kind
             && let Some(g) = ctx.group(ctx.toks[last].group)
@@ -602,6 +646,16 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
         found = group_before_alternate_title(ctx);
     }
     found
+}
+
+/// Whether every token after `i` is inside a bracket (notes such as
+/// `(AMZN)` or `(VOSTFR, Multi-Subs)`) or there are none.
+fn only_brackets_after(ctx: &Ctx, i: usize) -> bool {
+    (i + 1..ctx.toks.len()).all(|j| {
+        ctx.skip[j]
+            || ctx.toks[j].depth > 0
+            || matches!(ctx.toks[j].kind, Kind::Open(_) | Kind::Close(_))
+    })
 }
 
 /// A language or edition note in a round bracket (`(Japanese)`,
@@ -889,6 +943,16 @@ fn episode_word_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         let tok = &ctx.toks[i];
         if ctx.class[i] == Class::EpisodeWord && !matches!(tok.lower.as_str(), "ep" | "epi" | "eps")
         {
+            // `OVA 03 - Strong World Episode 0`: an earlier special's number
+            // is the release's.
+            if (0..i).any(|j| {
+                !ctx.skip[j]
+                    && (matches!(ctx.class[j], Class::SpecialNum(_))
+                        || matches!(ctx.class[j], Class::Special | Class::Sp)
+                            && ctx.next(j).is_some_and(|n| ctx.num(n).is_some()))
+            }) {
+                continue;
+            }
             let Some(k) = ctx.next(i) else { continue };
             let Some(a) = ctx.episode_num(k) else {
                 continue;
@@ -1262,8 +1326,8 @@ fn after_plus(ctx: &Ctx, i: usize) -> bool {
     while let Some(p) = ctx.prev(at) {
         match ctx.toks[p].kind {
             Kind::Plus => return true,
-            // `+ NCOP & NCED`, `+ NCOP/NCED`, `+ NCOP, NCED`.
-            Kind::Amp | Kind::Alt | Kind::Comma => at = p,
+            // `+ NCOP & NCED`, `+ NCOP/NCED`, `+ NCOP, NCED`, `+ 2 OVAs`.
+            Kind::Amp | Kind::Alt | Kind::Comma | Kind::Num { .. } => at = p,
             Kind::Word
                 if matches!(ctx.class[p], Class::Extra | Class::Special | Class::Sp)
                     || ctx.toks[p].lower == "and" =>
@@ -1518,7 +1582,20 @@ fn roman_is_marker(ctx: &Ctx, i: usize) -> bool {
     {
         return false;
     }
+    // `Lupin III` is the character's name, never a season (`Lupin III -
+    // Daisuke Jigen's Gravestone` would otherwise conflict with every
+    // Lupin movie's season).
+    if ctx.toks[p].lower == "lupin" {
+        return false;
+    }
     let Some(n) = ctx.next(i) else { return true };
+    // `V` is a letter too often: only `DanMachi V - 13`.
+    if matches!(ctx.class[i], Class::Roman(5)) {
+        return ctx.toks[n].kind == Kind::SegDash
+            && ctx
+                .next(n)
+                .is_some_and(|w| ctx.episode_num(w).is_some() || ctx.toks[w].text == "第");
+    }
     match ctx.toks[n].kind {
         Kind::Open(_)
         | Kind::Close(_)
@@ -1695,6 +1772,19 @@ fn keywords(ctx: &Ctx, out: &mut ParsedTitle) {
                 {
                     out.volume_range = true;
                 }
+                // `DanMachi - Vol. 5 (BD ...)`: one disc volume holds several
+                // episodes.
+                if tok.depth == 0
+                    && ctx.next(i).is_some_and(|k| ctx.num(k).is_some())
+                    && (0..ctx.toks.len()).any(|j| {
+                        matches!(
+                            ctx.toks[j].lower.as_str(),
+                            "bd" | "bdrip" | "bluray" | "blu-ray" | "dvd" | "dvdrip" | "bdmv"
+                        )
+                    })
+                {
+                    out.volume_range = true;
+                }
             }
             _ => {}
         }
@@ -1757,9 +1847,24 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
         if ctx.prev(k).is_some_and(|p| {
             matches!(
                 ctx.class[p],
-                Class::EpisodeWord | Class::PartWord | Class::SeasonWord | Class::VolWord
+                Class::EpisodeWord
+                    | Class::PartWord
+                    | Class::SeasonWord
+                    | Class::VolWord
+                    | Class::Batch
             ) || matches!(ctx.toks[p].kind, Kind::Hash | Kind::Plus | Kind::RangeOp)
         }) {
+            continue;
+        }
+        // `Doraemon - 1986.07.18 (0875)`: a date's parts.
+        if ctx.toks[k].sep == Sep::Dot
+            && ctx.prev(k).is_some_and(|p| {
+                ctx.toks[p].sep == Sep::Dot
+                    && ctx
+                        .prev(p)
+                        .is_some_and(|y| ctx.num(y).is_some_and(|(v, d, _)| is_year(v, d)))
+            })
+        {
             continue;
         }
         let mut n = ctx.next(k);
@@ -1774,7 +1879,10 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
             None => digits >= 2 && found.is_none(),
             Some(j) => match ctx.toks[j].kind {
                 Kind::Open(_) => true,
-                Kind::SegDash => ctx.next(j).is_some_and(|w| ctx.toks[w].is_word()),
+                // `Stand By Me Doraemon 2 - Movie`: the number is the title's.
+                Kind::SegDash => ctx
+                    .next(j)
+                    .is_some_and(|w| ctx.toks[w].is_word() && ctx.class[w] != Class::Movie),
                 // Scene names put metadata right after it:
                 // `Dragon.Ball.043.V2.480p.DBox`.
                 _ => digits >= 2 && ctx.class[j].is_meta(),

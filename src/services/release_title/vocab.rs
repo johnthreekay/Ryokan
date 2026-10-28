@@ -129,6 +129,8 @@ const META: &[&str] = &[
     "custom",
     "vfr",
     "remastered",
+    "remaster",
+    "uncut",
     // audio
     "aac",
     "ac3",
@@ -576,9 +578,11 @@ pub(super) fn classify(tok: &Tok) -> Class {
     if matches!(text, "PROPER" | "REPACK" | "RERIP") {
         return Class::Revision;
     }
-    // Uppercase `II`..`IX` only: `V` and `X` are letters too often.
+    // Uppercase `II`..`IX` only (`X` is a letter too often). `V` is one
+    // too, but it is only read as a season where the title text ends
+    // (`DanMachi V - 13`), the same as every other numeral.
     if text.bytes().all(|b| b.is_ascii_uppercase())
-        && let Some(n) = roman_value(text).filter(|n| (2..=9).contains(n) && *n != 5)
+        && let Some(n) = roman_value(text).filter(|n| (2..=9).contains(n))
     {
         return Class::Roman(n);
     }
@@ -591,6 +595,15 @@ pub(super) fn classify(tok: &Tok) -> Class {
         }
         "sp" => return Class::Sp,
         w if EXTRA_WORDS.contains(&w) => return Class::Extra,
+        // `ED01`, `OP2`, `NCOP1`.
+        w if ["op", "ed", "ncop", "nced"].iter().any(|p| {
+            w.strip_prefix(p).is_some_and(|n| {
+                (1..=2).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit())
+            })
+        }) =>
+        {
+            return Class::Extra;
+        }
         "movie" | "film" | "gekijouban" | "劇場版" | "映画" => return Class::Movie,
         "movies" | "films" => return Class::Movies,
         "season" | "seasons" | "saison" | "saisons" | "temporada" | "temporadas" | "stagione"

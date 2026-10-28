@@ -783,6 +783,81 @@ mod tests {
     }
 
     #[test]
+    fn blind_sample_shapes() {
+        // From 1,000 random titles labeled without the parser's output.
+        let p = super::parse;
+        let group = |t: &str| super::parse(t).group;
+        // A date is no number to read; `Remaster` is metadata.
+        assert_eq!(
+            p("Doraemon - 1986.07.18 (0875) - Camouflaging Scribble Pen [DR][Orange-Flash]")
+                .ambiguous_number,
+            None
+        );
+        assert_eq!(
+            p("One Piece 0122 Remaster (BDRip 1080p x264 AC3 Multi)").ambiguous_number,
+            Some(122)
+        );
+        // A special's number beats a later `Episode 0`; `+ 2 OVAs` stays a pack.
+        let ova =
+            p("[A&C] One Piece - OVA 03 - Strong World Episode 0 (WEB 1080p HEVC) [Multi-Subs]");
+        assert!(ova.special && ova.release_episodes().is_empty());
+        let pack =
+            p("[/a/nonymous] Strawberry Marshmallow (2005) S01+ 2 OVAs (480p DVD Remux 2.0 AC-3)");
+        assert!(!pack.special && pack.is_batch());
+        // A disc volume is a pack.
+        assert!(p("[BlurayDesuYo] DanMachi - Vol. 5 (BD 1920x1080 10bit FLAC)").is_batch());
+        // Lupin III is a name; `V` before a dash episode and `Ⅱ` are seasons.
+        assert_eq!(
+            p("[Underwater-FFF] Lupin III - Daisuke Jigen's Gravestone (BD 720p)").season_hint(),
+            None
+        );
+        assert_eq!(super::season_marker("Lupin III"), None);
+        assert_eq!(p("[New-raws] Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka V - 13 [1080p].mkv").season_hint(), Some(5));
+        assert!(!p("[Group] Show V (1080p)").is_batch());
+        assert_eq!(
+            p("[Doomdos] - Clevatess Ⅱ - 第05话 - [1080p BILIBILI COM WEB-DL]").season_hint(),
+            Some(2)
+        );
+        // Numbers that belong to the release, not an episode.
+        assert_eq!(
+            p("Yu-Gi-Oh! Duel Monsters S02 - Batch 1 [DVDrip JP MULTI]").ambiguous_number,
+            None
+        );
+        assert_eq!(
+            p("[Erai-raws] Stand By Me Doraemon 2 - Movie [720p][Multiple Subtitle]")
+                .ambiguous_number,
+            None
+        );
+        // A glued `ED01` is an extra.
+        assert!(
+            p("[SakuraCircle] Crayon Shin-chan - ED01 (DVD 640x480 h264 AAC) [D06CD954].mp4").extra
+        );
+        // Scene and web group tails.
+        assert_eq!(group("RINGING FATE S01E07v2 1080p WEB H.264 E-AC-3 -Tsundere-Raws (AMZN) (Mingyun Quan Tai)").as_deref(), Some("Tsundere-Raws"));
+        assert_eq!(
+            group("All.You.Need.Is.Kill.2025.1080p.BluRay.REMUX.AVC.DUAL.DTS-HD.MA.5.1-BLURANiUM")
+                .as_deref(),
+            Some("BLURANiUM")
+        );
+        assert_eq!(
+            group("K-ON!_(2009)_[1080p,BluRay,x264]_-_THORA").as_deref(),
+            Some("THORA")
+        );
+        assert_eq!(
+            group("(HI10)_Kizumonogatari_-_03_(BD_720p)_(ReinForce-Tactical).mkv").as_deref(),
+            Some("ReinForce-Tactical")
+        );
+        assert_eq!(
+            group("Series.Title.S01E02.1080p.BluRay.Remux.AVC.FLAC.2.0-E.N.D"),
+            None
+        );
+        assert_eq!(
+            group("[G] Show - 05 [1080p][Multi-Subs]").as_deref(),
+            Some("G")
+        );
+    }
+
+    #[test]
     fn roman_numerals_decode_in_any_case() {
         assert_eq!(roman_value("iv"), Some(4));
         assert_eq!(roman_value("X"), Some(10));

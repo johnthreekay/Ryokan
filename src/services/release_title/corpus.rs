@@ -122,6 +122,19 @@ fn dump() {
             snapshot_line(title),
             parse(title).episodes
         );
+        if std::env::var_os("RT_TOKENS").is_some() {
+            let lexed = super::lexer::lex(&super::normalize::normalize(title).text);
+            for tok in &lexed.toks {
+                eprintln!(
+                    "   tok {:?} {:?} sep={:?} depth={} class={:?}",
+                    tok.kind,
+                    tok.text,
+                    tok.sep,
+                    tok.depth,
+                    super::vocab::classify(tok)
+                );
+            }
+        }
         if !aliases.is_empty() {
             let aliases: Vec<&str> = aliases.split('|').collect();
             let mut eps: Vec<i32> = parse(title)

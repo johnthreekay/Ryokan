@@ -977,14 +977,12 @@
       "category": "1_2",
       "expect": {
         "group": "MICO XD",
-        "batch": true,
-        "seasons": [
-          3
-        ],
+        "batch": false,
+        "seasons": [],
         "resolution": 1080
       },
       "verified": "hand",
-      "note": "Roman numeral ending the title zone reads as a season, as AniList's own Lupin III title does"
+      "note": "Lupin III is the character's name, never a season, in releases and AniList names alike (read as season 3, every Lupin movie's releases conflicted with its season). With no episode, season or pack word named, it reads as one release: the title-only pack limitation."
     },
     {
       "title": "[Mira] Tatsuki Fujimoto 17-26 - Season 1 - (BD 1080p Opus AV1)",
