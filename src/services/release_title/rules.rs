@@ -355,6 +355,13 @@ pub(super) fn parse(title: &str) -> ParsedTitle {
     out.includes_specials = includes_specials(&ctx);
     (out.special, out.special_from_title_word) = special(&ctx, out.episodes.as_ref(), &out.seasons);
     keywords(&ctx, &mut out);
+    // `[Unofficial HorribleSubs Batch]`: a batch word in the group bracket.
+    if out.group.as_deref().is_some_and(|g| {
+        g.split(|c: char| !c.is_alphanumeric())
+            .any(|w| w.eq_ignore_ascii_case("batch"))
+    }) {
+        out.batch_keyword = true;
+    }
     if out.episodes.is_none() && !out.half_episode {
         out.ambiguous_number = ambiguous_number(&ctx);
     }
@@ -738,7 +745,9 @@ fn tag_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
                         && let Some(k) = ctx.next(n)
                         && let Some(a) = ctx.episode_num(k)
                     {
-                        return Some(ctx.claim(a, a, Some(season), ClaimRule::Tag));
+                        // `Qin's Moon S6 ep 1-6`.
+                        let last = ctx.range_after(k, false).map_or(a, |(b, _)| b);
+                        return Some(ctx.range_claim(k, a, last, Some(season), ClaimRule::Tag));
                     }
                 }
             }
@@ -800,7 +809,10 @@ fn dash_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         {
             continue;
         }
-        if ctx.boundary_after(k) {
+        // `Chihayafuru S3 - 23 Like a Boatsman Adrift`: after a season
+        // marker the dash's number is the episode, before its title too.
+        let marked_slot = season.is_some() && ctx.num(k).is_some_and(|(_, digits, _)| digits >= 2);
+        if ctx.boundary_after(k) || marked_slot {
             // `Show 01 - 119 [Batch]`: a zero-padded number before the
             // dash opens a range (a title's own `2` or `100` never does).
             if let Some(p) = ctx.prev(d)
@@ -1035,8 +1047,11 @@ fn bare_range_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         }) {
             continue;
         }
+        // `Inuyasha 1-167 old fansubs`: a run of three or more ending in two
+        // digits or more is a range before title words too.
         if let Some((b, m)) = ctx.range_after(k, false)
-            && ctx.boundary_after(m)
+            && (ctx.boundary_after(m)
+                || b >= a + 2 && ctx.num(m).is_some_and(|(_, digits, _)| digits >= 2))
         {
             return Some(ctx.range_claim(k, a, b, None, ClaimRule::BareRange));
         }
@@ -1328,10 +1343,12 @@ fn seasons(ctx: &Ctx) -> Seasons {
                         part = Some(n);
                         // Kaizoku's `Series Cour 2 (WEB 1080p)`: a top-level
                         // part marker right before a bracket is a pack.
+                        // `86 Part 2 | 86 Eighty-Six Part 2 [...]` and a title
+                        // ending in it name the part's pack too.
                         part_pack = ctx.toks[i].depth == 0
-                            && ctx
-                                .next(k)
-                                .is_some_and(|b| matches!(ctx.toks[b].kind, Kind::Open(_)));
+                            && ctx.next(k).is_none_or(|b| {
+                                matches!(ctx.toks[b].kind, Kind::Open(_) | Kind::Alt)
+                            });
                     }
                 }
             }

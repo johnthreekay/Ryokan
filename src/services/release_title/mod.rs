@@ -247,16 +247,20 @@ impl ParsedTitle {
     /// claim, or a bracketed end marker with no claim.
     /// A movie, an extras release, or a single file is never a season pack.
     pub fn is_batch(&self) -> bool {
-        if self.extra {
+        // One video file is never a pack, whatever its name says
+        // (`Doraemon Movies 2020 - ....mkv`).
+        if self.extra || self.single_file {
             return false;
         }
         if self.batch_keyword {
             return true;
         }
         if let Some(claim) = &self.episodes {
-            return claim.spans_several() && !self.single_file;
+            return claim.spans_several();
         }
-        if self.single_file || self.movie || self.half_episode {
+        // A movie is one release, unless several seasons come with it
+        // (`Season 1-5 + Embers of Fire Movie`).
+        if self.movie && self.seasons.numbers.len() < 2 || self.half_episode {
             return false;
         }
         if self.volume_range || self.year_range {
@@ -734,6 +738,48 @@ mod tests {
             super::season_marker("Kizumonogatari II: Nekketsu-hen"),
             None
         );
+    }
+
+    #[test]
+    fn big_corpus_batch_shapes() {
+        // From the 29k-title corpus, each settled by the torrent's file count.
+        let p = super::parse;
+        assert!(
+            !p("[BlueMoon] Doraemon Movies 2020 - Nobita's New Dinosaur [1080p][36A0BB51].mkv")
+                .is_batch()
+        );
+        assert!(
+            !p("Final_Fantasy_Advent_Children_Complete_(2009)_[1080p,BluRay,x264,DTS]_-_THORA.mkv")
+                .is_batch()
+        );
+        let chihayafuru = p(
+            "[ShowY] Chihayafuru S3 - 23 Like a Boatsman Adrift [1080p x265 10bit][Multiple Subs]",
+        );
+        assert!(!chihayafuru.is_batch());
+        assert_eq!(
+            chihayafuru
+                .release_episodes()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            [23]
+        );
+        assert!(p("Inuyasha 1-167 old fansubs tvrip (japanese audio english sub)").is_batch());
+        assert!(p("[Ranmaru'sBoys] Haikara-san ga Tooru 1-14 TV (1978) [BD AVC OPUS]").is_batch());
+        assert!(p("Qin's Moon S6 ep 1-6").is_batch());
+        assert!(
+            p("[Unofficial HorribleSubs Batch][720p] Bermuda Triangle Colorful Pastrale")
+                .is_batch()
+        );
+        assert!(
+            p("[HuangSubs] Perfect World Season 1-5 + Embers of Fire Movie (1080p)").is_batch()
+        );
+        assert!(
+            p("[DB] 86 Part 2 | 86 Eighty-Six Part 2 [Dual Audio 10bit BD1080p][HEVC-x265]")
+                .is_batch()
+        );
+        // Still one episode or a weekly.
+        assert!(!p("[SubsPlease] Show Part 2 - 05 (1080p)").is_batch());
+        assert!(!p("[Group] Show 5-6 Day Trip [1080p]").is_batch());
     }
 
     #[test]

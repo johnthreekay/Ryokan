@@ -1376,7 +1376,7 @@ Show 2160P.mkv
 Show 480P.mkv
     eps=- season=- group=- res=480 amb=- [file] series=Show
 Show Complete BD.mkv
-    eps=- season=- group=- res=- amb=- [batch file] series=Show
+    eps=- season=- group=- res=- amb=- [file] series=Show
 Show Incomplete Edition.mkv
     eps=- season=- group=- res=- amb=- [file] series=Show Incomplete Edition
 Show Name (2016) Season 1 S01 (1080p AMZN WEB-DL x265 HEVC 10bit EAC3 5 1 RZeroX) QxR
@@ -4082,7 +4082,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [Group] Show 2nd Season [BD 1080p]
     eps=- season=2 group=Group res=1080 amb=- [batch] series=Show 2nd Season
 [Group] Show Batch.mkv
-    eps=- season=- group=Group res=- amb=- [batch file] series=Show
+    eps=- season=- group=Group res=- amb=- [file] series=Show
 [Group] Show I vs Y (some subtitle)
     eps=- season=- group=Group res=- amb=- [] series=Show I vs Y
 [Group] Show Part 3 - 01.mkv
@@ -4102,7 +4102,7 @@ Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04
 [Group] Show Season 2 05v2 (1080p)
     eps=5 season=2 group=Group res=1080 amb=- [] series=Show Season 2
 [Group] Show Season Pack.mkv
-    eps=- season=- group=Group res=- amb=- [batch file] series=Show Season Pack
+    eps=- season=- group=Group res=- amb=- [file] series=Show Season Pack
 [Group] Show V (1080p)
     eps=- season=- group=Group res=1080 amb=- [] series=Show V
 [Group] The X Movie (1080p)

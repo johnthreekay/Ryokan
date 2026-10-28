@@ -155,3 +155,76 @@ fn file_dump() {
         }
     }
 }
+
+/// Every reading of an external corpus, for checking the parser at scale
+/// (`RT_CORPUS` = a JSON array of `{"title": ...}`, `RT_DETAILS` = an
+/// optional directory of per-torrent `{"id", "title", "files": [{"name"}]}`
+/// files, `RT_OUT` = the JSON-lines output). Each file is read plainly and
+/// with its torrent's series title as the series' name.
+#[test]
+#[ignore = "corpus tool: RT_CORPUS, RT_DETAILS, RT_OUT"]
+fn big_corpus_dump() {
+    use std::io::Write;
+    use std::time::Instant;
+
+    let corpus = std::env::var("RT_CORPUS").expect("RT_CORPUS");
+    let out_path = std::env::var("RT_OUT").expect("RT_OUT");
+    let mut out = std::io::BufWriter::new(std::fs::File::create(out_path).expect("RT_OUT"));
+    let rows = load(Path::new(&corpus));
+    for row in rows.as_array().expect("array") {
+        let title = row["title"].as_str().unwrap_or_default();
+        let started = Instant::now();
+        let p = parse(title);
+        let micros = started.elapsed().as_micros() as u64;
+        let mut eps: Vec<i32> = p.release_episodes().into_iter().collect();
+        eps.sort_unstable();
+        let fields = super::release_fields(title);
+        let rec = serde_json::json!({
+            "title": title,
+            "micros": micros,
+            "batch": p.is_batch(),
+            "eps": eps,
+            "claim": p.episodes.as_ref().map(|c| format!("{:?}", c.rule)),
+            "season": p.season_hint(),
+            "seasons": p.seasons.numbers,
+            "group": p.group,
+            "res": p.resolution,
+            "res_tier": fields.resolution,
+            "special": p.special,
+            "extra": p.extra,
+            "half": p.half_episode,
+            "file": p.single_file,
+            "amb": p.ambiguous_number,
+            "title_text": p.title,
+            "series_title": p.series_title,
+            "file_span": p.file_span().map(|s| (s.season, s.first, s.last, s.special)),
+        });
+        writeln!(out, "{rec}").expect("write");
+    }
+    let Ok(dir) = std::env::var("RT_DETAILS") else {
+        return;
+    };
+    for path in json_files(Path::new(&dir)) {
+        let d = load(&path);
+        let torrent_title = d["title"].as_str().unwrap_or_default();
+        let name = parse(torrent_title).series_title.unwrap_or_default();
+        let anchors = super::SeriesAnchors::new(&[name.as_str()]);
+        for f in d["files"].as_array().into_iter().flatten() {
+            let file = f["name"].as_str().unwrap_or_default();
+            let base = file.rsplit('/').next().unwrap_or(file).to_lowercase();
+            let span = crate::services::media::parse_episode_span(&base);
+            let named = crate::services::media::parse_episode_span_for(&base, &anchors);
+            writeln!(
+                out,
+                "{}",
+                serde_json::json!({
+                    "torrent": d["id"],
+                    "file": file,
+                    "span": span.map(|s| (s.season, s.first, s.last, s.special)),
+                    "named": named.map(|s| (s.season, s.first, s.last, s.special)),
+                })
+            )
+            .expect("write");
+        }
+    }
+}

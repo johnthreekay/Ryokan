@@ -20,6 +20,21 @@
       "fn": "release_parse::episode_after_series_name",
       "title": "[Group]_Dark_Gathering_Season_2_05_[1080p]",
       "reason": "A season marker followed by a bare episode is season 2 episode 5, read structurally (the #296 stopgap returned nothing)."
+    },
+    {
+      "fn": "indexers::detect_batch_from_title",
+      "title": "Show Complete BD.mkv",
+      "reason": "A title naming one video file is never a pack, even with a batch word: in the 28k-title AnimeTosho corpus every such title (`Final_Fantasy_Advent_Children_Complete_(2009)...mkv`, `Doraemon Movies 2020 - ....mkv`) was one file."
+    },
+    {
+      "fn": "indexers::detect_batch_from_title",
+      "title": "[Group] Show Batch.mkv",
+      "reason": "A title naming one video file is never a pack, even with a batch word: in the 28k-title AnimeTosho corpus every such title (`Final_Fantasy_Advent_Children_Complete_(2009)...mkv`, `Doraemon Movies 2020 - ....mkv`) was one file."
+    },
+    {
+      "fn": "indexers::detect_batch_from_title",
+      "title": "[Group] Show Season Pack.mkv",
+      "reason": "A title naming one video file is never a pack, even with a batch word: in the 28k-title AnimeTosho corpus every such title (`Final_Fantasy_Advent_Children_Complete_(2009)...mkv`, `Doraemon Movies 2020 - ....mkv`) was one file."
     }
   ]
 }
