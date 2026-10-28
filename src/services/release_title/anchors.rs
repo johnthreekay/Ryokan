@@ -89,6 +89,16 @@ impl SeriesAnchors {
         })
     }
 
+    /// Whether any alias is found word for word in `words`.
+    pub(super) fn finds_name(&self, words: &[Word]) -> bool {
+        self.seqs.iter().any(|seq| {
+            seq.len() <= words.len()
+                && words
+                    .windows(seq.len())
+                    .any(|win| win.iter().zip(seq).all(|(a, b)| &a.text == b))
+        })
+    }
+
     /// Whether an alias found in `words` holds every number in `nums`
     /// (`Tatsuki Fujimoto 17-26`), so those numbers are the name's.
     pub(super) fn name_holds_numbers(&self, words: &[Word], nums: &[i32]) -> bool {

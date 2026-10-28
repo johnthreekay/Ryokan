@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 // `release_title::file_mode`; these re-exports keep its call sites.
 pub use crate::services::release_title::file_mode::{
     EpisodeSpan, MAX_FILE_SPAN, ReleaseRevision, has_special_marker, is_special_release,
-    parse_episode_number, parse_episode_span, parse_release_revision, parse_release_version,
+    parse_episode_number, parse_episode_span, parse_episode_span_for, parse_release_revision,
+    parse_release_version,
 };
 
 /// Sanitize a string for use as a folder name on disk.

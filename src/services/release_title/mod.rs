@@ -322,6 +322,31 @@ impl ParsedTitle {
         })
     }
 
+    /// What a series' names say about a file name's bare reading:
+    /// `None` when they say nothing (no name found, or the episode came
+    /// from a marked claim such as a dash or a tag), `Some(None)` when the
+    /// number is the name's own (`Mob Psycho 100 (BD)`, a bare range or
+    /// marker number inside the name), `Some(Some(n))` for the number
+    /// right after the name (`[EA]Kaiju_No_8_08_` is 8).
+    pub fn name_reading(&self, anchors: &SeriesAnchors) -> Option<Option<i32>> {
+        if anchors.is_empty() {
+            return None;
+        }
+        match &self.episodes {
+            Some(c)
+                if matches!(c.rule, ClaimRule::BareRange | ClaimRule::MarkerNumber)
+                    && anchors.name_holds_numbers(&self.anchor_words, &[c.first, c.last]) =>
+            {
+                Some(None)
+            }
+            Some(_) => None,
+            None if anchors.finds_name(&self.anchor_words) => {
+                Some(anchors.episode_after_name(&self.anchor_words))
+            }
+            None => None,
+        }
+    }
+
     /// A file name's special flag: a marker that is part of the title
     /// before the first dash (`Kekkon Special - 01`) is the name.
     fn file_special(&self) -> bool {

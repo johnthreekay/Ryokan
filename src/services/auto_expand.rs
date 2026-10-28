@@ -26,6 +26,7 @@ use sqlx::SqlitePool;
 use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, grabbed_torrents, series};
 use crate::services::anilist::AnimeDetail;
+use crate::services::release_title::SeriesAnchors;
 use crate::services::source::ClassificationResult;
 use crate::services::{anilist, auto_search, logger, media, metadata_sync};
 
@@ -330,9 +331,16 @@ pub async fn expand_from_files(
         // an upgrade searching by episode 1 of Owari S2 finds a route
         // whose files were originally numbered E14 on disk.
         let mut ep_nums: Vec<i32> = Vec::new();
+        let sibling_anchors = SeriesAnchors::new(&[
+            sibling.title_romaji.as_str(),
+            sibling.title_english.as_str(),
+            sibling.title_native.as_str(),
+        ])
+        .with_specials_as_episodes(!media::is_tv_format(&sibling.format));
         for &file_idx in &sibling.file_indices {
             if let Some(name) = filenames.get(file_idx)
-                && let Some(span) = media::parse_episode_span(&name.to_lowercase())
+                && let Some(span) =
+                    media::parse_episode_span_for(&name.to_lowercase(), &sibling_anchors)
             {
                 // Every episode a multi-episode file holds (issue #246).
                 for raw in span.episodes() {
@@ -427,11 +435,15 @@ pub async fn expand_from_files(
         parent_episode_numbers.iter().copied().collect();
     let mut all_parent_eps: std::collections::BTreeSet<i32> =
         parent_eps_covered.iter().copied().collect();
+    // A number the parent's own name holds is never a file's episode.
+    let parent_anchors = SeriesAnchors::new(&auto_search::collect_aliases(parent_detail))
+        .with_specials_as_episodes(!media::is_tv_format(&parent_detail.format));
     for &file_idx in &parent_file_indices {
         let Some(name) = filenames.get(file_idx) else {
             continue;
         };
-        let Some(span) = media::parse_episode_span(&name.to_ascii_lowercase()) else {
+        let Some(span) = media::parse_episode_span_for(&name.to_ascii_lowercase(), &parent_anchors)
+        else {
             continue;
         };
         // Every episode a multi-episode file holds (issue #246).

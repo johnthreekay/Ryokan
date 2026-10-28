@@ -3,8 +3,9 @@ use std::collections::HashSet;
 use crate::services::download_client::DownloadFile;
 use crate::services::post_processing::{
     ready_wanted_video_indices, requires_episode_map_preflight, span_from_grab_episodes,
-    validate_batch_episode_map,
+    validate_batch_episode_map, validate_batch_episode_map_with_anchors,
 };
+use crate::services::release_title::SeriesAnchors;
 
 #[test]
 fn accepts_unique_dot_delimited_complete_series_batch() {
@@ -520,4 +521,43 @@ fn grab_episode_list_becomes_a_span_only_when_contiguous_and_short() {
         Some((9, 9))
     );
     assert!(span_from_grab_episodes(&[]).is_none());
+}
+
+#[test]
+fn a_number_in_the_series_name_takes_no_slot() {
+    // Without the series' names `Mob Psycho 100 (BD 1080p).mkv` reads as
+    // episode 100; with them it is the name's own number and the file is
+    // warn-skipped like any other unnumbered video.
+    let files = vec![
+        (
+            0,
+            42,
+            None,
+            0,
+            "[G] Mob Psycho 100 - 01 (BD 1080p).mkv".to_string(),
+        ),
+        (
+            1,
+            42,
+            None,
+            0,
+            "[G] Mob Psycho 100 - 02 (BD 1080p).mkv".to_string(),
+        ),
+        (
+            2,
+            42,
+            None,
+            0,
+            "[G] Mob Psycho 100 (BD 1080p).mkv".to_string(),
+        ),
+    ];
+    let without = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
+    assert!(without.slots.contains_key(&2));
+    let anchors = [(42, SeriesAnchors::new(&["Mob Psycho 100"]))]
+        .into_iter()
+        .collect();
+    let with = validate_batch_episode_map_with_anchors(&files, &HashSet::new(), &anchors).unwrap();
+    assert!(with.slots.contains_key(&0));
+    assert!(with.slots.contains_key(&1));
+    assert!(!with.slots.contains_key(&2));
 }

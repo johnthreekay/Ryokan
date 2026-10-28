@@ -206,6 +206,24 @@ pub fn parse_episode_span(lower: &str) -> Option<EpisodeSpan> {
     Some(parsed)
 }
 
+/// [`parse_episode_span`] for a file whose series is known: a number
+/// its own name holds is never the episode (`Mob Psycho 100 (BD).mkv`),
+/// and where the name is found, a bare reading is the number right after
+/// it. The extras gate and the special markers decide first, as without
+/// the series.
+pub fn parse_episode_span_for(lower: &str, anchors: &super::SeriesAnchors) -> Option<EpisodeSpan> {
+    let span = parse_episode_span(lower)?;
+    match super::parse(lower).name_reading(anchors) {
+        None => Some(span),
+        Some(None) => None,
+        Some(Some(n)) => Some(EpisodeSpan {
+            first: n,
+            last: n,
+            ..span
+        }),
+    }
+}
+
 /// True when the name carries a special marker in a shape that does
 /// not itself supply the episode number: Sonarr's `01 OVA` / `05
 /// Special`, or a bare `- OVA` segment. The marker-then-number shapes
@@ -394,4 +412,54 @@ pub fn parse_release_revision(name: &str) -> ReleaseRevision {
         None => 1,
     };
     ReleaseRevision { version, repack }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_episode_span, parse_episode_span_for};
+    use crate::services::release_title::SeriesAnchors;
+
+    fn first(name: &str, aliases: &[&str]) -> Option<i32> {
+        parse_episode_span_for(&name.to_lowercase(), &SeriesAnchors::new(aliases)).map(|s| s.first)
+    }
+
+    #[test]
+    fn a_number_the_series_name_holds_is_never_the_file_episode() {
+        let mob = ["Mob Psycho 100"];
+        assert_eq!(
+            parse_episode_span("[g] mob psycho 100 (bd 1080p).mkv").map(|s| s.first),
+            Some(100)
+        );
+        assert_eq!(first("[G] Mob Psycho 100 (BD 1080p).mkv", &mob), None);
+        assert_eq!(
+            first("[G] Mob Psycho 100 - 05 (BD 1080p).mkv", &mob),
+            Some(5)
+        );
+        // A dash episode equal to the title's number is still the episode.
+        assert_eq!(
+            first(
+                "[SubsPlease] Kaiju No. 8 - 08 (1080p).mkv",
+                &["Kaiju No. 8"]
+            ),
+            Some(8)
+        );
+    }
+
+    #[test]
+    fn where_the_name_is_found_the_episode_follows_it() {
+        assert_eq!(
+            first("[EA]Kaiju_No_8_08_[1080p].mkv", &["Kaiju No. 8"]),
+            Some(8)
+        );
+        assert_eq!(first("[EA]Kaiju_No_8_[1080p].mkv", &["Kaiju No. 8"]), None);
+        assert_eq!(
+            first("[EA]Dark_Gathering_24_[1080p].mkv", &["Dark Gathering"]),
+            Some(24)
+        );
+        // A name the series does not carry leaves the file's own reading.
+        assert_eq!(
+            first("[G] Other Show 05 (1080p).mkv", &["Dark Gathering"]),
+            Some(5)
+        );
+    }
 }

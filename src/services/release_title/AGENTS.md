@@ -24,7 +24,7 @@ Each file is one step and says what it does at the top:
 4. `rules.rs`: the ordered rules, below.
 5. `anchors.rs`: the series-aware reading.
 
-`file_mode.rs` is the file-name parser (`parse_episode_span` and friends), moved verbatim from `services::media`, which re-exports it. Its branch order is the root AGENTS.md's "Parse-ordering" section; it is replaced by the rules above one branch at a time, each step with zero unexplained differences over every corpus and `tests/nyaa_filename_corpus.rs`.
+`file_mode.rs` is the file-name parser (`parse_episode_span` and friends; `services::media` re-exports it): `ParsedTitle::file_span` under the file shape rules, then two residual shapes, then the anitomy extras gate. `parse_episode_span_for(name, &anchors)` adds the series' names through `ParsedTitle::name_reading` wherever the series is known. `legacy::media` keeps the old regex branches, and `differential::file_report` lists every name where the two disagree.
 
 ## Rule order (load-bearing)
 

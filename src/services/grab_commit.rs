@@ -281,7 +281,7 @@ pub(crate) fn episode_numbers_for_commit(
         .filter(|n| auto_search::is_media_filename(n))
     {
         let base = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
-        let Some(span) = crate::services::media::parse_episode_span(&base) else {
+        let Some(span) = media::parse_episode_span_for(&base, &series.anchors) else {
             continue;
         };
         any_parsed = true;
@@ -308,19 +308,24 @@ pub(crate) struct GrabSeries {
     episode_count: Option<i32>,
 }
 
+/// A library series' names and format as `release_title` reads them, for
+/// reading its releases and its files.
+pub(crate) fn series_anchors(row: &Series) -> SeriesAnchors {
+    let mut names = vec![
+        row.title.clone(),
+        row.title_romaji.clone(),
+        row.title_english.clone(),
+        row.title_native.clone(),
+    ];
+    names.extend(row.alternate_title_list());
+    names.retain(|n| !n.trim().is_empty());
+    SeriesAnchors::new(&names).with_specials_as_episodes(!media::is_tv_format(&row.format))
+}
+
 impl GrabSeries {
     pub(crate) fn from_row(row: &Series) -> Self {
-        let mut names = vec![
-            row.title.clone(),
-            row.title_romaji.clone(),
-            row.title_english.clone(),
-            row.title_native.clone(),
-        ];
-        names.extend(row.alternate_title_list());
-        names.retain(|n| !n.trim().is_empty());
         Self {
-            anchors: SeriesAnchors::new(&names)
-                .with_specials_as_episodes(!media::is_tv_format(&row.format)),
+            anchors: series_anchors(row),
             cumulative_prior_episodes: row.cumulative_prior_episodes,
             episode_count: row.episodes,
         }

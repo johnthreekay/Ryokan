@@ -42,8 +42,9 @@ use sqlx::SqlitePool;
 use crate::AppState;
 use crate::models::{config, episode_tags, log::LogCategory, series};
 use crate::services::anilist::{self, AnimeEntry};
+use crate::services::release_title::SeriesAnchors;
 use crate::services::source::{self, ClassificationResult, WebKind};
-use crate::services::{logger, progress};
+use crate::services::{logger, media, progress};
 
 /// AniList lookups in flight at once during matching. Each call still
 /// goes through the AL throttle; this cap only stops a 200-series
@@ -635,6 +636,7 @@ pub async fn match_groups(groups: &mut Vec<SeriesGroup>) {
     let mut results = stream::iter(owned.into_iter().enumerate())
         .map(|(i, mut g)| async move {
             search_and_rank(&mut g, true).await;
+            reread_with_pick(&mut g);
             // The TMDB mapping may split a season across AniList
             // entries, and absolute numbering may spread a folder
             // along the sequel chain; each group comes back as one
@@ -660,6 +662,32 @@ pub async fn match_groups(groups: &mut Vec<SeriesGroup>) {
     }
     finished.sort_by_key(|(i, _)| *i);
     *groups = finished.into_iter().flat_map(|(_, gs)| gs).collect();
+}
+
+/// Once a group has its pick, a number the picked series' own name holds
+/// is not a file's episode (`Mob Psycho 100 (BD).mkv`), and where the
+/// name is found a bare reading is the number right after it. Only files
+/// whose reading changes with the names are touched, so the parse step's
+/// folder and `Specials/` decisions stand for every other file.
+fn reread_with_pick(g: &mut SeriesGroup) {
+    let Some(entry) = g.pick.and_then(|i| g.candidates.get(i)) else {
+        return;
+    };
+    let anchors = SeriesAnchors::new(&[
+        entry.title_romaji.as_str(),
+        entry.title_english.as_str(),
+        entry.title_native.as_str(),
+    ])
+    .with_specials_as_episodes(!media::is_tv_format(&entry.format));
+    for f in &mut g.files {
+        let lower = f.file_name.to_lowercase();
+        let named = media::parse_episode_span_for(&lower, &anchors);
+        if named == media::parse_episode_span(&lower) {
+            continue;
+        }
+        f.episode = named.map(|s| s.first);
+        f.episode_count = named.map_or(1, |s| s.count());
+    }
 }
 
 /// Snapshot of a tracked series's episode tags, for the merge preview.
@@ -951,6 +979,61 @@ mod tests {
             special: false,
             source_episode: None,
         }
+    }
+
+    #[test]
+    fn the_picked_series_name_vetoes_its_own_number() {
+        let entry = AnimeEntry {
+            id: 1,
+            id_mal: None,
+            title_romaji: "Mob Psycho 100".into(),
+            title_english: "Mob Psycho 100".into(),
+            title_native: String::new(),
+            cover_url: String::new(),
+            format: "TV".into(),
+            status: "FINISHED".into(),
+            status_display: String::new(),
+            episodes: Some(12),
+            season_year: Some(2016),
+            source: "anilist".into(),
+            average_score: None,
+        };
+        let mut g = SeriesGroup {
+            key: "mob psycho 100".into(),
+            parsed_title: "Mob Psycho 100".into(),
+            season: None,
+            tmdb_season: None,
+            year: None,
+            query: "Mob Psycho 100".into(),
+            files: vec![
+                cf(
+                    "Mob/[G] Mob Psycho 100 (BD 1080p).mkv",
+                    Some("Mob Psycho 100"),
+                    None,
+                    Some(100),
+                    None,
+                ),
+                cf(
+                    "Mob/[G] Mob Psycho 100 - 05 (BD 1080p).mkv",
+                    Some("Mob Psycho 100"),
+                    None,
+                    Some(5),
+                    None,
+                ),
+            ],
+            candidates: vec![entry],
+            pick: Some(0),
+            low_confidence: false,
+            search_error: None,
+            skipped: false,
+            existing: None,
+            resolved_by_id: false,
+            mapping_note: None,
+            search_results: Vec::new(),
+        };
+        reread_with_pick(&mut g);
+        assert_eq!(g.files[0].episode, None);
+        assert_eq!(g.files[1].episode, Some(5));
     }
 
     #[test]
