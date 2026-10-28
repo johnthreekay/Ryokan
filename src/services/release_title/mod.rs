@@ -245,9 +245,12 @@ impl ParsedTitle {
 
     /// The episodes for a known series: the title's own claim (unless a
     /// bare range or marker number belongs to the name), else a bare
-    /// number right after the longest alias found word for word.
+    /// number right after the longest alias found word for word. A
+    /// special names no episode of a TV series; for any other format
+    /// its number is the episode.
     pub fn for_series(&self, anchors: &SeriesAnchors) -> SeriesReading {
-        if self.extra || self.half_episode || self.is_special_for(anchors) {
+        let special = self.is_special_for(anchors) && !anchors.specials_are_episodes();
+        if self.extra || self.half_episode || special {
             return SeriesReading {
                 episodes: HashSet::new(),
                 via: ReadingSource::None,

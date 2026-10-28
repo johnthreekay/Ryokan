@@ -1,6 +1,6 @@
 # services/release_title/AGENTS.md
 
-One parser for anime release titles, replacing the separate batch detectors, episode readers, season readers and group / resolution extractors that disagreed with each other (issue #296 and the plan behind it). Pure: no I/O, no regex in the hot path. Nothing reads it yet: call sites move onto it one at a time, each move gated by the differential below.
+One parser for anime release titles, replacing the separate batch detectors, episode readers, season readers and group / resolution extractors that disagreed with each other (issue #296 and the plan behind it). Pure: no I/O, no regex in the hot path. Call sites move onto it one at a time, each move gated by the differential below. Moved so far: the search gates (`auto_search::classify_match`, the interactive filter, the TV-specials rejection, scoring, the Wanted episode-set selection).
 
 ## Shape
 
@@ -12,7 +12,7 @@ One parser for anime release titles, replacing the separate batch detectors, epi
 - `for_series(&SeriesAnchors)`: the episodes for a known series. Keeps the title's own claim, except that a bare range or marker number held inside the series' name (`Tatsuki Fujimoto 17-26`) is vetoed; otherwise reads the number right after the longest alias found word for word (`[EA]Dark_Gathering_24_`), skipping one season marker. A number inside the alias is the name's (`Mob Psycho 100`).
 - `is_special_for(&SeriesAnchors)`: a trailing `Special` / `OVA` that ends the series' own name (`A Returner's Magic Should Be Special`) is not a special.
 
-`SeriesAnchors::new(aliases)` normalizes aliases the way titles are normalized; build it once per series, not per title (RSS loops items × series).
+`SeriesAnchors::new(aliases)` normalizes aliases the way titles are normalized; build it once per series, not per title (RSS loops items × series). `.with_specials_as_episodes(!media::is_tv_format(format))` carries the series' format: for an OVA / ONA / special / movie entry a special marker is part of the name, so `for_series` reads `OVA 01` as episode 1; for a TV series (the default) a special names no episode.
 
 ## Pipeline
 

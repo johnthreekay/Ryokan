@@ -12,6 +12,7 @@ use crate::services::{
     media,
     nyaa::{self, SearchOptions, SearchResult},
     quality,
+    release_title::{self, SeriesAnchors},
 };
 
 // ── Pre-compiled regexes for parse_release_numbers ─────────────────────────
@@ -167,7 +168,8 @@ async fn find_all_for_target_with_probes(
 
     let expected_season = infer_season_from_detail(detail);
     let sibling_aliases = collect_sibling_aliases(detail, &aliases);
-    let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases);
+    let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases)
+        .with_series_format(&detail.format);
     let categories = nyaa_search_categories(config, &detail.format);
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
@@ -240,7 +242,8 @@ async fn find_all_for_target_with_probes(
                 &series_ctx.custom_tokens,
             );
             let all_aliases = [aliases.clone(), extended].concat();
-            let ext_precompute = SiblingRejectPrecompute::build(&all_aliases, &sibling_aliases);
+            let ext_precompute = SiblingRejectPrecompute::build(&all_aliases, &sibling_aliases)
+                .with_series_format(&detail.format);
             let ext_ctx = InteractiveQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
@@ -299,7 +302,8 @@ async fn find_all_for_target_with_probes(
         && let SearchTarget::Episode(ep) = target
     {
         absolute_target = SearchTarget::Episode(ep.saturating_add(series_ctx.absolute_offset));
-        franchise_precompute = SiblingRejectPrecompute::build(&series_ctx.franchise_aliases, &[]);
+        franchise_precompute = SiblingRejectPrecompute::build(&series_ctx.franchise_aliases, &[])
+            .with_series_format(&detail.format);
         let franchise_queries = append_custom_tokens(
             build_queries_from_aliases(
                 &series_ctx.franchise_aliases,
@@ -333,6 +337,7 @@ async fn find_all_for_target_with_probes(
     // (passed as `i32::MIN`). The CF score still contributes to ranking
     // so the user sees the same ordering the auto-picker would have used.
     let mut scored: Vec<SearchResult> = Vec::with_capacity(candidates.len());
+    let score_anchors = scoring_anchors(detail, &aliases, &series_ctx.franchise_aliases);
     for mut c in candidates.drain(..) {
         let classification = source::classify_release(
             db,
@@ -359,6 +364,7 @@ async fn find_all_for_target_with_probes(
             &classification,
             config,
             &aliases,
+            &score_anchors,
             target,
             expected_season,
             is_finished,
@@ -526,7 +532,11 @@ pub async fn select_episode_set(
         return Vec::new();
     }
     let series_ctx = resolve_search_overrides(db, detail, config).await;
-    select_episode_set_hits(results, &wanted, series_ctx.absolute_offset)
+    let (aliases, canonical_aliases, _) = collect_aliases_with_variants(detail);
+    let (aliases, _) =
+        add_alternate_aliases(aliases, canonical_aliases, &series_ctx.alternate_titles);
+    let anchors = scoring_anchors(detail, &aliases, &series_ctx.franchise_aliases);
+    select_episode_set_hits(results, &wanted, series_ctx.absolute_offset, &anchors)
 }
 
 /// The episode-set filter on its own: drop batches and releases whose
@@ -538,22 +548,23 @@ pub(crate) fn select_episode_set_hits(
     results: Vec<SearchResult>,
     wanted: &HashSet<i32>,
     absolute_offset: i32,
+    anchors: &SeriesAnchors,
 ) -> Vec<EpisodeSetHit> {
     let mut hits: Vec<EpisodeSetHit> = results
         .into_iter()
         .filter(|r| !r.is_batch)
         .filter_map(|result| {
-            // The strict file-name parser, the one the interactive grab
-            // records with (`held_episodes`): `parse_release_numbers`'s
-            // range regex tolerates whitespace and a version tail, so
-            // `Chihayafuru 2 - 05v2` read as episodes 2-5 and the row's
-            // Grab posted for an episode the file does not hold. A
-            // special is no wanted episode.
-            let span = crate::services::media::parse_episode_span(&result.title.to_lowercase())?;
-            if span.special {
+            // The series-aware reading: `Chihayafuru 2 - 05v2` is episode
+            // 5 (the loose `parse_release_numbers` read 2-5), a bare
+            // number after the series' name counts, a special of a TV
+            // series is no wanted episode, and a run longer than one
+            // file holds is a pack, not a hit.
+            let parsed = release_title::parse(&result.title)
+                .for_series(anchors)
+                .episodes;
+            if parsed.len() > media::MAX_FILE_SPAN as usize {
                 return None;
             }
-            let parsed: HashSet<i32> = span.episodes().collect();
             let mut episodes: Vec<i32> = wanted
                 .iter()
                 .copied()
@@ -695,7 +706,8 @@ pub async fn collect_scored_batches_for_target_with_diag(
 
     let expected_season = infer_season_from_detail(detail);
     let sibling_aliases = collect_sibling_aliases(detail, &aliases);
-    let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases);
+    let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases)
+        .with_series_format(&detail.format);
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
 
@@ -820,6 +832,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
     candidates.retain(|c| c.is_batch || is_seadex_match(&c.info_hash, &seadex_hashes));
 
     let mut scored: Vec<SearchResult> = Vec::with_capacity(candidates.len());
+    let score_anchors = scoring_anchors(detail, &aliases, &series_ctx.franchise_aliases);
     for mut c in candidates.drain(..) {
         let classification = source::classify_release(
             db,
@@ -856,6 +869,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
             &classification,
             config,
             &aliases,
+            &score_anchors,
             target,
             expected_season,
             is_finished,
@@ -963,7 +977,8 @@ async fn collect_scored_for_target(
 
     let expected_season = infer_season_from_detail(detail);
     let sibling_aliases = collect_sibling_aliases(detail, &aliases);
-    let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases);
+    let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases)
+        .with_series_format(&detail.format);
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
 
@@ -1040,7 +1055,8 @@ async fn collect_scored_for_target(
                 &series_ctx.custom_tokens,
             );
             let all_aliases = [aliases.clone(), extended].concat();
-            let ext_precompute = SiblingRejectPrecompute::build(&all_aliases, &sibling_aliases);
+            let ext_precompute = SiblingRejectPrecompute::build(&all_aliases, &sibling_aliases)
+                .with_series_format(&detail.format);
             let ext_ctx = AutoQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
@@ -1124,7 +1140,8 @@ async fn collect_scored_for_target(
         && let SearchTarget::Episode(ep) = target
     {
         absolute_target = SearchTarget::Episode(ep.saturating_add(series_ctx.absolute_offset));
-        franchise_precompute = SiblingRejectPrecompute::build(&series_ctx.franchise_aliases, &[]);
+        franchise_precompute = SiblingRejectPrecompute::build(&series_ctx.franchise_aliases, &[])
+            .with_series_format(&detail.format);
         let franchise_queries = append_custom_tokens(
             build_queries_from_aliases(
                 &series_ctx.franchise_aliases,
@@ -1154,6 +1171,7 @@ async fn collect_scored_for_target(
     // exactly once, and both the BdOnly filter and the classification-aware
     // scoring reuse that single result.
     let mut scored: Vec<SearchResult> = Vec::with_capacity(candidates.len());
+    let score_anchors = scoring_anchors(detail, &aliases, &series_ctx.franchise_aliases);
     for mut c in candidates.drain(..) {
         let classification = source::classify_release(
             db,
@@ -1186,6 +1204,7 @@ async fn collect_scored_for_target(
             &classification,
             config,
             &aliases,
+            &score_anchors,
             target,
             expected_season,
             is_finished,
@@ -1519,7 +1538,10 @@ async fn run_queries(
             if !ctx.allow_batch && result.is_batch {
                 continue;
             }
-            if ctx.reject_specials && media::is_special_release(&result.title) {
+            if ctx.reject_specials
+                && release_title::parse(&result.title)
+                    .is_special_for(ctx.sibling_precompute.anchors())
+            {
                 tracing::debug!("auto-search: skipping special release {:?}", result.title);
                 rejected_here.insert(dedupe_key);
                 continue;
@@ -1585,7 +1607,9 @@ async fn run_queries(
         if !ctx.allow_batch && result.is_batch {
             continue;
         }
-        if ctx.reject_specials && media::is_special_release(&result.title) {
+        if ctx.reject_specials
+            && release_title::parse(&result.title).is_special_for(ctx.sibling_precompute.anchors())
+        {
             tracing::debug!("auto-search: skipping special release {:?}", result.title);
             rejected_here.insert(dedupe_key);
             continue;
@@ -1840,13 +1864,28 @@ fn apply_interactive_filter_and_push(
     if let SearchTarget::Episode(target_ep) = ctx.target
         && !result.is_batch
     {
-        let parsed = parse_release_numbers(&result.title);
+        let parsed = release_title::parse(&result.title)
+            .for_series(ctx.sibling_precompute.anchors())
+            .episodes;
         if !parsed.is_empty() && !episode_match(&parsed, *target_ep, ctx.absolute_offset) {
             return;
         }
     }
     result.match_provenance = Some(alias_match.into_provenance(ctx.phase));
     candidates.push(result);
+}
+
+/// The anchors scoring reads episodes with: the primary aliases plus the
+/// franchise aliases, since the franchise pass admits absolute-numbered
+/// releases named only by the franchise (`Jujutsu Kaisen - 56` for a
+/// sequel cour).
+fn scoring_anchors(
+    detail: &AnimeDetail,
+    aliases: &[String],
+    franchise_aliases: &[String],
+) -> SeriesAnchors {
+    SeriesAnchors::new(&[aliases, franchise_aliases].concat())
+        .with_specials_as_episodes(!media::is_tv_format(&detail.format))
 }
 
 /// #30 — Episode-filter acceptance check. A release's parsed episode
@@ -3491,6 +3530,7 @@ mod episode_set_tests {
             ],
             &wanted,
             0,
+            &SeriesAnchors::new(&["Show"]),
         );
         let titles: Vec<&str> = hits.iter().map(|h| h.result.title.as_str()).collect();
         assert_eq!(
@@ -3517,6 +3557,7 @@ mod episode_set_tests {
             vec![hit("[S] Jujutsu Kaisen - 56 (1080p)", 1, false)],
             &wanted,
             47,
+            &SeriesAnchors::new(&["Jujutsu Kaisen"]),
         );
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].episodes, vec![9]);
@@ -3535,6 +3576,7 @@ mod episode_set_tests {
             ],
             &wanted,
             0,
+            &SeriesAnchors::new(&["Chihayafuru 2", "Show"]),
         );
         assert_eq!(
             hits.len(),
@@ -3544,5 +3586,30 @@ mod episode_set_tests {
         );
         assert_eq!(hits[0].episodes, vec![5]);
         assert_eq!(hits[1].episodes, vec![5]);
+    }
+
+    #[test]
+    fn a_bare_number_counts_only_after_the_series_name() {
+        // EternalAnimes' `_24_` is episode 24 of Dark Gathering (#296);
+        // `Mob Psycho 100 (BD)` names no episode 100.
+        let wanted: HashSet<i32> = [24, 100].into_iter().collect();
+        let hits = select_episode_set_hits(
+            vec![
+                hit(
+                    "[EA]Dark_Gathering_24_[1920x1080][HEVC][831E9094].mkv",
+                    1,
+                    false,
+                ),
+                hit("[Group] Mob Psycho 100 (BD 1080p)", 1, false),
+            ],
+            &wanted,
+            0,
+            &SeriesAnchors::new(&["Dark Gathering", "Mob Psycho 100"]),
+        );
+        let titles: Vec<&str> = hits.iter().map(|h| h.result.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            vec!["[EA]Dark_Gathering_24_[1920x1080][HEVC][831E9094].mkv"]
+        );
     }
 }

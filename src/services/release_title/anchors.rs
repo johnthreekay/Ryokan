@@ -28,6 +28,9 @@ pub(super) struct Word {
 #[derive(Debug, Clone, Default)]
 pub struct SeriesAnchors {
     seqs: Vec<Vec<String>>,
+    /// The series is not a TV entry (OVA, ONA, special, movie): a special
+    /// marker is part of its name, so `OVA 01` is its episode 1.
+    specials_are_episodes: bool,
 }
 
 impl SeriesAnchors {
@@ -52,7 +55,21 @@ impl SeriesAnchors {
         }
         seqs.sort();
         seqs.dedup();
-        Self { seqs }
+        Self {
+            seqs,
+            specials_are_episodes: false,
+        }
+    }
+
+    /// For a series whose format is not TV (`!media::is_tv_format`): its
+    /// specials are its episodes.
+    pub fn with_specials_as_episodes(mut self, yes: bool) -> Self {
+        self.specials_are_episodes = yes;
+        self
+    }
+
+    pub(super) fn specials_are_episodes(&self) -> bool {
+        self.specials_are_episodes
     }
 
     pub fn is_empty(&self) -> bool {
@@ -255,6 +272,22 @@ mod tests {
             )
             .len(),
             25
+        );
+    }
+
+    #[test]
+    fn a_special_is_an_episode_only_when_the_series_is_not_tv() {
+        let tv = SeriesAnchors::new(&["Hellsing Ultimate"]);
+        let ova = SeriesAnchors::new(&["Hellsing Ultimate"]).with_specials_as_episodes(true);
+        let parsed = parse("[Group] Hellsing Ultimate OVA 03 (BD 1080p)");
+        assert!(parsed.for_series(&tv).episodes.is_empty());
+        assert_eq!(
+            parsed
+                .for_series(&ova)
+                .episodes
+                .into_iter()
+                .collect::<Vec<_>>(),
+            [3]
         );
     }
 

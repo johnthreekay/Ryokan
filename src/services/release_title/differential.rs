@@ -26,7 +26,11 @@ use super::legacy;
 use super::parse;
 
 /// Lenses whose call sites already read the new parser.
-const MIGRATED_LENSES: &[&str] = &[];
+///
+/// - `numbers.loose`: the search gates (`classify_match`, the interactive
+///   filter, scoring, the Wanted episode-set selection) read episodes
+///   through `for_series`, which is this reading plus the series' name.
+const MIGRATED_LENSES: &[&str] = &["numbers.loose"];
 
 pub(super) fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")

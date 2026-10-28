@@ -12,10 +12,12 @@ use std::sync::LazyLock;
 use regex_lite::Regex;
 
 use crate::services::anilist::AnimeDetail;
+use crate::services::media;
+use crate::services::release_title::{self, SeriesAnchors};
 
 use super::pack_detection::is_pack_candidate_relation;
 use super::provenance::{AliasMatch, MatchKind};
-use super::{SearchTarget, episode_match, parse_release_numbers, season_mismatch};
+use super::{SearchTarget, episode_match, season_mismatch};
 
 pub fn normalize_title(input: &str) -> String {
     let lower = input.to_lowercase();
@@ -524,6 +526,10 @@ pub struct SiblingRejectPrecompute {
     /// `HashSet::iter()` per call, which is nondeterministic order and
     /// would silently misbehave on contiguous-substring checks).
     siblings: Vec<(String, HashSet<String>)>,
+    /// The own aliases as `release_title` reads them, for the episode
+    /// check: a bare number right after the series' name is its episode,
+    /// a number inside the name (`Mob Psycho 100`) never is.
+    anchors: SeriesAnchors,
 }
 
 impl SiblingRejectPrecompute {
@@ -547,7 +553,22 @@ impl SiblingRejectPrecompute {
         Self {
             own_token_sets,
             siblings,
+            anchors: SeriesAnchors::new(own_aliases),
         }
+    }
+
+    /// The series' AniList format decides what a special is: for a TV
+    /// entry `OVA 01` names no episode, for an OVA / ONA / special /
+    /// movie entry it is episode 1. Without this call, TV.
+    pub fn with_series_format(mut self, format: &str) -> Self {
+        self.anchors = self
+            .anchors
+            .with_specials_as_episodes(!media::is_tv_format(format));
+        self
+    }
+
+    pub fn anchors(&self) -> &SeriesAnchors {
+        &self.anchors
     }
 }
 
@@ -1058,7 +1079,9 @@ pub fn classify_match(
                 return None;
             }
 
-            let parsed = parse_release_numbers(title);
+            let parsed = release_title::parse(title)
+                .for_series(&sibling_precompute.anchors)
+                .episodes;
             if parsed.is_empty() {
                 return None;
             }
@@ -1561,6 +1584,86 @@ mod tests {
             false,
             47,
         ));
+    }
+
+    /// `matches_target` for one episode of a series named `aliases`.
+    fn accepts(title: &str, aliases: &[&str], episode: i32, format: &str) -> bool {
+        let own: Vec<String> = aliases.iter().map(|a| a.to_string()).collect();
+        let precompute = SiblingRejectPrecompute::build(&own, &[]).with_series_format(format);
+        matches_target(
+            title,
+            &own,
+            &precompute,
+            &SearchTarget::Episode(episode),
+            1,
+            false,
+            0,
+        )
+    }
+
+    #[test]
+    fn a_number_in_the_series_name_is_never_the_episode() {
+        let kaiju = ["Kaiju No. 8"];
+        assert!(!accepts(
+            "[SubsPlease] Kaiju No. 8 - 09 (1080p) [ABCD1234].mkv",
+            &kaiju,
+            8,
+            "TV"
+        ));
+        assert!(accepts(
+            "[SubsPlease] Kaiju No. 8 - 09 (1080p) [ABCD1234].mkv",
+            &kaiju,
+            9,
+            "TV"
+        ));
+        let mob = ["Mob Psycho 100"];
+        assert!(!accepts(
+            "[Group] Mob Psycho 100 (BD 1080p)",
+            &mob,
+            100,
+            "TV"
+        ));
+    }
+
+    #[test]
+    fn a_title_ending_in_a_digit_names_only_its_dash_episode() {
+        let chihaya = ["Chihayafuru 2"];
+        let title = "[HorribleSubs] Chihayafuru 2 - 05 [720p].mkv";
+        assert!(accepts(title, &chihaya, 5, "TV"));
+        for wrong in 2..=4 {
+            assert!(!accepts(title, &chihaya, wrong, "TV"), "episode {wrong}");
+        }
+    }
+
+    #[test]
+    fn a_bare_number_after_the_series_name_is_its_episode() {
+        // #296: EternalAnimes weeklies carry no dash.
+        let title = "[EA]Dark_Gathering_24_[1920x1080][HEVC][831E9094].mkv";
+        assert!(accepts(title, &["Dark Gathering"], 24, "TV"));
+        assert!(!accepts(title, &["Dark Gathering"], 23, "TV"));
+    }
+
+    #[test]
+    fn a_special_is_an_episode_only_of_a_series_that_is_not_tv() {
+        let title = "[Group] Hellsing Ultimate OVA 03 (BD 1080p)";
+        assert!(accepts(title, &["Hellsing Ultimate"], 3, "OVA"));
+        assert!(!accepts(title, &["Hellsing Ultimate"], 3, "TV"));
+    }
+
+    #[test]
+    fn a_series_named_special_is_not_rejected_as_a_special() {
+        // The automatic passes drop a TV target's specials through this
+        // reading; a series whose own name ends in `Special` keeps its
+        // weeklies.
+        let own = vec!["A Returner's Magic Should Be Special".to_string()];
+        let precompute = SiblingRejectPrecompute::build(&own, &[]).with_series_format("TV");
+        let weekly = release_title::parse(
+            "[Doomdos] - A Returner's Magic Should Be Special - S02E03 [1080p]",
+        );
+        assert!(!weekly.is_special_for(precompute.anchors()));
+        let ova =
+            release_title::parse("[Group] A Returner's Magic Should Be Special - OVA 01 [1080p]");
+        assert!(ova.is_special_for(precompute.anchors()));
     }
 
     // ── #84 — sequel-variant alias generation ─────────────────────────
