@@ -116,6 +116,11 @@ path = "tests/nyaa_filename_corpus.rs"
 required-features = ["test-support"]
 
 [[test]]
+name = "release_title_corpora"
+path = "tests/release_title_corpora.rs"
+required-features = ["test-support"]
+
+[[test]]
 name = "proptest_invariants"
 path = "tests/proptest_invariants.rs"
 required-features = ["test-support"]

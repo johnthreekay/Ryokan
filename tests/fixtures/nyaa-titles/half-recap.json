@@ -1,0 +1,292 @@
+{
+  "bucket": "half-recap",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=13.5&c=1_2",
+    "https://nyaa.si/?page=rss&q=12.5&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[ASW] Chitose-kun wa Ramune Bin no Naka - 13.5 [1080p HEVC x265 10Bit][AAC]",
+      "url": "https://nyaa.si/view/2170617",
+      "category": "1_2",
+      "expect": {
+        "group": "ASW",
+        "half_episode": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Fairy Tail - 100 Years Quest - 13.5 (1080p) [CDB92274].mkv",
+      "url": "https://nyaa.si/view/1881889",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "half_episode": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Fairy Tail - 100 Years Quest - 05 (1080p) [ABCD1234].mkv",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "hand-supplied: a dash number followed by a title word belongs to the title (Sonarr agrees)"
+    },
+    {
+      "title": "[ron] Mahou Shoujo Lyrical Nanoha Vivid - 12.5 (recap) [30931C42].mkv",
+      "url": "https://nyaa.si/view/705862",
+      "category": "1_2",
+      "expect": {
+        "group": "ron",
+        "half_episode": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SSA] Vivy - Fluorite Eye's Song - 13.5 [480p].mkv",
+      "url": "https://nyaa.si/view/1402916",
+      "category": "1_2",
+      "expect": {
+        "group": "SSA",
+        "half_episode": true,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Kuroshitsuji Recap / ep 13.5 (hardSub.eng)",
+      "url": "https://nyaa.si/view/1221353",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "half_episode": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[HorribleSubs] JoJo's Bizarre Adventure - Golden Wind - 13.5 [1080p].mkv",
+      "url": "https://nyaa.si/view/1107284",
+      "category": "1_2",
+      "expect": {
+        "group": "HorribleSubs",
+        "half_episode": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[zzz] Durarara!!x2 Ten - 13.5 OVA [ReinForce Patch]",
+      "url": "https://nyaa.si/view/784964",
+      "category": "1_2",
+      "expect": {
+        "group": "zzz",
+        "half_episode": true,
+        "special": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[BakedFish] Arslan Senki (2015): Dakkan no Yaiba - 13.5 - Special [720p][AAC].mp4",
+      "url": "https://nyaa.si/view/708850",
+      "category": "1_2",
+      "expect": {
+        "group": "BakedFish",
+        "half_episode": true,
+        "special": true,
+        "year": 2015,
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[CrunchySubs] Durarara - 12.5 [480p].mkv",
+      "url": "https://nyaa.si/view/162024",
+      "category": "1_2",
+      "expect": {
+        "group": "CrunchySubs",
+        "half_episode": true,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DeadFish] Kuroshitsuji: Recap - 13.5 - Special [BD][720p][AAC].mp4",
+      "url": "https://nyaa.si/view/568468",
+      "category": "1_2",
+      "expect": {
+        "group": "DeadFish",
+        "half_episode": true,
+        "special": true,
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EveTaku] Shingeki no Kyojin - 13.5 (848x480 XviD MP3)[57D99161].avi",
+      "url": "https://nyaa.si/view/458319",
+      "category": "1_2",
+      "expect": {
+        "group": "EveTaku",
+        "half_episode": true,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[WhyNot] Nurarihyon no Mago Sennen Makyou - 12.5 [B030594A].mkv",
+      "url": "https://nyaa.si/view/251296",
+      "category": "1_2",
+      "expect": {
+        "group": "WhyNot",
+        "half_episode": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SS]_Ore_No_Imouto_-_12.5_[132E427C].mkv",
+      "url": "https://nyaa.si/view/246503",
+      "category": "1_2",
+      "expect": {
+        "group": "SS",
+        "half_episode": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Me-gumi no Daigo - Kyuukoku no Orange - 12.5 [480p][Multiple Subtitle] [ENG][POR-BR][SPA-LA][SPA][ARA][FRE][GER][ITA][RUS]",
+      "url": "https://nyaa.si/view/1759168",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "half_episode": true,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[YuiSubs] Hoshi no Samidare - 12.5  (x265 H.265 1080p)",
+      "url": "https://nyaa.si/view/1584896",
+      "category": "1_2",
+      "expect": {
+        "group": "YuiSubs",
+        "half_episode": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime Time] Vanitas No Karte - 12.5 [1080p][HEVC 10bit x265][AAC][Multi Sub] The Case Study of Vanitas",
+      "url": "https://nyaa.si/view/1477444",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Time",
+        "half_episode": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[PSO2] Phantasy Star Online 2 - Episode Oracle - 12.5 [720p].mkv",
+      "url": "https://nyaa.si/view/1209136",
+      "category": "1_2",
+      "expect": {
+        "group": "PSO2",
+        "half_episode": true,
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[PrinceOtaku] Ensemble Stars! - 12.5 (Retrospective Special) [English Dub] [FUNiDub 720p] [MP4]",
+      "url": "https://nyaa.si/view/1188548",
+      "category": "1_2",
+      "expect": {
+        "group": "PrinceOtaku",
+        "half_episode": true,
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[FreakCrSuBuS] Toji no Miko - 12.5 [720][Multisub].mkv",
+      "url": "https://nyaa.si/view/1021353",
+      "category": "1_2",
+      "expect": {
+        "group": "FreakCrSuBuS",
+        "half_episode": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Corona] Dog Days S3 - 12.5 [DVD-480p][4561903A].mkv",
+      "url": "https://nyaa.si/view/1010980",
+      "category": "1_2",
+      "expect": {
+        "group": "Corona",
+        "seasons": [
+          3
+        ],
+        "half_episode": true,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[kBaraka] Berserk (2016) - 12.5 [1080p] [30BDA91A].mkv",
+      "url": "https://nyaa.si/view/926712",
+      "category": "1_2",
+      "expect": {
+        "group": "kBaraka",
+        "half_episode": true,
+        "year": 2016,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Ruri]Hakuouki - Hekketsu-Roku 12.5 [480p][H264][4FECFC9E].mkv",
+      "url": "https://nyaa.si/view/257232",
+      "category": "1_2",
+      "expect": {
+        "group": "Ruri",
+        "half_episode": true,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "a bare decimal .5 before metadata is a half episode too"
+    }
+  ]
+}

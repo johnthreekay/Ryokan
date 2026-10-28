@@ -1,0 +1,990 @@
+{
+  "bucket": "numeric-titles",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=Mob+Psycho+100+III&c=1_2",
+    "https://nyaa.si/?page=rss&q=Mob+Psycho+100&c=1_2",
+    "https://nyaa.si/?page=rss&q=Gundam+00&c=1_2",
+    "https://nyaa.si/?page=rss&q=86+Eighty+Six&c=1_2",
+    "https://nyaa.si/?page=rss&q=Kaiju+No.+8&c=1_2",
+    "https://nyaa.si/?page=rss&q=Chihayafuru&c=1_2",
+    "https://nyaa.si/?page=rss&q=S01-S03&c=1_2",
+    "https://nyaa.si/?page=rss&q=Steins+Gate+0&c=1_2",
+    "https://nyaa.si/?page=rss&q=Log+Horizon+2&c=1_2",
+    "https://nyaa.si/?page=rss&q=Zom+100&c=1_2",
+    "https://nyaa.si/?page=rss&q=Cyborg+009&c=1_2",
+    "https://nyaa.si/?page=rss&q=%282023%29&c=1_2",
+    "https://nyaa.si/?page=rss&q=Lupin+III&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[SubsPlease] Kaiju No. 8 - 09 (1080p) [ABCD1234].mkv",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": [
+          9
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Kaiju No. 8"
+        ],
+        "episodes": [
+          9
+        ]
+      },
+      "verified": "hand",
+      "note": "hand-supplied: the title's 8 is not part of a range 8-9"
+    },
+    {
+      "title": "[HorribleSubs] Chihayafuru 2 - 05 [720p].mkv",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "HorribleSubs",
+        "episodes": [
+          5
+        ],
+        "resolution": 720,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Chihayafuru 2"
+        ],
+        "episodes": [
+          5
+        ]
+      },
+      "verified": "hand",
+      "note": "hand-supplied: not the range 2-5"
+    },
+    {
+      "title": "[Group] Mob Psycho 100 (BD 1080p)",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "Group",
+        "ambiguous": 100,
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Mob Psycho 100"
+        ],
+        "episodes": []
+      },
+      "verified": "hand",
+      "note": "hand-supplied: the 100 belongs to the title"
+    },
+    {
+      "title": "[Fraud] Mob Psycho 100 III (BD 1080p HEVC Opus) [Dual Audio] | Season 3/S03",
+      "url": "https://nyaa.si/view/2101936",
+      "category": "1_2",
+      "expect": {
+        "group": "Fraud",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "series": {
+        "aliases": [
+          "Mob Psycho 100 III"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[BlackRose] Mob Psycho 100 S2 - S00E08 (BD 1080p HEVC 10-bit Opus) [Dual-Audio] | Spirits and Such Company Trip",
+      "url": "https://nyaa.si/view/2089823",
+      "category": "1_2",
+      "expect": {
+        "group": "BlackRose",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          8
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Legion] Mob Psycho 100 Season 1 v2 (BD 1080p HEVC 10-bit Opus) [Dual Audio]",
+      "url": "https://nyaa.si/view/2076896",
+      "category": "1_2",
+      "expect": {
+        "group": "Legion",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Furretar] 台配 - 路人超能100灵能百分百 (Mob Psycho 100) (Season 1-3) (Mandarin Chinese Dub) (Matching Soft Subs) [國語][国语][中文配音][中配版]",
+      "url": "https://nyaa.si/view/2055695",
+      "category": "1_2",
+      "expect": {
+        "group": "Furretar",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DB] Mob Psycho 100 (Complete Series+OVA+Special) [Dual Audio 10bit BD1080p][HEVC-x265]",
+      "url": "https://nyaa.si/view/1823551",
+      "category": "1_2",
+      "expect": {
+        "group": "DB",
+        "batch": true,
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "series": {
+        "aliases": [
+          "Mob Psycho 100"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime Time] Mob Psycho 100 (Season 01+Season 02+Season 03+OVA) [BD] [Dual Audio][1080p][HEVC 10bit x265][AAC][Eng Sub] [Batch]",
+      "url": "https://nyaa.si/view/1681354",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Time",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Judas] Mob Psycho 100 (Season 3) [1080p][HEVC x265 10bit][Dual-Audio][Multi-Subs] (Batch)",
+      "url": "https://nyaa.si/view/1658737",
+      "category": "1_2",
+      "expect": {
+        "group": "Judas",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EMBER] Mob Psycho 100 (2022) (Season 3) [1080p] [Dual Audio HEVC WEBRip] (Mob Psycho 100 III) (Batch)",
+      "url": "https://nyaa.si/view/1616506",
+      "category": "1_2",
+      "expect": {
+        "group": "EMBER",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "year": 2022,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Fluke] Mob Psycho 100 Specials (BD 1080p HEVC Opus)",
+      "url": "https://nyaa.si/view/1771244",
+      "category": "1_2",
+      "expect": {
+        "group": "Fluke",
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Mob Psycho 100"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Onsen] Mob Psycho 100 II - OVA - Daiikkai Rei toka Soudansho Ian Ryokou - Kokoro Mitasu Iyashi no Tabi (BD 1080p HEVC Opus) [Dual Audio]",
+      "url": "https://nyaa.si/view/1766611",
+      "category": "1_2",
+      "expect": {
+        "group": "Onsen",
+        "seasons": [
+          2
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Rurōni] Mob Psycho 100։ Season 3 Episode 01 (1080p Dual Audio)",
+      "url": "https://nyaa.si/view/1616959",
+      "category": "1_2",
+      "expect": {
+        "group": "Rurōni",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          1
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[NC-Raws] 路人超能 100 第三季 / Mob Psycho 100 III - 12 (CR 1920x1080 AVC AAC MKV)",
+      "url": "https://nyaa.si/view/1616398",
+      "category": "1_2",
+      "expect": {
+        "group": "NC-Raws",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          12
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ZetaRebel] Mobile Suit Gundam 00 Complete Collection v2 (Dual Audio) [1080p]",
+      "url": "https://nyaa.si/view/1319098",
+      "category": "1_2",
+      "expect": {
+        "group": "ZetaRebel",
+        "batch": true,
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Kidou Senshi Gundam 00 - 01 ~ 25 [480p CR WEB-DL AVC AAC][MultiSub] [BATCH]",
+      "url": "https://nyaa.si/view/1965486",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 25
+        },
+        "resolution": 480
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "86 EIGHTY SIX S01E04 Real Name 1080p CR WEB-DL DUAL AAC2.0 H.264-VARYG (86: Eighty Six, Dual-Audio, Multi-Subs)",
+      "url": "https://nyaa.si/view/2145752",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime Time] 86 (Eighty Six) [BD] [Dual Audio][1080p][HEVC 10bit x265][OPUS][Multi Sub] [Batch]",
+      "url": "https://nyaa.si/view/2120705",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Time",
+        "batch": true,
+        "resolution": 1080
+      },
+      "series": {
+        "aliases": [
+          "86",
+          "86 Eighty Six"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[koala] 86: Eighty-Six Season 1 v2 (BD 1080p HEVC Opus) [Dual Audio]",
+      "url": "https://nyaa.si/view/1895730",
+      "category": "1_2",
+      "expect": {
+        "group": "koala",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] 86 Eighty-Six Part 2 - 01 ~ 12 [480p][BATCH][Multiple Subtitle] [ENG][POR-BR][SPA-LA][SPA][ARA][FRE][GER][ITA][RUS]",
+      "url": "https://nyaa.si/view/1809879",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 480
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[UQW] 86꞉ Eighty Six [BDRip 1080p AVC-YUV420P10 FLAC]",
+      "url": "https://nyaa.si/view/1688059",
+      "category": "1_2",
+      "expect": {
+        "group": "UQW",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "a BD pack, but nothing in the title says so"
+    },
+    {
+      "title": "[Kantai] Eighty Six (86) - 23 (1920x1080 AC3) [05BD70FE].mkv",
+      "url": "https://nyaa.si/view/1558793",
+      "category": "1_2",
+      "expect": {
+        "group": "Kantai",
+        "episodes": [
+          23
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "the (86) alt-title paren is not a bracketed episode"
+    },
+    {
+      "title": "[Yameii] 86 Eighty-Six - 23 [English Dub] [WEB-DL 1080p] [E6D30C2D]",
+      "url": "https://nyaa.si/view/1531873",
+      "category": "1_2",
+      "expect": {
+        "group": "Yameii",
+        "episodes": [
+          23
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ASW] 86 - Eighty Six [1080p HEVC x265 10Bit][AAC] (Batch)",
+      "url": "https://nyaa.si/view/1514675",
+      "category": "1_2",
+      "expect": {
+        "group": "ASW",
+        "batch": true,
+        "ambiguous": 86,
+        "resolution": 1080
+      },
+      "series": {
+        "aliases": [
+          "86",
+          "86 Eighty Six"
+        ],
+        "episodes": []
+      },
+      "verified": "hand",
+      "note": "86 before a subtitle dash is the title, not episode 86"
+    },
+    {
+      "title": "[SubsPlease] Kaijuu 8-gou - Narumi no Heijitsu (01-04) (1080p) [Batch]",
+      "url": "https://nyaa.si/view/2168816",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 4
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ToonsHub] Kaiju No 8 S00E07 The Coworkers' Bonds 1080p BILI WEB-DL AAC2.0 H.265 (Multi-Subs)",
+      "url": "https://nyaa.si/view/2166367",
+      "category": "1_2",
+      "expect": {
+        "group": "ToonsHub",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          7
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Salieri] Kaiju No. 8 - Kaijuu 8-gou - S2 - BD (1080p) (HDR) [Dual Audio]",
+      "url": "https://nyaa.si/view/2101165",
+      "category": "1_2",
+      "expect": {
+        "group": "Salieri",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "series": {
+        "aliases": [
+          "Kaiju No. 8 Season 2",
+          "Kaijuu 8-gou 2nd Season"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Polarwindz] Kaiju No. 8 Season 2 (BD 1080p HEVC Opus DDP Dual Audio) | Kaijuu 8-gou S2",
+      "url": "https://nyaa.si/view/2080919",
+      "category": "1_2",
+      "expect": {
+        "group": "Polarwindz",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Sokudo] Kaijuu 8-gou | Kaiju No. 8 - S02 + OVA [1080p AV1][Dual Audio]",
+      "url": "https://nyaa.si/view/2030716",
+      "category": "1_2",
+      "expect": {
+        "group": "Sokudo",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EMBER] Kaijuu 8-gou (2025) (Season 2) [1080p] [Dual Audio HEVC WEBRip] (Kaiju No. 8 Season 2) (Batch)",
+      "url": "https://nyaa.si/view/2025819",
+      "category": "1_2",
+      "expect": {
+        "group": "EMBER",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "year": 2025,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[WBDP] Chihayafuru (Complete) (S1, S2, S2 OVA, S3) [BD][1080p-FLAC][HEVC]",
+      "url": "https://nyaa.si/view/2114012",
+      "category": "1_2",
+      "expect": {
+        "group": "WBDP",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Judas] CHIHAYAFURU (Seasons 1-3 + OVAs) [BD 1080p][HEVC x265 10bit][Dual-Audio][Eng-Subs]v2 (Batch)",
+      "url": "https://nyaa.si/view/2078782",
+      "category": "1_2",
+      "expect": {
+        "group": "Judas",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "includes_specials": true,
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[X5-452] Chihayafuru - S3 [Webrip][1080p][x265][Opus][multisubs ar.de.en.es.fr.it.pt.ru][Vostfr]",
+      "url": "https://nyaa.si/view/1622624",
+      "category": "1_2",
+      "expect": {
+        "group": "X5-452",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[cappybara] Chihayafuru Season 2 (BD 1080p x264 Hi10P FLAC) [Dual-Audio]",
+      "url": "https://nyaa.si/view/1572834",
+      "category": "1_2",
+      "expect": {
+        "group": "cappybara",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[hchcsen] Chihayafuru (2011) - Season 3 (S03) (BD 1080p HEVC x265 FLAC 2.0) [Dual-Audio] | Chihayafuru 3 | Chihayafull 3 | So I Wish for a Memory",
+      "url": "https://nyaa.si/view/1482317",
+      "category": "1_2",
+      "expect": {
+        "group": "hchcsen",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "year": 2011,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[-KS-] Chihayafuru 3 [720p] [Hi444PP] [Dual Audio] [JPBD]",
+      "url": "https://nyaa.si/view/1435466",
+      "category": "1_2",
+      "expect": {
+        "group": "-KS-",
+        "ambiguous": 3,
+        "resolution": 720,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Chihayafuru 3"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[FAV] Chihayafuru 1-3 [BD 540p x264 AAC]",
+      "url": "https://nyaa.si/view/1357741",
+      "category": "1_2",
+      "expect": {
+        "group": "FAV",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 3
+        },
+        "resolution": 540
+      },
+      "verified": "hand",
+      "note": "really seasons 1-3, but structurally an episode range; recorded as such"
+    },
+    {
+      "title": "[HorribleSubs] Chihayafuru S3 (01-24) [720p] (Batch)",
+      "url": "https://nyaa.si/view/1294110",
+      "category": "1_2",
+      "expect": {
+        "group": "HorribleSubs",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 24
+        },
+        "resolution": 720
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[zza] Chihayafuru  - S01-S03 [1080p.x265][multisubs:eng,fre,por,spa][Vostfr]",
+      "url": "https://nyaa.si/view/1242404",
+      "category": "1_2",
+      "expect": {
+        "group": "zza",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Namikaze47] Chihayafuru S3 (BD) (1080p)",
+      "url": "https://nyaa.si/view/1240372",
+      "category": "1_2",
+      "expect": {
+        "group": "Namikaze47",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Potato] Steins Gate 0 [720p HEVC AAC]",
+      "url": "https://nyaa.si/view/1079038",
+      "category": "1_2",
+      "expect": {
+        "group": "Potato",
+        "ambiguous": 0,
+        "resolution": 720,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Steins;Gate 0"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Steins;Gate 0 - 24 (OVA)-BD REMUX [1080p]-RTX",
+      "url": "https://nyaa.si/view/1148250",
+      "category": "1_2",
+      "expect": {
+        "group": "RTX",
+        "episodes": [
+          24
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DeadFish]Steins;Gate 0 - 00-23 [720p][AAC][MP4]",
+      "url": "https://nyaa.si/view/1125459",
+      "category": "1_2",
+      "expect": {
+        "group": "DeadFish",
+        "batch": true,
+        "episodes": {
+          "first": 0,
+          "last": 23
+        },
+        "resolution": 720
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GhostYears] Steins;Gate 0 - 24 (OVA) (WEB 720p Hi444PP AAC) [English Dubbed Dual Audio]",
+      "url": "https://nyaa.si/view/1114917",
+      "category": "1_2",
+      "expect": {
+        "group": "GhostYears",
+        "episodes": [
+          24
+        ],
+        "special": true,
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Exiled-Destiny] Log Horizon 2 [BD 720P 8Bit] [Dual Audio]",
+      "url": "https://nyaa.si/view/1973646",
+      "category": "1_2",
+      "expect": {
+        "group": "Exiled-Destiny",
+        "ambiguous": 2,
+        "resolution": 720,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Log Horizon 2"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[_] Log Horizon 2 (BD 1080p HEVC FLAC) Log Horizon II",
+      "url": "https://nyaa.si/view/1935782",
+      "category": "1_2",
+      "expect": {
+        "group": "_",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SweetSpot] Log Horizon S2 [BD 1080p HEVC AAC]",
+      "url": "https://nyaa.si/view/2130766",
+      "category": "1_2",
+      "expect": {
+        "group": "SweetSpot",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Zoombie] Zom 100 - Bucket List of the Dead - S01 (BD 1080p HEVC x265 10-bit FLAC) [Dual-Audio]",
+      "url": "https://nyaa.si/view/2054359",
+      "category": "1_2",
+      "expect": {
+        "group": "Zoombie",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "ambiguous": 100,
+        "resolution": 1080
+      },
+      "series": {
+        "aliases": [
+          "Zom 100: Zombie ni Naru made ni Shitai 100 no Koto",
+          "Zom 100: Bucket List of the Dead"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anipakku] Zom 100: Zombie ni Naru made ni Shitai 100 no Koto (S01) [BD 1080p x265 OPUS][DUAL][PT-BR] (Bucket List of the Dead | 100 Things I Want to do Before I Become a Zombie)",
+      "url": "https://nyaa.si/view/1902727",
+      "category": "1_2",
+      "expect": {
+        "group": "Anipakku",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[neoDESU] Zom 100: Bucket List of the Dead [Season 1] [BD 1080p x265 HEVC OPUS] [Dual Audio] Zom 100: Zombie ni Naru made ni Shitai 100 no Koto",
+      "url": "https://nyaa.si/view/1902321",
+      "category": "1_2",
+      "expect": {
+        "group": "neoDESU",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Inka-Orphan] Cyborg 009 (1966) (BD FHD)",
+      "url": "https://nyaa.si/view/2167333",
+      "category": "1_2",
+      "expect": {
+        "group": "Inka-Orphan",
+        "ambiguous": 9,
+        "year": 1966,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Cyborg 009"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[CW] 009 Re-Cyborg (2012) [BD 1080p REMUX][TrueHD 5.1][Dual Audio][AVC]",
+      "url": "https://nyaa.si/view/2138375",
+      "category": "1_2",
+      "expect": {
+        "group": "CW",
+        "year": 2012,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Inka-Subs] Cyborg 009 - Legend of the Super Galaxy (1980) v2",
+      "url": "https://nyaa.si/view/1801344",
+      "category": "1_2",
+      "expect": {
+        "group": "Inka-Subs",
+        "ambiguous": 9,
+        "version": 2,
+        "year": 1980,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Cyborg 009: Chou Ginga Densetsu",
+          "Cyborg 009: Legend of the Super Galaxy"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Rododendron] Cyborg 009: Chou Ginga Densetsu (WEB 720p) (Dual Audio)",
+      "url": "https://nyaa.si/view/1601866",
+      "category": "1_2",
+      "expect": {
+        "group": "Rododendron",
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[BlueFixer] Cyborg 009 (1966) [Web 720p] [037AB6B1].mkv",
+      "url": "https://nyaa.si/view/1455634",
+      "category": "1_2",
+      "expect": {
+        "group": "BlueFixer",
+        "ambiguous": 9,
+        "year": 1966,
+        "resolution": 720,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Cyborg 009"
+        ],
+        "episodes": []
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MuGi] LUPIN THE 3rd vs. CAT'S EYE (2023) (BD Remux 1080p x264 8-bit FLAC) [Dual Audio] | Lupin III VS Cat's Eye",
+      "url": "https://nyaa.si/view/2151966",
+      "category": "1_2",
+      "expect": {
+        "group": "MuGi",
+        "year": 2023,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "Roman numeral inside a title is not a season marker"
+    },
+    {
+      "title": "[RUBaDUB] Lupin III vs. Cat's Eye (Movie) (1080p) (Dual Audio)",
+      "url": "https://nyaa.si/view/2144773",
+      "category": "1_2",
+      "expect": {
+        "group": "RUBaDUB",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[hydes-Crash] Lupin III: The Castle of Cagliostro (1979) v2 (BD Remux 1080p H.264 FLAC) [Dual Audio] | Lupin the Third | Lupin the 3rd",
+      "url": "https://nyaa.si/view/2137972",
+      "category": "1_2",
+      "expect": {
+        "group": "hydes-Crash",
+        "version": 2,
+        "year": 1979,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Lupin III - TV Series [Dual Audio Only] (BDRip UNCENSORED 1080p x265 HEVC OPUS 2.0x2)[MICO XD]",
+      "url": "https://nyaa.si/view/2125660",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "Roman numeral ending the title zone reads as a season, as AniList's own Lupin III title does"
+    }
+  ]
+}

@@ -1,0 +1,343 @@
+{
+  "bucket": "scene-dotted",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=Dual-Audio&c=1_2",
+    "https://nyaa.si/?page=rss&q=Tsundere-Raws&c=1_3",
+    "https://nyaa.si/?page=rss&q=NAN0+REMUX&c=1_2",
+    "https://nyaa.si/?page=rss&q=KAF+VOSTFR&c=1_3",
+    "https://nyaa.si/?page=rss&q=ToonsHub&c=1_2",
+    "https://nyaa.si/?page=rss&q=1080p+WEB-DL+VARYG&c=1_2",
+    "https://nyaa.si/?page=rss&q=Special&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "cocoon One Summer of Girlhood 2025 1080p AMZN WEB-DL DUAL DDP5.1 H.264-VARYG (cocoon: Aru Natsu no Shoujo-tachi Yori, Dual-Audio, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179514",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "year": 2025,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Tsundere-Raws] Boku no Hero Academia S6 - 08 VOSTFR (CR) [WEB 1080p x264 AAC].mp4",
+      "url": "https://nyaa.si/view/1604293",
+      "category": "1_3",
+      "expect": {
+        "group": "Tsundere-Raws",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          8
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[NAN0] Welcome to Demon School! Iruma-kun Season 1 (BD Remux 1080p x264 8-bit FLAC) [Dual Audio] | Mairimashita! Iruma-kun",
+      "url": "https://nyaa.si/view/1987182",
+      "category": "1_2",
+      "expect": {
+        "group": "NAN0",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "The.Warrior.Princess.and.the.Barbaric.King.S01.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-NAN0",
+      "url": "https://nyaa.si/view/2179609",
+      "category": "1_2",
+      "expect": {
+        "group": "NAN0",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Genso.Suikoden.S01E04.VOSTFR.1080p.WEBRiP.x265-KAF",
+      "url": "https://nyaa.si/view/2179452",
+      "category": "1_3",
+      "expect": {
+        "group": "KAF",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Grand Blue Dreaming S03E11 VOSTFR 1080p WEB AV1 AAC -Báleygr",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "Báleygr",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          11
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ToonsHub] The Eternal Supreme Li Yunxiao S01E31 1080p BILI WEB-DL AAC2.0 H.265 (Wangu Zhizun: Li Yunxiao Zhuan, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179578",
+      "category": "1_2",
+      "expect": {
+        "group": "ToonsHub",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          31
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "DARK MACHINE THE ANIMATION S01E03 1080p CR WEB-DL AAC2.0 H.264-VARYG (DARK MACHINE: The Animation, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179477",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Red River 2026 S01E17 1080p CR WEB-DL AAC2.0 H.264-VARYG (Multi-Subs)",
+      "url": "https://nyaa.si/view/2179453",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          17
+        ],
+        "year": 2026,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "The Laid Off Cheat Granting Mage Enjoys a Second Lease on Life S01E04 1080p CR WEB-DL DUAL AAC2.0 H.264-VARYG (Tsuihou Sareta Cheat Fuyo Majutsushi wa Kimama na Second Life wo Ouka Suru.: Ore, Dual-Audio, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179405",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "BLEACH Thousand Year Blood War S01E50 1080p NF WEB-DL AAC2.0 H.264-VARYG (BLEACH: Sennen Kessen-hen, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179219",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          50
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "You and I Are Polar Opposites S02E13 Christmas Eve 1080p CR WEB-DL MULTi AAC2.0 H.264-VARYG (Seihantai na Kimi to Boku 2nd Season, Multi-Audio, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179161",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "The 100 Girlfriends Who Really Really Really Really REALLY Love You S03 1080p CR WEB-DL MULTi AAC2.0 H.264-VARYG (Kimi no Koto ga Dai Dai Dai Dai Daisuki na 100-nin no Kanojo 3rd Season, Multi-Audio, Multi-Subs, Batch)",
+      "url": "https://nyaa.si/view/2179155",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "PSYREN S01E01 Urban Legend 1080p CR WEB-DL MULTi AAC2.0 H.264-VARYG (PSYЯEN, Multi-Audio, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179073",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "My Happy Marriage S00E04 Special Part 3 1080p NF WEB-DL MULTi AAC2.0 H.264-VARYG (Watashi no Shiawase na Kekkon, Multi-Audio, Multi-Subs)",
+      "url": "https://nyaa.si/view/2178521",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          4
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "HOTEL INHUMANS S02E04 A Sweet Job 2 First Guest 1080p CR WEB-DL AAC2.0 H.264-VARYG (Hotel Inhumans 2nd Season, Multi-Subs)",
+      "url": "https://nyaa.si/view/2178692",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "As a Reincarnated Aristocrat Ill Use My Appraisal Skill to Rise in the World S03E05 The End of Vasmarque 1080p CR WEB-DL AAC2.0 H.264-VARYG (Multi-Subs)",
+      "url": "https://nyaa.si/view/2178657",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Blue Box S02E04 Love Is the Most Powerful Feeling 1080p NF WEB-DL MULTi DDP5.1 H.264-VARYG (Ao no Hako Season 2, Multi-Audio, Multi-Subs)",
+      "url": "https://nyaa.si/view/2178427",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Aoashi S02E04 Cornerstone 1080p NF WEB-DL AAC2.0 H.264-VARYG (Aoashi 2nd Season, Multi-Subs)",
+      "url": "https://nyaa.si/view/2178452",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Im Dating a Dark Summoner S01E04 The Dark Summoner and the Orc Nest 1080p AMZN WEB-DL DDP2.0 H.264-VARYG (Dark Summoner to Dekiteiru, Uncensored)",
+      "url": "https://nyaa.si/view/2178756",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    }
+  ]
+}

@@ -1,0 +1,372 @@
+{
+  "bucket": "revisions",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=Dual-Audio&c=1_2",
+    "https://nyaa.si/?page=rss&q=v2&c=1_2",
+    "https://nyaa.si/?page=rss&q=DVD&c=1_2",
+    "https://nyaa.si/?page=rss&q=The+Movie&c=1_2",
+    "https://nyaa.si/?page=rss&q=REPACK&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[GetItTwisted] Fire Force S02 v2 [BD 1080p AVC Opus Dual-Audio] | Enen no Shouboutai: Ni no Shou | Season 2",
+      "url": "https://nyaa.si/view/2179594",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[whomst-mega] Cyberpunk Edgerunners - S02 v2 [WEB 2160p x265 EAC3] [Dual Audio]",
+      "url": "https://nyaa.si/view/2178975",
+      "category": "1_2",
+      "expect": {
+        "group": "whomst-mega",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "version": 2,
+        "resolution": 2160
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[BonoboSubs]Renegade Immortal - 仙逆 Xian Ni - 164 v2",
+      "url": "https://nyaa.si/view/2178838",
+      "category": "1_2",
+      "expect": {
+        "group": "BonoboSubs",
+        "episodes": [
+          164
+        ],
+        "version": 2,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Breeze] Mushoku Tensei Jobless Reincarnation S03 P1 v2 [1080p Dual Audio AV1] | Mushoku Tensei III: Isekai Ittara Honki Dasu, Dual-Audio, Multi-Subs, Batch)",
+      "url": "https://nyaa.si/view/2178375",
+      "category": "1_2",
+      "expect": {
+        "group": "Breeze",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "season_part": 1,
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[denisplay] Seitokai ni mo Ana wa Aru! - 03 [1080p] [AV1] (Even the Student Council Has Its Holes) (Uncensored) V2",
+      "url": "https://nyaa.si/view/2177498",
+      "category": "1_2",
+      "expect": {
+        "group": "denisplay",
+        "episodes": [
+          3
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[HnY] Beyblade X 136 - The 88th Prince v2.mkv",
+      "url": "https://nyaa.si/view/2177113",
+      "category": "1_2",
+      "expect": {
+        "group": "HnY",
+        "ambiguous": 136,
+        "version": 2,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Beyblade X"
+        ],
+        "episodes": [
+          136
+        ]
+      },
+      "verified": "hand",
+      "note": "bare number before a subtitle dash: only the series name says it is the episode"
+    },
+    {
+      "title": "[Mr. Yosha] Dragon Ball Super Beerus - S01E01 (CR WEB 1080p DDP 2.0 x264) [v2]",
+      "url": "https://nyaa.si/view/2177025",
+      "category": "1_2",
+      "expect": {
+        "group": "Mr. Yosha",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Orphan] Waza no Tabibito v2 (DVD)",
+      "url": "https://nyaa.si/view/2176875",
+      "category": "1_2",
+      "expect": {
+        "group": "Orphan",
+        "version": 2,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Sylvar] SPY x FAMILY Season 3 v2 (BD Remux 1080p x264 8-bit FLAC) [Dual Audio] | Spy × Family 3rd Season",
+      "url": "https://nyaa.si/view/2176014",
+      "category": "1_2",
+      "expect": {
+        "group": "Sylvar",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Trix] You and I Are Polar Opposites S02 v2 (Batch) [WEBRip 1080p AV1 Opus] (Dual Audio, Multi Subs, VOSTFR) | Seihantai na Kimi to Boku 正反対な君と僕 Season S2",
+      "url": "https://nyaa.si/view/2175919",
+      "category": "1_2",
+      "expect": {
+        "group": "Trix",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Love.After.World.Domination.S01.v2.1080p.BluRay.Dual-Audio.Opus.5.1.x265-YURASUKA (Koi wa Sekai Seifuku no Ato de)",
+      "url": "https://nyaa.si/view/2174942",
+      "category": "1_2",
+      "expect": {
+        "group": "YURASUKA",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[rosie x WonderhoyRips] Puella Magi Madoka Magica the Movie -Walpurgisnacht Rising- (2026) [1080p CAM V2][HEVC][FLAC][JPN][ENG Sub]",
+      "url": "https://nyaa.si/view/2174817",
+      "category": "1_2",
+      "expect": {
+        "group": "rosie x WonderhoyRips",
+        "version": 2,
+        "year": 2026,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Genesis] Munto S01 v2 (BD 1080p x265 Opus) | Munto TV (Sora wo Miageru Shoujo no Hitomi ni Utsuru Sekai)",
+      "url": "https://nyaa.si/view/2173311",
+      "category": "1_2",
+      "expect": {
+        "group": "Genesis",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Kozame] Odekake Kozame (Little Shark's Outings) - 87 v2 [1080p] [205DB0E6]",
+      "url": "https://nyaa.si/view/2172947",
+      "category": "1_2",
+      "expect": {
+        "group": "Kozame",
+        "episodes": [
+          87
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DKB] Kusuriya no Hitorigoto - S03E01 [1080p][V2][HEVC x265 10bit][Multi-Subs][weekly]",
+      "url": "https://nyaa.si/view/2171800",
+      "category": "1_2",
+      "expect": {
+        "group": "DKB",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          1
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[WHP] Arknights Touin Kiro S02 v2 (BD 1920x816 AV1 DTS-HD FLAC) sub ita | Arknights: Perish in Frost",
+      "url": "https://nyaa.si/view/2171798",
+      "category": "1_2",
+      "expect": {
+        "group": "WHP",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "version": 2
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Yameii] #I'm Looking For a Zombie - S01E01 v2 [English Dub] [CR WEB-DL 1080p H264 AAC] [928ACB84] (#Zombie Sagashitemasu)",
+      "url": "https://nyaa.si/view/2169397",
+      "category": "1_2",
+      "expect": {
+        "group": "Yameii",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Cattleya] Please Excuse My Younger Brothers - S01E12 v2 - Let the Memories Fall (CR WEB-DL 1080p AAC x264) [07973522] | Uchi no Otouto-domo ga Sumimasen",
+      "url": "https://nyaa.si/view/2163152",
+      "category": "1_2",
+      "expect": {
+        "group": "Cattleya",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          12
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[STE-MeruMeru] Rockman.EXE Axess - 34 [v2][HEVC][2ABEAA49].mkv",
+      "url": "https://nyaa.si/view/2159916",
+      "category": "1_2",
+      "expect": {
+        "group": "STE-MeruMeru",
+        "episodes": [
+          34
+        ],
+        "version": 2,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsFromSteam] Fugou Keiji Balance - UNLIMITED v2 [BD 1080p x265 Main444p10 FLAC]",
+      "url": "https://nyaa.si/view/2159129",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsFromSteam",
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[AnoZu] One Piece S23E01 REPACK 1080p CR WEB-DL Dual-Audio DDP 2.0 H.264",
+      "url": "https://nyaa.si/view/2179523",
+      "category": "1_2",
+      "expect": {
+        "group": "AnoZu",
+        "seasons": [
+          23
+        ],
+        "episodes": [
+          1
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ToonsHub] Even the Student Council Has Its Holes S01E04 REPACK 1080p UNCENSORED ADN WEB-DL AAC2.0 H.264 (Seitokai ni mo Ana wa Aru!, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179519",
+      "category": "1_2",
+      "expect": {
+        "group": "ToonsHub",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Group] Show - 05 - A Proper Goodbye (1080p)",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "Group",
+        "episodes": [
+          5
+        ],
+        "version": 1,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "hand-supplied: Title Case Proper is an episode-title word, not a revision"
+    }
+  ]
+}

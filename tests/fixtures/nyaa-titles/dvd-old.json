@@ -1,0 +1,240 @@
+{
+  "bucket": "dvd-old",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=DVD&c=1_2",
+    "https://nyaa.si/?page=rss&q=Exiled-Destiny&c=1_0",
+    "https://nyaa.si/?page=rss&q=DVDRip&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[Dyna] When They Cry Higurashi S00E06 (DVD 480p AVC Opus 2.0) | Higurashi Outbreak",
+      "url": "https://nyaa.si/view/2178388",
+      "category": "1_2",
+      "expect": {
+        "group": "Dyna",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          6
+        ],
+        "special": true,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[neo1024] Andersen's Fairy Tales - Andersen Monogatari (DVD)",
+      "url": "https://nyaa.si/view/2178049",
+      "category": "1_2",
+      "expect": {
+        "group": "neo1024",
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Techmod] Gate Keepers (J-DVD 480P)",
+      "url": "https://nyaa.si/view/2177440",
+      "category": "1_2",
+      "expect": {
+        "group": "Techmod",
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "ASTRO BOY (2004) REGION 4 DVD REMUX",
+      "url": "https://nyaa.si/view/2177404",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "year": 2004,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Café Chaotix] Sonic X (4Kids ENG) 01-78 (480i DVD ISO) (Discotek Media)",
+      "url": "https://nyaa.si/view/2174284",
+      "category": "1_2",
+      "expect": {
+        "group": "Café Chaotix",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 78
+        },
+        "resolution": 480
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Polarwindz] Azumanga Daioh (Filtered) (DVD 480p HEVC AC-3) [Dual Audio]",
+      "url": "https://nyaa.si/view/2173271",
+      "category": "1_2",
+      "expect": {
+        "group": "Polarwindz",
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Fansubber] [1998] le sorcier noir [DVD1] --- aud[JP,EN,ES,IT,FR,CT] - sub[EN,ES,IT,FR]",
+      "url": "https://nyaa.si/view/2171425",
+      "category": "1_2",
+      "expect": {
+        "group": "Fansubber",
+        "year": 1998,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DVDISO] G-9 (2006) [R2JP] | G-九",
+      "url": "https://nyaa.si/view/2171119",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "year": 2006,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "a leading source bracket is not a group"
+    },
+    {
+      "title": "[BBT-RMX] Pretear / Prétear (DVD H264 Hi10p AC3) Dual audio",
+      "url": "https://nyaa.si/view/2168469",
+      "category": "1_2",
+      "expect": {
+        "group": "BBT-RMX",
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DarkWispers] Damekko Doubutsu | Useless Animals (DVD 720x540 H264 Hi10p AC3)",
+      "url": "https://nyaa.si/view/2162937",
+      "category": "1_2",
+      "expect": {
+        "group": "DarkWispers",
+        "resolution": 540,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Amalgama] One Outs (DVDRip 720x480 MPEG2 AC3)",
+      "url": "https://nyaa.si/view/2152353",
+      "category": "1_2",
+      "expect": {
+        "group": "Amalgama",
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime Time] Dragon Ball Episode 27,69,76 (Fixed) (Colour Corrected) V2 [SoM] [DVD] [Dual Audio] [480p][HEVC 10bit x265][AAC,AC3][Eng Sub]",
+      "url": "https://nyaa.si/view/2151972",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Time",
+        "batch": true,
+        "episodes": [
+          27,
+          69,
+          76
+        ],
+        "version": 2,
+        "resolution": 480
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ADEREEX] Hokuto no Ken - 1 - 152 (25th Anniversary DVD BOX 480p x264 FLAC)",
+      "url": "https://nyaa.si/view/2149926",
+      "category": "1_2",
+      "expect": {
+        "group": "ADEREEX",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 152
+        },
+        "resolution": 480
+      },
+      "verified": "hand",
+      "note": "a left number already in the episode slot needs no equal width"
+    },
+    {
+      "title": "[Draknodd] Nadia - The Secret of Blue Water - S00E11 - Nadia - The Motion Picture (DVDRip VFR HEVC DTS AC3 Dual-Audio Multi-Subs)",
+      "url": "https://nyaa.si/view/2146004",
+      "category": "1_2",
+      "expect": {
+        "group": "Draknodd",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          11
+        ],
+        "special": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[A&C] One Piece - Romance Dawn-Orange Town Recap (DVD HEVC 480p) [Multi-Subs] [v2]",
+      "url": "https://nyaa.si/view/2145468",
+      "category": "1_2",
+      "expect": {
+        "group": "A&C",
+        "version": 2,
+        "resolution": 480,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Exiled-Destiny] Papillon Rose: New Season (TV & DVD)",
+      "url": "https://nyaa.si/view/2025966",
+      "category": "1_2",
+      "expect": {
+        "group": "Exiled-Destiny",
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Ohys-Raws] [Exiled-Destiny] Yoake Mae yori Ruriiro na (DVD 1024x576 x264 AAC)",
+      "url": "https://nyaa.si/view/2018572",
+      "category": "1_2",
+      "expect": {
+        "group": "Ohys-Raws",
+        "resolution": 576,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[uP] One Piece - East Blue to Alabasta (E001-E130) (480p DVDRip x265 10bit AAC Multi-Audio)",
+      "url": "https://nyaa.si/view/2122483",
+      "category": "1_2",
+      "expect": {
+        "group": "uP",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 130
+        },
+        "resolution": 480
+      },
+      "verified": "hand"
+    }
+  ]
+}

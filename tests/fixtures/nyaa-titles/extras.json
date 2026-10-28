@@ -1,0 +1,297 @@
+{
+  "bucket": "extras",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=NCOP&c=1_0",
+    "https://nyaa.si/?page=rss&q=Creditless&c=1_0",
+    "https://nyaa.si/?page=rss&q=Preview&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[Kashikoi] Ranpo Kitan - Game of Laplace - NCOP+NCED [BD 1920x1080 x264 FLAC][Sub_Esp][MKV]",
+      "url": "https://nyaa.si/view/2178367",
+      "category": "1_3",
+      "expect": {
+        "group": "Kashikoi",
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[FS] Arifureta Shokugyou de Sekai Saikyou S2 - NCOP+NCED [BD 1920x1080 x264 AAC][Sub_Esp][MP4]",
+      "url": "https://nyaa.si/view/2178351",
+      "category": "1_3",
+      "expect": {
+        "group": "FS",
+        "seasons": [
+          2
+        ],
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "an extras release is never a season pack"
+    },
+    {
+      "title": "Bastof Syndrome NCOP NCED DVDRIP",
+      "url": "https://nyaa.si/view/2156095",
+      "category": "1_4",
+      "expect": {
+        "group": null,
+        "extra": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[sandoe41] Death March kara Hajimaru Isekai Kyousoukyoku Season One NCOP-NCED",
+      "url": "https://nyaa.si/view/2057429",
+      "category": "1_2",
+      "expect": {
+        "group": "sandoe41",
+        "seasons": [
+          1
+        ],
+        "extra": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime Time] Urusei Yatsura (2022) Season 1 + NCOP & NCED [BD] [1080p][HEVC 10bit x265][AAC][Dual-Audio] [Batch]",
+      "url": "https://nyaa.si/view/2050506",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Time",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "year": 2022,
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "a season pack that includes creditless extras"
+    },
+    {
+      "title": "[Kaleido-mini] Fate strange Fake - Creditless OP1v2 & ED1v1-2 - (BD 1080p AV1 10-bit Opus 2.0)",
+      "url": "https://nyaa.si/view/2080767",
+      "category": "1_2",
+      "expect": {
+        "group": "Kaleido-mini",
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Trix] Babylon - OP (Creditless) [BDRip 1080p AV2 Opus]",
+      "url": "https://nyaa.si/view/1771831",
+      "category": "1_4",
+      "expect": {
+        "group": "Trix",
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GD-Raws]_Pocket_Monsters_(2023)_-_ED01_(Creditless)_(BD_1920x1080_AVC_PCM)",
+      "url": "https://nyaa.si/view/1761562",
+      "category": "1_4",
+      "expect": {
+        "group": "GD-Raws",
+        "extra": true,
+        "year": 2023,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[◯PMan] Jikan no Shihaisha Creditless Opening & Ending (BD 1080p HEVC FLAC)",
+      "url": "https://nyaa.si/view/1716302",
+      "category": "1_4",
+      "expect": {
+        "group": "◯PMan",
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[2023-03-18] Creditless Anime Openings and Endings | OPED | OP | ED",
+      "url": "https://nyaa.si/view/1650457",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "extra": true,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "a bracketed date is not a group"
+    },
+    {
+      "title": "[LlPnF] Yuri on Ice - 12 creditless [1080p x265 10bit AAC][CAT] [977DF9D9].mp4",
+      "url": "https://nyaa.si/view/1473256",
+      "category": "1_3",
+      "expect": {
+        "group": "LlPnF",
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Kozame] Odekake Kozame (Little Shark's Outings) Movie Trailer & Preview",
+      "url": "https://nyaa.si/view/2061064",
+      "category": "1_2",
+      "expect": {
+        "group": "Kozame",
+        "extra": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[WIXOSS] Selector Ioth WIXOSS [Preview] [1080p YouTube]",
+      "url": "https://nyaa.si/view/2042120",
+      "category": "1_2",
+      "expect": {
+        "group": "WIXOSS",
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[a2a] (PREVIEW) Uma Musume Pretty Derby - Shin Jidai no Tobira 7 Min Special [1080p][WebRip 1920x1080 VP9 AAC2.0][1C986D4C].mkv",
+      "url": "https://nyaa.si/view/1841574",
+      "category": "1_2",
+      "expect": {
+        "group": "a2a",
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Weeaboo-Shogun] Shinkalion Change the World Express Episode 01 Preview - 18 February 2024",
+      "url": "https://nyaa.si/view/1780078",
+      "category": "1_2",
+      "expect": {
+        "group": "Weeaboo-Shogun",
+        "extra": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[door] Suzume no Tojimari - 12 Minute Preview (WEB 1080p AVC E-AC-3)",
+      "url": "https://nyaa.si/view/1597327",
+      "category": "1_2",
+      "expect": {
+        "group": "door",
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "12 Minute is not episode 12"
+    },
+    {
+      "title": "[Chihiro] Shokei Shoujo no Virgin Road Previews [1080p Hi10P AAC]",
+      "url": "https://nyaa.si/view/1542547",
+      "category": "1_2",
+      "expect": {
+        "group": "Chihiro",
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SD] DearS Anime Complete (Special [Dual Audio FLAC] + Preview + UnAired) 2004",
+      "url": "https://nyaa.si/view/1293919",
+      "category": "1_2",
+      "expect": {
+        "group": "SD",
+        "batch": true,
+        "includes_specials": true,
+        "year": 2004
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DKB] Yuukoku no Moriarty - S01E00 [Special Preview][1080p][H.265 10bit][weekly]",
+      "url": "https://nyaa.si/view/1286263",
+      "category": "1_2",
+      "expect": {
+        "group": "DKB",
+        "seasons": [
+          1
+        ],
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Ashura] Dragon Ball - First Episode Preview",
+      "url": "https://nyaa.si/view/1255502",
+      "category": "1_2",
+      "expect": {
+        "group": "Ashura",
+        "extra": true,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Lord_Starfish]_Pocket_Monsters_(2019)_Preview_Spring_2020_[1E98A0EE].mkv",
+      "url": "https://nyaa.si/view/1235437",
+      "category": "1_2",
+      "expect": {
+        "group": "Lord_Starfish",
+        "extra": true,
+        "year": 2019,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Plunderer - 01 ~ 02 (Special Preview) [540p].mkv",
+      "url": "https://nyaa.si/view/1202294",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "extra": true,
+        "resolution": 540,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Preview] Gochuumon wa Usagi Desu ka?? | Is the order a rabbit?? ~Sing For You~",
+      "url": "https://nyaa.si/view/1159759",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "extra": true,
+        "batch": false
+      },
+      "verified": "hand"
+    }
+  ]
+}

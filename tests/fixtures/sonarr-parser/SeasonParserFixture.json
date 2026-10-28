@@ -1,0 +1,1141 @@
+{
+  "source": "src/NzbDrone.Core.Test/ParserTests/SeasonParserFixture.cs",
+  "repository": "https://github.com/Sonarr/Sonarr",
+  "commit": "8f8226786bad9804486368768a108ae3aec17101",
+  "license": "GPL-3.0-only",
+  "cases": [
+    {
+      "method": "should_parse_full_season_release",
+      "title": "30.Series.Season.04.HDTV.XviD-DIMENSION",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "30 Series",
+        "seasons": [
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Sonarr.and.Series.S02.720p.x264-DIMENSION",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Sonarr and Series",
+        "seasons": [
+          2
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "The.Series.US.S03.720p.x264-DIMENSION",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series US",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series.of.Sonarr.S03.720p.BluRay-CLUE\\REWARD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series of Sonarr",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series Time S02 720p HDTV x264 CRON",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Time",
+        "seasons": [
+          2
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series.2021.S04.iNTERNAL.DVDRip.XviD-VCDVaULT",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series 2021",
+        "seasons": [
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series Five 0 S01 720p WEB DL DD5 1 H 264 NT",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Five 0",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "30 Series S03 WS PDTV XviD FUtV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "30 Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "The Series Season 4 WS PDTV XviD FUtV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series",
+        "seasons": [
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series Season 1 720p WEB DL DD 5 1 h264 TjHD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "The Series Season4 WS PDTV XviD FUtV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series",
+        "seasons": [
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series S 01 720p WEB DL DD 5 1 h264 TjHD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series Confidential   Season 3",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Confidential",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series.S01.720p.WEBDL.DD5.1.H.264-NTb",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series.Makes.It.Right.S02.720p.HDTV.AAC5.1.x265-NOGRP",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Makes It Right",
+        "seasons": [
+          2
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "My.Series.S2014.720p.HDTV.x264-ME",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "My Series",
+        "seasons": [
+          2014
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series.Saison3.VOSTFR.HDTV.XviD-NOTAG",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series.SAISON.1.VFQ.PDTV.H264-ACC-ROLLED",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series Title - Series 1 (1970) DivX",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "SeriesTitle.S03.540p.AMZN.WEB-DL.DD+2.0.x264-RTN",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "SeriesTitle",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series.Title.S01.576p.BluRay.DD5.1.x264-HiSD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series.Stagione.3.HDTV.XviD-NOTAG",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series.Stagione.3.HDTV.XviD-NOTAG",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series No More S01 2023 1080p WEB-DL AVC AC3 2.0 Dual Audio -ZR-",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series No More",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series Title / S1E1-8 of 8 [2024, WEB-DL 1080p] + Original + RUS",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series Title / S2E1-16 of 16 [2022, WEB-DL] RUS",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          2
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "[hchcsen] Mobile Series 00 S01 [BD Remux Dual Audio 1080p AVC 2xFLAC] (Kidou Senshi Gundam 00 Season 1)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Mobile Series 00",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "[HorribleRips] Mobile Series 00 S1 [1080p]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Mobile Series 00",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "[Zoombie] Series 100: Bucket List S01 [Web][MKV][h265 10-bit][1080p][AC3 2.0][Softsubs (Zoombie)]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series 100: Bucket List",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "[GROUP] Series: Title (2023) (Season 1) [BDRip] [1080p Dual Audio HEVC 10 bits DDP] (serie) (Batch)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series: Title (2023)",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "[GROUP] Series: Title (2023) (Season 1) [BDRip] [1080p Dual Audio HEVC 10-bits DDP] (serie) (Batch)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series: Title (2023)",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "[GROUP] Series: Title (2023) (Season 1) [BDRip] [1080p Dual Audio HEVC 10-bit DDP] (serie) (Batch)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series: Title (2023)",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Seriesless (2016/S01/WEB-DL/1080p/AC3 5.1/DUAL/SUB)",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Seriesless (2016)",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series (1994) - Temporada 10",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series (1994)",
+        "seasons": [
+          10
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series S01 1080p HMAX WEB-DL DD+ 5.1 H.265",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "Series S01 1440p HMAX WEB-DL DD+ 5.1 H.265",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "[Judas] Series E (Series J) (Season 04) [1080p][HEVC x265 10bit][Dual-Audio][Multi-Subs] (Batch)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series E (Series J)",
+        "seasons": [
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "1234 [Sezon 3] [1080p] [NF] [WEB-DL] [H264] [DDP5.1.Atmos-K83] [Serial Polski]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "1234",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "1234 [Season 3] [1080p] [NF] [WEB-DL] [H264] [DDP5.1.Atmos-K83] [Serial Polski]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "1234",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_full_season_release",
+      "title": "1234 (2026) (S03) [MULTi] [1080p] [NF] [WEB-DL] [H.264] [DD5.1-RX] [Serial polski]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "1234 (2026)",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true
+      }
+    },
+    {
+      "method": "should_parse_season_extras",
+      "title": "Acropolis Series S05 EXTRAS DVDRip XviD RUNNER",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Acropolis Series",
+        "seasons": [
+          5
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "season_extra": true
+      }
+    },
+    {
+      "method": "should_parse_season_extras",
+      "title": "Punky Series S01 EXTRAS DVDRip XviD RUNNER",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Punky Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "season_extra": true
+      }
+    },
+    {
+      "method": "should_parse_season_extras",
+      "title": "Instant Series S03 EXTRAS DVDRip XviD OSiTV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Instant Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "season_extra": true
+      }
+    },
+    {
+      "method": "should_parse_season_extras",
+      "title": "The.Series.S03.Extras.01.Deleted.Scenes.720p",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "season_extra": true
+      }
+    },
+    {
+      "method": "should_parse_season_extras",
+      "title": "The.Series.S03.Extras.02.720p",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "season_extra": true
+      }
+    },
+    {
+      "method": "should_parse_season_subpack",
+      "title": "Series.to.Me.S03.SUBPACK.DVDRip.XviD-REWARD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series to Me",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "season_extra": true
+      }
+    },
+    {
+      "method": "should_parse_season_subpack",
+      "title": "The.Series.S02.SUBPACK.DVDRip.XviD-REWARD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series",
+        "seasons": [
+          2
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "season_extra": true
+      }
+    },
+    {
+      "method": "should_parse_season_subpack",
+      "title": "Series.S11.SUBPACK.DVDRip.XviD-REWARD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          11
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "season_extra": true
+      }
+    },
+    {
+      "method": "should_parse_partial_season_release",
+      "title": "The.Series.2016.S02.Part.1.1080p.NF.WEBRip.DD5.1.x264-NTb",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series 2016",
+        "seasons": [
+          2
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": false,
+        "partial_season": 1
+      }
+    },
+    {
+      "method": "should_parse_partial_season_release",
+      "title": "The.Series.S07.Vol.1.1080p.NF.WEBRip.DD5.1.x264-NTb",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series",
+        "seasons": [
+          7
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": false,
+        "partial_season": 1
+      }
+    },
+    {
+      "method": "should_parse_partial_season_release",
+      "title": "The.Series.S06.P1.1080p.Blu-Ray.10-Bit.Dual-Audio.TrueHD.x265-iAHD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series",
+        "seasons": [
+          6
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": false,
+        "partial_season": 1
+      }
+    },
+    {
+      "method": "should_parse_partial_season_release",
+      "title": "[Group] Series Title S03 - Vol.02 [BD 1080p FLAC]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": false,
+        "partial_season": 2
+      }
+    },
+    {
+      "method": "should_parse_partial_season_release",
+      "title": "[Group] Series Title S03 Vol.02 [BD 1080p FLAC]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": false,
+        "partial_season": 2
+      }
+    },
+    {
+      "method": "should_parse_partial_season_release",
+      "title": "[Group] Series Title S03 Part 2 [1080p]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          3
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": false,
+        "partial_season": 2
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "The Series S01-05 WS BDRip X264-REWARD-No Rars",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series",
+        "seasons": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series.Title.S01-S09.1080p.AMZN.WEB-DL.DDP2.0.H.264-NTb",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series Title S01 - S07 BluRay 1080p x264 REPACK -SacReD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series Title Season 01-07 BluRay 1080p x264 REPACK -SacReD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series Title Season 01 - Season 07 BluRay 1080p x264 REPACK -SacReD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series Title Complete Series S01 S04 (1080p BluRay x265 HEVC 10bit AAC 5.1 Vyndros)",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series Title S01 S04 (1080p BluRay x265 HEVC 10bit AAC 5.1 Vyndros)",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series Title S01 04 (1080p BluRay x265 HEVC 10bit AAC 5.1 Vyndros)",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series Title S01 S02 S03 S04",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series Title S01 S03 S04",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          3,
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "Series Title S01 S04",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "[Group] Series Title S01-04 (BD 1080p) [Dual Audio]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_parse_multi_season_release",
+      "title": "[Group] Series Title S01-S04 (BD 1080p)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "episodes": [],
+        "absolute": [],
+        "full_season": true,
+        "multi_season": true
+      }
+    },
+    {
+      "method": "should_not_be_multi_season_for_a_single_season_release",
+      "title": "30.Series.Season.04.HDTV.XviD-DIMENSION",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "seasons": [
+          4
+        ],
+        "multi_season": false
+      }
+    },
+    {
+      "method": "should_not_be_multi_season_for_a_single_season_release",
+      "title": "Sonarr.and.Series.S02.720p.x264-DIMENSION",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "seasons": [
+          2
+        ],
+        "multi_season": false
+      }
+    },
+    {
+      "method": "should_not_be_multi_season_for_a_single_season_release",
+      "title": "[Group] Series Title S02 [1080p]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "seasons": [
+          2
+        ],
+        "multi_season": false
+      }
+    },
+    {
+      "method": "should_not_be_multi_season_for_a_single_season_release",
+      "title": "[Group] Series Title 2 S01 [BD 1080p]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "seasons": [
+          1
+        ],
+        "multi_season": false
+      }
+    }
+  ]
+}

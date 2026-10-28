@@ -1,0 +1,127 @@
+{
+  "bucket": "subsplease-batch",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=01~02&c=1_0",
+    "https://nyaa.si/?page=rss&q=SubsPlease+Batch&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[SubsPlease] Grand Blue S3 (01-12) (1080p) [Batch]",
+      "url": "https://nyaa.si/view/2179602",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Hanaori-san wa Tensei shitemo Kenka ga Shitai (01-12) (1080p) [Batch]",
+      "url": "https://nyaa.si/view/2179574",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Jujutsu Kaisen (48-59) (1080p) [Batch]",
+      "url": "https://nyaa.si/view/2179185",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "batch": true,
+        "episodes": {
+          "first": 48,
+          "last": 59
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Mairimashita! Iruma-kun S4 (01-24) (1080p) [Batch]",
+      "url": "https://nyaa.si/view/2174137",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 24
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Gaikotsu Kishi-sama, Tadaima Isekai e Odekakechuu S2 (01-12) (1080p) [Batch]",
+      "url": "https://nyaa.si/view/2173694",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Grow Up Show - Himawari no Circus-dan (01-13) (1080p) [Batch]",
+      "url": "https://nyaa.si/view/2171791",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 13
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Mushoku Tensei S3 (01-14) (1080p) [Batch]",
+      "url": "https://nyaa.si/view/2179235",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 14
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    }
+  ]
+}

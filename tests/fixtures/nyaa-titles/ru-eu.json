@@ -1,0 +1,309 @@
+{
+  "bucket": "ru-eu",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=01~02&c=1_0",
+    "https://nyaa.si/?page=rss&q=TV-1&c=1_3",
+    "https://nyaa.si/?page=rss&q=of+12&c=1_3",
+    "https://nyaa.si/?page=rss&q=Temporada&c=1_3",
+    "https://nyaa.si/?page=rss&q=VOSTFR+Saison&c=1_3"
+  ],
+  "cases": [
+    {
+      "title": "Tsuihou sareta Cheat Fuyo Majutsushi wa Kimama na Second Life wo Ouka suru | Chii Fuyo | Изгнанный читер-чародей наслаждается беззаботной второй жизнью [TV-1] [2026] [04 of 12] [WEBRip] [1080p] [RUS + JAP]",
+      "url": "https://nyaa.si/view/2179425",
+      "category": "1_3",
+      "expect": {
+        "group": null,
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "year": 2026,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Tsuihou Sareta Tensei Juu Kishi wa Game Chishiki de Musou Suru | Jukishi | Изгнанный реинкарнированный тяжёлый рыцарь не имеет себе равных в знаниях игры [TV-1] [2026] [17 of 26] [WEBRip] [1080p] [RUS + JAP]",
+      "url": "https://nyaa.si/view/2177339",
+      "category": "1_3",
+      "expect": {
+        "group": null,
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          17
+        ],
+        "year": 2026,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Diogo4D] [BD][1080p] Turma de Elite 2.ª Temporada - 12 (Youkoso Jitsuryoku Shijou Shugi no Kyoushitsu e 2nd Season | Classroom of the Elite II)",
+      "url": "https://nyaa.si/view/2175035",
+      "category": "1_3",
+      "expect": {
+        "group": "Diogo4D",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          12
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[FS] Mashiro-iro Symphony - The Color of Lovers - 01~12 [BD 1920x1080 x264 AAC][Sub_Esp][MP4]",
+      "url": "https://nyaa.si/view/2164364",
+      "category": "1_3",
+      "expect": {
+        "group": "FS",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Dex] Ranger Reject (Go Go Loser Ranger / Sentai Daishikkaku) - Temporada 2 [Español Latino][D+][WEB-DL][1080p]",
+      "url": "https://nyaa.si/view/2010736",
+      "category": "1_3",
+      "expect": {
+        "group": "Dex",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[CatSub] Shadows House (2a temporada) - Sèrie completa (01-12 + Extres)",
+      "url": "https://nyaa.si/view/1590578",
+      "category": "1_3",
+      "expect": {
+        "group": "CatSub",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 12
+        }
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Tinosoft] Kaguya-sama wa Kokurasetai (2022) (Temporada 3) [1080p] [Dual Audio HEVC WEBRip] (Kaguya-sama wa Kokurasetai: Ultra Romantic | Kaguya-sama: Love Is War - Ultra Romantic) (Batch)",
+      "url": "https://nyaa.si/view/1552930",
+      "category": "1_3",
+      "expect": {
+        "group": "Tinosoft",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "year": 2022,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[CatSub + LlPnF] La meva acadèmia d'herois - 1a temporada (subtítols en català)",
+      "url": "https://nyaa.si/view/1401777",
+      "category": "1_3",
+      "expect": {
+        "group": "CatSub + LlPnF",
+        "batch": true,
+        "seasons": [
+          1
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[RyuSora] Zombie Land Saga Temporada 2 Epi 1 - 4 Sub Español",
+      "url": "https://nyaa.si/view/1380694",
+      "category": "1_3",
+      "expect": {
+        "group": "RyuSora",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 4
+        }
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Trix] Though I Am an Inept Villainess S01 (Batch) [WEBRip 1080p AAC] (VF, VOSTFR) | Futsutsuka na Akujo dewa Gozaimasu ga Suuguu Chouso Torikae Den Saison S1",
+      "url": "https://nyaa.si/view/2176359",
+      "category": "1_3",
+      "expect": {
+        "group": "Trix",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Brazh] Spy x Family Henshū - Saison 3 - 1080p.MULTI.VF/VOSTFR.x264",
+      "url": "https://nyaa.si/view/2150220",
+      "category": "1_3",
+      "expect": {
+        "group": "Brazh",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Aoi-Project] Mato Seihei no Slave - Saison 2 VOSTFR [BD CUSTOM 1080p 10bits x265] (Chained Soldier / Demon Slave)",
+      "url": "https://nyaa.si/view/2135770",
+      "category": "1_3",
+      "expect": {
+        "group": "Aoi-Project",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Brazh & Foxthug] Kaguya-sama - Love Is War Henshū - Saisons 1/2/3 (11 films) - 1080p.MULTI.VF/VOSTFR.x264",
+      "url": "https://nyaa.si/view/2075959",
+      "category": "1_3",
+      "expect": {
+        "group": "Brazh & Foxthug",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Livai] Haikyu!! Henshu (Fan-Kai) - Saisons 1/2/3/4 - 1080p.MULTI.VF/VOSTFR.x264",
+      "url": "https://nyaa.si/view/1898900",
+      "category": "1_3",
+      "expect": {
+        "group": "Livai",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Roro/Goruden/Odji-san] Vinland Saga Henshū - Films 1 à 7 (Saison 1 & 2) 1080p.MULTI.VF/VOSTFR.x264",
+      "url": "https://nyaa.si/view/1846682",
+      "category": "1_3",
+      "expect": {
+        "group": "Roro/Goruden/Odji-san",
+        "batch": true,
+        "seasons": [
+          1,
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Community] Magi - Saison 1 & 2 [Multi (VOSTFR/FRENCH) BDrip 1080p x265] (The Labyrinth of Magic / The Kingdom of Magic)",
+      "url": "https://nyaa.si/view/1800229",
+      "category": "1_3",
+      "expect": {
+        "group": "Community",
+        "batch": true,
+        "seasons": [
+          1,
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[matheousse] Yuru Camp - Au grand air Saison 1 + 2 + Room Camp VOSTFR (BD 1080p Opus) (Laid-Back Camp/Heya Camp)",
+      "url": "https://nyaa.si/view/1769414",
+      "category": "1_3",
+      "expect": {
+        "group": "matheousse",
+        "batch": true,
+        "seasons": [
+          1,
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Pokémon Fansub] Pocket Monster (2019) Saison 24 [VOSTFR_SoftSub]",
+      "url": "https://nyaa.si/view/1696476",
+      "category": "1_3",
+      "expect": {
+        "group": "Pokémon Fansub",
+        "batch": true,
+        "seasons": [
+          24
+        ],
+        "year": 2019
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DJB] L'Attaque des Titans - Saison Finale Partie 2 - 28 VOSTFR [1080p].mp4",
+      "url": "https://nyaa.si/view/1510223",
+      "category": "1_3",
+      "expect": {
+        "group": "DJB",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          28
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "Partie 2 is a part hint, like Part 2"
+    }
+  ]
+}

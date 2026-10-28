@@ -1,0 +1,505 @@
+{
+  "bucket": "roman-sequels",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=Overlord+IV&c=1_2",
+    "https://nyaa.si/?page=rss&q=Mob+Psycho+100+III&c=1_2",
+    "https://nyaa.si/?page=rss&q=Goblin+Slayer+II&c=1_2",
+    "https://nyaa.si/?page=rss&q=Danmachi+IV&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[Erai-raws] Overlord IV - 01 ~ 13 [480p][BATCH][Multiple Subtitle] [ENG][POR-BR][SPA-LA][FRE][RUS]",
+      "url": "https://nyaa.si/view/1812152",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 13
+        },
+        "resolution": 480
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Overlord.S04.1080p.BluRay.10-Bit.Dual-Audio.FLAC5.1.x265-YURASUKA (Overlord IV - 4th Season)",
+      "url": "https://nyaa.si/view/1738254",
+      "category": "1_2",
+      "expect": {
+        "group": "YURASUKA",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Cleo] Overlord IV [Dual Audio 10bit 1080p][HEVC-x265]",
+      "url": "https://nyaa.si/view/1681569",
+      "category": "1_2",
+      "expect": {
+        "group": "Cleo",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[sam] Overlord IV (BD 1080p HEVC x265 10-bit FLAC) [Dual-Audio]",
+      "url": "https://nyaa.si/view/1626964",
+      "category": "1_2",
+      "expect": {
+        "group": "sam",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EMBER] Overlord (2022) (Season 4) [1080p] [Dual Audio HEVC WEBRip] (Overlord IV) (Batch)",
+      "url": "https://nyaa.si/view/1590597",
+      "category": "1_2",
+      "expect": {
+        "group": "EMBER",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "year": 2022,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[LostYears] Overlord - S04 (WEB 1080p Hi10P AAC) [Dual Audio] (Overlord IV) (v2 Batch)",
+      "url": "https://nyaa.si/view/1589369",
+      "category": "1_2",
+      "expect": {
+        "group": "LostYears",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Yameii] Overlord IV - 13 [English Dub] [WEB-DL 720p] [5CA3A1B6]",
+      "url": "https://nyaa.si/view/1589349",
+      "category": "1_2",
+      "expect": {
+        "group": "Yameii",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anime Chap] Overlord IV S04E13 [WEB 1080p] {OP & ED Lyrics} - Episode 13 {Finale}",
+      "url": "https://nyaa.si/view/1583849",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Chap",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "OP and ED inside braces are not an extra"
+    },
+    {
+      "title": "[YuiSubs] Overlord IV - 13  (x265 H.265 1080p)",
+      "url": "https://nyaa.si/view/1583805",
+      "category": "1_2",
+      "expect": {
+        "group": "YuiSubs",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DKB] Overlord IV - (Season 04) [1080p][HEVC x265 10bit][Multi-Subs][batch]",
+      "url": "https://nyaa.si/view/1583797",
+      "category": "1_2",
+      "expect": {
+        "group": "DKB",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[NC-Raws] OVERLORD IV / Overlord S4 - 13 (B-Global 3840x2160 HEVC AAC MKV)",
+      "url": "https://nyaa.si/view/1583746",
+      "category": "1_2",
+      "expect": {
+        "group": "NC-Raws",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 2160,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EMBER] Overlord S04E13 [1080p] [HEVC WEBRip] (Overlord IV)",
+      "url": "https://nyaa.si/view/1584002",
+      "category": "1_2",
+      "expect": {
+        "group": "EMBER",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Overlord IV - 13 END [1080p][HEVC][Multiple Subtitle] [ENG][POR-BR][SPA-LA][RUS]",
+      "url": "https://nyaa.si/view/1583897",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ASW] Overlord IV [1080p HEVC x265 10Bit][AAC] (Batch)",
+      "url": "https://nyaa.si/view/1629845",
+      "category": "1_2",
+      "expect": {
+        "group": "ASW",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Overlord IV (01-13) (1080p) [Batch]",
+      "url": "https://nyaa.si/view/1622512",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 13
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Overlord IV - 13 [English Dub] [1080p]",
+      "url": "https://nyaa.si/view/1589310",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Metaljerk] Overlord IV 11-12 [1080p] [CR] (English Dub)",
+      "url": "https://nyaa.si/view/1586487",
+      "category": "1_2",
+      "expect": {
+        "group": "Metaljerk",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "episodes": {
+          "first": 11,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Raze] Overlord IV - 13 x265 10bit 1080p 119.8801fps.mkv",
+      "url": "https://nyaa.si/view/1583788",
+      "category": "1_2",
+      "expect": {
+        "group": "Raze",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DKB] Overlord IV - S04E13 [1080p][HEVC x265 10bit][Multi-Subs][weekly]",
+      "url": "https://nyaa.si/view/1583779",
+      "category": "1_2",
+      "expect": {
+        "group": "DKB",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Overlord IV - 13 (1080p) [85B0A2E0].mkv",
+      "url": "https://nyaa.si/view/1583749",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          13
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[LYS1TH3A] Mob Psycho 100 Season 3 | III (Web 1080p HEVC x265 10-bit AAC) [Dual-Audio]",
+      "url": "https://nyaa.si/view/1624953",
+      "category": "1_2",
+      "expect": {
+        "group": "LYS1TH3A",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Chihiro] Goblin Slayer II [Blu-ray 1080p HEVC FLAC]",
+      "url": "https://nyaa.si/view/2038183",
+      "category": "1_2",
+      "expect": {
+        "group": "Chihiro",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SAi0NJi] Goblin Slayer Season 2 (BD 1080p x264 8-bit FLAC) [Dual Audio] | Goblin Slayer II",
+      "url": "https://nyaa.si/view/2001926",
+      "category": "1_2",
+      "expect": {
+        "group": "SAi0NJi",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[PrinceOtaku] Goblin Slayer - S02E09 [English Dub] [CR WEB-DL 1080p] (Goblin Slayer II | Season 2 | S2)",
+      "url": "https://nyaa.si/view/1757402",
+      "category": "1_2",
+      "expect": {
+        "group": "PrinceOtaku",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          9
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Nobody] Is It Wrong to Try to Pick Up Girls in a Dungeon IV - OVA S00E07 \"Not Meet Doubt\" Lyric Video [1080p][WEBRIP][OPUS][VEAI] (DanMachi) (Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka IV: Fuka Shou - Yakusai-hen)",
+      "url": "https://nyaa.si/view/1982682",
+      "category": "1_2",
+      "expect": {
+        "group": "Nobody",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          7
+        ],
+        "special": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Anipakku] DanMachi (S04) [BD 1080p x265 OPUS][PT-BR] (Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka IV | Shin Shou - Meikyuu-hen | Yakusai-hen | Is It Wrong to Try to Pick Up Girls in a Dungeon? Season 4)",
+      "url": "https://nyaa.si/view/1913825",
+      "category": "1_2",
+      "expect": {
+        "group": "Anipakku",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Ryuu] Danmachi - S04 P2 (WEB 1080p x264 AAC) [Dual-Audio] | Is It Wrong to Try to Pick Up Girls in a Dungeon IV | Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka IV: Fuka Shou - Yakusai-hen",
+      "url": "https://nyaa.si/view/1695063",
+      "category": "1_2",
+      "expect": {
+        "group": "Ryuu",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "season_part": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Almighty] Danmachi IV (Part 2)[BD 1920x1080 x264 10bit FLAC]",
+      "url": "https://nyaa.si/view/1678662",
+      "category": "1_2",
+      "expect": {
+        "group": "Almighty",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "season_part": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[TTGA] Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka (DanMachi) (2022) (Season 4 | Part 01 [EP: 01-11]) [BD Remux] [1080p Dual Audio FLAC AVC] (Is It Wrong to Try to Pick Up Girls in a Dungeon? IV)",
+      "url": "https://nyaa.si/view/1632700",
+      "category": "1_2",
+      "expect": {
+        "group": "TTGA",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "season_part": 1,
+        "episodes": {
+          "first": 1,
+          "last": 11
+        },
+        "year": 2022,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[sam] DanMachi Season 4 (S04) | Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka IV | Is It Wrong to Try to Pick Up Girls in a Dungeon? IV (BD 1080p HEVC x265 10-bit FLAC) [Dual-Audio]",
+      "url": "https://nyaa.si/view/1755688",
+      "category": "1_2",
+      "expect": {
+        "group": "sam",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Date A Live IV x DanMachi Ais Engagement (Trailer) [1080p YouTube]",
+      "url": "https://nyaa.si/view/2166010",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "extra": true,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "IV inside the title is not a season marker; (Trailer) is an extra"
+    }
+  ]
+}

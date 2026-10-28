@@ -1,0 +1,223 @@
+{
+  "bucket": "alt-title-parens-dashed-groups",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=Naruto-Kun.Hu&c=1_0",
+    "https://nyaa.si/?page=rss&q=Dual-Audio&c=1_2",
+    "https://nyaa.si/?page=rss&q=01~02&c=1_0"
+  ],
+  "cases": [
+    {
+      "title": "[Naruto-Kun.Hu - UraharaShop] Bleach 2 Sennen Kessen-hen - 49 (Kashin Tan 09) [1080p].mkv",
+      "url": "https://nyaa.si/view/2179509",
+      "category": "1_3",
+      "expect": {
+        "group": "Naruto-Kun.Hu - UraharaShop",
+        "episodes": [
+          49
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Naruto-Kun.Hu] Bleach 001-063 (v2) [1080p]",
+      "url": "https://nyaa.si/view/2179246",
+      "category": "1_3",
+      "expect": {
+        "group": "Naruto-Kun.Hu",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 63
+        },
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Naruto-Kun.Hu] One-Room TA S01E04 [1080p].mkv",
+      "url": "https://nyaa.si/view/2178932",
+      "category": "1_3",
+      "expect": {
+        "group": "Naruto-Kun.Hu",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Naruto-Kun.Hu] Black Clover S2 - 04 [1080p].mkv",
+      "url": "https://nyaa.si/view/2178844",
+      "category": "1_3",
+      "expect": {
+        "group": "Naruto-Kun.Hu",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Naruto-Kun.Hu] Bleach - 064 [1080p].mkv",
+      "url": "https://nyaa.si/view/2177429",
+      "category": "1_3",
+      "expect": {
+        "group": "Naruto-Kun.Hu",
+        "episodes": [
+          64
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Naruto-Kun.Hu] Dragon Ball Super - Beerus - 02 [1080p].mkv",
+      "url": "https://nyaa.si/view/2176393",
+      "category": "1_3",
+      "expect": {
+        "group": "Naruto-Kun.Hu",
+        "episodes": [
+          2
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Judas] Tsuihou sareta Cheat Fuyo Majutsushi wa Kimama na Second Life wo Ouka suru (The Laid-Off Cheat-Granting Mage Enjoys a Second Lease on Life) - S01E04 [1080p][HEVC x265 10bit][Dual-Audio][Multi-Subs] (Weekly)",
+      "url": "https://nyaa.si/view/2179424",
+      "category": "1_2",
+      "expect": {
+        "group": "Judas",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Feibanyama] Blue Box S02E04 [BILIBILI WebRip 2160p H265 Veryslow EAC3 Dual-Audio Multi-Subs] (Ao no Hako)",
+      "url": "https://nyaa.si/view/2178953",
+      "category": "1_2",
+      "expect": {
+        "group": "Feibanyama",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 2160,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[figged] Soul Eater S01 E27-E51 (BluRay 720p AVC Opus) [Dual-Audio] |  (Season 1)",
+      "url": "https://nyaa.si/view/2178924",
+      "category": "1_2",
+      "expect": {
+        "group": "figged",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 27,
+          "last": 51
+        },
+        "resolution": 720
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DKB] Ao no Hako - S02E04 [1080p][HEVC x265 10bit][Dual-Audio][Multi-Subs][weekly]",
+      "url": "https://nyaa.si/view/2178789",
+      "category": "1_2",
+      "expect": {
+        "group": "DKB",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Unfucked] #I'm Looking For a Zombie - S01E04 (1080p CR WEB-DL AVC AAC 2.0) [Dual-Audio, Multi-Subs] | #Zombie Sagashitemasu",
+      "url": "https://nyaa.si/view/2178090",
+      "category": "1_2",
+      "expect": {
+        "group": "Unfucked",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GJM] Toaru Anbu no ITEM (A Certain Underground ITEM) - 03 (S01E03) (WEB 1080p) [7FF36AD6].mkv",
+      "url": "https://nyaa.si/view/2179585",
+      "category": "1_2",
+      "expect": {
+        "group": "GJM",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Diogo4D] [BD][1080p] Turma de Elite 3.ª Temporada - 04 (Youkoso Jitsuryoku Shijou Shugi no Kyoushitsu e 3rd Season | Classroom of the Elite III)",
+      "url": "https://nyaa.si/view/2179529",
+      "category": "1_3",
+      "expect": {
+        "group": "Diogo4D",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          4
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    }
+  ]
+}

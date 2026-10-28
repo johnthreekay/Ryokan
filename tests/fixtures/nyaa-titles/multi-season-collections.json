@@ -1,0 +1,446 @@
+{
+  "bucket": "multi-season-collections",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=Movie+BD&c=1_2",
+    "https://nyaa.si/?page=rss&q=S01-S04&c=1_2",
+    "https://nyaa.si/?page=rss&q=S01-S03&c=1_2",
+    "https://nyaa.si/?page=rss&q=Collection+BD&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[Anime Time] Attack On Titan (Ultimate Collection) (S01-S04+OVA+Movies+Junior High) [BD] [Dual Audio][1080p][HEVC 10bit x265][AAC][Eng Sub] [Batch] (Shingeki no Kyojin)",
+      "url": "https://nyaa.si/view/2122896",
+      "category": "1_2",
+      "expect": {
+        "group": "Anime Time",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Gecko] God Troubles Me - S01-S04 (汉化日记; Hanhua Riji) [BILI/YTB.WEB-DL 1080P AVC, AAC, M-SUB][BATCH]",
+      "url": "https://nyaa.si/view/2082576",
+      "category": "1_2",
+      "expect": {
+        "group": "Gecko",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ToonsHub] Gag Manga Biyori S01-S04 1080p AMZN WEB-DL DDP2.0 H.264 (Masuda Kousuke Gekijou Gag Manga Biyori, English-Sub) [BATCH]",
+      "url": "https://nyaa.si/view/1979805",
+      "category": "1_2",
+      "expect": {
+        "group": "ToonsHub",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Zhen Wu Dianfeng (The Peak of True Martial Arts) S01-S04",
+      "url": "https://nyaa.si/view/1920911",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Sokudo] The Seven Deadly Sins S01-S04+Movies [1080p BD/WEB AV1][dual audio]",
+      "url": "https://nyaa.si/view/1767090",
+      "category": "1_2",
+      "expect": {
+        "group": "Sokudo",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[A&C] Sword Art Online S01-S04 + Ordinal Scale + Alternative + Extra Edition [BDrip] [Multi-Audio-Subs]",
+      "url": "https://nyaa.si/view/1761563",
+      "category": "1_2",
+      "expect": {
+        "group": "A&C",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[B0NES] Yu Yu Hakusho (1992) S01-S04 + Sp + Movie [1080p Bluray AV1 10bit Opus 5.1 Dual Audio] (Yuu Yuu Hakusho)",
+      "url": "https://nyaa.si/view/1761413",
+      "category": "1_2",
+      "expect": {
+        "group": "B0NES",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "includes_specials": true,
+        "year": 1992,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Ryuuga] - Beyblade: Metal Fusion (2009) S01-S04 - [480p-AAC LC-x264]-[WEB-DL]",
+      "url": "https://nyaa.si/view/1215978",
+      "category": "1_2",
+      "expect": {
+        "group": "Ryuuga",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "year": 2009,
+        "resolution": 480
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[BBT-RMX] Slam Dunk (1993) - S01-S04 (BD 1080p x264 10-bit Hi10P FLAC 2.0)",
+      "url": "https://nyaa.si/view/958696",
+      "category": "1_2",
+      "expect": {
+        "group": "BBT-RMX",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "year": 1993,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[FLAV1N] Diamond no Ace - S01-S03+OVA (BD 1080p 10bit AV1 Opus) [Multi-Subs] | Ace of Diamond",
+      "url": "https://nyaa.si/view/1902709",
+      "category": "1_2",
+      "expect": {
+        "group": "FLAV1N",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[JPN-ENG] Kuroko no Basuke a.k.a Kuroko's Basketball [2012-2017] [S01-S03 + Movie - Last Game] COMPLETE (Series+Manga+OSTs+Extras) 1080p BDRip x265 PCM 2.0 Kira [SEV]",
+      "url": "https://nyaa.si/view/1654803",
+      "category": "1_2",
+      "expect": {
+        "group": "JPN-ENG",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "[2012-2017] is a year range, not episodes"
+    },
+    {
+      "title": "[ShafinKun] Mob Psycho 100 Complete [S01-S03 + OVA] [720p Dual Audio CC]",
+      "url": "https://nyaa.si/view/1619781",
+      "category": "1_2",
+      "expect": {
+        "group": "ShafinKun",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "includes_specials": true,
+        "resolution": 720
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[hchcsen] Free!! (S01-S03+Starting Days and Take Your Marks) (1080p) (BDRip) (Dual Audio)",
+      "url": "https://nyaa.si/view/1486747",
+      "category": "1_2",
+      "expect": {
+        "group": "hchcsen",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[AceAres] Hitori no Shita - The Outcast S01-S03 + OVA + Special 1080p WEB-Rip AAC 2.0 x265",
+      "url": "https://nyaa.si/view/1314411",
+      "category": "1_2",
+      "expect": {
+        "group": "AceAres",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[224] Shingeki no Kyojin (S01-S03) [BDRip 1080p x265 FLAC][sub:eng,ara,fre,ita,por,spa][VostFr]",
+      "url": "https://nyaa.si/view/1298330",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "a numeric-first bracket is never the group"
+    },
+    {
+      "title": "[zza] Toaru Majutsu no Index - S01-S03 [1080p.x265][multisubs:eng,ara,fre,ger,ita,por,rus,spa][Vostfr]",
+      "url": "https://nyaa.si/view/1243795",
+      "category": "1_2",
+      "expect": {
+        "group": "zza",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "【BDMV】Zone of the Enders: Perfect Collection Blu-ray (2001) (US, Discotek Media)",
+      "url": "https://nyaa.si/view/2126332",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "batch": true,
+        "year": 2001
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[HGS-Renc] Kingdom Collection S1+S2+S3+S4+S5 [BD1080][AV1]",
+      "url": "https://nyaa.si/view/2107378",
+      "category": "1_2",
+      "expect": {
+        "group": "HGS-Renc",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Headpatter] Sengoku Collection Season 1 (BD Remux 1080p x264 8-bit FLAC)",
+      "url": "https://nyaa.si/view/2057683",
+      "category": "1_2",
+      "expect": {
+        "group": "Headpatter",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsMix] KanColle Season 1 (BD 1080p x264 10bit FLAC) [Dual Audio] | Kantai Collection",
+      "url": "https://nyaa.si/view/2033181",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsMix",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[FacTory] Natsume Yuujinchou - Complete Collection (S01-S07 + Movies & Specials) [1080p BDRip-WEB-DL Dual-Audio 10bit]",
+      "url": "https://nyaa.si/view/1996190",
+      "category": "1_2",
+      "expect": {
+        "group": "FacTory",
+        "batch": true,
+        "seasons": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Rillant] Digimon the Movies - Digimon Movie Collection 1 [BD 1080p H265]",
+      "url": "https://nyaa.si/view/1979254",
+      "category": "1_2",
+      "expect": {
+        "group": "Rillant",
+        "batch": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[CMEN][2019.12.03][BDMV] K-ON! (けいおん!) ULTIMATE COLLECTION",
+      "url": "https://nyaa.si/view/1942169",
+      "category": "1_2",
+      "expect": {
+        "group": "CMEN",
+        "batch": true
+      },
+      "verified": "hand",
+      "note": "the bracketed date is not a number source"
+    },
+    {
+      "title": "[DBD-Raws][机动战士高达 MS IGLOO 合集/Mobile Suit Gundam MS IGLOO Collection][1080P][BDRip][HEVC-10bit][简繁内封][FLACx2][MKV](機動戦士ガンダム MS IGLOO)",
+      "url": "https://nyaa.si/view/1926835",
+      "category": "1_2",
+      "expect": {
+        "group": "DBD-Raws",
+        "batch": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[DB] Makoto Shinkai Movie Collection [Dual Audio 10bit BD1080p][HEVC-x265] (The Place Promised in Our Early Days+5 Centimeters per Second+Children Who Chase Lost Voices+The Garden of Words+Your Name.+Weathering with You+Suzume no Tojimari)",
+      "url": "https://nyaa.si/view/1906851",
+      "category": "1_2",
+      "expect": {
+        "group": "DB",
+        "batch": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[REEEencode] Mobile Suit SD Gundam Collection - MK 1-5, SD Gundam Gaiden, SD Gundam's Counterattack (BD 720p)",
+      "url": "https://nyaa.si/view/1728410",
+      "category": "1_2",
+      "expect": {
+        "group": "REEEencode",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 5
+        },
+        "resolution": 720
+      },
+      "verified": "hand",
+      "note": "MK 1-5 reads as a range; batch either way"
+    },
+    {
+      "title": "[o7] Gekijouban Kantai Collection (KanColle) (BD 1080p x264 10-bit FLAC) [3F752475].mkv (KanColle the Movie)",
+      "url": "https://nyaa.si/view/1688363",
+      "category": "1_2",
+      "expect": {
+        "group": "o7",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "Kantai Collection is the title; a movie"
+    },
+    {
+      "title": "[AI-Raws] 逆境無頼カイジ シリーズ Kaiji Collection 1080p BDRip MKV (english subbed)",
+      "url": "https://nyaa.si/view/1514523",
+      "category": "1_2",
+      "expect": {
+        "group": "AI-Raws",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "a pack, but bare Collection collides with titles"
+    }
+  ]
+}
