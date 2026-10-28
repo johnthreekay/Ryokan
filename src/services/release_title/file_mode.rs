@@ -204,6 +204,97 @@ pub fn parse_episode_span_for(lower: &str, anchors: &super::SeriesAnchors) -> Op
     }
 }
 
+/// Folder names that hold a pack's extras: a file under one is never an
+/// episode, whatever it is called (`Extras/Previews/Preview 01.mkv`,
+/// `Extra/Preview/Ep. 1.mkv`, `特典映像/[...][Tokuten][07].mkv`). Only a
+/// folder named exactly this counts, so `[Group] Show (BD) + Extras/` is
+/// still a show's folder. `Specials/` is the import's own rule
+/// (`media::path_names_specials`).
+const EXTRAS_FOLDERS: &[&str] = &[
+    "extra",
+    "extras",
+    "bonus",
+    "bonuses",
+    "menu",
+    "menus",
+    "nc",
+    "ncop",
+    "nced",
+    "ncoped",
+    "creditless",
+    "nc op ed",
+    "ncop ed",
+    "pv",
+    "pvs",
+    "cm",
+    "cms",
+    "preview",
+    "previews",
+    "trailer",
+    "trailers",
+    "teaser",
+    "teasers",
+    "promo",
+    "promos",
+    "yokoku",
+    "yokoku anime",
+    "tokuten",
+    "特典",
+    "特典映像",
+    "映像特典",
+    "scans",
+    "fonts",
+    "ost",
+    "featurettes",
+    "interviews",
+    "behind the scenes",
+    "deleted scenes",
+    "making",
+    "commentary",
+];
+
+/// Whether a file sits under an extras folder ([`EXTRAS_FOLDERS`]).
+/// `path` uses `/` (a torrent's file list) or the platform separator.
+pub fn path_names_extras(path: &str) -> bool {
+    let mut parts: Vec<&str> = path.split(['/', '\\']).collect();
+    parts.pop();
+    parts.iter().any(|dir| {
+        let words: String = dir
+            .to_lowercase()
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c >= '\u{3000}' {
+                    c
+                } else {
+                    ' '
+                }
+            })
+            .collect();
+        let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+        EXTRAS_FOLDERS.contains(&words.as_str())
+    })
+}
+
+/// [`parse_episode_span`] for a file in a download or a library folder,
+/// given its path: a file under an extras folder holds no episode, and
+/// only the file's own name is read (a folder's `01-12` is no file's).
+pub fn parse_file_path(path: &str) -> Option<EpisodeSpan> {
+    if path_names_extras(path) {
+        return None;
+    }
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    parse_episode_span(&base.to_lowercase())
+}
+
+/// [`parse_episode_span_for`] given a path, as [`parse_file_path`].
+pub fn parse_file_path_for(path: &str, anchors: &super::SeriesAnchors) -> Option<EpisodeSpan> {
+    if path_names_extras(path) {
+        return None;
+    }
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    parse_episode_span_for(&base.to_lowercase(), anchors)
+}
+
 /// True when the name carries a special marker in a shape that does
 /// not itself supply the episode number: Sonarr's `01 OVA` / `05
 /// Special`, or a bare `- OVA` segment. The marker-then-number shapes
@@ -378,6 +469,35 @@ mod tests {
                 &["Kaiju No. 8"]
             ),
             Some(8)
+        );
+    }
+
+    #[test]
+    fn a_file_under_an_extras_folder_holds_no_episode() {
+        use super::{parse_file_path, path_names_extras};
+        // From the 29k-title corpus' file lists: the folder is the only
+        // sign these are extras.
+        for path in [
+            "Extras/Previews/Preview 01.mkv",
+            "Extra/Preview/Ep. 1.mkv",
+            "(Extras)/[MQS] Dragon Quest - Episodes 1 - 4 Recap [DVD Special].mkv",
+            "特典映像/[DBD-Raws][Submarine Super 99][Tokuten][07][480P][BDRip][AVC][AC3].mkv",
+            "Show\\Extras\\Preview 01.mkv",
+        ] {
+            assert!(path_names_extras(path), "{path}");
+            assert_eq!(parse_file_path(path), None, "{path}");
+        }
+        // A show folder that mentions extras is still the show's.
+        let main = "[Group] Show (BD) + Extras/[Group] Show - 05 [1080p].mkv";
+        assert!(!path_names_extras(main));
+        assert_eq!(parse_file_path(main).map(|s| s.first), Some(5));
+        // Only the file's own name is read, never a folder's range.
+        assert_eq!(
+            parse_file_path(
+                "[EA]Dark_Gathering_01-25_End_[BDRIP]/[EA]Dark_Gathering_05_[1920x1080][HEVC].mkv"
+            )
+            .map(|s| s.first),
+            Some(5)
         );
     }
 

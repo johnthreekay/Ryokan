@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 // `release_title::file_mode`; these re-exports keep its call sites.
 pub use crate::services::release_title::file_mode::{
     EpisodeSpan, MAX_FILE_SPAN, ReleaseRevision, has_special_marker, is_special_release,
-    parse_episode_number, parse_episode_span, parse_episode_span_for, parse_release_revision,
-    parse_release_version,
+    parse_episode_number, parse_episode_span, parse_episode_span_for, parse_file_path,
+    parse_file_path_for, parse_release_revision, parse_release_version, path_names_extras,
 };
 
 /// Sanitize a string for use as a folder name on disk.
@@ -285,6 +285,11 @@ pub fn is_stream_stub(name: &str) -> bool {
 fn parse_episode_file(path: &Path, series_root: &Path) -> Option<EpisodeFile> {
     let basename = path.file_name()?.to_str()?.to_string();
     let lower = basename.to_lowercase();
+    let relative = path.strip_prefix(series_root).ok().and_then(|p| p.to_str());
+    // `Show/Extras/Preview 01.mkv` (a Plex-style library) is no episode.
+    if relative.is_some_and(path_names_extras) {
+        return None;
+    }
 
     let span = parse_episode_span(&lower)?;
 

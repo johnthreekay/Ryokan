@@ -224,9 +224,8 @@ fn big_corpus_dump() {
         let anchors = super::SeriesAnchors::new(&[name.as_str()]);
         for f in d["files"].as_array().into_iter().flatten() {
             let file = f["name"].as_str().unwrap_or_default();
-            let base = file.rsplit('/').next().unwrap_or(file).to_lowercase();
-            let span = crate::services::media::parse_episode_span(&base);
-            let named = crate::services::media::parse_episode_span_for(&base, &anchors);
+            let span = crate::services::media::parse_file_path(file);
+            let named = crate::services::media::parse_file_path_for(file, &anchors);
             writeln!(
                 out,
                 "{}",

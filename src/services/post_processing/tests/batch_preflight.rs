@@ -60,6 +60,41 @@ fn unparseable_extras_are_skipped_without_failing_the_batch() {
 }
 
 #[test]
+fn files_under_an_extras_folder_take_no_slot() {
+    // A BD pack's `Extras/Previews/Preview 01.mkv` read as episode 1 and
+    // tied with the real `- 01`, failing the whole pack.
+    let files = vec![
+        (
+            0,
+            42,
+            None,
+            0,
+            "Show/[G] Show - 01 [BD 1080p].mkv".to_string(),
+        ),
+        (
+            1,
+            42,
+            None,
+            0,
+            "Show/Extras/Previews/Preview 01.mkv".to_string(),
+        ),
+        (2, 42, None, 0, "Show/Extra/Preview/Ep. 1.mkv".to_string()),
+        (
+            3,
+            42,
+            None,
+            0,
+            "Show/[G] Show - 02 [BD 1080p].mkv".to_string(),
+        ),
+    ];
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).unwrap();
+    assert!(plan.slots.contains_key(&0));
+    assert!(plan.slots.contains_key(&3));
+    assert!(!plan.slots.contains_key(&1));
+    assert!(!plan.slots.contains_key(&2));
+}
+
+#[test]
 fn non_positive_resolved_episode_is_skipped_without_failing_the_batch() {
     // E00 specials (and files landing on a sibling whose offset exceeds
     // their own number) resolve non-positive; skip them, keep the rest.

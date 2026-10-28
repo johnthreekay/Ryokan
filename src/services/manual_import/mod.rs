@@ -681,12 +681,11 @@ fn reread_with_pick(g: &mut SeriesGroup) {
         .with_specials_as_episodes(!media::is_tv_format(&entry.format))
     });
     for f in &mut g.files {
-        let lower = f.file_name.to_lowercase();
-        let Some(plain) = media::parse_episode_span(&lower) else {
+        let Some(plain) = media::parse_file_path(&f.rel_path) else {
             continue;
         };
         let read = match &anchors {
-            Some(anchors) => media::parse_episode_span_for(&lower, anchors),
+            Some(anchors) => media::parse_file_path_for(&f.rel_path, anchors),
             None => Some(plain),
         };
         f.episode = read.map(|s| s.first);

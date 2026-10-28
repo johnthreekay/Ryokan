@@ -141,8 +141,7 @@ pub(crate) fn file_episodes_for(
     if !crate::services::auto_search::is_media_filename(name) {
         return Vec::new();
     }
-    let base = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
-    match crate::services::media::parse_episode_span_for(&base, anchors) {
+    match crate::services::media::parse_file_path_for(name, anchors) {
         Some(span) if !span.special => {
             crate::services::grab_commit::file_slot_episodes(span, cumulative_prior_episodes)
                 .collect()

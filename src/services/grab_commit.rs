@@ -280,14 +280,13 @@ pub(crate) fn episode_numbers_for_commit(
         .iter()
         .filter(|n| auto_search::is_media_filename(n))
     {
-        let base = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
         // A file whose number the series' name holds (`Mob Psycho 100
         // (BD).mkv`) read as no episode, which is still a reading: the
         // title's range must not stand in for it.
-        if media::parse_episode_span(&base).is_some() {
+        if media::parse_file_path(name).is_some() {
             any_parsed = true;
         }
-        let Some(span) = media::parse_episode_span_for(&base, &series.anchors) else {
+        let Some(span) = media::parse_file_path_for(name, &series.anchors) else {
             continue;
         };
         if span.special {

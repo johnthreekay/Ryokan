@@ -308,8 +308,10 @@ pub fn parse_file(rel_path: &Path) -> ParsedFile {
         .map(|g| g.trim().to_string())
         .filter(|g| !g.is_empty());
 
+    // A file under an extras folder (`Show/Extras/Preview 01.mkv`) holds
+    // no episode, whatever it is called.
     let (season, episode, episode_count, mut special) =
-        match media::parse_episode_span(&file_name.to_lowercase()) {
+        match media::parse_file_path(&rel_path.to_string_lossy()) {
             Some(span) => (span.season, Some(span.first), span.count(), span.special),
             None => (None, None, 1, false),
         };

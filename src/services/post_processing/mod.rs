@@ -277,6 +277,11 @@ pub(crate) fn validate_batch_episode_map_with_anchors(
             .unwrap_or(name);
         let lower = filename.to_lowercase();
         let in_specials_folder = media::path_names_specials(Path::new(name));
+        // A pack's `Extras/` (menus, previews, PVs) takes no slot, whatever
+        // the files are called there.
+        if media::path_names_extras(name) {
+            continue;
+        }
         let parsed = match anchors.get(series_id) {
             Some(names) => media::parse_episode_span_for(&lower, names),
             None => media::parse_episode_span(&lower),
@@ -1799,8 +1804,8 @@ async fn import_torrent(
         // name here. It goes to the Specials folder as `S00Exx`, with
         // no tag or history row, and never fails the grab.
         let lower_name = filename_only.to_lowercase();
-        let name_span = media::parse_episode_span_for(
-            &lower_name,
+        let name_span = media::parse_file_path_for(
+            &file.name,
             &crate::services::grab_commit::series_anchors(&ctx.series),
         );
         let is_special = batch_episode_plan.specials.contains(file_idx)

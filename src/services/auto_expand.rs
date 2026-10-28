@@ -339,8 +339,7 @@ pub async fn expand_from_files(
         .with_specials_as_episodes(!media::is_tv_format(&sibling.format));
         for &file_idx in &sibling.file_indices {
             if let Some(name) = filenames.get(file_idx)
-                && let Some(span) =
-                    media::parse_episode_span_for(&name.to_lowercase(), &sibling_anchors)
+                && let Some(span) = media::parse_file_path_for(name, &sibling_anchors)
             {
                 // Every episode a multi-episode file holds (issue #246).
                 for raw in span.episodes() {
@@ -454,8 +453,7 @@ pub async fn expand_from_files(
         let Some(name) = filenames.get(file_idx) else {
             continue;
         };
-        let Some(span) = media::parse_episode_span_for(&name.to_ascii_lowercase(), &parent_anchors)
-        else {
+        let Some(span) = media::parse_file_path_for(name, &parent_anchors) else {
             continue;
         };
         // A TV series' special (`OVA 01`) is filed under Specials, no
