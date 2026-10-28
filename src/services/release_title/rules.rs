@@ -1946,10 +1946,14 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
             None => digits >= 2 && found.is_none(),
             Some(j) => match ctx.toks[j].kind {
                 Kind::Open(_) => true,
-                // `Stand By Me Doraemon 2 - Movie`: the number is the title's.
-                Kind::SegDash => ctx
-                    .next(j)
-                    .is_some_and(|w| ctx.toks[w].is_word() && ctx.class[w] != Class::Movie),
+                // `Stand By Me Doraemon 2 - Movie`: the number is the title's,
+                // and so it is before an episode written with a mark
+                // (`Steins;Gate 0 - 23β`).
+                Kind::SegDash => ctx.next(j).is_some_and(|w| {
+                    ctx.toks[w].is_word()
+                        && ctx.class[w] != Class::Movie
+                        && !ctx.toks[w].text.starts_with(|c: char| c.is_ascii_digit())
+                }),
                 // Scene names put metadata right after it:
                 // `Dragon.Ball.043.V2.480p.DBox`; an episode title follows a
                 // quote (`Fullmetal Alchemist 23 'Heart of Steel'`) or a

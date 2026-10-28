@@ -509,6 +509,11 @@ mod tests {
         );
         assert_eq!(first("[CW] 009 Re-Cyborg (2012) [BD 1080p].mkv"), None);
         assert_eq!(first("Cyborg 009 Call of Justice [BD].mkv"), None);
+        // An episode written with a mark leaves the title's `0` the title's.
+        assert_eq!(
+            first("[JacobSwaggedUp] Steins;Gate 0 - 23β (BD 1280x720).mp4"),
+            None
+        );
         assert_eq!(
             first("Mobile Suit Gundam 00 the Movie A wakening of the Trailblazer (2010).mkv"),
             None
