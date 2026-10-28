@@ -699,7 +699,7 @@ async fn run_auto_search_targets_with_upgrades(
                             // multi-episode release covers gets a grab tag.
                             let grab_for = match &target {
                                 auto_search::SearchTarget::Episode(n) => GrabFor::Episode(*n),
-                                auto_search::SearchTarget::Single => GrabFor::Whole,
+                                auto_search::SearchTarget::Single => GrabFor::Single,
                             };
                             let ep_nums = grab_episode_list(
                                 &result.title,

@@ -357,7 +357,12 @@ impl GrabSeries {
 pub(crate) enum GrabFor {
     /// One episode was searched for or clicked.
     Episode(i32),
-    /// A batch, or a search for the whole series.
+    /// A search for the series as one release (`SearchTarget::Single`: a
+    /// movie, an OVA entry). A non-batch release that names nothing is
+    /// its episode 1, the slot the import gives a lone unnumbered file.
+    Single,
+    /// A batch picked from a list, or a release linked to the series
+    /// after the fact.
     Whole,
 }
 
@@ -376,20 +381,36 @@ pub(crate) fn relative_title_episodes(
     series: &GrabSeries,
     searched: Option<i32>,
 ) -> Vec<i32> {
-    let parsed = release_title::parse(title);
+    relative_episodes(&release_title::parse(title), series, searched)
+}
+
+/// [`relative_title_episodes`] over an already parsed title. A real tag
+/// (`S02E05`) is relative, as the import reads it; so is a season-bound
+/// run (`S2 - 05`) that fits the series' episode count. Otherwise a run
+/// past `cumulative_prior_episodes` is absolute, judged on its first
+/// number (`fallback_ep_offset`), unless `searched` shows the numbering.
+fn relative_episodes(
+    parsed: &release_title::ParsedTitle,
+    series: &GrabSeries,
+    searched: Option<i32>,
+) -> Vec<i32> {
     let mut raw: Vec<i32> = parsed
         .for_series(&series.anchors)
         .episodes
         .into_iter()
         .collect();
     raw.sort_unstable();
-    let Some(&first) = raw.first() else {
+    let (Some(&first), Some(&last)) = (raw.first(), raw.last()) else {
         return raw;
     };
     let cumulative = series.cumulative_prior_episodes;
-    let tagged = parsed.episodes.as_ref().is_some_and(|c| c.season.is_some());
+    let claim = parsed.episodes.as_ref();
+    let tagged =
+        claim.is_some_and(|c| c.rule == release_title::ClaimRule::Tag && c.season.is_some());
+    let bound_and_fits = claim.is_some_and(|c| c.season.is_some())
+        && series.episode_count.is_some_and(|n| last <= n);
     let offset = match searched {
-        _ if tagged => 0,
+        _ if tagged || bound_and_fits => 0,
         Some(ep) if raw.contains(&ep) => 0,
         Some(ep) if cumulative > 0 && raw.contains(&(ep + cumulative)) => cumulative,
         _ => post_processing::fallback_ep_offset(first, cumulative),
@@ -406,19 +427,27 @@ pub(crate) fn relative_title_episodes(
 /// the run its title names around it (`- 05-06`, one file with both,
 /// #246), else that episode alone. A pack: the episodes its title
 /// names, else every episode of the series (up to
-/// [`WHOLE_SERIES_CAP`]). A whole-series release that names nothing
-/// is episode 1 only for a series of one episode (a movie).
+/// [`WHOLE_SERIES_CAP`]), unless the title is a special, an extra or a
+/// half episode (an OVA pack of a TV series holds no regular episode). A
+/// [`GrabFor::Single`] release that names nothing is episode 1.
+///
+/// For a batch the searched episode does not pick the numbering: the
+/// import's pack preflight reads every file without it.
 pub(crate) fn grab_episode_list(
     title: &str,
     series: &GrabSeries,
     target: GrabFor,
     is_batch: bool,
 ) -> Vec<i32> {
+    let parsed = release_title::parse(title);
     let searched = match target {
-        GrabFor::Episode(ep) => Some(ep),
-        GrabFor::Whole => None,
+        GrabFor::Episode(ep) if !is_batch => Some(ep),
+        _ => None,
     };
-    let relative = relative_title_episodes(title, series, searched);
+    let relative = relative_episodes(&parsed, series, searched);
+    let names_no_slot = parsed.extra
+        || parsed.half_episode
+        || (parsed.is_special_for(&series.anchors) && !series.anchors.specials_are_episodes());
     match target {
         GrabFor::Episode(ep) if !is_batch => {
             if relative.contains(&ep) && relative.len() <= media::MAX_FILE_SPAN as usize {
@@ -428,12 +457,14 @@ pub(crate) fn grab_episode_list(
             }
         }
         _ if !relative.is_empty() => relative,
+        _ if names_no_slot => Vec::new(),
         _ if is_batch && series.episode_count.is_some_and(|n| n > 0) => {
             (1..=series.episode_count.unwrap_or(0).min(WHOLE_SERIES_CAP)).collect()
         }
         GrabFor::Episode(ep) => vec![ep],
+        GrabFor::Single if !is_batch => vec![1],
         GrabFor::Whole if series.episode_count == Some(1) => vec![1],
-        GrabFor::Whole => Vec::new(),
+        GrabFor::Single | GrabFor::Whole => Vec::new(),
     }
 }
 
@@ -1034,6 +1065,99 @@ mod tests {
                 true
             ),
             (1..=12).collect::<Vec<i32>>()
+        );
+    }
+
+    #[test]
+    fn an_ova_pack_of_a_tv_series_records_no_regular_episode() {
+        // The count fallback would tag every regular episode as grabbed,
+        // and the specials cleanup would then delete their rows.
+        let show = series("Show", 0, Some(12));
+        assert!(
+            grab_episode_list(
+                "[Group] Show - OVA 01-02 (BD 1080p)",
+                &show,
+                GrabFor::Whole,
+                true
+            )
+            .is_empty()
+        );
+        // An OVA entry's own pack is its episodes.
+        let ova = GrabSeries {
+            anchors: SeriesAnchors::new(&["Hellsing Ultimate"]).with_specials_as_episodes(true),
+            cumulative_prior_episodes: 0,
+            episode_count: Some(10),
+        };
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Hellsing Ultimate OVA (BD 1080p) [Batch]",
+                &ova,
+                GrabFor::Whole,
+                true
+            ),
+            (1..=10).collect::<Vec<i32>>()
+        );
+    }
+
+    #[test]
+    fn a_single_target_release_that_names_nothing_is_episode_one() {
+        // The import gives a lone unnumbered file its slot only from the
+        // grab list.
+        let movie = series("Some Movie", 0, None);
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Some Movie (BD 1080p)",
+                &movie,
+                GrabFor::Single,
+                false
+            ),
+            vec![1]
+        );
+        assert!(
+            grab_episode_list(
+                "[Group] Some Movie (BD 1080p)",
+                &movie,
+                GrabFor::Whole,
+                false
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_season_marker_keeps_a_run_relative_only_when_it_fits() {
+        // `S2 - 13-24` for a 12-episode sequel after 12: absolute.
+        let short = series("Show", 12, Some(12));
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Show S2 - 13-24 (BD) [Batch]",
+                &short,
+                GrabFor::Whole,
+                true
+            ),
+            (1..=12).collect::<Vec<i32>>()
+        );
+        // `S2 - 13` of a 24-episode sequel after 12: relative.
+        let long = series("Show", 12, Some(24));
+        assert_eq!(
+            grab_episode_list("[Group] Show S2 - 13 (1080p)", &long, GrabFor::Whole, false),
+            vec![13]
+        );
+    }
+
+    #[test]
+    fn a_batch_ignores_the_searched_episode() {
+        // The import's pack preflight reads `13-36` past an offset of 12
+        // as absolute whatever was searched for.
+        let long = series("Show", 12, Some(24));
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Show - 13-36 (BD) [Batch]",
+                &long,
+                GrabFor::Episode(14),
+                true
+            ),
+            (1..=24).collect::<Vec<i32>>()
         );
     }
 }

@@ -472,7 +472,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                     // Record for post-processing and quality tags, series-relative.
                     let grab_for = match &target {
                         auto_search::SearchTarget::Episode(n) => GrabFor::Episode(*n),
-                        auto_search::SearchTarget::Single => GrabFor::Whole,
+                        auto_search::SearchTarget::Single => GrabFor::Single,
                     };
                     let ep_nums = grab_episode_list(
                         &result.title,

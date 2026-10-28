@@ -68,7 +68,7 @@ impl SeriesAnchors {
         self
     }
 
-    pub(super) fn specials_are_episodes(&self) -> bool {
+    pub fn specials_are_episodes(&self) -> bool {
         self.specials_are_episodes
     }
 

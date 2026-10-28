@@ -435,7 +435,15 @@ pub async fn expand_from_files(
         parent_episode_numbers.iter().copied().collect();
     let mut all_parent_eps: std::collections::BTreeSet<i32> =
         parent_eps_covered.iter().copied().collect();
-    // A number the parent's own name holds is never a file's episode.
+    // A number the parent's own name holds is never a file's episode,
+    // and an absolute-numbered file lands in its relative slot, the
+    // numbering `parent_episode_numbers` and the import both use.
+    let parent_cumulative = series::get_by_id(db, parent_series_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|s| s.cumulative_prior_episodes)
+        .unwrap_or(0);
     let parent_anchors = SeriesAnchors::new(&auto_search::collect_aliases(parent_detail))
         .with_specials_as_episodes(!media::is_tv_format(&parent_detail.format));
     for &file_idx in &parent_file_indices {
@@ -447,7 +455,7 @@ pub async fn expand_from_files(
             continue;
         };
         // Every episode a multi-episode file holds (issue #246).
-        for raw_ep in span.episodes() {
+        for raw_ep in crate::services::grab_commit::file_slot_episodes(span, parent_cumulative) {
             if raw_ep <= 0 {
                 continue;
             }
