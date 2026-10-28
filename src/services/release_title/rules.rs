@@ -91,9 +91,6 @@ impl Ctx<'_> {
             .collect()
     }
 
-    /// Whether what follows token `i` ends an episode number: the end,
-    /// a bracket, a dash, a separator, or a non-title word (metadata, end
-    /// / special / extra / batch markers). A plain word is title text.
     /// Whether token `i` marks an episode: a tag, `E05`, `OVA 01`, a dash
     /// followed by a number, or a number after `Episode`.
     fn marks_episode(&self, i: usize) -> bool {
@@ -108,6 +105,9 @@ impl Ctx<'_> {
                     .is_some_and(|p| self.class[p] == Class::EpisodeWord)
     }
 
+    /// Whether what follows token `i` ends an episode number: the end,
+    /// a bracket, a dash, a separator, or a non-title word (metadata, end
+    /// / special / extra / batch markers). A plain word is title text.
     fn boundary_after(&self, i: usize) -> bool {
         let Some(j) = self.next(i) else {
             return true;
@@ -534,6 +534,11 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
                 // `DVD-Rip`, `BD-Rip`: one source word, no group.
                 && !tail.eq_ignore_ascii_case("rip")
             {
+                // `DVD-Rip-Group`: the group follows the source word.
+                let tail = tail
+                    .get(..4)
+                    .filter(|head| head.eq_ignore_ascii_case("rip-"))
+                    .map_or(tail, |_| &tail[4..]);
                 found = Some(tail.to_string());
             }
         }
@@ -566,7 +571,11 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
                 .prev(g.open)
                 .is_some_and(|p| matches!(ctx.toks[p].kind, Kind::Close(_)));
             match content.as_slice() {
-                [only] if plain(*only) && (close == ']' || after_bracket) => {
+                [only]
+                    if plain(*only)
+                        && (close == ']'
+                            || after_bracket && !is_round_note(&ctx.toks[*only].lower)) =>
+                {
                     found = Some(ctx.toks[*only].text.clone())
                 }
                 [a, b]
@@ -586,6 +595,39 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
         found = group_before_alternate_title(ctx);
     }
     found
+}
+
+/// A language or edition note in a round bracket (`(Japanese)`,
+/// `(Uncut)`), never a trailing group.
+fn is_round_note(lower: &str) -> bool {
+    matches!(
+        lower,
+        "japanese"
+            | "english"
+            | "latino"
+            | "spanish"
+            | "french"
+            | "german"
+            | "italian"
+            | "portuguese"
+            | "chinese"
+            | "korean"
+            | "russian"
+            | "arabic"
+            | "uncut"
+            | "uncensored"
+            | "censored"
+            | "repack"
+            | "remastered"
+            | "remaster"
+            | "dubbed"
+            | "subbed"
+            | "dub"
+            | "sub"
+            | "raw"
+            | "final"
+            | "complete"
+    )
 }
 
 /// `... (1080p TVer Web-DL) [Lord Karasuma] / Detective Conan ...`: one or
@@ -733,10 +775,15 @@ fn dash_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         {
             // `Show - 1-5 - 07 Title`: a digit pair in the episode title;
             // the next dash holds the episode.
+            // `- 01-13 - 2 Cours` is a range: the later number needs a
+            // boundary or two digits.
             let later_episode = ctx
                 .next(m)
                 .filter(|&d2| ctx.toks[d2].kind == Kind::SegDash)
                 .and_then(|d2| ctx.next(d2))
+                .filter(|&e| {
+                    ctx.boundary_after(e) || ctx.num(e).is_some_and(|(_, digits, _)| digits >= 2)
+                })
                 .and_then(|e| ctx.episode_num(e));
             if let Some(e) = later_episode {
                 return Some(ctx.claim(e, e, season, ClaimRule::Dash));
@@ -744,6 +791,14 @@ fn dash_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
             // `- 05-06 The Title`: a range written tight is one even
             // before episode-title words.
             return Some(ctx.range_claim(k, a, b, season, ClaimRule::Dash));
+        }
+        // `Vol 01 - 06`: volumes, not an episode.
+        if ctx
+            .prev(d)
+            .and_then(|p| ctx.prev(p))
+            .is_some_and(|w| ctx.class[w] == Class::VolWord)
+        {
+            continue;
         }
         if ctx.boundary_after(k) {
             // `Show 01 - 119 [Batch]`: a zero-padded number before the
@@ -1126,7 +1181,22 @@ fn extra(ctx: &Ctx) -> bool {
             while let Some(p) = ctx.prev(start).filter(|&p| title_word(p)) {
                 start = p;
             }
-            let in_phrase = start < i;
+            // `Clean Opening`, `Non-Credit Ending`, `Next Preview`,
+            // `Character PV`: a qualifier makes the phrase a label.
+            let qualified = (start..i).any(|j| {
+                matches!(
+                    ctx.toks[j].lower.as_str(),
+                    "clean"
+                        | "non-credit"
+                        | "noncredit"
+                        | "non"
+                        | "credit"
+                        | "credits"
+                        | "next"
+                        | "character"
+                )
+            });
+            let in_phrase = start < i && !qualified;
             let opens_segment = ctx
                 .prev(start)
                 .is_some_and(|p| ctx.toks[p].kind == Kind::SegDash);
@@ -1367,14 +1437,11 @@ fn season_word_numbers(ctx: &Ctx, i: usize, out: &mut Vec<u32>) {
     }
 }
 
-/// An uppercase `II`..`IX` is a season marker when it ends the title (a
-/// bracket, dash, `|`, the end, or metadata follows) or is followed by an
-/// episode number, never mid-title (`Lupin III vs`, `Lupin III: The
-/// Castle`, `Date A Live IV x DanMachi`).
-/// A Roman numeral ending a series name before a subtitle colon
-/// (`DanMachi IV: Fuka Shou`), the season of an AniList name. Not read in
-/// release titles, where `Lupin III: The Castle of Cagliostro` is a name;
-/// `Lupin III: Part 6` is never one either way.
+/// A Roman numeral `IV` or above ending a series name before a subtitle
+/// colon (`DanMachi IV: Fuka Shou`), the season of an AniList name. Not
+/// read in release titles, and never `II` / `III`, which open subtitles
+/// as names (`Lupin III: Cagliostro no Shiro`, `Kizumonogatari II:
+/// Nekketsu-hen`); `Lupin III: Part 6` is season 6 by its part.
 pub(super) fn roman_before_colon(name: &str) -> Option<u32> {
     let norm = normalize(name);
     let lexed = lex(&norm.text);
@@ -1383,7 +1450,8 @@ pub(super) fn roman_before_colon(name: &str) -> Option<u32> {
         let Class::Roman(n) = classify(&toks[i]) else {
             return None;
         };
-        (toks[i].depth == 0
+        (n >= 4
+            && toks[i].depth == 0
             && toks[i - 1].is_word()
             && toks[i + 1].kind == Kind::Colon
             && toks
@@ -1393,6 +1461,10 @@ pub(super) fn roman_before_colon(name: &str) -> Option<u32> {
     })
 }
 
+/// An uppercase `II`..`IX` is a season marker when it ends the title (a
+/// bracket, dash, `|`, the end, or metadata follows) or is followed by an
+/// episode number, never mid-title (`Lupin III vs`, `Lupin III: The
+/// Castle`, `Date A Live IV x DanMachi`).
 fn roman_is_marker(ctx: &Ctx, i: usize) -> bool {
     // `Lupin III - Part 6 - 05`, `Lupin III: Part 6`: the part after the
     // dash or colon is the season and the numeral is the name.
@@ -1532,10 +1604,8 @@ fn special(ctx: &Ctx, claim: Option<&EpisodeClaim>, seasons: &Seasons) -> (bool,
         }
         // `- 05 - Something Special`: past an episode's dash the marker
         // ends the episode title.
-        let past_episode_dash = claim.is_some()
-            && (0..i).any(|j| {
-                !ctx.skip[j] && ctx.toks[j].depth == 0 && ctx.toks[j].kind == Kind::SegDash
-            });
+        let past_episode_dash =
+            claim.is_some() && (0..i).any(|j| !ctx.skip[j] && ctx.marks_episode(j));
         // `R.O.D (Read or Die) OVA (BD`, `Mob Psycho 100 Specials (BD`,
         // `... Kekkon Special - 01 ~ 03`: a marker ending the title text.
         if tok.depth == 0
@@ -1649,6 +1719,7 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
         // `H.264` split by mixed delimiters: the codec's number (`Beyblade
         // X 136` is the title's).
         if ctx.toks[k].sep == Sep::Dot
+            && matches!(value, 264 | 265)
             && ctx
                 .prev(k)
                 .is_some_and(|p| matches!(ctx.toks[p].lower.as_str(), "h" | "x"))
@@ -1684,6 +1755,11 @@ fn ambiguous_number(ctx: &Ctx) -> Option<i32> {
             },
         };
         if hit {
+            // `Show 05 - Ghost 13 [1080p]`: a number before ` - <words>`
+            // is the episode before an episode title; nothing after counts.
+            if n.is_some_and(|j| ctx.toks[j].kind == Kind::SegDash) {
+                return Some(value as i32);
+            }
             found = Some(value as i32);
         }
     }

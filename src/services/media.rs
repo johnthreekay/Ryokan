@@ -1514,6 +1514,17 @@ mod tests {
     }
 
     #[test]
+    fn a_number_before_an_episode_title_dash_is_final() {
+        assert_eq!(
+            span("[Group] Show 05 - Ghost 13 [1080p].mkv"),
+            Some((None, 5, 5))
+        );
+        assert_eq!(span("Show 03 - Title 4 - Coda.mkv"), Some((None, 3, 3)));
+        // Only `H.264` / `x.265` are codecs.
+        assert_eq!(span("After.War.Gundam.X.05.1080p.mkv"), Some((None, 5, 5)));
+    }
+
+    #[test]
     fn the_last_bare_number_before_metadata_is_the_episode() {
         assert_eq!(span("Show 99 (extra) 12 (1080p).mkv"), Some((None, 12, 12)));
         assert_eq!(

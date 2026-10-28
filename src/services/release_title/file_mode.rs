@@ -194,7 +194,7 @@ pub fn parse_episode_span(lower: &str) -> Option<EpisodeSpan> {
 /// the series.
 pub fn parse_episode_span_for(lower: &str, anchors: &super::SeriesAnchors) -> Option<EpisodeSpan> {
     let span = parse_episode_span(lower)?;
-    match super::parse(lower).name_reading(anchors) {
+    match super::parse(lower).name_reading(anchors, span.first) {
         None => Some(span),
         Some(None) => None,
         Some(Some(n)) => Some(EpisodeSpan {
@@ -398,6 +398,15 @@ mod tests {
             ),
             Some(8)
         );
+    }
+
+    #[test]
+    fn a_residual_reading_the_name_holds_is_no_episode() {
+        assert_eq!(
+            first("Mob.Psycho.100.Reigen.1080p.WEB.mkv", &["Mob Psycho 100"]),
+            None
+        );
+        assert_eq!(first("Cyborg.009.Movie.BD.mkv", &["Cyborg 009"]), None);
     }
 
     #[test]

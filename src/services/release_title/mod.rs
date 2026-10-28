@@ -366,14 +366,15 @@ impl ParsedTitle {
         })
     }
 
-    /// What a series' names say about a file name's bare reading:
+    /// What a series' names say about a file name's bare reading `plain`
+    /// (the episode the name reads without them):
     /// `None` when they say nothing (no name found, the episode came from
     /// a marked claim such as a dash or a tag, or nothing readable follows
     /// the name), `Some(Some(n))` for the number right after the name
     /// (`[EA]Kaiju_No_8_08_` is 8), `Some(None)` when the number is the
     /// name's own (`Mob Psycho 100 (BD)`, a bare range or marker number
     /// written only inside the name).
-    pub fn name_reading(&self, anchors: &SeriesAnchors) -> Option<Option<i32>> {
+    pub fn name_reading(&self, anchors: &SeriesAnchors, plain: i32) -> Option<Option<i32>> {
         if anchors.is_empty() {
             return None;
         }
@@ -391,10 +392,10 @@ impl ParsedTitle {
                 }
                 // `[EA]Fruits_Basket_2019_05_`, `K Project 05`: the name is
                 // found but the number is not the name's; the plain reading
-                // stands.
-                self.ambiguous_number
-                    .filter(|&n| anchors.name_holds_numbers(&self.anchor_words, &[n]))
-                    .map(|_| None)
+                // stands. `Mob.Psycho.100.Reigen` (a residual reading) is.
+                anchors
+                    .name_holds_numbers(&self.anchor_words, &[plain])
+                    .then_some(None)
             }
         }
     }
@@ -656,6 +657,43 @@ mod tests {
         );
         // A name that opens with its episode names no show.
         assert_eq!(st("S02E04E05.720p.BluRay-FUTV"), None);
+    }
+
+    #[test]
+    fn second_review_shapes() {
+        let p = super::parse;
+        // A qualifier makes an extras phrase a label.
+        for t in [
+            "[Group] Show - 01 - Clean Opening [BD 1080p]",
+            "[Group] Show - 03 - Non-Credit Ending [BD 1080p]",
+            "[Group] Show - 12 - Next Preview [BD 1080p]",
+        ] {
+            assert!(p(t).extra, "{t}");
+        }
+        // The episode's mark must come before the special marker.
+        assert!(p("[Group] Show - Recap Special - 01 [1080p]").special);
+        assert!(p("[Group] Show - Christmas Special [01]").special);
+        // Volumes are no episode; a later one-digit number is no episode.
+        assert!(p("[Group] Show Vol 01 - 06 [BD 1080p]").episodes.is_none());
+        let cours = p("[Group] Show - 01-13 - 2 Cours [BD]")
+            .episodes
+            .expect("a range");
+        assert_eq!((cours.first, cours.last), (1, 13));
+        // A language note is no group; the group follows `DVD-Rip-`.
+        assert_eq!(
+            super::release_fields("Show - 05 (1080p) (Japanese)").group,
+            ""
+        );
+        assert_eq!(
+            super::release_fields("Show 01-26 DVD-Rip-Group").group,
+            "Group"
+        );
+        // `II` / `III` before a colon open a name.
+        assert_eq!(super::season_marker("Lupin III: Cagliostro no Shiro"), None);
+        assert_eq!(
+            super::season_marker("Kizumonogatari II: Nekketsu-hen"),
+            None
+        );
     }
 
     #[test]
