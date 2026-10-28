@@ -1260,9 +1260,27 @@ fn half_episode(ctx: &Ctx) -> bool {
             ) || matches!(ctx.class[n], Class::Special | Class::End)
         });
         // `- S01E05 - Chapter 7.5`: past a marked episode a decimal is
-        // the episode title's.
+        // the episode title's or metadata's, even in a dash's or
+        // `Episode`'s slot (`- S01E24 - 2.5 Dimensional Ririsa`, Ryokan's
+        // own file names; `- S00E17 - ... Episode 10.5`; `- 23 [1080p
+        // VMAF-93.5]`). Only a claim before the slot counts: `Fairy Tail -
+        // 100 Years Quest - 13.5` is still a half episode.
         let marked_before = (0..i).any(|j| !ctx.skip[j] && ctx.marks_episode(j));
-        if slot || (ctx.toks[i].depth == 0 && before_meta && i > 0 && !marked_before) {
+        let claimed_before_slot = (0..prev.unwrap_or(0)).any(|j| {
+            !ctx.skip[j]
+                && (matches!(
+                    ctx.class[j],
+                    Class::Tag { .. } | Class::EpPrefix(..) | Class::SpecialNum(_)
+                ) || matches!(ctx.class[j], Class::EpisodeWord)
+                    && ctx.next(j).is_some_and(|n| ctx.num(n).is_some())
+                    || ctx.toks[j].kind == Kind::SegDash
+                        && ctx
+                            .next(j)
+                            .is_some_and(|n| ctx.num(n).is_some() && ctx.boundary_after(n)))
+        });
+        if slot && !claimed_before_slot
+            || (ctx.toks[i].depth == 0 && before_meta && i > 0 && !marked_before)
+        {
             return true;
         }
     }
@@ -1351,6 +1369,20 @@ fn extra(ctx: &Ctx) -> bool {
                 )
             });
             let in_phrase = start < i && !qualified;
+            // `Show - S01E05 - Preview.mkv`: Ryokan's own name for an
+            // episode titled with the word alone. After a tag, a segment
+            // that is only the word is the episode's title.
+            if start == i
+                && ctx
+                    .prev(i)
+                    .is_some_and(|p| ctx.toks[p].kind == Kind::SegDash)
+                && ctx
+                    .next(i)
+                    .is_none_or(|n| matches!(ctx.toks[n].kind, Kind::Open(_)))
+                && (0..i).any(|j| !ctx.skip[j] && matches!(ctx.class[j], Class::Tag { .. }))
+            {
+                continue;
+            }
             let opens_segment = ctx
                 .prev(start)
                 .is_some_and(|p| ctx.toks[p].kind == Kind::SegDash);
@@ -2240,6 +2272,19 @@ fn title_zone(ctx: &Ctx, run: &[usize]) -> Option<String> {
                 if !matches!(tok.text.as_str(), "!" | "?") {
                     punct_from.get_or_insert(start);
                 }
+            }
+            // `2.5 Dimensional Seduction`, `Evangelion 1.0 You Are (Not)
+            // Alone`: a decimal before a title word is the name's.
+            Kind::Decimal { .. }
+                if (out.is_empty() || tok.sep != Sep::None)
+                    && next.is_some_and(|n| {
+                        ctx.toks[n].depth == tok.depth
+                            && title_word(n)
+                            && ctx.class[n] == Class::Plain
+                    }) =>
+            {
+                push(&mut out, &mut sep, tok);
+                punct_from = None;
             }
             _ if word || number.is_some() => {
                 if let Some((value, digits, _)) = number {

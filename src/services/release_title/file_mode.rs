@@ -528,6 +528,50 @@ mod tests {
     }
 
     #[test]
+    fn a_decimal_after_a_claimed_episode_is_not_a_half_episode() {
+        let read = |name: &str| {
+            parse_episode_span(&name.to_lowercase()).map(|s| (s.season, s.first, s.special))
+        };
+        // Ryokan's own name for a show whose episode title has a decimal.
+        assert_eq!(
+            read("2.5 Dimensional Seduction - S01E24 - 2.5 Dimensional Ririsa.mkv"),
+            Some((Some(1), 24, false))
+        );
+        assert_eq!(
+            read(
+                "Stigmata (2010) - S00E17 - Portrait of the Empress Episode 10.5 [Bluray-1080p].mkv"
+            ),
+            Some((Some(0), 17, true))
+        );
+        // A quality score in the metadata.
+        assert_eq!(
+            read(
+                "[Delta] That Time I Got Reincarnated as a Slime S04E23 [1080p CR-WEB-MINI AAC-192 HEVC VMAF-93.5].mkv"
+            ),
+            Some((Some(4), 23, false))
+        );
+        assert_eq!(
+            read("[Delta] Show - 23 [1080p CR-WEB-MINI AAC-192 HEVC VMAF-93.5].mkv"),
+            Some((None, 23, false))
+        );
+        // A half episode is still one, after a dash number that is the
+        // name's (`- 100 Years Quest`) too.
+        assert_eq!(read("[Group] Show - 07.5 [1080p].mkv"), None);
+        assert_eq!(read("[Group] Show Episode 7.5 [1080p].mkv"), None);
+        assert_eq!(
+            read("[SubsPlease] Fairy Tail - 100 Years Quest - 13.5 (1080p) [CDB92274].mkv"),
+            None
+        );
+        // An episode titled with an extras word alone, after a tag.
+        assert_eq!(
+            read("Show - S01E05 - Preview.mkv"),
+            Some((Some(1), 5, false))
+        );
+        assert_eq!(read("[Group] Show - 05 - Preview [1080p].mkv"), None);
+        assert_eq!(read("Show - S01E05 - NCOP.mkv"), None);
+    }
+
+    #[test]
     fn a_number_before_final_is_the_episode() {
         let plain = |name: &str| parse_episode_span(&name.to_lowercase()).map(|s| s.first);
         // Issue #296's own pack ends on `_25_Final_`; the import dropped it.
