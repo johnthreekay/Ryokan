@@ -1045,6 +1045,21 @@ fn special_number_claim(ctx: &Ctx) -> Option<EpisodeClaim> {
         if let Class::SpecialNum(n) = ctx.class[i] {
             return Some(ctx.claim(n, n, None, ClaimRule::SpecialNumber));
         }
+        // `[...Miller's Report][SP][01]`: a bracket holding only the marker,
+        // then one holding only the number.
+        if matches!(ctx.class[i], Class::Special | Class::Sp)
+            && ctx.toks[i].depth > 0
+            && let Some(g) = ctx.group(ctx.toks[i].group)
+            && ctx.content(g) == [i]
+            && let Some(o) = ctx.toks.get(g.close + 1)
+            && matches!(o.kind, Kind::Open('['))
+            && o.sep == Sep::None
+            && let Some(g2) = ctx.group(o.group)
+            && let [k] = ctx.content(g2)[..]
+            && let Some(a) = ctx.episode_num(k)
+        {
+            return Some(ctx.claim(a, a, None, ClaimRule::SpecialNumber));
+        }
         if matches!(ctx.class[i], Class::Special | Class::Sp)
             && !ctx.prev(i).is_some_and(|p| ctx.toks[p].kind == Kind::Plus)
             && let Some(k) = ctx.next(i)
@@ -1261,6 +1276,20 @@ fn extra(ctx: &Ctx) -> bool {
                 lower,
                 "ncop" | "nced" | "ncoped" | "creditless" | "textless"
             ) {
+                return true;
+            }
+            // `Preview 01.mkv`, `Previews 02 [1080p]`: a name that is only
+            // the label and its number (an extras folder's files).
+            if !first_word_seen
+                && !structure_before
+                && tok.depth == 0
+                && let Some(k) = ctx.next(i)
+                && ctx.num(k).is_some()
+                && ctx.toks[k].depth == 0
+                && ctx.next(k).is_none_or(|w| {
+                    !(ctx.toks[w].is_word() && matches!(ctx.class[w], Class::Plain | Class::Of))
+                })
+            {
                 return true;
             }
             // `Opening Theme 01`, `Ending Song 02`, `Preview Clip`.

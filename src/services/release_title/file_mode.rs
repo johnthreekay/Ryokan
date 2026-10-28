@@ -253,8 +253,13 @@ const EXTRAS_FOLDERS: &[&str] = &[
     "commentary",
 ];
 
-/// Whether a file sits under an extras folder ([`EXTRAS_FOLDERS`]).
-/// `path` uses `/` (a torrent's file list) or the platform separator.
+/// Words a disc's extras folder may lead with (`Bluray Extras`, `BD
+/// Menu`, `DVD Bonus`, `Disc 2 Extras`).
+const MEDIUM_WORDS: &[&str] = &["bd", "bluray", "blu", "ray", "dvd", "disc", "disk", "bdmv"];
+
+/// Whether a file sits under an extras folder ([`EXTRAS_FOLDERS`], after
+/// any [`MEDIUM_WORDS`] and disc numbers). `path` uses `/` (a torrent's
+/// file list) or the platform separator.
 pub fn path_names_extras(path: &str) -> bool {
     let mut parts: Vec<&str> = path.split(['/', '\\']).collect();
     parts.pop();
@@ -270,8 +275,12 @@ pub fn path_names_extras(path: &str) -> bool {
                 }
             })
             .collect();
-        let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
-        EXTRAS_FOLDERS.contains(&words.as_str())
+        let words: Vec<&str> = words.split_whitespace().collect();
+        let lead = words
+            .iter()
+            .take_while(|w| MEDIUM_WORDS.contains(w) || w.bytes().all(|b| b.is_ascii_digit()))
+            .count();
+        EXTRAS_FOLDERS.contains(&words[lead..].join(" ").as_str())
     })
 }
 
@@ -492,6 +501,14 @@ mod tests {
             first("[Samir755] Hunter X hunter 1999 -85- Jan × Ken × Rock.mkv"),
             Some(85)
         );
+        // A name that is only an extras label and its number is an extra;
+        // `[SP][01]` is a special.
+        assert_eq!(first("Previews 01.mkv"), None);
+        assert_eq!(first("[G] Opening 01 [1080p].mkv"), None);
+        let sp = parse_episode_span(
+            &"[DBD-Raws][Mobile Suit Gundam The 08th MS Team Miller`s Report][SP][01][1080P][BDRip][HEVC-10bit][FLAC].mkv".to_lowercase(),
+        );
+        assert!(sp.is_some_and(|s| s.special), "{sp:?}");
         // A title's own number stays the title's: four digits, unpadded,
         // or opening the name.
         assert_eq!(
@@ -513,6 +530,8 @@ mod tests {
             "(Extras)/[MQS] Dragon Quest - Episodes 1 - 4 Recap [DVD Special].mkv",
             "特典映像/[DBD-Raws][Submarine Super 99][Tokuten][07][480P][BDRip][AVC][AC3].mkv",
             "Show\\Extras\\Preview 01.mkv",
+            "Bluray Extras/Previews 01.mkv",
+            "Disc 2 Extras/Clip 01.mkv",
         ] {
             assert!(path_names_extras(path), "{path}");
             assert_eq!(parse_file_path(path), None, "{path}");
