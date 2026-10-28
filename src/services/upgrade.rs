@@ -34,17 +34,22 @@ pub fn judge_release_for_episode(
 ) -> Result<source::UpgradeKind, source::UpgradeRejection> {
     let no_seadex_hashes: HashSet<String> = HashSet::new();
     // No tag row: no group (no revision) and no score; the renamed
-    // library file is not a release title.
+    // library file is not a release title. The group is read from the
+    // stored title the way the incoming one is: a row written before
+    // `release_fields` holds another reader's group.
     let (existing_title, existing_group, scorable) = match tag {
-        Some(t) if !t.release_title.is_empty() => {
-            (t.release_title.as_str(), t.release_group.as_str(), true)
-        }
+        Some(t) if !t.release_title.is_empty() => (
+            t.release_title.as_str(),
+            crate::services::release_title::release_fields(&t.release_title).group,
+            true,
+        ),
         _ => (
             disk_file.map(|f| f.filename.as_str()).unwrap_or_default(),
-            "",
+            String::new(),
             false,
         ),
     };
+    let existing_group = existing_group.as_str();
     let existing_file = source::ExistingFile {
         classification: existing_classification,
         revision: media::parse_release_revision(existing_title),

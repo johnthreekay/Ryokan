@@ -196,8 +196,27 @@ pub fn release_fields(title: &str) -> ReleaseFields {
     let parsed = parse(title);
     ReleaseFields {
         is_batch: parsed.is_batch(),
-        resolution: parsed.resolution.map(|r| r.to_string()).unwrap_or_default(),
+        resolution: parsed
+            .resolution
+            .and_then(resolution_tier)
+            .map(|r| r.to_string())
+            .unwrap_or_default(),
         group: parsed.group.unwrap_or_default(),
+    }
+}
+
+/// The standard tier (480, 576, 720, 1080, 2160) a height falls in, the
+/// bounds `Resolution::from_dimensions` uses: `540` is the 480 tier,
+/// `1036` / `1040` the 1080 tier. Scoring's preferred resolution, Custom
+/// Format Resolution specs and the result labels all read a tier.
+pub fn resolution_tier(height: u32) -> Option<u32> {
+    match height {
+        2000.. => Some(2160),
+        1000.. => Some(1080),
+        700.. => Some(720),
+        560.. => Some(576),
+        460.. => Some(480),
+        _ => None,
     }
 }
 
@@ -558,6 +577,29 @@ mod tests {
         assert!(!super::parse("Attack.on.Titan.S00E01.OAD.1080p.BluRay").conflicts_with_season(1));
         assert!(!super::parse("My Happy Marriage S00E02 1080p").conflicts_with_season(2));
         assert!(super::parse("Show S03E02 1080p").conflicts_with_season(2));
+    }
+
+    #[test]
+    fn release_fields_give_a_resolution_tier() {
+        let res = |t: &str| super::release_fields(t).resolution;
+        assert_eq!(
+            res("[DarkWispers] Useless Animals (DVD 720x540 H264 Hi10p AC3)"),
+            "480"
+        );
+        assert_eq!(res("[G] Show - 01 (BD 1920x1036 HEVC)"), "1080");
+        assert_eq!(res("[G] Show - 01 (720p + 1080p)"), "1080");
+        assert_eq!(res("[G] Show - 01 [1080p]"), "1080");
+    }
+
+    #[test]
+    fn group_review_shapes() {
+        let group = |t: &str| super::release_fields(t).group;
+        assert_eq!(
+            group("(Hi10)_Toradora!_-_01_(BD_720p)_(Kametsu)"),
+            "Kametsu"
+        );
+        assert_eq!(group("Show 01-26 DVD-Rip"), "");
+        assert_eq!(group("Show - 01 (1080p) [A1B2C3D4] | Alt Title"), "");
     }
 
     #[test]

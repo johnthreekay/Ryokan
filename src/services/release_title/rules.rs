@@ -312,13 +312,15 @@ pub(super) fn parse(title: &str) -> ParsedTitle {
     };
     out.group = leading_group(&mut ctx);
     out.revision = revision(title);
-    out.resolution =
-        (0..ctx.toks.len())
-            .filter(|&i| !ctx.skip[i])
-            .find_map(|i| match ctx.class[i] {
-                Class::Resolution(n) => Some(n),
-                _ => None,
-            });
+    // The highest the title names (`(720p + 1080p)`), as the feed and
+    // torznab readers took it.
+    out.resolution = (0..ctx.toks.len())
+        .filter(|&i| !ctx.skip[i])
+        .filter_map(|i| match ctx.class[i] {
+            Class::Resolution(n) => Some(n),
+            _ => None,
+        })
+        .max();
     out.year = (0..ctx.toks.len()).filter(|&i| !ctx.skip[i]).find_map(|i| {
         let (v, d, _) = ctx.num(i)?;
         is_year(v, d).then_some(v as i32)
@@ -528,6 +530,8 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
             if let Some((_, tail)) = split
                 && !tail.is_empty()
                 && classify_word(&tail.to_lowercase()) == Class::Plain
+                // `DVD-Rip`, `BD-Rip`: one source word, no group.
+                && !tail.eq_ignore_ascii_case("rip")
             {
                 found = Some(tail.to_string());
             }
@@ -544,7 +548,8 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
     if found.is_none() {
         // `Title - 031 - Episode Title [Lunar]`: a one-word group in the
         // last bracket; two words (`(Dual Audio)[MICO XD]`) only right
-        // after another bracket.
+        // after another bracket. A round one (`_(BD_720p)_(Kametsu)`)
+        // only right after another bracket too.
         let last = ctx.toks.len().checked_sub(1)?;
         let plain = |t: usize| {
             ctx.toks[t].is_word()
@@ -552,7 +557,7 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
                 && !is_crc(&ctx.toks[t].text)
                 && ctx.toks[t].text.chars().all(|c| c.is_ascii_alphanumeric())
         };
-        if let Kind::Close(']') = ctx.toks[last].kind
+        if let Kind::Close(close @ (']' | ')')) = ctx.toks[last].kind
             && let Some(g) = ctx.group(ctx.toks[last].group)
         {
             let content = ctx.content(g);
@@ -560,9 +565,12 @@ fn trailing_group(ctx: &Ctx) -> Option<String> {
                 .prev(g.open)
                 .is_some_and(|p| matches!(ctx.toks[p].kind, Kind::Close(_)));
             match content.as_slice() {
-                [only] if plain(*only) => found = Some(ctx.toks[*only].text.clone()),
+                [only] if plain(*only) && (close == ']' || after_bracket) => {
+                    found = Some(ctx.toks[*only].text.clone())
+                }
                 [a, b]
-                    if after_bracket
+                    if close == ']'
+                        && after_bracket
                         && plain(*a)
                         && plain(*b)
                         && ctx.toks[*b].sep == Sep::Space =>
@@ -589,6 +597,7 @@ fn group_before_alternate_title(ctx: &Ctx) -> Option<String> {
             && content.iter().all(|&t| {
                 ctx.toks[t].is_word()
                     && ctx.class[t] == Class::Plain
+                    && !is_crc(&ctx.toks[t].text)
                     && ctx.toks[t].text.chars().all(|c| c.is_ascii_alphanumeric())
             });
         let after_meta = ctx.prev(g.open).is_some_and(|p| {

@@ -61,7 +61,8 @@ Moving a rule earlier changes what wins on every title both rules match; run the
 - A title naming one video file is never a season pack. An extras release is never a batch.
 - `[BD]` alone is not a batch keyword.
 - A bare number right after the title is `ambiguous_number`, read only through `for_series`. The search for it stops at the first top-level metadata token, so `H.264 (Japanese Sub)` has none.
-- Group: the first non-metadata, non-numeric, non-CRC, non-website bracket; else a scene tail after the longest metadata head (`H.264-VARYG`, `x264-Tsundere-Raws`), a lead-dash word at the end, a one-word last bracket (`[Lunar]`), or two plain words in a last bracket that follows another bracket (`(Dual Audio)[MICO XD]`). A first bracket made only of metadata words (`[BD_SUBS]`) is skipped.
+- Group: the first non-metadata, non-numeric, non-CRC, non-website bracket; else a scene tail after the longest metadata head (`H.264-VARYG`, `x264-Tsundere-Raws`), a lead-dash word at the end, a one-word last bracket (`[Lunar]`; a round one only right after another bracket, `_(BD_720p)_(Kametsu)`), or two plain words in a last square bracket that follows another bracket (`(Dual Audio)[MICO XD]`). A first bracket made only of metadata words (`[BD_SUBS]`) is skipped; `DVD-Rip` names no group.
+- Resolution: the highest the title names (`(720p + 1080p)`); `release_fields` gives its tier (`resolution_tier`: `540` is 480, `1036` is 1080), the value scoring, Custom Format specs and labels read.
 
 ## Tests
 

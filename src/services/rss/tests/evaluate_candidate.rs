@@ -389,6 +389,30 @@ fn v2_from_the_same_group_replaces_the_file_past_the_cutoff() {
 }
 
 #[test]
+fn a_stored_group_from_an_older_reader_is_read_again_from_the_title() {
+    // A row written before `release_fields` kept another reader's group
+    // (here none); the group is read from the stored title, as the
+    // incoming one is, so the same group's v2 still counts.
+    let policy = source::UpgradePolicy {
+        cutoff: source::cutoff_classification(Source::Web, Resolution::R1080p, false, false),
+        ..bluray_policy()
+    };
+    let (found, item, incoming, disk, parsed_eps, mut quality_tags) =
+        v2_fixture("SubsPlease", "SubsPlease");
+    quality_tags.get_mut(&1).expect("tag").release_group = String::new();
+    let decision = evaluate_candidate(
+        &found,
+        &item,
+        &incoming,
+        &disk,
+        &parsed_eps,
+        &gate(&policy, &item),
+        &quality_tags,
+    );
+    assert_eq!(decision.reject_reason, None);
+}
+
+#[test]
 fn v2_from_another_group_is_rejected_with_the_gate_reason() {
     let policy = bluray_policy();
     let (found, item, incoming, disk, parsed_eps, quality_tags) =

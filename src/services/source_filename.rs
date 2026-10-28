@@ -94,6 +94,13 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
         .map(|h| Resolution::from_dimensions(0, h))
         .unwrap_or(Resolution::Unknown);
     result.release_group = parsed.group;
+    // The DVD override reads only a disc's own heights: `BD 540p` is a
+    // downscaled BD encode in the 480p tier, not a DVD.
+    let dvd_height = match parsed.resolution {
+        Some(480) => Resolution::R480p,
+        Some(576) => Resolution::R576p,
+        _ => Resolution::Unknown,
+    };
 
     let title_lower = clean.to_ascii_lowercase();
 
@@ -153,7 +160,7 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
                 "tv" | "bdmv" | "bdraw" | "bdiso" | "bd-raw"
             )
         })
-        .find_map(|w| source_from_keyword(glued_source(w), result.resolution))
+        .find_map(|w| source_from_keyword(glued_source(w), dvd_height))
     {
         result
             .evidence
@@ -171,12 +178,12 @@ pub fn classify_filename(title: &str) -> FilenameClassification {
         }
         // Apply the DVD-resolution override for BD-class tokens.
         let (final_src, final_conf, detail) = if *mapped_src == Source::BluRay
-            && matches!(result.resolution, Resolution::R480p | Resolution::R576p)
+            && matches!(dvd_height, Resolution::R480p | Resolution::R576p)
         {
             (
                 Source::Dvd,
                 0.85,
-                format!("{} + {} → DVD override", token, result.resolution.as_str()),
+                format!("{} + {} → DVD override", token, dvd_height.as_str()),
             )
         } else {
             // Bare "web" is a weaker signal than "web-dl"/"webrip": the
@@ -675,6 +682,17 @@ mod tests {
         assert!(fc.evidence.is_empty());
         assert_eq!(fc.resolution, Resolution::Unknown);
         assert!(fc.release_group.is_none());
+    }
+
+    #[test]
+    fn a_bd_encode_at_540p_is_still_bluray() {
+        let fc = classify_filename("[FAV] Chihayafuru 1-3 [BD 540p x264 AAC]");
+        assert_eq!(fc.resolution, Resolution::R480p);
+        assert!(fc.evidence.iter().any(|e| e.source == Source::BluRay));
+        assert!(!fc.evidence.iter().any(|e| e.source == Source::Dvd));
+        // A disc height is still the DVD override.
+        let dvd = classify_filename("[Group] Show 01 [BD 480p x264 AAC]");
+        assert!(dvd.evidence.iter().any(|e| e.source == Source::Dvd));
     }
 
     #[test]

@@ -2034,13 +2034,18 @@ fn episode_is_upgradeable(
     let existing_classification = auto_search::resolve_existing_classification(existing, tag);
     // A file with no tag row has no release title: no group (so no
     // revision) and no score. The renamed library file is not a
-    // release title and is not scored.
+    // release title and is not scored. The group is read from the stored
+    // title the way the incoming one is: a row written before
+    // `release_fields` holds another reader's group.
     let (release_title, release_group, scorable) = match tag {
-        Some(t) if !t.release_title.is_empty() => {
-            (t.release_title.as_str(), t.release_group.as_str(), true)
-        }
-        _ => (existing.filename.as_str(), "", false),
+        Some(t) if !t.release_title.is_empty() => (
+            t.release_title.as_str(),
+            release_title::release_fields(&t.release_title).group,
+            true,
+        ),
+        _ => (existing.filename.as_str(), String::new(), false),
     };
+    let release_group = release_group.as_str();
     // Size 0 on both sides: RssItem carries no size, so a Size spec
     // matching only the file on disk would tilt the comparison.
     let existing_cf_score = scorable.then(|| {
