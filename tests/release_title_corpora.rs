@@ -7,6 +7,9 @@
 //!   Sonarr's own expected values.
 //! - `tests/fixtures/release-title-regressions/`: every title the old
 //!   parsers' inline tests pinned, with the outcome each asserted.
+//! - `tests/fixtures/animetosho-corpus/`: 29,393 titles and 3,007 torrent
+//!   file lists from AnimeTosho's feed, and 1,000 of the titles labeled
+//!   blind (see the README there). Its tests hold today's numbers as floors.
 //!
 //! The first tests check that every corpus file loads and is well formed;
 //! the rest hold `release_title::parse` to each corpus.
@@ -690,7 +693,29 @@ fn parser_agrees_with_sonarr_or_says_why_not() {
     );
 }
 
-/// Every title in every corpus, including the unverified listing sample.
+/// The rows of a gzipped JSON-lines file in the AnimeTosho corpus.
+fn animetosho(name: &str) -> Vec<Value> {
+    use std::io::BufRead;
+    let path = fixture_dir("animetosho-corpus").join(name);
+    let file =
+        std::fs::File::open(&path).unwrap_or_else(|e| panic!("open {}: {e}", path.display()));
+    std::io::BufReader::new(flate2::read::GzDecoder::new(file))
+        .lines()
+        .map(|line| serde_json::from_str(&line.expect("read line")).expect("JSON line"))
+        .collect()
+}
+
+fn animetosho_labels() -> Vec<Value> {
+    let path = fixture_dir("animetosho-corpus").join("labels/labels.jsonl");
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("JSON line"))
+        .collect()
+}
+
+/// Every title in every corpus, including the unverified listing sample
+/// and the AnimeTosho corpus.
 fn all_titles() -> Vec<String> {
     let mut titles = Vec::new();
     for path in json_files(&fixture_dir("nyaa-titles")) {
@@ -712,6 +737,11 @@ fn all_titles() -> Vec<String> {
             }
         }
     }
+    titles.extend(
+        animetosho("titles.jsonl.gz")
+            .iter()
+            .filter_map(|r| r["title"].as_str().map(String::from)),
+    );
     titles
 }
 
@@ -749,4 +779,926 @@ fn readings_are_consistent_on_every_corpus_title() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+// ── The AnimeTosho corpus ────────────────────────────────────────────
+//
+// Each test below holds a number measured on 2026-10-28 as a floor (or a
+// ceiling). A parser change that moves one prints what moved; if the move
+// is an improvement, raise the floor; if it is a deliberate trade, say so
+// in the commit and lower it.
+
+#[test]
+fn animetosho_corpus_is_well_formed() {
+    let titles = animetosho("titles.jsonl.gz");
+    let names: HashSet<&str> = titles
+        .iter()
+        .map(|r| r["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles.len(), 29_393);
+    assert_eq!(names.len(), titles.len(), "titles are distinct");
+    let lists = animetosho("file-lists.jsonl.gz");
+    assert_eq!(lists.len(), 3_007);
+    for list in &lists {
+        assert!(
+            list["at_id"].as_i64().is_some() && list["title"].is_string(),
+            "{list}"
+        );
+        // 570 torrents have no file list on AnimeTosho; their rows stay.
+        assert!(list["files"].is_array(), "{list}");
+    }
+    let labels = animetosho_labels();
+    assert_eq!(labels.len(), 1_000);
+    for label in &labels {
+        let title = label["title"].as_str().expect("title");
+        assert!(
+            names.contains(title),
+            "label for a title not in the corpus: {title}"
+        );
+        for key in [
+            "batch",
+            "episodes",
+            "ambiguous",
+            "season",
+            "special",
+            "extra",
+            "group",
+            "resolution",
+        ] {
+            assert!(label.get(key).is_some(), "{key} missing: {title}");
+        }
+    }
+}
+
+/// The parser's reading of one title in the labels' terms.
+fn label_view(parsed: &ParsedTitle) -> BTreeMap<&'static str, Value> {
+    let mut eps: Vec<i32> = parsed.release_episodes().into_iter().collect();
+    eps.sort_unstable();
+    BTreeMap::from([
+        ("batch", Value::from(parsed.is_batch())),
+        ("episodes", Value::from(eps)),
+        ("ambiguous", serde_json::json!(parsed.ambiguous_number)),
+        ("season", serde_json::json!(parsed.season_hint())),
+        ("special", Value::from(parsed.special)),
+        ("extra", Value::from(parsed.extra)),
+        (
+            "group",
+            Value::from(parsed.group.as_deref().unwrap_or("").trim().to_lowercase()),
+        ),
+        ("resolution", serde_json::json!(parsed.resolution)),
+    ])
+}
+
+/// One label in the same terms: a long range written as its two ends
+/// (`"unsure": "range"`, the guide's rule past 30 episodes) expanded.
+fn label_answer(label: &Value) -> BTreeMap<&'static str, Value> {
+    let mut eps: Vec<i64> = label["episodes"]
+        .as_array()
+        .map(|a| a.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default();
+    if label["unsure"].as_str().unwrap_or("").contains("range")
+        && let [a, b] = eps[..]
+        && b - a > 1
+    {
+        eps = (a..=b).collect();
+    }
+    eps.sort_unstable();
+    eps.dedup();
+    let group = label["group"].as_str().unwrap_or("").trim().to_lowercase();
+    BTreeMap::from([
+        ("batch", label["batch"].clone()),
+        ("episodes", Value::from(eps)),
+        ("ambiguous", label["ambiguous"].clone()),
+        ("season", label["season"].clone()),
+        ("special", label["special"].clone()),
+        ("extra", label["extra"].clone()),
+        ("group", Value::from(group)),
+        ("resolution", label["resolution"].clone()),
+    ])
+}
+
+/// 1,000 corpus titles were labeled blind, by readers who never saw a
+/// parser's output (`labels/GUIDE.md`). Each field must agree on at least
+/// as many titles as it did when the floor was set.
+#[test]
+fn parser_agrees_with_the_blind_labels_at_least_as_before() {
+    const FLOORS: &[(&str, usize)] = &[
+        ("batch", 926),
+        ("episodes", 983),
+        ("ambiguous", 991),
+        ("season", 993),
+        ("special", 993),
+        ("extra", 997),
+        ("group", 981),
+        ("resolution", 998),
+    ];
+    let labels = animetosho_labels();
+    let mut agree: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut misses: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for label in &labels {
+        let title = label["title"].as_str().unwrap();
+        let got = label_view(&release_title::parse(title));
+        let want = label_answer(label);
+        for (field, value) in &got {
+            if want.get(field) == Some(value) {
+                *agree.entry(field).or_default() += 1;
+            } else {
+                misses.entry(field).or_default().push(format!(
+                    "    {title}\n      parser {value}, label {}",
+                    want.get(field).cloned().unwrap_or(Value::Null)
+                ));
+            }
+        }
+    }
+    eprintln!("agreement with {} labels: {agree:?}", labels.len());
+    let mut failures = Vec::new();
+    for (field, floor) in FLOORS {
+        let count = agree.get(field).copied().unwrap_or(0);
+        if count < *floor {
+            failures.push(format!(
+                "{field}: {count} titles agree, floor {floor}; disagreements:\n{}",
+                misses.get(field).map(|m| m.join("\n")).unwrap_or_default()
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// AnimeTosho's file count says what a title is: a one-file torrent is
+/// not a batch, and most torrents of ten or more files are. Titles that
+/// name no episodes (`[UTW] Angel Beats! [BD]`) are most of the packs the
+/// flag misses; only the interactive batch list offers those.
+#[test]
+fn batch_flag_tracks_file_counts() {
+    const ONE_FILE_BATCHES_MAX: usize = 67;
+    const TEN_PLUS_BATCHES_MIN: usize = 4_484;
+    let (mut one_file, mut ten_plus) = (Vec::new(), (0usize, 0usize));
+    for row in animetosho("titles.jsonl.gz") {
+        let Some(files) = row["num_files"].as_i64() else {
+            continue;
+        };
+        let title = row["title"].as_str().unwrap();
+        let batch = release_title::parse(title).is_batch();
+        if files == 1 && batch {
+            one_file.push(title.to_string());
+        }
+        if files >= 10 {
+            ten_plus.0 += 1;
+            ten_plus.1 += usize::from(batch);
+        }
+    }
+    eprintln!(
+        "one-file titles read as batches: {}; titles of 10+ files read as batches: {} of {}",
+        one_file.len(),
+        ten_plus.1,
+        ten_plus.0
+    );
+    assert!(
+        one_file.len() <= ONE_FILE_BATCHES_MAX,
+        "{} one-file titles read as batches (at most {ONE_FILE_BATCHES_MAX}):\n{}",
+        one_file.len(),
+        one_file.join("\n")
+    );
+    assert!(
+        ten_plus.1 >= TEN_PLUS_BATCHES_MIN,
+        "{} of {} titles of 10+ files read as batches (at least {TEN_PLUS_BATCHES_MIN})",
+        ten_plus.1,
+        ten_plus.0
+    );
+}
+
+/// The file lists, read the way the import reads a download: every video
+/// that looks like an episode, plainly; and per pack, with the torrent
+/// title's show name as the series' name (as `parse_file_path_for` gets
+/// it from the series row), which files would claim one episode twice
+/// (the import refuses such a pack) and whether an extra takes a slot.
+#[test]
+fn file_lists_read_as_before() {
+    use ryokan::services::media::{parse_file_path, parse_file_path_for};
+    const EPISODE_LIKE_READ_MIN: usize = 27_171;
+    const PACKS_WITH_A_TIE_MAX: usize = 67;
+    let video = regex_lite::Regex::new(
+        r"(?i)\.(mkv|mp4|avi|ts|m2ts|webm|wmv|flv|ogm|mov|m4v|rmvb|mpg|mpeg)$",
+    )
+    .unwrap();
+    // A name that might not be an episode; such files are not counted.
+    let maybe_extra = regex_lite::Regex::new(
+        r"(?i)(\bnc(op|ed)|creditless|textless|\bpv\d*\b|\bcm\d*\b|preview|trailer|teaser|\bmenu|\bop\d*\b|\bed\d*\b|opening|ending|bonus|extra|special|\bova\b|\boad\b|\bsp\d*\b|recap|movie|film|劇場版|特典|tokuten|\bmv\b|music|clip|promo|spot|/(extras?|specials?|bonus|sps?|menus?|scans?)/)",
+    )
+    .unwrap();
+    // A name that says it is an extra (a CRC like `[ED509059]` is not `ED`).
+    let crc = regex_lite::Regex::new(r"[\[(][0-9A-Fa-f]{8}[\])]").unwrap();
+    let extra_word = regex_lite::Regex::new(
+        r"(?i)\bnc(op|ed)\d*\b|creditless|textless|\bpv\d*\b|\bcm\d*\b|\bpreview|\btrailer|\bteaser|\bmenu\d*\b|\b(op|ed)\d*\b",
+    )
+    .unwrap();
+    let (mut episode_like, mut read) = (0usize, 0usize);
+    let mut tied = Vec::new();
+    let mut extras_with_a_slot = Vec::new();
+    for list in animetosho("file-lists.jsonl.gz") {
+        let torrent = list["title"].as_str().unwrap();
+        let name = release_title::parse(torrent)
+            .series_title
+            .unwrap_or_default();
+        let anchors = SeriesAnchors::new(&[name.as_str()]);
+        let mut slots: BTreeMap<(Option<i32>, i32), usize> = BTreeMap::new();
+        let mut videos = 0;
+        for file in list["files"].as_array().unwrap() {
+            let path = file[0].as_str().unwrap();
+            if !video.is_match(path) {
+                continue;
+            }
+            videos += 1;
+            let base = path.rsplit('/').next().unwrap_or(path);
+            if !maybe_extra.is_match(path) {
+                episode_like += 1;
+                read += usize::from(parse_file_path(path).is_some());
+            }
+            let Some(span) = parse_file_path_for(path, &anchors).filter(|s| !s.special) else {
+                continue;
+            };
+            // regex-lite's `\b` sees `é` as a non-letter (`Sautéed` would
+            // hold a word `ed`), so other letters are written as `x`.
+            let ascii: String = crc
+                .replace_all(base, "")
+                .chars()
+                .map(|c| {
+                    if c.is_alphanumeric() && !c.is_ascii() {
+                        'x'
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+            if extra_word.is_match(&ascii) {
+                extras_with_a_slot.push(format!("{path} -> {span:?}"));
+            }
+            for e in span.first..=span.last {
+                *slots.entry((span.season, e)).or_default() += 1;
+            }
+        }
+        if videos >= 2 && slots.values().any(|&n| n > 1) {
+            tied.push(torrent.to_string());
+        }
+    }
+    eprintln!(
+        "episode-like videos read: {read} of {episode_like}; packs with a tie: {}; extras with a slot: {}",
+        tied.len(),
+        extras_with_a_slot.len()
+    );
+    assert!(
+        extras_with_a_slot.is_empty(),
+        "files whose names say they are extras take an episode slot:\n{}",
+        extras_with_a_slot.join("\n")
+    );
+    assert!(
+        read >= EPISODE_LIKE_READ_MIN,
+        "{read} of {episode_like} episode-like videos read (at least {EPISODE_LIKE_READ_MIN})"
+    );
+    assert!(
+        tied.len() <= PACKS_WITH_A_TIE_MAX,
+        "{} packs claim one episode twice (at most {PACKS_WITH_A_TIE_MAX}):\n{}",
+        tied.len(),
+        tied.join("\n")
+    );
+}
+
+/// Ryokan's default episode name, written for every show name in the
+/// corpus (an extras release's name is no show's), reads back as written
+/// through the library scanner's reader, whatever the episode is called.
+#[test]
+fn default_episode_names_read_back_for_every_corpus_show() {
+    use ryokan::services::media::parse_episode_span;
+    use ryokan::services::naming::{self, NameContext, TemplateKind};
+    const EPISODE_TITLES: &[&str] = &[
+        "",
+        "2.5 Dimensional Ririsa",
+        "Episode 10.5",
+        "Final",
+        "Preview",
+    ];
+    let mut shows: Vec<String> = animetosho("titles.jsonl.gz")
+        .iter()
+        .map(|r| release_title::parse(r["title"].as_str().unwrap()))
+        .filter(|p| !p.extra)
+        .filter_map(|p| p.series_title)
+        // `Lucky Star OVA OP` reads as an extras release itself.
+        .filter(|name| !release_title::parse(name).extra)
+        .collect();
+    shows.sort();
+    shows.dedup();
+    let mut failures = Vec::new();
+    for show in &shows {
+        for title in EPISODE_TITLES {
+            let ctx = NameContext {
+                series_title: show.clone(),
+                season_number: 1,
+                episode_number: 5,
+                episode_title: title.to_string(),
+                ext: "mkv".to_string(),
+                ..Default::default()
+            };
+            let Ok(rendered) = naming::render(
+                TemplateKind::EpisodeFile,
+                naming::DEFAULT_EPISODE_FILE_FORMAT,
+                &ctx,
+            ) else {
+                continue;
+            };
+            let span = parse_episode_span(&rendered.name.to_lowercase());
+            if !span.is_some_and(|s| s.season == Some(1) && s.first == 5 && s.last == 5) {
+                failures.push(format!("{} -> {span:?}", rendered.name));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of {} show names write a name that does not read back:\n{}",
+        failures.len(),
+        shows.len(),
+        failures[..failures.len().min(40)].join("\n")
+    );
+}
+
+// ── Building the AnimeTosho corpus ───────────────────────────────────
+
+mod scrape {
+    //! Scrapes the AnimeTosho corpus (`scrape_animetosho_corpus`, below).
+
+    use std::path::{Path, PathBuf};
+    use std::time::Duration;
+
+    use serde_json::{Value, json};
+    use sha2::{Digest, Sha256};
+
+    const AT_FEED: &str = "https://feed.animetosho.net/json";
+    const NYAA_RSS: &str = "https://nyaa.si/?page=rss&";
+    const USER_AGENT: &str =
+        "Ryokan/0.1 (release-title corpus; contact via github.com/johnthreekay/Ryokan)";
+    const DELAY: Duration = Duration::from_millis(1500);
+
+    /// AnimeTosho searches beside its recent pages: batch and BD groups,
+    /// CJK groups, title shapes, long-runners and numeric titles.
+    const AT_QUERIES: &[&str] = &[
+        "VCB-Studio",
+        "MTBB",
+        "Kaizoku",
+        "Judas",
+        "Anime Time",
+        "[DB]",
+        "Beatrice-Raws",
+        "Moozzi2",
+        "ReinForce",
+        "Coalgirls",
+        "Commie",
+        "HorribleSubs Batch",
+        "EMBER",
+        "smol",
+        "Okay-Subs",
+        "Erai-raws BATCH",
+        "SubsPlease Batch",
+        "Exiled-Destiny",
+        "DKB",
+        "ASW",
+        "Yameii",
+        "ToonsHub",
+        "VARYG",
+        "Tsundere-Raws",
+        "Sokudo",
+        "Arid",
+        "Kametsu",
+        "Doki",
+        "gg",
+        "Underwater",
+        "UTW",
+        "Chihiro",
+        "FFF",
+        "Mezashite",
+        "THORA",
+        "Cleo",
+        "iAHD",
+        "CyC",
+        "Vodes",
+        "LostYears",
+        "Anime Chap",
+        "Breeze",
+        "Moxie",
+        "Yousei-raws",
+        "Snow-Raws",
+        "LowPower-Raws",
+        "ANK-Raws",
+        "Ohys-Raws",
+        "Leopard-Raws",
+        "NanakoRaws",
+        "Prof",
+        "BlurayDesuYo",
+        "Hi10",
+        "neoHEVC",
+        "Cerberus",
+        "AkihitoSubs",
+        "Nep_Blanc",
+        "GJM",
+        "SallySubs",
+        "Asenshi",
+        "Golumpa",
+        "Ember batch",
+        "NC-Raws",
+        "Lilith-Raws",
+        "ANi",
+        "EternalAnimes",
+        "LoliHouse",
+        "喵萌奶茶屋",
+        "桜都字幕组",
+        "千夏字幕组",
+        "北宇治字幕组",
+        "DBD-Raws",
+        "Nekomoe kissaten",
+        "Sakurato",
+        "SweetSub",
+        "豌豆字幕组",
+        "极影字幕",
+        "幻樱字幕组",
+        "风车字幕组",
+        "银色子弹字幕组",
+        "动漫国字幕组",
+        "澄空学园",
+        "华盟字幕社",
+        "MingY",
+        "Airota",
+        "FLsnow",
+        "GM-Team",
+        "jibaketa",
+        "Batch 1080p",
+        "Complete BD",
+        "BDMV",
+        "BDRip",
+        "OVA",
+        "OAD",
+        "Movie BD",
+        "Special",
+        "S01-S03",
+        "S01-S04",
+        "Season 1-3",
+        "DVD",
+        "DVDRip",
+        "v2",
+        "NCOP",
+        "NCED",
+        "PV",
+        "Preview",
+        "Recap",
+        "13.5",
+        "Part 2",
+        "Cour 2",
+        "2nd Season",
+        "3rd Season",
+        "Final Season",
+        "II",
+        "III",
+        "第二季",
+        "合集",
+        "Fin",
+        "END",
+        "Vol",
+        "Remux",
+        "Dual Audio",
+        "Multi-Subs",
+        "x265",
+        "Hi10P",
+        "720p",
+        "480p",
+        "SD",
+        "Dub",
+        "VOSTFR",
+        "Legendado",
+        "subita",
+        "One Piece",
+        "Detective Conan",
+        "Gintama",
+        "Naruto",
+        "Bleach",
+        "Doraemon",
+        "Pokemon",
+        "Dragon Ball",
+        "Crayon Shin-chan",
+        "Yu-Gi-Oh",
+        "Precure",
+        "Mob Psycho 100",
+        "86",
+        "Kaiju No. 8",
+        "Chihayafuru",
+        "Cyborg 009",
+        "Steins Gate 0",
+        "Zom 100",
+        "Lupin III",
+        "Monogatari",
+        "Fate",
+        "Gundam",
+        "Re Zero",
+        "Mushoku Tensei",
+        "Overlord",
+        "Danmachi",
+        "Kaguya-sama",
+        "Spy x Family",
+        "Jujutsu Kaisen",
+        "Attack on Titan",
+        "Frieren",
+        "Oshi no Ko",
+        "Dandadan",
+        "Ranma",
+        "Hunter x Hunter",
+        "Fullmetal Alchemist",
+    ];
+
+    /// Nyaa RSS (category, query) for the raw and non-English categories
+    /// AnimeTosho does not mirror as fully.
+    const NYAA_QUERIES: &[(&str, &str)] = &[
+        ("1_3", ""),
+        ("1_4", ""),
+        ("1_3", "1080p"),
+        ("1_4", "1080p"),
+        ("1_3", "VOSTFR"),
+        ("1_3", "Legendado"),
+        ("1_3", "Rus"),
+        ("1_3", "Sub Ita"),
+        ("1_3", "Batch"),
+        ("1_4", "BDMV"),
+        ("1_4", "Batch"),
+        ("1_4", "Ohys-Raws"),
+        ("1_4", "Leopard-Raws"),
+        ("1_3", "简繁"),
+        ("1_3", "繁體"),
+        ("1_3", "BIG5"),
+        ("1_3", "GB"),
+        ("1_3", "合集"),
+        ("1_1", ""),
+        ("1_1", "AMV"),
+        ("1_2", "DVD"),
+        ("1_2", "TV-Rip"),
+    ];
+
+    /// File lists per AnimeTosho source: (article, packs, single files).
+    const QUOTAS: &[(&str, usize, usize)] = &[("Nyaa", 1800, 500), ("nBT", 1000, 300)];
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    pub(super) struct Scraper {
+        client: reqwest::Client,
+        cache: PathBuf,
+        failures: u32,
+    }
+
+    impl Scraper {
+        pub(super) fn new(cache: PathBuf) -> Self {
+            std::fs::create_dir_all(cache.join("listing")).expect("create cache");
+            std::fs::create_dir_all(cache.join("details")).expect("create cache");
+            let client = reqwest::Client::builder()
+                .user_agent(USER_AGENT)
+                .timeout(Duration::from_secs(60))
+                .build()
+                .expect("HTTP client");
+            Scraper {
+                client,
+                cache,
+                failures: 0,
+            }
+        }
+
+        /// One polite GET: a pause before every request; a 403 / 429 / 5xx
+        /// or a network error waits and retries once; three failed URLs in
+        /// a row stop the run. `None` for a page that is not there.
+        async fn get(&mut self, url: &str) -> Option<String> {
+            for _ in 0..2 {
+                tokio::time::sleep(DELAY).await;
+                match self.client.get(url).send().await {
+                    Ok(resp) => {
+                        let status = resp.status();
+                        let body = resp.text().await.unwrap_or_default();
+                        if status.is_success() {
+                            self.failures = 0;
+                            return Some(body);
+                        }
+                        // AnimeTosho's feed stops paging past its history.
+                        if status.as_u16() == 403 && body.contains("history_limit") {
+                            return None;
+                        }
+                        let excerpt: String = body.chars().take(200).collect();
+                        eprintln!("  HTTP {status} {url}: {excerpt}");
+                        if matches!(status.as_u16(), 403 | 429) || status.is_server_error() {
+                            tokio::time::sleep(Duration::from_secs(60)).await;
+                            continue;
+                        }
+                        return None;
+                    }
+                    Err(e) => {
+                        eprintln!("  error {url}: {e}");
+                        tokio::time::sleep(Duration::from_secs(30)).await;
+                    }
+                }
+            }
+            self.failures += 1;
+            assert!(self.failures < 3, "three failures in a row; stopping");
+            None
+        }
+
+        fn listing_path(&self, url: &str) -> PathBuf {
+            let digest = Sha256::digest(url.as_bytes());
+            self.cache
+                .join("listing")
+                .join(format!("{}.json", &hex(&digest)[..16]))
+        }
+
+        /// One AnimeTosho feed page, cached. A failed fetch is not cached.
+        async fn at_page(&mut self, url: &str, query: &str) -> Vec<Value> {
+            let path = self.listing_path(url);
+            if let Ok(raw) = std::fs::read_to_string(&path) {
+                return serde_json::from_str(&raw).expect("cached listing");
+            }
+            let Some(body) = self.get(url).await else {
+                return Vec::new();
+            };
+            let entries: Vec<Value> = serde_json::from_str(&body).unwrap_or_default();
+            let rows: Vec<Value> = entries
+                .iter()
+                .map(|e| {
+                    json!({
+                        "src": "at", "query": query, "id": e["id"], "title": e["title"],
+                        "num_files": e["num_files"], "nyaa_id": e["nyaa_id"],
+                        "anidb_aid": e["anidb_aid"], "anidb_eid": e["anidb_eid"],
+                        "size": e["total_size"], "ts": e["timestamp"],
+                        "article": e["article_title"],
+                    })
+                })
+                .collect();
+            std::fs::write(&path, serde_json::to_string(&rows).unwrap()).expect("write cache");
+            eprintln!("  {:3} {url}", rows.len());
+            rows
+        }
+
+        /// One Nyaa RSS query through Ryokan's own feed reader, cached.
+        async fn nyaa_feed(&mut self, category: &str, query: &str) {
+            let url = format!(
+                "{NYAA_RSS}c={}&q={}&f=0",
+                urlencoding::encode(category),
+                urlencoding::encode(query)
+            );
+            let path = self.listing_path(&url);
+            if path.exists() {
+                return;
+            }
+            tokio::time::sleep(DELAY).await;
+            let items = match ryokan::services::rss::feed::fetch_user_feed(
+                &url,
+                ryokan::services::rss::RssSource::Nyaa,
+            )
+            .await
+            {
+                Ok(items) => items,
+                Err(e) => {
+                    eprintln!("  error {url}: {e}");
+                    return;
+                }
+            };
+            let rows: Vec<Value> = items
+                .iter()
+                .map(|item| {
+                    json!({
+                        "src": "nyaa", "query": format!("nyaa {category} {query}"),
+                        "title": item.title,
+                        "url": if item.guid.is_empty() { &item.link } else { &item.guid },
+                        "category": category,
+                    })
+                })
+                .collect();
+            std::fs::write(&path, serde_json::to_string(&rows).unwrap()).expect("write cache");
+            eprintln!("  {:3} {url}", rows.len());
+        }
+
+        /// AnimeTosho's recent pages and searches, then Nyaa RSS, merged
+        /// into `titles.json` (distinct titles; Ryokan never searches
+        /// Sukebei, so its entries are left out).
+        pub(super) async fn listing(&mut self) {
+            for page in 1..=100 {
+                if self
+                    .at_page(&format!("{AT_FEED}?page={page}"), "recent")
+                    .await
+                    .is_empty()
+                {
+                    break;
+                }
+            }
+            for query in AT_QUERIES {
+                for page in 1..=3 {
+                    let url = format!("{AT_FEED}?q={}&page={page}", urlencoding::encode(query));
+                    if self.at_page(&url, query).await.len() < 75 {
+                        break;
+                    }
+                }
+            }
+            for (category, query) in NYAA_QUERIES {
+                self.nyaa_feed(category, query).await;
+            }
+            let mut paths: Vec<_> = std::fs::read_dir(self.cache.join("listing"))
+                .expect("listing dir")
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .collect();
+            paths.sort();
+            let mut seen = std::collections::HashSet::new();
+            let mut rows = Vec::new();
+            for path in paths {
+                let page: Vec<Value> =
+                    serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+                for row in page {
+                    if row["article"] == "Sukebei" {
+                        continue;
+                    }
+                    if seen.insert(row["title"].as_str().unwrap_or_default().to_string()) {
+                        rows.push(row);
+                    }
+                }
+            }
+            std::fs::write(
+                self.cache.join("titles.json"),
+                serde_json::to_string(&rows).unwrap(),
+            )
+            .expect("write titles.json");
+            eprintln!("{} distinct titles", rows.len());
+        }
+
+        /// File lists for a fixed pick of AnimeTosho entries: per source,
+        /// packs of 2 to 400 files (at most six per AniDB series) and
+        /// single files, in an order seeded by each entry's id.
+        pub(super) async fn details(&mut self) {
+            let raw = std::fs::read_to_string(self.cache.join("titles.json")).expect("titles.json");
+            let mut rows: Vec<Value> = serde_json::from_str::<Vec<Value>>(&raw)
+                .unwrap()
+                .into_iter()
+                .filter(|r| r["src"] == "at")
+                .collect();
+            rows.sort_by_cached_key(|r| Sha256::digest(format!("296:{}", r["id"]).as_bytes()));
+            let files = |r: &Value| r["num_files"].as_i64().unwrap_or(0);
+            let mut per_series: std::collections::HashMap<String, usize> = Default::default();
+            let mut chosen: Vec<&Value> = Vec::new();
+            for (source, packs, singles) in QUOTAS {
+                let mine: Vec<&Value> = rows.iter().filter(|r| r["article"] == *source).collect();
+                let mut taken = 0;
+                for r in &mine {
+                    if taken == *packs {
+                        break;
+                    }
+                    if !(2..=400).contains(&files(r)) {
+                        continue;
+                    }
+                    let series = match r["anidb_aid"].as_i64() {
+                        Some(aid) => aid.to_string(),
+                        None => r["title"].as_str().unwrap_or("").chars().take(20).collect(),
+                    };
+                    let n = per_series.entry(series).or_default();
+                    if *n >= 6 {
+                        continue;
+                    }
+                    *n += 1;
+                    chosen.push(r);
+                    taken += 1;
+                }
+                chosen.extend(mine.iter().filter(|r| files(r) == 1).take(*singles));
+            }
+            eprintln!("file lists for {} torrents", chosen.len());
+            for (n, r) in chosen.iter().enumerate() {
+                let path = self.cache.join("details").join(format!("{}.json", r["id"]));
+                if path.exists() {
+                    continue;
+                }
+                let url = format!("{AT_FEED}?show=torrent&id={}", r["id"]);
+                let Some(body) = self.get(&url).await else {
+                    continue;
+                };
+                let d: Value = serde_json::from_str(&body).unwrap_or_default();
+                let files: Vec<Value> = d["files"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|f| {
+                        let name = if f["filename"].is_string() {
+                            &f["filename"]
+                        } else {
+                            &f["name"]
+                        };
+                        json!({ "name": name, "size": f["size"] })
+                    })
+                    .collect();
+                let keep = json!({
+                    "id": d["id"], "title": d["title"], "is_batch": d["is_batch"],
+                    "anidb_aid": d["anidb_aid"], "anidb_eid": d["anidb_eid"],
+                    "tvdb_season": d["tvdb_season"], "num_files": d["num_files"], "files": files,
+                });
+                std::fs::write(&path, keep.to_string()).expect("write details");
+                if (n + 1) % 50 == 0 {
+                    eprintln!("  {}/{}", n + 1, chosen.len());
+                }
+            }
+        }
+    }
+
+    fn without_nulls(mut row: Value) -> Value {
+        if let Some(map) = row.as_object_mut() {
+            map.retain(|_, v| !v.is_null());
+        }
+        row
+    }
+
+    fn write_jsonl_gz(path: &Path, rows: &[Value]) {
+        use std::io::Write;
+        let file = std::fs::File::create(path).expect("create fixture");
+        let mut gz = flate2::write::GzEncoder::new(file, flate2::Compression::best());
+        for row in rows {
+            writeln!(gz, "{row}").expect("write fixture");
+        }
+        gz.finish().expect("finish fixture");
+    }
+
+    /// Writes `titles.jsonl.gz` and `file-lists.jsonl.gz` from the cache,
+    /// sorted, keeping only what the corpus tests read.
+    pub(super) fn pack(cache: &Path, fixture: &Path) {
+        let raw = std::fs::read_to_string(cache.join("titles.json")).expect("titles.json");
+        let mut titles: Vec<Value> = serde_json::from_str::<Vec<Value>>(&raw)
+            .unwrap()
+            .into_iter()
+            .map(|r| {
+                without_nulls(if r["src"] == "nyaa" {
+                    let nyaa_id = r["url"]
+                        .as_str()
+                        .and_then(|u| u.rsplit("/view/").next())
+                        .and_then(|id| id.parse::<i64>().ok());
+                    json!({
+                        "title": r["title"], "source": "nyaa-rss", "nyaa_id": nyaa_id,
+                        "nyaa_category": r["category"],
+                    })
+                } else {
+                    json!({
+                        "title": r["title"],
+                        "source": r["article"].as_str().unwrap_or("AnimeTosho"),
+                        "at_id": r["id"], "nyaa_id": r["nyaa_id"], "num_files": r["num_files"],
+                        "size": r["size"], "anidb_aid": r["anidb_aid"], "anidb_eid": r["anidb_eid"],
+                    })
+                })
+            })
+            .collect();
+        titles.sort_by(|a, b| a["title"].as_str().cmp(&b["title"].as_str()));
+        let mut lists: Vec<Value> = std::fs::read_dir(cache.join("details"))
+            .expect("details dir")
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|e| e == "json"))
+            .map(|p| {
+                let d: Value = serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap();
+                let files: Vec<Value> = d["files"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|f| json!([f["name"], f["size"]]))
+                    .collect();
+                without_nulls(json!({
+                    "at_id": d["id"], "title": d["title"], "at_is_batch": d["is_batch"],
+                    "anidb_aid": d["anidb_aid"], "tvdb_season": d["tvdb_season"], "files": files,
+                }))
+            })
+            .collect();
+        lists.sort_by_key(|r| r["at_id"].as_i64());
+        write_jsonl_gz(&fixture.join("titles.jsonl.gz"), &titles);
+        write_jsonl_gz(&fixture.join("file-lists.jsonl.gz"), &lists);
+        eprintln!(
+            "{} titles, {} file lists -> {}",
+            titles.len(),
+            lists.len(),
+            fixture.display()
+        );
+    }
+}
+
+/// Builds the AnimeTosho corpus: `RT_STEP=listing` reads AnimeTosho's
+/// feed and Nyaa RSS into `RT_CACHE/titles.json`, `details` fetches the
+/// file lists, `pack` writes the fixture files; `all` (the default) runs
+/// the three. It reads live sites at one request per 1.5 s, about two
+/// hours from an empty cache; every response is cached under `RT_CACHE`,
+/// so a rerun fetches only what is missing. Keep the cache out of a
+/// RAM-backed `/tmp`.
+#[tokio::test]
+#[ignore = "corpus tool: scrapes AnimeTosho and Nyaa; RT_CACHE, RT_STEP"]
+async fn scrape_animetosho_corpus() {
+    let cache = PathBuf::from(std::env::var("RT_CACHE").expect("RT_CACHE"));
+    let step = std::env::var("RT_STEP").unwrap_or_else(|_| "all".to_string());
+    if matches!(step.as_str(), "listing" | "details" | "all") {
+        let mut scraper = scrape::Scraper::new(cache.clone());
+        if step != "details" {
+            scraper.listing().await;
+        }
+        if step != "listing" {
+            scraper.details().await;
+        }
+    }
+    if matches!(step.as_str(), "pack" | "all") {
+        scrape::pack(&cache, &fixture_dir("animetosho-corpus"));
+    }
 }

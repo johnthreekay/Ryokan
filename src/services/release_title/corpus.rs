@@ -240,22 +240,33 @@ fn file_dump() {
     }
 }
 
-/// Every reading of an external corpus, for checking the parser at scale
-/// (`RT_CORPUS` = a JSON array of `{"title": ...}`, `RT_DETAILS` = an
-/// optional directory of per-torrent `{"id", "title", "files": [{"name"}]}`
-/// files, `RT_OUT` = the JSON-lines output). Each file is read plainly and
-/// with its torrent's series title as the series' name.
+/// The rows of a gzipped JSON-lines file in the AnimeTosho corpus.
+fn animetosho(name: &str) -> Vec<Value> {
+    use std::io::BufRead;
+    let path = fixtures().join("animetosho-corpus").join(name);
+    let file =
+        std::fs::File::open(&path).unwrap_or_else(|e| panic!("open {}: {e}", path.display()));
+    std::io::BufReader::new(flate2::read::GzDecoder::new(file))
+        .lines()
+        .map(|line| serde_json::from_str(&line.expect("read line")).expect("JSON line"))
+        .collect()
+}
+
+/// Every reading of the AnimeTosho corpus (`tests/fixtures/animetosho-corpus`)
+/// as JSON lines in `RT_OUT`, for diffing two parser versions: one line per
+/// title, then one per file of each file list, read plainly and with its
+/// torrent title's show name as the series' name. The corpus tests in
+/// `tests/release_title_corpora.rs` hold the totals; this shows which
+/// readings a change moved.
 #[test]
-#[ignore = "corpus tool: RT_CORPUS, RT_DETAILS, RT_OUT"]
+#[ignore = "corpus tool: RT_OUT"]
 fn big_corpus_dump() {
     use std::io::Write;
     use std::time::Instant;
 
-    let corpus = std::env::var("RT_CORPUS").expect("RT_CORPUS");
     let out_path = std::env::var("RT_OUT").expect("RT_OUT");
     let mut out = std::io::BufWriter::new(std::fs::File::create(out_path).expect("RT_OUT"));
-    let rows = load(Path::new(&corpus));
-    for row in rows.as_array().expect("array") {
+    for row in animetosho("titles.jsonl.gz") {
         let title = row["title"].as_str().unwrap_or_default();
         let started = Instant::now();
         let p = parse(title);
@@ -285,23 +296,19 @@ fn big_corpus_dump() {
         });
         writeln!(out, "{rec}").expect("write");
     }
-    let Ok(dir) = std::env::var("RT_DETAILS") else {
-        return;
-    };
-    for path in json_files(Path::new(&dir)) {
-        let d = load(&path);
+    for d in animetosho("file-lists.jsonl.gz") {
         let torrent_title = d["title"].as_str().unwrap_or_default();
         let name = parse(torrent_title).series_title.unwrap_or_default();
         let anchors = super::SeriesAnchors::new(&[name.as_str()]);
         for f in d["files"].as_array().into_iter().flatten() {
-            let file = f["name"].as_str().unwrap_or_default();
+            let file = f[0].as_str().unwrap_or_default();
             let span = crate::services::media::parse_file_path(file);
             let named = crate::services::media::parse_file_path_for(file, &anchors);
             writeln!(
                 out,
                 "{}",
                 serde_json::json!({
-                    "torrent": d["id"],
+                    "torrent": d["at_id"],
                     "file": file,
                     "span": span.map(|s| (s.season, s.first, s.last, s.special)),
                     "named": named.map(|s| (s.season, s.first, s.last, s.special)),
@@ -310,110 +317,4 @@ fn big_corpus_dump() {
             .expect("write");
         }
     }
-}
-
-/// Episode titles that have tripped the parser or could (decimals, markers,
-/// numbers, extras words), for the naming round trip.
-#[cfg(test)]
-const ROUND_TRIP_EPISODE_TITLES: &[&str] = &[
-    "",
-    "2.5 Dimensional Ririsa",
-    "Episode 10.5",
-    "07.5",
-    "The Final Battle",
-    "Final",
-    "END",
-    "Part 2",
-    "100 Years Later",
-    "Opening Night",
-    "Preview",
-    "NCOP",
-    "The Movie",
-    "OVA",
-    "Special Training",
-    "Vol. 3",
-    "1080p",
-    "Season 2",
-    "2nd Season",
-    "#5",
-    "v2",
-    "PROPER",
-    "Extras",
-    "S02E03",
-    "Episode 12",
-    "01-12",
-    "9 - 12",
-    "Batch",
-    "x264",
-    "(2023)",
-    "Ranma 1/2",
-];
-
-/// Renders Ryokan's default episode name for every series title the
-/// parser reads from `RT_CORPUS` (each also paired with another series'
-/// title as the episode title) and reads it back the way the library
-/// scanner does; writes every name that does not come back as written.
-#[test]
-#[ignore = "corpus tool: RT_CORPUS, RT_OUT"]
-fn naming_round_trip_dump() {
-    use crate::services::naming::{self, NameContext, TemplateKind};
-    use std::io::Write;
-    let corpus = std::env::var("RT_CORPUS").expect("RT_CORPUS");
-    let out_path = std::env::var("RT_OUT").expect("RT_OUT");
-    let mut out = std::io::BufWriter::new(std::fs::File::create(out_path).expect("RT_OUT"));
-    let rows = load(Path::new(&corpus));
-    let mut names: Vec<String> = rows
-        .as_array()
-        .expect("array")
-        .iter()
-        .filter_map(|r| parse(r["title"].as_str().unwrap_or_default()).series_title)
-        .collect();
-    names.sort();
-    names.dedup();
-    let (mut checked, mut failed) = (0, 0);
-    for (i, series) in names.iter().enumerate() {
-        let other = &names[(i * 7 + 13) % names.len()];
-        for title in ROUND_TRIP_EPISODE_TITLES
-            .iter()
-            .copied()
-            .chain([other.as_str()])
-        {
-            for (season, first, last) in [(1, 5, 5), (2, 12, 13), (0, 3, 3), (1, 100, 100)] {
-                let ctx = NameContext {
-                    series_title: series.clone(),
-                    season_number: season,
-                    episode_number: first,
-                    episode_last: last,
-                    episode_title: title.to_string(),
-                    ext: "mkv".to_string(),
-                    ..Default::default()
-                };
-                let Ok(rendered) = naming::render(
-                    TemplateKind::EpisodeFile,
-                    naming::DEFAULT_EPISODE_FILE_FORMAT,
-                    &ctx,
-                ) else {
-                    continue;
-                };
-                checked += 1;
-                let span =
-                    crate::services::media::parse_episode_span(&rendered.name.to_lowercase());
-                if !span
-                    .is_some_and(|s| s.season == Some(season) && s.first == first && s.last == last)
-                {
-                    failed += 1;
-                    let row = serde_json::json!({
-                        "series": series, "title": title, "season": season, "first": first,
-                        "name": rendered.name,
-                        "span": span.map(|s| (s.season, s.first, s.last, s.special)),
-                    });
-                    writeln!(out, "{row}").expect("write");
-                }
-            }
-        }
-    }
-    println!(
-        "{} series titles, {checked} names, {failed} did not read back",
-        names.len()
-    );
 }
