@@ -274,7 +274,9 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
         .iter()
         .map(|alias| {
             let normalized_alias = normalize_title(alias);
-            if normalized_title.contains(&normalized_alias) {
+            if normalized_alias.is_empty() {
+                0.0
+            } else if normalized_title.contains(&normalized_alias) {
                 1.0
             } else {
                 // Same ratio the title gate uses (#219), so the breakdown
@@ -1066,6 +1068,55 @@ mod tests {
             .iter()
             .find(|p| p.label == "Title Alias Match")
             .expect("the distinctive token alone is a full match");
+        assert_eq!(alias_part.delta, 40);
+    }
+
+    #[test]
+    fn an_alias_that_normalizes_to_nothing_earns_no_alias_match() {
+        // An empty normalized alias is a substring of every title and used
+        // to earn the full 40.
+        let c = cls(Source::Web, Resolution::R1080p);
+        let parts_for = |aliases: &[String], title: &str| {
+            let mut r = candidate(title, "h1");
+            r.score = 0;
+            rescore_for_auto_search_with_breakdown(
+                &r,
+                &c,
+                &default_config(),
+                aliases,
+                &SeriesAnchors::new(aliases),
+                &SearchTarget::Single,
+                1,
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                Source::Web,
+                Resolution::R1080p,
+                Source::Hdtv,
+                Resolution::R720p,
+                0,
+                false,
+            )
+            .1
+        };
+        let kaiju = "[SubsPlease] Kaiju No. 8 - 01 (1080p) [ABCD1234].mkv";
+        let punctuation = parts_for(&["!!!".to_string()], kaiju);
+        assert!(
+            punctuation.iter().all(|p| p.label != "Title Alias Match"),
+            "{punctuation:?}"
+        );
+        // AniList's English `[Oshi No Ko]` keeps its text: no credit on
+        // another show, full credit on its own.
+        let oshi = ["[Oshi No Ko]".to_string()];
+        let other = parts_for(&oshi, kaiju);
+        assert!(
+            other.iter().all(|p| p.label != "Title Alias Match"),
+            "{other:?}"
+        );
+        let own = parts_for(&oshi, "[SubsPlease] Oshi no Ko - 05 (1080p) [ABCD1234].mkv");
+        let alias_part = own
+            .iter()
+            .find(|p| p.label == "Title Alias Match")
+            .expect("its own release matches");
         assert_eq!(alias_part.delta, 40);
     }
 }

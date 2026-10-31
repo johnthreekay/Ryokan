@@ -20,6 +20,12 @@ use super::provenance::{AliasMatch, MatchKind};
 use super::{SearchTarget, episode_match};
 
 pub fn normalize_title(input: &str) -> String {
+    // A name that is wholly one bracket group (AniList's English
+    // `[Oshi No Ko]`) keeps its text: dropped with the brackets, it
+    // normalized to "" and matched every release.
+    if let Some(inner) = sole_bracket_group(input) {
+        return normalize_title(inner);
+    }
     let lower = input.to_lowercase();
     let mut cleaned = String::with_capacity(lower.len());
     let mut in_brackets = 0i32;
@@ -67,6 +73,31 @@ pub fn normalize_title(input: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// The text inside `input` when the whole (trimmed) input is a single
+/// bracket group, depth counted the way `normalize_title` counts it.
+/// `[Group][Show][01]` is several groups and answers `None`.
+fn sole_bracket_group(input: &str) -> Option<&str> {
+    let trimmed = input.trim();
+    if !trimmed.starts_with(['[', '(', '{']) {
+        return None;
+    }
+    let mut depth = 0i32;
+    for (i, ch) in trimmed.char_indices() {
+        match ch {
+            '[' | '(' | '{' => depth += 1,
+            ']' | ')' | '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let end = i + ch.len_utf8();
+                    return (end == trimmed.len()).then(|| &trimmed[1..i]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 pub fn token_set(value: &str) -> HashSet<String> {
@@ -1083,6 +1114,10 @@ pub(super) fn best_alias_match(
     let mut best: Option<AliasMatch> = None;
     for alias in aliases {
         let normalized_alias = normalize_title(alias);
+        // An empty alias is a substring of every title.
+        if normalized_alias.is_empty() {
+            continue;
+        }
         let alias_tokens = token_set(&normalized_alias);
         if normalized_title.contains(&normalized_alias) {
             if !policy.surplus_check
@@ -2312,5 +2347,53 @@ mod tests {
             .expect("relaxed policy accepts 2 of 4 distinctive tokens");
         assert_eq!(relaxed.kind, MatchKind::Fuzzy);
         assert!((relaxed.ratio - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_wholly_bracketed_name_keeps_its_text() {
+        assert_eq!(normalize_title("[Oshi No Ko]"), "oshi no ko");
+        assert_eq!(normalize_title("  (Oshi no Ko)  "), "oshi no ko");
+        assert_eq!(normalize_title("[[Nested] Name]"), "name");
+        // Several groups are release decorations, as before.
+        assert_eq!(normalize_title("[Group][Show][01][1080p]"), "");
+        assert_eq!(
+            normalize_title("[SubsPlease] Oshi no Ko - 05 (1080p)"),
+            "oshi no ko 05"
+        );
+        assert_eq!(normalize_title("[]"), "");
+    }
+
+    #[test]
+    fn a_bracketed_alias_matches_only_its_own_releases() {
+        // AniList's English title for Oshi no Ko is `[Oshi No Ko]`. It
+        // normalized to "" and matched every release verbatim.
+        let aliases = vec!["[Oshi No Ko]".to_string()];
+        let precompute = SiblingRejectPrecompute::build(&aliases, &[]);
+        let matches = |title: &str| {
+            matches_target(
+                title,
+                &aliases,
+                &precompute,
+                &SearchTarget::Episode(1),
+                0,
+                false,
+                0,
+            )
+        };
+        assert!(!matches(
+            "[SubsPlease] Kaiju No. 8 - 01 (1080p) [ABCD1234].mkv"
+        ));
+        assert!(matches(
+            "[SubsPlease] Oshi no Ko - 01 (1080p) [ABCD1234].mkv"
+        ));
+    }
+
+    #[test]
+    fn an_alias_that_normalizes_to_nothing_matches_nothing() {
+        let aliases = vec!["!!!".to_string(), "[A][B]".to_string()];
+        let title = normalize_title("[SubsPlease] Kaiju No. 8 - 01 (1080p)");
+        let tokens = token_set(&title);
+        assert!(best_alias_match(&title, &tokens, &aliases, STRICT_ALIAS_POLICY).is_none());
+        assert!(best_alias_match(&title, &tokens, &aliases, RELAXED_ALIAS_POLICY).is_none());
     }
 }

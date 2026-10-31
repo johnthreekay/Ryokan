@@ -2318,6 +2318,7 @@ fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
             let alias_tokens = auto_search::token_set(&normalized_alias);
             let mut score = 0.0f32;
             if !normalized_alias.is_empty()
+                && !item.normalized.is_empty()
                 && (item.normalized.contains(&normalized_alias)
                     || normalized_alias.contains(item.normalized))
             {
@@ -2358,7 +2359,7 @@ fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
             if item.collapsed == *alias
                 || item.collapsed_core == *alias
                 || item.collapsed.contains(alias)
-                || alias.contains(item.collapsed_core)
+                || (!item.collapsed_core.is_empty() && alias.contains(item.collapsed_core))
             {
                 1.0
             } else {
@@ -2384,11 +2385,19 @@ fn collapse_alias(value: &str) -> String {
 }
 
 fn parse_release(item: &RssItem) -> ParsedRelease {
-    let normalized_title = auto_search::normalize_title(&item.title);
+    let title = release_title::parse(&item.title);
+    let mut normalized_title = auto_search::normalize_title(&item.title);
+    // `[SubsPlease][Oshi no Ko][01][1080p]` is all bracket groups and
+    // normalizes to nothing; the show's name is the parser's series title.
+    // With no series title either, the empty views match no series.
+    if normalized_title.is_empty()
+        && let Some(series_title) = title.series_title.as_deref()
+    {
+        normalized_title = auto_search::normalize_title(series_title);
+    }
     let core_title = normalize_core_title(&normalized_title);
     let collapsed_title = collapse_alias(&normalized_title);
     let collapsed_core_title = collapse_alias(&core_title);
-    let title = release_title::parse(&item.title);
     let claim = title.episodes.as_ref();
     let season_bound = claim.is_some_and(|c| c.season.is_some());
     let parse_mode = match claim {
