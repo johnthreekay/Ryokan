@@ -26,7 +26,7 @@ mod search_target;
 use aliases::{SiblingRejectPrecompute, sibling_match_rejects};
 pub use aliases::{
     classify_match, collect_aliases, collect_extended_aliases, collect_sibling_aliases,
-    dedupe_strings, distinctive_overlap_ratio, franchise_head_aliases, is_generic_title_token,
+    dedupe_strings, distinctive_overlap_ratio, franchise_names, is_generic_title_token,
     matches_target, names_more_than_the_series, normalize_title, sequel_variant_aliases,
     token_overlap_ratio, token_set, with_alternate_titles,
 };
@@ -1933,8 +1933,8 @@ fn scoring_anchors(
     franchise_aliases: &[String],
 ) -> SeriesAnchors {
     let extended = collect_extended_aliases(detail);
-    let heads = franchise_head_aliases(detail);
-    SeriesAnchors::new(&[aliases, franchise_aliases, &extended, &heads].concat())
+    let franchise = franchise_names(detail);
+    SeriesAnchors::new(&[aliases, franchise_aliases, &extended, &franchise].concat())
         .with_specials_as_episodes(!media::is_tv_format(&detail.format))
 }
 
@@ -2099,7 +2099,7 @@ async fn resolve_search_overrides(
     match row {
         Some(s) => {
             let mut ctx = resolve_search_overrides_from_row_async(db, &s, config).await;
-            // Issue #300: the franchise head is not an extended alias of
+            // Issue #300: the franchise name is not an extended alias of
             // a later entry, but with an absolute offset the franchise
             // pass can still take "Mushoku Tensei - 12" for the second
             // cour's episode 1, since there it is matched against the
@@ -2108,7 +2108,7 @@ async fn resolve_search_overrides(
                 ctx.franchise_aliases = dedupe_strings(
                     std::mem::take(&mut ctx.franchise_aliases)
                         .into_iter()
-                        .chain(franchise_head_aliases(detail))
+                        .chain(franchise_names(detail))
                         .collect(),
                 );
             }
@@ -3223,38 +3223,48 @@ mod tests {
         );
     }
 
-    /// AniList 210482 as issue #300 describes it: the second Steel
-    /// Ball Run entry, an ONA whose PREQUEL is the first STAGE.
+    /// AniList 210482 and its relations as AniList answered on
+    /// 2026-10-31 (issue #300). The 1st STAGE is its PREQUEL; the manga
+    /// is an ADAPTATION, which is no anime relation.
     fn steel_ball_run_stage_2() -> AnimeDetail {
         let mut d = detail(
             210482,
-            "STEEL BALL RUN JoJo no Kimyou na Bouken 2nd - 3rd STAGE",
+            "JoJo no Kimyou na Bouken: Steel Ball Run - 2nd & 3rd STAGE",
             "STEEL BALL RUN JoJo's Bizarre Adventure 2nd - 3rd STAGE",
-            "",
+            "ジョジョの奇妙な冒険 スティール・ボール・ラン 2nd＆3rd STAGE",
         );
         d.format = "ONA".into();
         d.episodes = Some(11);
         d.synonyms = vec![
-            "JoJo no Kimyou na Bouken: Steel Ball Run".into(),
-            "JoJo's Bizarre Adventure: Part 7-Steel Ball Run".into(),
+            "JoJo's Bizarre Adventure: Part 7\u{2013}Steel Ball Run".into(),
+            "SBR".into(),
         ];
         let mut stage_1 = related_anime(
             "PREQUEL",
-            "STEEL BALL RUN JoJo no Kimyou na Bouken 1st STAGE",
+            "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE",
             "STEEL BALL RUN JoJo's Bizarre Adventure 1st STAGE",
         );
+        stage_1.id = 190327;
         stage_1.format = "ONA".into();
-        d.relations = vec![stage_1];
+        let mut manga = related_anime(
+            "ADAPTATION",
+            "JoJo no Kimyou na Bouken: Steel Ball Run",
+            "JoJo's Bizarre Adventure: Part 7\u{2013}Steel Ball Run",
+        );
+        manga.id = 31706;
+        manga.format = "MANGA".into();
+        manga.media_type = "MANGA".into();
+        d.relations = vec![stage_1, manga];
         d
     }
 
     #[test]
-    fn a_franchise_head_is_no_alias_of_a_later_entry() {
+    fn a_franchise_name_is_no_alias_of_a_later_entry() {
         // Issue #300: "JoJo no Kimyou na Bouken" (the head of a synonym)
         // matched the 2012 series' "01-03" pack verbatim for Steel Ball
         // Run's episode 1.
         let d = steel_ball_run_stage_2();
-        let heads = franchise_head_aliases(&d);
+        let heads = franchise_names(&d);
         for head in ["JoJo no Kimyou na Bouken", "JoJo's Bizarre Adventure"] {
             assert!(heads.iter().any(|h| h == head), "{heads:?}");
         }
@@ -3262,10 +3272,9 @@ mod tests {
         for head in &heads {
             assert!(!extended.contains(head), "{head}: {extended:?}");
         }
-        // The synonyms and the subtitle still are aliases.
+        // The synonym and the subtitle still are aliases.
         for own in [
-            "JoJo no Kimyou na Bouken: Steel Ball Run",
-            "JoJo's Bizarre Adventure: Part 7-Steel Ball Run",
+            "JoJo's Bizarre Adventure: Part 7\u{2013}Steel Ball Run",
             "Steel Ball Run",
         ] {
             assert!(extended.iter().any(|a| a == own), "{own}: {extended:?}");
@@ -3317,7 +3326,122 @@ mod tests {
     }
 
     #[test]
-    fn a_franchise_root_keeps_its_head_and_has_none() {
+    fn the_first_stage_has_the_franchise_names_too() {
+        // AniList 190327: its PREQUEL is Stone Ocean Part 2.
+        let mut d = detail(
+            190327,
+            "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE",
+            "STEEL BALL RUN JoJo's Bizarre Adventure 1st STAGE",
+            "",
+        );
+        d.format = "ONA".into();
+        d.synonyms = vec!["JoJo's Bizarre Adventure: Part 7\u{2013}Steel Ball Run".into()];
+        let mut stone_ocean = related_anime(
+            "PREQUEL",
+            "JoJo no Kimyou na Bouken: Stone Ocean Part 2",
+            "JoJo's Bizarre Adventure: STONE OCEAN Part 2",
+        );
+        stone_ocean.format = "ONA".into();
+        d.relations = vec![stone_ocean];
+        let heads = franchise_names(&d);
+        for head in ["JoJo no Kimyou na Bouken", "JoJo's Bizarre Adventure"] {
+            assert!(heads.iter().any(|h| h == head), "{heads:?}");
+        }
+    }
+
+    /// MAL 61469 as Tenrai answered on 2026-10-31, mapped the way the
+    /// Jikan fallback maps it (no synonyms, anime relations only): the
+    /// subtitle comes first and the franchise second.
+    fn steel_ball_run_mal(prequel_english: &str, relation: &str) -> AnimeDetail {
+        let mut d = detail(
+            -61469,
+            "Steel Ball Run: JoJo no Kimyou na Bouken",
+            "Steel Ball Run: JoJo's Bizarre Adventure",
+            "スティール・ボール・ラン ジョジョの奇妙な冒険",
+        );
+        d.id_mal = Some(61469);
+        d.format = "ONA".into();
+        d.episodes = None;
+        let mut stone_ocean = related_anime(
+            relation,
+            "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 3",
+            prequel_english,
+        );
+        stone_ocean.id = -53273;
+        stone_ocean.format = "ONA".into();
+        d.relations = vec![stone_ocean];
+        d
+    }
+
+    #[test]
+    fn mal_titles_put_the_franchise_second_and_it_is_still_found() {
+        // Issue #300 follow-up. Taking the first segment as the
+        // franchise would have dropped "Steel Ball Run" and kept "JoJo
+        // no Kimyou na Bouken" for a series whose detail came from MAL.
+        for d in [
+            steel_ball_run_mal("JoJo's Bizarre Adventure: Stone Ocean Part 3", "PREQUEL"),
+            // A relation card that came back without its English title.
+            steel_ball_run_mal("", "PREQUEL"),
+            // MAL's parent relation.
+            steel_ball_run_mal("", "PARENT_STORY"),
+        ] {
+            let names = franchise_names(&d);
+            let mut sorted = names.clone();
+            sorted.sort();
+            assert_eq!(
+                sorted,
+                ["JoJo no Kimyou na Bouken", "JoJo's Bizarre Adventure"],
+                "{:?}",
+                d.relations
+            );
+            let extended = collect_extended_aliases(&d);
+            assert!(
+                extended.iter().any(|a| a == "Steel Ball Run"),
+                "{extended:?}"
+            );
+            for name in &names {
+                assert!(!extended.contains(name), "{name}: {extended:?}");
+            }
+
+            let aliases: Vec<String> = collect_aliases(&d).into_iter().chain(extended).collect();
+            let precompute =
+                SiblingRejectPrecompute::build(&aliases, &[]).with_series_format(&d.format);
+            let gate = |title: &str, ep: i32| {
+                matches_target(
+                    title,
+                    &aliases,
+                    &precompute,
+                    &SearchTarget::Episode(ep),
+                    0,
+                    true,
+                    0,
+                )
+            };
+            assert!(!gate(
+                "[RH] JoJo no Kimyou na Bouken - 01-03 (JoJo's Bizarre Adventure) [Dual Audio] [BDRip] [Hi10] [1080p] [FLAC]",
+                1
+            ));
+            assert!(!gate(
+                "[Windstorm] JoJo's Bizarre Adventure - S01E01 (BD 1080p HEVC x265 10-bit FLAC) [Dual Audio] [Multi Subs]",
+                1
+            ));
+            assert!(gate(
+                "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 06 [1080p NF WEBRip HEVC AAC]",
+                6
+            ));
+        }
+    }
+
+    #[test]
+    fn a_subtitle_shared_with_a_split_prequel_is_the_entry_name() {
+        // AniList's 1st STAGE carries "Steel Ball Run" too, after the
+        // franchise; it is the entry's own name, never a franchise name.
+        let names = franchise_names(&steel_ball_run_stage_2());
+        assert!(!names.iter().any(|n| n == "Steel Ball Run"), "{names:?}");
+    }
+
+    #[test]
+    fn a_franchise_root_has_no_franchise_names() {
         // Mushoku Tensei's first cour has no PREQUEL: its head is its
         // own short name.
         let mut d = detail(
@@ -3331,7 +3455,7 @@ mod tests {
             "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2",
             "",
         )];
-        assert!(franchise_head_aliases(&d).is_empty());
+        assert!(franchise_names(&d).is_empty());
 
         // The second cour's head names the franchise.
         let mut cour_2 = detail(
@@ -3345,7 +3469,7 @@ mod tests {
             "Mushoku Tensei: Isekai Ittara Honki Dasu",
             "Mushoku Tensei: Jobless Reincarnation",
         )];
-        assert_eq!(franchise_head_aliases(&cour_2), ["Mushoku Tensei"]);
+        assert_eq!(franchise_names(&cour_2), ["Mushoku Tensei"]);
         assert!(
             !collect_extended_aliases(&cour_2)
                 .iter()
@@ -3354,12 +3478,12 @@ mod tests {
     }
 
     #[test]
-    fn a_head_that_is_the_series_own_title_is_not_a_franchise_head() {
+    fn a_segment_that_is_the_series_own_title_is_not_a_franchise_name() {
         // A sequel carrying the head as a synonym of its own answers
         // to it.
         let mut d = steel_ball_run_stage_2();
         d.synonyms.push("JoJo's Bizarre Adventure".into());
-        let heads = franchise_head_aliases(&d);
+        let heads = franchise_names(&d);
         assert!(
             !heads.iter().any(|h| h == "JoJo's Bizarre Adventure"),
             "{heads:?}"

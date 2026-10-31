@@ -213,10 +213,10 @@ pub struct VerdictInput<'a> {
     /// The season number the series maps to (0 when unknown); only
     /// used for an advisory note.
     pub expected_season: i32,
-    /// Head segments that name the series' franchise, not the series
-    /// (`auto_search::franchise_head_aliases`). A colon or dash segment
+    /// Title segments that name the series' franchise, not the series
+    /// (`auto_search::franchise_names`). A colon or dash segment
     /// of an alias equal to one does not count as naming the series.
-    pub franchise_heads: &'a [String],
+    pub franchise_names: &'a [String],
 }
 
 /// Flatten a relative path so the top-level folder counts as part of
@@ -389,15 +389,15 @@ pub(crate) struct PreparedAlias {
     forms: Vec<(String, HashSet<String>)>,
 }
 
-/// A segment form equal to one of `franchise_heads` is left out
+/// A segment form equal to one of `franchise_names` is left out
 /// (issue #300): "JoJo no Kimyou na Bouken - 01" is the 2012 series,
 /// and the head of Steel Ball Run's "JoJo no Kimyou na Bouken: Steel
 /// Ball Run" verified it. The alias itself is always kept.
 pub(crate) fn prepare_aliases(
     aliases: &[String],
-    franchise_heads: &[String],
+    franchise_names: &[String],
 ) -> Vec<PreparedAlias> {
-    let heads: HashSet<String> = franchise_heads
+    let heads: HashSet<String> = franchise_names
         .iter()
         .map(|h| normalize_title(h))
         .filter(|h| !h.is_empty())
@@ -489,7 +489,7 @@ pub fn assess(input: &VerdictInput<'_>) -> Verdict {
         .collect();
 
     let known = alias_content_tokens(&aliases);
-    let prepared = prepare_aliases(&aliases, input.franchise_heads);
+    let prepared = prepare_aliases(&aliases, input.franchise_names);
     let mut claimed_memo: HashMap<String, HashSet<String>> = HashMap::new();
     let mut any_signal = false;
     let mut shares_a_word = false;
@@ -552,7 +552,7 @@ mod tests {
             sibling_aliases: &siblings,
             filenames: &files,
             expected_season: season,
-            franchise_heads: &[],
+            franchise_names: &[],
         })
     }
 
@@ -563,22 +563,31 @@ mod tests {
     ];
 
     #[test]
-    fn a_franchise_head_does_not_name_a_later_entry() {
+    fn a_franchise_name_does_not_name_a_later_entry() {
         // Issue #300: the 2012 series' files named Steel Ball Run's
         // "JoJo no Kimyou na Bouken: Steel Ball Run" through its head.
+        // AniList 210482's titles and synonyms, and its relations' titles
+        // (the 1st STAGE and the manga) as siblings.
         let own = strs(&[
+            "JoJo no Kimyou na Bouken: Steel Ball Run - 2nd & 3rd STAGE",
             "STEEL BALL RUN JoJo's Bizarre Adventure 2nd - 3rd STAGE",
+            "JoJo's Bizarre Adventure: Part 7\u{2013}Steel Ball Run",
+            "SBR",
+        ]);
+        let siblings = strs(&[
+            "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE",
+            "STEEL BALL RUN JoJo's Bizarre Adventure 1st STAGE",
             "JoJo no Kimyou na Bouken: Steel Ball Run",
-            "JoJo's Bizarre Adventure: Part 7-Steel Ball Run",
+            "JoJo's Bizarre Adventure: Part 7\u{2013}Steel Ball Run",
         ]);
         let heads = strs(&["JoJo no Kimyou na Bouken", "JoJo's Bizarre Adventure"]);
         let judge = |files: &[&str], heads: &[String]| {
             assess(&VerdictInput {
                 own_aliases: &own,
-                sibling_aliases: &[],
+                sibling_aliases: &siblings,
                 filenames: &strs(files),
                 expected_season: 0,
-                franchise_heads: heads,
+                franchise_names: heads,
             })
         };
         let rh =
@@ -873,7 +882,7 @@ mod tests {
             sibling_aliases: &[],
             filenames: &files,
             expected_season: 0,
-            franchise_heads: &[],
+            franchise_names: &[],
         });
         let d = v.detail(&files);
         assert_eq!(v.as_str(), "misgrab");

@@ -633,16 +633,16 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
     // Decompose all titles (primary + synonyms) into sub-phrases.
     // Nyaa releases often use just the subtitle portion
     // (e.g. "Steel Ball Run" from "JoJo's Bizarre Adventure: Part 7–Steel Ball Run").
-    // A franchise head ("JoJo's Bizarre Adventure" there) is left out:
-    // see `franchise_head_aliases`.
-    let heads: HashSet<String> = franchise_head_aliases(detail)
+    // A franchise name ("JoJo's Bizarre Adventure" there) is left out:
+    // see `franchise_names`.
+    let franchise: HashSet<String> = franchise_names(detail)
         .iter()
         .map(|h| normalize_title(h))
         .collect();
     let all_titles: Vec<String> = primary.iter().chain(extra.iter()).cloned().collect();
     for title in &all_titles {
         for segment in split_title_segments(title, &related) {
-            if !heads.contains(&normalize_title(&segment)) {
+            if !franchise.contains(&normalize_title(&segment)) {
                 extra.push(segment);
             }
         }
@@ -656,54 +656,141 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
         .collect()
 }
 
-/// Issue #300. The head segments of this series' compound titles that
-/// name its franchise rather than the series: "JoJo no Kimyou na
-/// Bouken" from "JoJo no Kimyou na Bouken: Steel Ball Run". Only an
-/// entry further down a franchise has them, one with a PREQUEL or a
-/// PARENT anime relation; for the franchise's first entry the head is
+/// Issue #300. The segments of this series' compound titles that name
+/// its franchise rather than the series: "JoJo no Kimyou na Bouken"
+/// in AniList's "JoJo no Kimyou na Bouken: Steel Ball Run - 2nd & 3rd
+/// STAGE" and in MAL's "Steel Ball Run: JoJo no Kimyou na Bouken".
+/// Only an entry further down a franchise has them, one with a
+/// PREQUEL or a parent anime relation (AniList `PARENT`, MAL
+/// `PARENT_STORY`); for the franchise's first entry the shared name is
 /// that entry's own short name ("Mushoku Tensei" for the first cour),
 /// and it stays an alias.
 ///
-/// A release named by the head alone is the franchise's first entry,
-/// numbered its own way, so as an alias the head matched
+/// A release named by the franchise alone is the franchise's first
+/// entry, numbered its own way, so as an alias the name matched
 /// "[RH] JoJo no Kimyou na Bouken - 01-03" (the 2012 series) for
-/// Steel Ball Run's episode 1 verbatim. The head stays usable where
-/// a number picks this entry out: the franchise pass (`resolve_search_overrides`
+/// Steel Ball Run's episode 1 verbatim. It stays usable where a number
+/// picks this entry out: the franchise pass (`resolve_search_overrides`
 /// adds it to the franchise aliases when the series has an absolute
-/// offset), whose target is the absolute episode. A head that is also
-/// one of the series' own full titles or synonyms is the series' name
-/// and is not returned.
-pub fn franchise_head_aliases(detail: &AnimeDetail) -> Vec<String> {
-    let further_down = detail.relations.iter().any(|rel| {
-        rel.media_type.eq_ignore_ascii_case("ANIME")
-            && (rel.relation_type.eq_ignore_ascii_case("PREQUEL")
-                || rel.relation_type.eq_ignore_ascii_case("PARENT"))
-    });
-    if !further_down {
+/// offset), whose target is the absolute episode.
+///
+/// The franchise's segment is not always the first one (MAL puts the
+/// subtitle first), so it is found in three steps:
+/// 1. A segment that is, or starts, the first segment of a prequel's or
+///    parent's compound title names the franchise: "JoJo no Kimyou na Bouken"
+///    starts MAL's "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 3"
+///    and is AniList's 1st STAGE's head.
+/// 2. The other segments of a title holding one are the entry's own
+///    names ("Steel Ball Run"), and are never returned.
+/// 3. In any other compound title, the segments beside an entry name
+///    name the franchise too ("JoJo's Bizarre Adventure" in "JoJo's
+///    Bizarre Adventure: Part 7–Steel Ball Run"); a title holding
+///    neither falls back to its first segment, the "Franchise:
+///    Subtitle" shape AniList uses.
+///
+/// A segment that is also one of the series' own full titles or
+/// synonyms is the series' name and is not returned.
+pub fn franchise_names(detail: &AnimeDetail) -> Vec<String> {
+    let earlier: Vec<&crate::services::anilist::RelatedEntry> = detail
+        .relations
+        .iter()
+        .filter(|rel| {
+            rel.media_type.eq_ignore_ascii_case("ANIME")
+                && ["PREQUEL", "PARENT", "PARENT_STORY"]
+                    .iter()
+                    .any(|t| rel.relation_type.eq_ignore_ascii_case(t))
+        })
+        .collect();
+    if earlier.is_empty() {
         return Vec::new();
     }
+    // The first segment of each earlier entry's compound titles, as
+    // tokens. A title with no delimiter has no first segment to go by:
+    // the 1st STAGE's "STEEL BALL RUN JoJo's Bizarre Adventure 1st
+    // STAGE" starts with the entry's own name.
+    let earlier_heads: Vec<Vec<String>> = earlier
+        .iter()
+        .flat_map(|rel| [&rel.title_romaji, &rel.title_english, &rel.title_native])
+        .map(|title| title_parts(title))
+        .filter(|parts| parts.len() >= 2)
+        .map(|parts| words(&parts[0]))
+        .filter(|tokens| !tokens.is_empty())
+        .collect();
+    let starts_an_earlier_head = |segment: &str| {
+        let tokens = words(segment);
+        !tokens.is_empty()
+            && earlier_heads
+                .iter()
+                .any(|head| head.len() >= tokens.len() && head[..tokens.len()] == tokens[..])
+    };
+
     let own: Vec<String> = collect_aliases(detail)
         .into_iter()
         .chain(detail.synonyms.iter().cloned())
         .collect();
     let own_full: HashSet<String> = own.iter().map(|t| normalize_title(t)).collect();
-    let mut heads = Vec::new();
-    for title in &own {
-        let parts = title_parts(title);
-        if parts.len() < 2 {
+    let compound: Vec<Vec<String>> = own
+        .iter()
+        .map(|t| title_parts(t))
+        .filter(|parts| parts.len() >= 2)
+        .collect();
+    let key = |segment: &str| normalize_title(segment);
+
+    // Step 1 and 2.
+    let mut franchise: HashSet<String> = HashSet::new();
+    let mut entry: HashSet<String> = HashSet::new();
+    for parts in &compound {
+        let marked: Vec<bool> = parts.iter().map(|p| starts_an_earlier_head(p)).collect();
+        if !marked.iter().any(|m| *m) {
             continue;
         }
-        let head = parts[0].as_str();
-        if head.len() < 5 || head.split_whitespace().count() < 2 {
-            continue;
+        for (part, is_franchise) in parts.iter().zip(marked) {
+            if is_franchise {
+                franchise.insert(key(part));
+            } else {
+                entry.insert(key(part));
+            }
         }
-        let normalized = normalize_title(head);
-        if normalized.is_empty() || own_full.contains(&normalized) {
-            continue;
-        }
-        heads.push(head.to_string());
     }
-    dedupe_strings(heads)
+    // A segment found both ways names the entry.
+    franchise.retain(|f| !entry.contains(f));
+    // Step 3.
+    for parts in &compound {
+        let keys: Vec<String> = parts.iter().map(|p| key(p)).collect();
+        if keys.iter().any(|k| franchise.contains(k)) {
+            continue;
+        }
+        if keys.iter().any(|k| entry.contains(k)) {
+            franchise.extend(keys.into_iter().filter(|k| !entry.contains(k)));
+        } else if !entry.contains(&keys[0]) {
+            franchise.insert(keys[0].clone());
+        }
+    }
+
+    let mut out = Vec::new();
+    for parts in &compound {
+        for part in parts {
+            let k = key(part);
+            if k.is_empty()
+                || !franchise.contains(&k)
+                || own_full.contains(&k)
+                || part.len() < 5
+                || part.split_whitespace().count() < 2
+            {
+                continue;
+            }
+            out.push(part.clone());
+        }
+    }
+    dedupe_strings(out)
+}
+
+/// A title's normalized words.
+fn words(text: &str) -> Vec<String> {
+    normalize_title(text)
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
 }
 
 /// A compound title split at its delimiters: en and em dashes, a colon
