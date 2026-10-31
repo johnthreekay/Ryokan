@@ -40,9 +40,13 @@
 //! confirms a rival, and two entries' names are compared only on the
 //! name fields both have. There are no weights.
 //!
-//! Pure: the franchise comes in as data (`graph::FranchiseGraph`).
+//! The decision is pure: the franchise comes in as data
+//! (`graph::FranchiseGraph`), read out of the metadata caches by
+//! `load::load_franchise` or built from a detail's own relations by
+//! `Franchise::from_detail`.
 
 mod graph;
+mod load;
 mod names;
 mod structure;
 
@@ -51,6 +55,7 @@ use std::collections::HashSet;
 pub use graph::{
     EntryCard, Franchise, FranchiseGraph, GraphEdge, GraphNode, OffsetRow, Relation, TvdbRow,
 };
+pub use load::{MAX_CHAIN, load_franchise, load_graph};
 
 use crate::services::release_title::{self, ParsedTitle};
 use graph::{Field, NameFields};

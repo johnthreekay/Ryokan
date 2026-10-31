@@ -317,18 +317,22 @@ impl FranchiseGraph {
         })
     }
 
-    /// Every node reached from `start` through chain edges, either way.
+    /// Every node reached from `start` through chain edges: prequels and
+    /// sequels either way, parents upward.
     fn chain_from(&self, start: i64) -> HashSet<i64> {
         let mut seen: HashSet<i64> = HashSet::from([start]);
         let mut queue = vec![start];
         while let Some(id) = queue.pop() {
             for edge in &self.edges {
-                if !Relation::parse(&edge.relation).is_chain() {
+                let relation = Relation::parse(&edge.relation);
+                if !relation.is_chain() {
                     continue;
                 }
+                // A `PARENT` edge leads up only: whose parent `id` is, is
+                // a child (a side story).
                 let next = if edge.from == id {
                     edge.to
-                } else if edge.to == id {
+                } else if edge.to == id && relation != Relation::Parent {
                     edge.from
                 } else {
                     continue;
