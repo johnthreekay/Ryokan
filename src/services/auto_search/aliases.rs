@@ -518,6 +518,19 @@ pub struct SiblingRejectPrecompute {
 
 impl SiblingRejectPrecompute {
     pub fn build(own_aliases: &[String], sibling_aliases: &[String]) -> Self {
+        Self::build_with_anchors(own_aliases, sibling_aliases, &[])
+    }
+
+    /// `build`, with names the episode check reads the series by that
+    /// are not aliases: its franchise names (`franchise_names`, issue
+    /// #300). The extended pass had them as aliases before; without
+    /// them as anchors `Steel Ball Run - JoJo's Bizarre Adventure 02`
+    /// lost its episode, the number right after a name.
+    pub fn build_with_anchors(
+        own_aliases: &[String],
+        sibling_aliases: &[String],
+        anchor_names: &[String],
+    ) -> Self {
         let own_token_sets = own_aliases
             .iter()
             .map(|a| token_set(&normalize_title(a)))
@@ -537,7 +550,7 @@ impl SiblingRejectPrecompute {
         Self {
             own_token_sets,
             siblings,
-            anchors: SeriesAnchors::new(own_aliases),
+            anchors: SeriesAnchors::new(&[own_aliases, anchor_names].concat()),
         }
     }
 
@@ -679,14 +692,23 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
 /// 1. A segment that is, or starts, the first segment of a prequel's or
 ///    parent's compound title names the franchise: "JoJo no Kimyou na Bouken"
 ///    starts MAL's "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 3"
-///    and is AniList's 1st STAGE's head.
+///    and is AniList's 1st STAGE's head. So does a segment that is one
+///    of their whole titles: the Mugen Train movie's prequel is
+///    "Kimetsu no Yaiba", and a French synonym that splits the
+///    franchise in two ("Demon Slayer: Kimetsu no Yaiba - Le film :
+///    ...") otherwise made it the movie's own name and "Mugen
+///    Ressha-hen" the franchise.
 /// 2. The other segments of a title holding one are the entry's own
 ///    names ("Steel Ball Run"), and are never returned.
 /// 3. In any other compound title, the segments beside an entry name
 ///    name the franchise too ("JoJo's Bizarre Adventure" in "JoJo's
 ///    Bizarre Adventure: Part 7–Steel Ball Run"); a title holding
 ///    neither falls back to its first segment, the "Franchise:
-///    Subtitle" shape AniList uses.
+///    Subtitle" shape AniList uses, when every word of it is in an
+///    earlier entry's titles. A word the earlier entries lack is this
+///    entry's own: "JUJUTSU KAISEN Season 3", "Kizumonogatari II" and
+///    "Mushoku Tensei II" name the entry, and as aliases they find
+///    "Jujutsu Kaisen Season 3 01-03".
 ///
 /// A segment that is also one of the series' own full titles or
 /// synonyms is the series' name and is not returned.
@@ -704,24 +726,35 @@ pub fn franchise_names(detail: &AnimeDetail) -> Vec<String> {
     if earlier.is_empty() {
         return Vec::new();
     }
+    let earlier_titles: Vec<&String> = earlier
+        .iter()
+        .flat_map(|rel| [&rel.title_romaji, &rel.title_english, &rel.title_native])
+        .collect();
     // The first segment of each earlier entry's compound titles, as
     // tokens. A title with no delimiter has no first segment to go by:
     // the 1st STAGE's "STEEL BALL RUN JoJo's Bizarre Adventure 1st
-    // STAGE" starts with the entry's own name.
-    let earlier_heads: Vec<Vec<String>> = earlier
+    // STAGE" starts with the entry's own name. Such a title only counts
+    // whole, matched exactly.
+    let earlier_heads: Vec<Vec<String>> = earlier_titles
         .iter()
-        .flat_map(|rel| [&rel.title_romaji, &rel.title_english, &rel.title_native])
         .map(|title| title_parts(title))
         .filter(|parts| parts.len() >= 2)
         .map(|parts| words(&parts[0]))
         .filter(|tokens| !tokens.is_empty())
         .collect();
-    let starts_an_earlier_head = |segment: &str| {
+    let earlier_whole: HashSet<String> = earlier_titles
+        .iter()
+        .map(|title| normalize_title(title))
+        .filter(|title| !title.is_empty())
+        .collect();
+    let earlier_words: HashSet<String> = earlier_titles.iter().flat_map(|t| words(t)).collect();
+    let names_an_earlier_entry = |segment: &str| {
         let tokens = words(segment);
         !tokens.is_empty()
-            && earlier_heads
-                .iter()
-                .any(|head| head.len() >= tokens.len() && head[..tokens.len()] == tokens[..])
+            && (earlier_whole.contains(&normalize_title(segment))
+                || earlier_heads
+                    .iter()
+                    .any(|head| head.len() >= tokens.len() && head[..tokens.len()] == tokens[..]))
     };
 
     let own: Vec<String> = collect_aliases(detail)
@@ -740,7 +773,7 @@ pub fn franchise_names(detail: &AnimeDetail) -> Vec<String> {
     let mut franchise: HashSet<String> = HashSet::new();
     let mut entry: HashSet<String> = HashSet::new();
     for parts in &compound {
-        let marked: Vec<bool> = parts.iter().map(|p| starts_an_earlier_head(p)).collect();
+        let marked: Vec<bool> = parts.iter().map(|p| names_an_earlier_entry(p)).collect();
         if !marked.iter().any(|m| *m) {
             continue;
         }
@@ -762,7 +795,11 @@ pub fn franchise_names(detail: &AnimeDetail) -> Vec<String> {
         }
         if keys.iter().any(|k| entry.contains(k)) {
             franchise.extend(keys.into_iter().filter(|k| !entry.contains(k)));
-        } else if !entry.contains(&keys[0]) {
+        } else if !entry.contains(&keys[0])
+            && words(&parts[0])
+                .iter()
+                .all(|word| earlier_words.contains(word))
+        {
             franchise.insert(keys[0].clone());
         }
     }

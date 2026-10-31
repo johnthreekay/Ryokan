@@ -237,8 +237,12 @@ async fn find_all_for_target_with_probes(
                 &series_ctx.custom_tokens,
             );
             let all_aliases = [aliases.clone(), extended].concat();
-            let ext_precompute = SiblingRejectPrecompute::build(&all_aliases, &sibling_aliases)
-                .with_series_format(&detail.format);
+            let ext_precompute = SiblingRejectPrecompute::build_with_anchors(
+                &all_aliases,
+                &sibling_aliases,
+                &franchise_names(detail),
+            )
+            .with_series_format(&detail.format);
             let ext_ctx = InteractiveQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
@@ -1095,8 +1099,12 @@ async fn collect_scored_for_target(
                 &series_ctx.custom_tokens,
             );
             let all_aliases = [aliases.clone(), extended].concat();
-            let ext_precompute = SiblingRejectPrecompute::build(&all_aliases, &sibling_aliases)
-                .with_series_format(&detail.format);
+            let ext_precompute = SiblingRejectPrecompute::build_with_anchors(
+                &all_aliases,
+                &sibling_aliases,
+                &franchise_names(detail),
+            )
+            .with_series_format(&detail.format);
             let ext_ctx = AutoQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
@@ -3281,8 +3289,9 @@ mod tests {
         }
 
         let aliases: Vec<String> = collect_aliases(&d).into_iter().chain(extended).collect();
-        let precompute =
-            SiblingRejectPrecompute::build(&aliases, &[]).with_series_format(&d.format);
+        // The extended pass's gate: the franchise names are anchors.
+        let precompute = SiblingRejectPrecompute::build_with_anchors(&aliases, &[], &heads)
+            .with_series_format(&d.format);
         let season = infer_season_from_detail(&d);
         let gate = |title: &str, ep: i32| {
             matches_target(
@@ -3295,6 +3304,13 @@ mod tests {
                 0,
             )
         };
+        // The number right after the franchise is the episode, and the
+        // title names nothing but the series.
+        let some_stuffs =
+            "[Some-Stuffs] Steel Ball Run - JoJo's Bizarre Adventure 02 (1080p) [34ED0FF1]";
+        assert!(gate(some_stuffs, 2));
+        assert!(!gate(some_stuffs, 1));
+        assert!(!names_more_than_the_series(some_stuffs, &aliases));
         for (other, ep) in [
             (
                 "[RH] JoJo no Kimyou na Bouken - 01-03 (JoJo's Bizarre Adventure) [Dual Audio] [BDRip] [Hi10] [1080p] [FLAC]",
@@ -3488,6 +3504,124 @@ mod tests {
             !heads.iter().any(|h| h == "JoJo's Bizarre Adventure"),
             "{heads:?}"
         );
+    }
+
+    /// The extended pass's automatic gate: a verbatim match on the
+    /// series' aliases plus its extended ones, naming nothing more.
+    fn extended_auto_gate(d: &AnimeDetail, title: &str, target: &SearchTarget) -> bool {
+        let aliases: Vec<String> = collect_aliases(d)
+            .into_iter()
+            .chain(collect_extended_aliases(d))
+            .collect();
+        let precompute =
+            SiblingRejectPrecompute::build_with_anchors(&aliases, &[], &franchise_names(d))
+                .with_series_format(&d.format);
+        classify_match(
+            title,
+            &aliases,
+            &precompute,
+            target,
+            infer_season_from_detail(d),
+            true,
+            0,
+        )
+        .is_some_and(|m| m.kind == MatchKind::Verbatim)
+            && !names_more_than_the_series(title, &aliases)
+    }
+
+    #[test]
+    fn a_prequel_named_whole_is_the_franchise() {
+        // AniList 112151 (titles as AniList answered on 2026-10-31). The
+        // prequel is "Kimetsu no Yaiba"; the French synonym splits the
+        // franchise into two segments, which made "Kimetsu no Yaiba" the
+        // movie's own name and "Mugen Ressha-hen" the franchise.
+        let mut d = detail(
+            112151,
+            "Kimetsu no Yaiba: Mugen Ressha-hen",
+            "Demon Slayer -Kimetsu no Yaiba- The Movie: Mugen Train",
+            "鬼滅の刃 無限列車編",
+        );
+        d.format = "MOVIE".into();
+        d.episodes = Some(1);
+        d.synonyms = vec![
+            "KnY Movie".into(),
+            "Demon Slayer: Mugen Treni".into(),
+            "Demon Slayer: Kimetsu no Yaiba - Le film : Le train de l'Infini".into(),
+        ];
+        d.relations = vec![related_anime(
+            "PREQUEL",
+            "Kimetsu no Yaiba",
+            "Demon Slayer: Kimetsu no Yaiba",
+        )];
+        let names = franchise_names(&d);
+        assert!(names.iter().any(|n| n == "Kimetsu no Yaiba"), "{names:?}");
+        assert!(!names.iter().any(|n| n == "Mugen Ressha-hen"), "{names:?}");
+        let extended = collect_extended_aliases(&d);
+        assert!(
+            extended.iter().any(|a| a == "Mugen Ressha-hen"),
+            "{extended:?}"
+        );
+        for title in [
+            "[Lulu] Demon Slayer - Infinity Train [BD 1080p x264 FLAC][Dual-Audio] | Kimetsu no Yaiba Movie: Mugen Ressha-hen",
+            "[Naruto-Kun.Hu] Kimetsu no Yaiba Movie (v2) - Mugen Ressha-hen [1080p].mkv.torrent",
+        ] {
+            assert!(
+                extended_auto_gate(&d, title, &SearchTarget::Single),
+                "{title}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_first_segment_with_a_word_of_its_own_names_the_entry() {
+        // AniList 172463. Its prequels have no "3": "JUJUTSU KAISEN
+        // Season 3" is the entry's own name, not the franchise's.
+        let mut d = detail(
+            172463,
+            "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen",
+            "JUJUTSU KAISEN Season 3: The Culling Game Part 1",
+            "呪術廻戦 死滅回游 前編",
+        );
+        d.synonyms = vec!["Jujutsu Kaisen 3rd Season".into(), "JJK3".into()];
+        d.relations = vec![
+            related_anime(
+                "PREQUEL",
+                "Jujutsu Kaisen 2nd Season",
+                "JUJUTSU KAISEN Season 2",
+            ),
+            related_anime(
+                "PREQUEL",
+                "Jujutsu Kaisen: Shibuya Jihen Tokubetsu Henshuu-ban × Shimetsu Kaiyuu Senkou Jouei",
+                "JUJUTSU KAISEN: Execution -Shibuya Incident x The Culling Game Begins-",
+            ),
+        ];
+        assert_eq!(franchise_names(&d), ["Jujutsu Kaisen"]);
+        let extended = collect_extended_aliases(&d);
+        assert!(
+            extended.iter().any(|a| a == "JUJUTSU KAISEN Season 3"),
+            "{extended:?}"
+        );
+        assert!(extended_auto_gate(
+            &d,
+            "[SonicMaster] Jujutsu Kaisen Season 3 01-03 (2026) [BD Remux 1080p AVC FLAC 2.0]",
+            &SearchTarget::Episode(1)
+        ));
+
+        // AniList 21399: the numeral is the entry's.
+        let mut kizu = detail(
+            21399,
+            "Kizumonogatari II: Nekketsu-hen",
+            "Kizumonogatari Part 2: Nekketsu",
+            "",
+        );
+        kizu.format = "MOVIE".into();
+        kizu.synonyms = vec!["Wound Tale 2: Hot Blood".into()];
+        kizu.relations = vec![related_anime(
+            "PREQUEL",
+            "Kizumonogatari I: Tekketsu-hen",
+            "Kizumonogatari Part 1: Tekketsu",
+        )];
+        assert!(franchise_names(&kizu).is_empty());
     }
 
     #[test]
