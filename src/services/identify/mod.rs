@@ -138,10 +138,13 @@ pub fn identify_parsed(franchise: &Franchise, parsed: &ParsedTitle) -> Verdict {
         .filter(|r| !r.fits.incompatible() && !r.said.is_empty())
         .collect();
 
+    // Among equal rivals, the closer one: fewer unsaid words, then an
+    // entry on the target's main chain.
+    let closeness = |r: &Evidence| (r.unsaid_marked.unwrap_or(usize::MAX), !r.entry.on_chain);
     let veto = rivals
         .iter()
         .filter_map(|r| veto(&t, r).map(|(tier, reason)| (tier, r, reason)))
-        .min_by_key(|(tier, r, _)| (*tier, r.unsaid_marked.unwrap_or(usize::MAX)));
+        .min_by_key(|(tier, r, _)| (*tier, closeness(r)));
     if let Some((tier, r, reason)) = veto {
         return Verdict::Rival(Rival {
             entry: r.entry.id,
@@ -165,15 +168,22 @@ pub fn identify_parsed(franchise: &Franchise, parsed: &ParsedTitle) -> Verdict {
         return Verdict::Neither;
     }
 
-    let tie = rivals.iter().find(|r| {
-        let names_as_well = r.said.is_superset(&t.said)
-            && match (r.unsaid_marked, t.unsaid_marked) {
-                (Some(ru), Some(tu)) => ru <= tu,
-                (Some(_), None) => true,
-                _ => false,
-            };
-        names_as_well || t.fits.incompatible() && r.said.is_superset(&t.said)
-    });
+    let tie = rivals
+        .iter()
+        .filter(|r| {
+            let names_as_well = r.said.is_superset(&t.said)
+                && match (r.unsaid_marked, t.unsaid_marked) {
+                    (Some(ru), Some(tu)) => ru <= tu,
+                    (Some(_), None) => true,
+                    _ => false,
+                };
+            // A rival fits as well only if it shows every claim the target
+            // shows: one whose data can't say (an unannounced entry) is no
+            // tie for a target that fits.
+            let fits_as_well = !(t.fits.confirmed() && !r.fits.confirmed());
+            names_as_well && fits_as_well || t.fits.incompatible() && r.said.is_superset(&t.said)
+        })
+        .min_by_key(|r| closeness(r));
     match tie {
         // What the title writes beside or in its name breaks a tie for the
         // target only, too weak to veto with: notes naming the target, or
@@ -228,7 +238,7 @@ impl TitleView {
             notes_latin: notes.iter().flat_map(|f| f.latin.iter().cloned()).collect(),
             notes_text: names::fold(&zones.notes.join(" ")),
             notes,
-            claims: Claims::of(parsed),
+            claims: Claims::of(parsed, mains.iter().find_map(|f| f.part)),
         }
     }
 
@@ -269,9 +279,10 @@ struct Evidence<'a> {
     /// leaves unsaid (`None`: no canonical name to judge). Markers are no
     /// words here.
     unsaid: Option<usize>,
-    /// U counting an unstated season or part marker as one more unsaid
-    /// word: `JUJUTSU KAISEN Season 3` is not said in full by `Jujutsu
-    /// Kaisen - 05`.
+    /// U counting an unstated season or part marker, and an unstated
+    /// format word, as one more unsaid word each: `JUJUTSU KAISEN Season
+    /// 3` and `HUNTER×HUNTER OVA` are not said in full by a title that
+    /// names neither.
     unsaid_marked: Option<usize>,
     /// M: every Latin canonical name carries a season or part marker the
     /// title doesn't state.
@@ -305,8 +316,9 @@ impl<'a> Evidence<'a> {
             .flat_map(|f| entry.names.get(f))
             .filter_map(|form| {
                 let u = unsaid_in(form, view)?;
-                let unstated = form.sequel_marker().is_some_and(|m| !view.claims.states(m));
-                Some((u, u + usize::from(unstated)))
+                let marker = form.sequel_marker().is_some_and(|m| !view.claims.states(m));
+                let format = form.format_word && !(view.claims.special || view.claims.movie);
+                Some((u, u + usize::from(marker) + usize::from(format)))
             })
             .collect();
         let unsaid = counts.iter().map(|c| c.0).min();

@@ -186,6 +186,21 @@ struct MappingCache {
     anilist_to_tvdb: HashMap<i64, (i64, i32)>,
     /// MAL ID → (TVDB show ID, TVDB season), the same for MAL-only rows.
     mal_to_tvdb: HashMap<i64, (i64, i32)>,
+    /// AniList ID → every TVDB season the entry sits in, with where its
+    /// episodes fall there when the mappings say (`services::identify`
+    /// reads a release's `S06E04` through it).
+    anilist_tvdb_placements: HashMap<i64, Vec<TvdbPlacement>>,
+}
+
+/// Where an AniList entry sits on TVDB: show, season, and the offset
+/// from the entry's episode numbers to the season's (`episode_offset`
+/// 1: AniList episode 1 is `s06e02`). The offset is `None` when the
+/// mappings name the season without a usable episode range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TvdbPlacement {
+    pub tvdb_id: i64,
+    pub season: i32,
+    pub episode_offset: Option<i32>,
 }
 
 /// Record `tvdb` for `id`, keeping the first one seen unless that one
@@ -412,6 +427,16 @@ pub async fn tmdb_episode_spans(tmdb_id: i64, season: i32) -> Vec<EpisodeSpan> {
         .unwrap_or_default()
 }
 
+/// Every TVDB season an AniList entry sits in, with its episode offset
+/// there when known. Empty when the entry isn't in the mappings.
+pub async fn tvdb_placements(anilist_id: i64) -> Vec<TvdbPlacement> {
+    let cache = CACHE.read().await;
+    cache
+        .as_ref()
+        .and_then(|c| c.data.anilist_tvdb_placements.get(&anilist_id).cloned())
+        .unwrap_or_default()
+}
+
 /// `(anilist_id, anilist_episode)` for TMDB episode `ep` of a season,
 /// given that season's spans. `None` when no span covers it.
 pub fn map_tmdb_episode(spans: &[EpisodeSpan], ep: i32) -> Option<(i64, i32)> {
@@ -510,6 +535,7 @@ pub async fn seed_mal_to_anilist_for_tests(pairs: &[(i64, i64)]) {
         tmdb_episode_spans: HashMap::new(),
         anilist_to_tvdb: HashMap::new(),
         mal_to_tvdb: HashMap::new(),
+        anilist_tvdb_placements: HashMap::new(),
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -599,6 +625,7 @@ pub async fn seed_external_mappings_for_tests(
         tmdb_episode_spans: HashMap::new(),
         anilist_to_tvdb,
         mal_to_tvdb,
+        anilist_tvdb_placements: HashMap::new(),
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -644,6 +671,7 @@ pub async fn seed_tmdb_episode_spans_for_tests(spans: &[(i64, i32, i32, i32, i64
         tmdb_episode_spans,
         anilist_to_tvdb: HashMap::new(),
         mal_to_tvdb: HashMap::new(),
+        anilist_tvdb_placements: HashMap::new(),
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -879,6 +907,9 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
     let mut tmdb_episode_spans: HashMap<(i64, i32), Vec<EpisodeSpan>> = HashMap::new();
     let mut anilist_to_tvdb: HashMap<i64, (i64, i32)> = HashMap::new();
     let mut mal_to_tvdb: HashMap<i64, (i64, i32)> = HashMap::new();
+    let mut anilist_tvdb_placements: HashMap<i64, Vec<TvdbPlacement>> = HashMap::new();
+    // Seasons an entry is named in, for placements no span covers.
+    let mut anilist_tvdb_seasons: HashMap<i64, Vec<(i64, i32)>> = HashMap::new();
 
     let obj = match data.as_object() {
         Some(o) => o,
@@ -892,6 +923,7 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
                 tmdb_episode_spans,
                 anilist_to_tvdb,
                 mal_to_tvdb,
+                anilist_tvdb_placements,
             };
         }
     };
@@ -902,11 +934,23 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
             None => continue,
         };
 
-        for (season, (tmdb, span)) in compose_episode_spans(source_key, target_obj) {
+        for (season, (tmdb, span)) in compose_episode_spans(source_key, target_obj, "tmdb_show") {
             tmdb_episode_spans
                 .entry((tmdb, season))
                 .or_default()
                 .push(span);
+        }
+        for (season, (tvdb_id, span)) in compose_episode_spans(source_key, target_obj, "tvdb_show")
+        {
+            let placement = TvdbPlacement {
+                tvdb_id,
+                season,
+                episode_offset: Some(span.tmdb_start - span.anilist_start),
+            };
+            let list = anilist_tvdb_placements.entry(span.anilist_id).or_default();
+            if !list.contains(&placement) {
+                list.push(placement);
+            }
         }
 
         // Collect all IDs mentioned across source key + target keys.
@@ -941,6 +985,17 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
 
         if anilist_ids.is_empty() && mal_ids.is_empty() {
             continue;
+        }
+        // An entry's own record (`anilist:<id>`) places it in each TVDB
+        // season it names; a show's record lists every entry of the show
+        // beside every season, so it places nothing by itself.
+        if let Some(al) = parse_provider_id(source_key, "anilist") {
+            let seasons = anilist_tvdb_seasons.entry(al).or_default();
+            for &pair in &tvdb_ids {
+                if !seasons.contains(&pair) {
+                    seasons.push(pair);
+                }
+            }
         }
 
         // Build AnimeIds entries — pair up AniList and MAL IDs where possible.
@@ -1008,6 +1063,26 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
         v.sort_by_key(|s| (s.tmdb_start, s.anilist_id));
         v.dedup();
     }
+    // A season named without a usable range (`"7,12-13"`) is a placement
+    // at an unknown episode.
+    for (al, seasons) in anilist_tvdb_seasons {
+        let list = anilist_tvdb_placements.entry(al).or_default();
+        for (tvdb_id, season) in seasons {
+            if !list
+                .iter()
+                .any(|p| p.tvdb_id == tvdb_id && p.season == season)
+            {
+                list.push(TvdbPlacement {
+                    tvdb_id,
+                    season,
+                    episode_offset: None,
+                });
+            }
+        }
+    }
+    for v in anilist_tvdb_placements.values_mut() {
+        v.sort_by_key(|p| (p.tvdb_id, p.season, p.episode_offset));
+    }
 
     MappingCache {
         tmdb_to_anime,
@@ -1018,6 +1093,7 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
         tmdb_episode_spans,
         anilist_to_tvdb,
         mal_to_tvdb,
+        anilist_tvdb_placements,
     }
 }
 
@@ -1057,14 +1133,16 @@ fn range_pairs(value: &serde_json::Value) -> Vec<(i32, i32, i32)> {
 }
 
 /// Episode spans one mappings entry contributes, as
-/// `(tmdb_season, (tmdb_id, span))`. The source key's numbering is the
-/// pivot: an `anidb:` (or `mal:`) entry maps pivot→anilist and
-/// pivot→tmdb separately and the two compose over their overlap; an
-/// `anilist:` entry's pivot IS the AniList numbering; a `tmdb_show:`
-/// entry's pivot is that season's TMDB numbering.
+/// `(show_season, (show_id, span))` for the `show_prefix` (`tmdb_show`
+/// or `tvdb_show`; the span's `tmdb_*` fields then hold that show's
+/// numbers). The source key's numbering is the pivot: an `anidb:` (or
+/// `mal:`) entry maps pivot→anilist and pivot→show separately and the
+/// two compose over their overlap; an `anilist:` entry's pivot IS the
+/// AniList numbering; a show entry's pivot is that season's numbering.
 fn compose_episode_spans(
     source_key: &str,
     targets: &serde_json::Map<String, serde_json::Value>,
+    show_prefix: &str,
 ) -> Vec<(i32, (i64, EpisodeSpan))> {
     // Identity pivots are unbounded on their own side; the other
     // side's declared ranges bound the overlap.
@@ -1077,7 +1155,7 @@ fn compose_episode_spans(
     if let Some(al) = parse_provider_id(source_key, "anilist") {
         to_anilist.push((1, OPEN, al, 1));
     }
-    if let Some((tmdb, season)) = parse_show_id(source_key, "tmdb_show") {
+    if let Some((tmdb, season)) = parse_show_id(source_key, show_prefix) {
         to_tmdb.push((1, OPEN, tmdb, season, 1));
     }
     for (key, value) in targets {
@@ -1085,7 +1163,7 @@ fn compose_episode_spans(
             for (p1, p2, t1) in range_pairs(value) {
                 to_anilist.push((p1, p2, al, t1));
             }
-        } else if let Some((tmdb, season)) = parse_show_id(key, "tmdb_show") {
+        } else if let Some((tmdb, season)) = parse_show_id(key, show_prefix) {
             for (p1, p2, t1) in range_pairs(value) {
                 to_tmdb.push((p1, p2, tmdb, season, t1));
             }
@@ -1902,6 +1980,72 @@ mod episode_span_tests {
             map_tmdb_episode(&spans(&cache, 37854, 1), 61),
             Some((69, 61))
         );
+    }
+
+    #[test]
+    fn tvdb_placements_carry_each_entrys_episode_offset() {
+        // The real shapes: Steel Ball Run's second entry is s06e02-e12, an
+        // anidb-keyed entry composes through its pivot, and a list range
+        // (`"7,12-13"`) names the season without an offset.
+        let data = json!({
+            "anilist:210482": {
+                "tvdb_show:262954:s6": {"1-11": "2-12"}
+            },
+            "anidb:69:R": {
+                "anilist:69": {"1-91": "1-91"},
+                "tvdb_show:81797:s2": {"62-77": "1-16"}
+            },
+            "anilist:18397": {
+                "tvdb_show:267440:s0": {"1-3": "7,12-13"}
+            },
+            // A show's record lists every entry beside every season: only
+            // the composed ranges place them.
+            "tmdb_show:95479:s1": {
+                "anilist:113415": {"1-24": "1-24"},
+                "anilist:145064": {"25-47": "1-23"},
+                "tvdb_show:377543:s1": {"1-24": "1-24"},
+                "tvdb_show:377543:s2": {"25-47": "1-23"}
+            }
+        });
+        let cache = build_cache(&data);
+        let placements = |id| {
+            cache
+                .anilist_tvdb_placements
+                .get(&id)
+                .cloned()
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            placements(210482),
+            [TvdbPlacement {
+                tvdb_id: 262954,
+                season: 6,
+                episode_offset: Some(1)
+            }]
+        );
+        assert_eq!(
+            placements(69),
+            [TvdbPlacement {
+                tvdb_id: 81797,
+                season: 2,
+                episode_offset: Some(-61)
+            }]
+        );
+        assert_eq!(
+            placements(18397),
+            [TvdbPlacement {
+                tvdb_id: 267440,
+                season: 0,
+                episode_offset: None
+            }]
+        );
+        let placed = |season| TvdbPlacement {
+            tvdb_id: 377543,
+            season,
+            episode_offset: Some(0),
+        };
+        assert_eq!(placements(113415), [placed(1)]);
+        assert_eq!(placements(145064), [placed(2)]);
     }
 
     #[test]

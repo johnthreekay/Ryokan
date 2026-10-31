@@ -1,0 +1,293 @@
+{
+  "name": "hunter-x-hunter",
+  "roots": [
+    136,
+    11061
+  ],
+  "nodes": [
+    {
+      "id": 136,
+      "mal_id": 136,
+      "title_romaji": "HUNTER×HUNTER",
+      "title_english": "Hunter x Hunter",
+      "title_native": "HUNTER×HUNTER",
+      "synonyms": [
+        "ハンターxハンター",
+        "HxH",
+        "全职猎人",
+        "القناص"
+      ],
+      "format": "TV",
+      "episodes": 62,
+      "season_year": 1999,
+      "end_year": 2001
+    },
+    {
+      "id": 137,
+      "mal_id": 137,
+      "title_romaji": "HUNTER×HUNTER OVA",
+      "title_english": "Hunter x Hunter: Yorknew City",
+      "title_native": "HUNTER×HUNTER OVA",
+      "synonyms": [
+        "Hunter x Hunter: Yorkshin City Kanketsu-hen",
+        "HxH"
+      ],
+      "format": "OVA",
+      "episodes": 8,
+      "season_year": 2002,
+      "end_year": 2002
+    },
+    {
+      "id": 138,
+      "mal_id": 138,
+      "title_romaji": "HUNTER×HUNTER: Greed Island",
+      "title_english": "",
+      "title_native": "HUNTER×HUNTER: Greed Island",
+      "synonyms": [
+        "Hunter x Hunter OVA 2",
+        "HxH",
+        "ハンターｘハンター: Greed Island"
+      ],
+      "format": "OVA",
+      "episodes": 8,
+      "season_year": 2003,
+      "end_year": 2003
+    },
+    {
+      "id": 139,
+      "mal_id": 139,
+      "title_romaji": "HUNTER×HUNTER: Greed Island Final",
+      "title_english": "",
+      "title_native": "HUNTER×HUNTER　G・I　Final",
+      "synonyms": [
+        "Hunter x Hunter: G I Final",
+        "Hunter x Hunter OVA 3",
+        "ハンター×ハンター　G・I　Final",
+        "HxH"
+      ],
+      "format": "OVA",
+      "episodes": 14,
+      "season_year": 2004,
+      "end_year": 2004
+    },
+    {
+      "id": 10189,
+      "mal_id": 10189,
+      "title_romaji": "HUNTER×HUNTER Pilot-ban",
+      "title_english": "",
+      "title_native": "HUNTER×HUNTER パイロット版",
+      "synonyms": [
+        "ハンター×ハンター",
+        "HUNTER×HUNTER ジャンプスーパーアニメツアー'98",
+        "HUNTER×HUNTER Jump Super Anime Tour '98"
+      ],
+      "format": "OVA",
+      "episodes": 1,
+      "season_year": 1998,
+      "end_year": 1998
+    },
+    {
+      "id": 11061,
+      "mal_id": 11061,
+      "title_romaji": "HUNTER×HUNTER (2011)",
+      "title_english": "Hunter x Hunter (2011)",
+      "title_native": "HUNTER×HUNTER (2011)",
+      "synonyms": [
+        "ハンター×ハンター",
+        "HxH",
+        "全职猎人",
+        "האנטר האנטר",
+        "ฮันเตอร์ x ฮันเตอร์",
+        "القناص ",
+        "Мисливець X Мисливець"
+      ],
+      "format": "TV",
+      "episodes": 148,
+      "season_year": 2011,
+      "end_year": 2014
+    },
+    {
+      "id": 13271,
+      "mal_id": 13271,
+      "title_romaji": "HUNTER×HUNTER: Phantom Rouge",
+      "title_english": "Hunter x Hunter: Phantom Rouge",
+      "title_native": "劇場版 HUNTER×HUNTER 緋色の幻影（ファントム・ルージュ）",
+      "synonyms": [
+        "Gekijouban Hunter x Hunter: Hiiro no Genei",
+        "HxH Movie",
+        "HxH: Phantom Rogue",
+        "Hunter x Hunter: Fantasma Vermelho"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2013,
+      "end_year": 2013
+    },
+    {
+      "id": 19951,
+      "mal_id": 19951,
+      "title_romaji": "HUNTER×HUNTER: THE LAST MISSION",
+      "title_english": "Hunter x Hunter: The Last Mission",
+      "title_native": "劇場版 HUNTER×HUNTER THE LAST MISSION",
+      "synonyms": [
+        "HxH",
+        "HxH: The Last Mission",
+        "Hunter x Hunter: A Última Missão"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2013,
+      "end_year": 2013
+    }
+  ],
+  "edges": [
+    {
+      "from": 136,
+      "to": 137,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 136,
+      "to": 10189,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 136,
+      "to": 11061,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 137,
+      "to": 136,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 137,
+      "to": 138,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 137,
+      "to": 11061,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 138,
+      "to": 137,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 138,
+      "to": 139,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 138,
+      "to": 11061,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 139,
+      "to": 138,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 139,
+      "to": 11061,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 11061,
+      "to": 136,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 11061,
+      "to": 137,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 11061,
+      "to": 138,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 11061,
+      "to": 139,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 11061,
+      "to": 13271,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 11061,
+      "to": 19951,
+      "relation": "SIDE_STORY"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 136,
+      "tvdb_id": 79076,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 137,
+      "tvdb_id": 79076,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 138,
+      "tvdb_id": 79076,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 139,
+      "tvdb_id": 79076,
+      "season": 4,
+      "episode_offset": 0
+    },
+    {
+      "id": 10189,
+      "tvdb_id": 79076,
+      "season": 0,
+      "episode_offset": 0
+    },
+    {
+      "id": 11061,
+      "tvdb_id": 252322,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 11061,
+      "tvdb_id": 252322,
+      "season": 2,
+      "episode_offset": -58
+    },
+    {
+      "id": 11061,
+      "tvdb_id": 252322,
+      "season": 3,
+      "episode_offset": -136
+    },
+    {
+      "id": 13271,
+      "tvdb_id": 252322,
+      "season": 0,
+      "episode_offset": 0
+    },
+    {
+      "id": 19951,
+      "tvdb_id": 252322,
+      "season": 0,
+      "episode_offset": 1
+    }
+  ],
+  "offsets": []
+}

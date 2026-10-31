@@ -1,0 +1,313 @@
+{
+  "name": "dr-stone",
+  "roots": [
+    105333
+  ],
+  "nodes": [
+    {
+      "id": 105333,
+      "mal_id": 38691,
+      "title_romaji": "Dr. STONE",
+      "title_english": "Dr. STONE",
+      "title_native": "Dr.STONE",
+      "synonyms": [
+        "Dcst",
+        "石纪元",
+        "ドクターストーン",
+        "ดร.สโตน เจ้าแห่งวิทยาศาสตร์กู้คืนอารยธรรมโลก",
+        "Доктор Стоун"
+      ],
+      "format": "TV",
+      "episodes": 24,
+      "season_year": 2019,
+      "end_year": 2019
+    },
+    {
+      "id": 113936,
+      "mal_id": 40852,
+      "title_romaji": "Dr. STONE: STONE WARS",
+      "title_english": "Dr. STONE: STONE WARS",
+      "title_native": "Dr.STONE STONE WARS",
+      "synonyms": [
+        "ドクターストーン STONE WARS",
+        "Ｄｒ．ＳＴＯＮＥ第2期",
+        "Dr. STONE 2",
+        "닥터 스톤 STONE WARS",
+        "石纪元第二季",
+        "DR.STONE ภาค 2",
+        "Доктор Стоун: Каменные войны"
+      ],
+      "format": "TV",
+      "episodes": 11,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 131518,
+      "mal_id": 48549,
+      "title_romaji": "Dr. STONE: NEW WORLD",
+      "title_english": "Dr. STONE New World",
+      "title_native": "Dr.STONE NEW WORLD",
+      "synonyms": [
+        "石纪元第三季",
+        "Dr.STONE Season 3",
+        "DR.STONE ภาค 3",
+        "Dr.STONE 第3期",
+        "Dr. STONE 新石紀（第三季）",
+        "Доктор Стоун: Новый Свет"
+      ],
+      "format": "TV",
+      "episodes": 11,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 142876,
+      "mal_id": 50612,
+      "title_romaji": "Dr. STONE: Ryuusui",
+      "title_english": "Dr. STONE Special Episode – RYUSUI",
+      "title_native": "Dr.STONE 龍水",
+      "synonyms": [
+        "Dr. STONE: Ryusui",
+        "Доктор Стоун: Рюсуй"
+      ],
+      "format": "SPECIAL",
+      "episodes": 1,
+      "season_year": 2022,
+      "end_year": 2022
+    },
+    {
+      "id": 162670,
+      "mal_id": 55644,
+      "title_romaji": "Dr. STONE: NEW WORLD Part 2",
+      "title_english": "Dr. STONE New World Part 2",
+      "title_native": "Dr.STONE NEW WORLD 第2クール",
+      "synonyms": [
+        "石纪元第三季",
+        "Dr.STONE Season 3 Part 2",
+        "DR.STONE ภาค 3",
+        "Dr.STONE 第3期 第2クール"
+      ],
+      "format": "TV",
+      "episodes": 11,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 172019,
+      "mal_id": 57592,
+      "title_romaji": "Dr. STONE: SCIENCE FUTURE",
+      "title_english": "Dr. STONE SCIENCE FUTURE",
+      "title_native": "Dr.STONE SCIENCE FUTURE",
+      "synonyms": [
+        "Dr.STONE Season 4",
+        "Dr.STONE 第4期",
+        "ドクターストーン"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2025,
+      "end_year": 2025
+    },
+    {
+      "id": 189117,
+      "mal_id": 61322,
+      "title_romaji": "Dr. STONE: SCIENCE FUTURE Part 2",
+      "title_english": "Dr. STONE SCIENCE FUTURE Cour 2",
+      "title_native": "Dr.STONE SCIENCE FUTURE 2クール",
+      "synonyms": [
+        "Dr.STONE Season 4 Part 2",
+        "ドクターストーン"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2025,
+      "end_year": 2025
+    },
+    {
+      "id": 199221,
+      "mal_id": 62568,
+      "title_romaji": "Dr. STONE: SCIENCE FUTURE Part 3",
+      "title_english": "Dr. STONE SCIENCE FUTURE Cour 3",
+      "title_native": "Dr.STONE SCIENCE FUTURE 3クール",
+      "synonyms": [
+        "Dr.STONE Season 4 Part 3",
+        "ドクターストーン"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2026,
+      "end_year": 2026
+    },
+    {
+      "id": 218099,
+      "mal_id": 65161,
+      "title_romaji": "Dr.STONE: TERRAFORMING",
+      "title_english": "",
+      "title_native": "Dr.STONE TERRAFORMING",
+      "synonyms": [],
+      "format": "",
+      "episodes": null,
+      "season_year": null,
+      "end_year": null
+    }
+  ],
+  "edges": [
+    {
+      "from": 105333,
+      "to": 113936,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 113936,
+      "to": 105333,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 113936,
+      "to": 142876,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 131518,
+      "to": 142876,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 131518,
+      "to": 162670,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 142876,
+      "to": 113936,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 142876,
+      "to": 131518,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 162670,
+      "to": 131518,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 162670,
+      "to": 172019,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 172019,
+      "to": 162670,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 172019,
+      "to": 189117,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 189117,
+      "to": 172019,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 189117,
+      "to": 199221,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 199221,
+      "to": 189117,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 199221,
+      "to": 218099,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 218099,
+      "to": 199221,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 105333,
+      "tvdb_id": 355774,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 113936,
+      "tvdb_id": 355774,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 131518,
+      "tvdb_id": 355774,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 142876,
+      "tvdb_id": 355774,
+      "season": 0,
+      "episode_offset": 1
+    },
+    {
+      "id": 142876,
+      "tvdb_id": 355774,
+      "season": 0,
+      "episode_offset": 2
+    },
+    {
+      "id": 162670,
+      "tvdb_id": 355774,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 162670,
+      "tvdb_id": 355774,
+      "season": 3,
+      "episode_offset": 11
+    },
+    {
+      "id": 172019,
+      "tvdb_id": 355774,
+      "season": 4,
+      "episode_offset": 0
+    },
+    {
+      "id": 189117,
+      "tvdb_id": 355774,
+      "season": 4,
+      "episode_offset": 12
+    },
+    {
+      "id": 199221,
+      "tvdb_id": 355774,
+      "season": 4,
+      "episode_offset": null
+    }
+  ],
+  "offsets": [
+    {
+      "id": 162670,
+      "episodes": 11
+    },
+    {
+      "id": 189117,
+      "episodes": 12
+    },
+    {
+      "id": 199221,
+      "episodes": 24
+    }
+  ]
+}

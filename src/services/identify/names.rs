@@ -14,7 +14,20 @@ use crate::services::release_title;
 
 /// Words that say what kind of thing a name is, not which one; on top of
 /// the auto-search's generic list.
-const IDENTIFY_GENERIC: &[&str] = &["hen", "arc", "x"];
+const IDENTIFY_GENERIC: &[&str] = &["hen", "arc", "x", "gekijouban"];
+
+/// Words that name a release format (`HUNTER×HUNTER OVA`, `... Movie`):
+/// a name carrying one says something a title may not.
+const FORMAT_WORDS: &[&str] = &[
+    "ova",
+    "oad",
+    "ona",
+    "special",
+    "specials",
+    "movie",
+    "film",
+    "gekijouban",
+];
 
 /// Ordinal words that open a season or part marker (`Second Season`,
 /// `The Final Season`).
@@ -37,6 +50,8 @@ pub(super) struct NameForm {
     /// An uppercase Roman number after the first word (`Kizumonogatari
     /// II: Nekketsu-hen`, `Lupin III`): a movie series' part number.
     pub sequence: Option<i32>,
+    /// The name carries a format word (`HUNTER×HUNTER OVA`).
+    pub format_word: bool,
 }
 
 impl NameForm {
@@ -75,6 +90,7 @@ impl NameForm {
             }
         }
         let latin = strip_markers(latin);
+        form.format_word = latin.iter().any(|t| FORMAT_WORDS.contains(&t.as_str()));
         for t in latin {
             if let Some(year) = as_year(&t) {
                 form.year.get_or_insert(year);
@@ -339,6 +355,12 @@ mod tests {
         assert_eq!(latin("Hunter x Hunter"), ["hunter"]);
         assert_eq!(latin("Kaiju No. 8"), ["kaiju", "8"]);
         assert_eq!(latin("Pokémon"), ["pokemon"]);
+        let ova = NameForm::of("HUNTER×HUNTER OVA");
+        assert_eq!(
+            (ova.latin.as_slice(), ova.format_word),
+            (["hunter".to_string()].as_slice(), true)
+        );
+        assert!(!NameForm::of("HUNTER×HUNTER").format_word);
     }
 
     #[test]

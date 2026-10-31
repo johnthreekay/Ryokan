@@ -211,16 +211,19 @@ fn jojo() -> FranchiseGraph {
             id: 1,
             tvdb_id: 262954,
             season: 1,
+            episode_offset: Some(0),
         },
         TvdbRow {
             id: 2,
             tvdb_id: 262954,
             season: 2,
+            episode_offset: Some(0),
         },
         TvdbRow {
             id: 3,
             tvdb_id: 262954,
             season: 6,
+            episode_offset: Some(0),
         },
     ];
     g
@@ -483,12 +486,13 @@ fn a_curated_offset_places_a_special_in_the_absolute_numbering() {
             episodes: 87,
         },
     ];
-    aot.tvdb = [5, 6, 7]
+    aot.tvdb = [(5, 0), (6, 16), (7, 28)]
         .iter()
-        .map(|&id| TvdbRow {
+        .map(|&(id, offset)| TvdbRow {
             id,
             tvdb_id: 267440,
             season: 4,
+            episode_offset: Some(offset),
         })
         .collect();
     let title = "[Group] Shingeki no Kyojin S04E88 [1080p]";

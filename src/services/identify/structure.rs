@@ -28,7 +28,10 @@ pub(super) struct Claims {
 }
 
 impl Claims {
-    pub fn of(parsed: &ParsedTitle) -> Self {
+    /// The claims of a parsed title. The part is `main_part`, read from
+    /// the main name: a `Part 2` in an episode's own title (`Tokyo Colony
+    /// No 1-Part 2`) is no claim about the show.
+    pub fn of(parsed: &ParsedTitle, main_part: Option<i32>) -> Self {
         let positive: Vec<i32> = parsed
             .seasons
             .numbers
@@ -41,14 +44,7 @@ impl Claims {
             [one] if !hint_only => Some(*one),
             _ => None,
         };
-        let part = parsed
-            .seasons
-            .part
-            .filter(|p| *p > 0)
-            .or(match positive.as_slice() {
-                [one] if hint_only => Some(*one),
-                _ => None,
-            });
+        let part = main_part.filter(|p| *p > 0);
         let season_zero = parsed.seasons.numbers == [0];
         let episodes = if parsed.extra || parsed.half_episode {
             None
@@ -165,14 +161,21 @@ pub(super) fn episode_frames(entry: &EntryCard) -> Vec<(i32, Option<i32>)> {
     let count = entry.episodes;
     let span = |before: i32| (before + 1, count.map(|c| before + c));
     let mut frames = vec![span(0)];
-    if let Some(before) = entry.frames.absolute.filter(|b| *b > 0) {
-        frames.push(span(before));
+    if entry.frames.absolute > 0 {
+        frames.push(span(entry.frames.absolute));
     }
-    match (entry.frames.tvdb_season, entry.frames.tvdb_offset) {
-        (Some(_), Some(before)) if before > 0 => frames.push(span(before)),
-        // In a shared TVDB season at an unknown place.
-        (Some(_), None) => frames.push((1, None)),
-        _ => {}
+    for &(_, offset) in &entry.frames.tvdb {
+        match offset {
+            // An entry TVDB splits across seasons starts mid-entry there
+            // (`62-77` is a season's `1-16`).
+            Some(before) if before != 0 => {
+                let (lo, hi) = span(before);
+                frames.push((lo.max(1), hi));
+            }
+            Some(_) => {}
+            // In a TVDB season at an unknown place.
+            None => frames.push((1, None)),
+        }
     }
     // `Kizumonogatari - 02` is the second movie.
     if entry.is_single_entry() {
@@ -279,7 +282,7 @@ mod tests {
         let f = franchise();
         fit(
             f.entry(id).unwrap(),
-            &Claims::of(&release_title::parse(title)),
+            &Claims::of(&release_title::parse(title), None),
         )
     }
 

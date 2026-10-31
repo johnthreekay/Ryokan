@@ -57,11 +57,15 @@ pub struct GraphEdge {
     pub relation: String,
 }
 
+/// One TVDB season an entry sits in (anibridge's `TvdbPlacement`): TVDB
+/// episode = the entry's episode + `episode_offset`, when known.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TvdbRow {
     pub id: i64,
     pub tvdb_id: i64,
     pub season: i32,
+    #[serde(default)]
+    pub episode_offset: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -180,13 +184,12 @@ impl NameFields {
 /// Where one entry's episodes sit in each numbering a release may use.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(super) struct Frames {
-    /// Episodes before this entry in the TV chain (a curated offset when
-    /// there is one). `None` for anything but a TV entry.
-    pub absolute: Option<i32>,
-    /// The TVDB season, and the episodes before this entry inside it when
-    /// another entry shares the season (`None` when unknown).
-    pub tvdb_season: Option<i32>,
-    pub tvdb_offset: Option<i32>,
+    /// Episodes before this entry along its TV PREQUEL chain (a curated
+    /// offset when there is one).
+    pub absolute: i32,
+    /// The TVDB seasons (never season 0, the specials), each with the
+    /// offset from the entry's episodes to the season's when known.
+    pub tvdb: Vec<(i32, Option<i32>)>,
     /// The first year of the TVDB show (`JoJo's Bizarre Adventure (2012)`
     /// for every JoJo TV entry).
     pub tvdb_start_year: Option<i32>,
@@ -210,6 +213,9 @@ pub struct EntryCard {
     /// A movie series' part number (`Kizumonogatari II`).
     pub(super) sequence: Option<i32>,
     pub(super) frames: Frames,
+    /// Reached from the target through `PREQUEL` / `SEQUEL` / `PARENT`
+    /// edges alone (the target included).
+    pub on_chain: bool,
 }
 
 impl EntryCard {
@@ -252,7 +258,6 @@ impl FranchiseGraph {
         let by_id: HashMap<i64, &GraphNode> = self.nodes.iter().map(|n| (n.id, n)).collect();
         let prequels = self.tv_prequels(&by_id);
         let curated: HashMap<i64, i32> = self.offsets.iter().map(|o| (o.id, o.episodes)).collect();
-        let tvdb: HashMap<i64, &TvdbRow> = self.tvdb.iter().map(|t| (t.id, t)).collect();
 
         let mut entries: Vec<EntryCard> = self
             .nodes
@@ -260,47 +265,18 @@ impl FranchiseGraph {
             .enumerate()
             .map(|(i, node)| {
                 let alternates = if i == target_index { alternates } else { &[] };
-                let is_tv = matches!(node.format.as_str(), "TV" | "TV_SHORT");
                 let absolute = curated
                     .get(&node.id)
                     .copied()
-                    .or_else(|| is_tv.then(|| walk_offset(node.id, &prequels, &by_id)));
+                    .unwrap_or_else(|| walk_offset(node.id, &prequels, &by_id));
                 card(node, alternates, absolute)
             })
             .collect();
 
-        // TVDB seasons, and the episodes before each entry inside a
-        // season it shares (`JoJo` Stardust Crusaders' two cours).
-        let mut by_season: HashMap<(i64, i32), Vec<usize>> = HashMap::new();
-        for (i, entry) in entries.iter_mut().enumerate() {
-            if let Some(row) = tvdb.get(&entry.id) {
-                entry.frames.tvdb_season = Some(row.season);
-                if row.season > 0 && !entry.seasons.contains(&row.season) {
-                    entry.seasons.push(row.season);
-                }
-                by_season
-                    .entry((row.tvdb_id, row.season))
-                    .or_default()
-                    .push(i);
-            }
-        }
-        for members in by_season.values_mut() {
-            members.sort_by_key(|&i| {
-                let e = &entries[i];
-                (
-                    e.frames.absolute.unwrap_or(0),
-                    e.season_year.unwrap_or(0),
-                    e.id,
-                )
-            });
-            let mut before = Some(0i32);
-            for &i in members.iter() {
-                entries[i].frames.tvdb_offset = before;
-                before = before.zip(entries[i].episodes).map(|(b, n)| b + n.max(0));
-            }
-        }
+        // The first year of each TVDB show, from its numbered seasons
+        // (a pilot filed under specials is no start).
         let mut start_years: HashMap<i64, i32> = HashMap::new();
-        for row in &self.tvdb {
+        for row in self.tvdb.iter().filter(|r| r.season > 0) {
             if let Some(year) = by_id.get(&row.id).and_then(|n| n.season_year) {
                 start_years
                     .entry(row.tvdb_id)
@@ -309,14 +285,29 @@ impl FranchiseGraph {
             }
         }
         for entry in &mut entries {
-            if let Some(row) = tvdb.get(&entry.id) {
-                entry.frames.tvdb_start_year = start_years.get(&row.tvdb_id).copied();
+            for row in self
+                .tvdb
+                .iter()
+                .filter(|r| r.id == entry.id && r.season > 0)
+            {
+                entry.frames.tvdb.push((row.season, row.episode_offset));
+                if !entry.seasons.contains(&row.season) {
+                    entry.seasons.push(row.season);
+                }
+                if let Some(year) = start_years.get(&row.tvdb_id) {
+                    let start = entry.frames.tvdb_start_year.get_or_insert(*year);
+                    *start = (*start).min(*year);
+                }
             }
+        }
+        let chain = self.chain_from(target);
+        for entry in &mut entries {
+            entry.on_chain = chain.contains(&entry.id);
         }
         // A first TV entry with no season marker and no TVDB row is
         // season 1 by convention.
         for entry in &mut entries {
-            if entry.seasons.is_empty() && entry.is_tv() && entry.frames.absolute == Some(0) {
+            if entry.seasons.is_empty() && entry.is_tv() && entry.frames.absolute == 0 {
                 entry.seasons.push(1);
             }
         }
@@ -324,6 +315,30 @@ impl FranchiseGraph {
             target: target_index,
             entries,
         })
+    }
+
+    /// Every node reached from `start` through chain edges, either way.
+    fn chain_from(&self, start: i64) -> HashSet<i64> {
+        let mut seen: HashSet<i64> = HashSet::from([start]);
+        let mut queue = vec![start];
+        while let Some(id) = queue.pop() {
+            for edge in &self.edges {
+                if !Relation::parse(&edge.relation).is_chain() {
+                    continue;
+                }
+                let next = if edge.from == id {
+                    edge.to
+                } else if edge.to == id {
+                    edge.from
+                } else {
+                    continue;
+                };
+                if seen.insert(next) {
+                    queue.push(next);
+                }
+            }
+        }
+        seen
     }
 
     /// Each node's TV prequels (the related node's format TV), from
@@ -385,7 +400,7 @@ fn forms(names: &[String]) -> Vec<NameForm> {
         .collect()
 }
 
-fn card(node: &GraphNode, alternates: &[String], absolute: Option<i32>) -> EntryCard {
+fn card(node: &GraphNode, alternates: &[String], absolute: i32) -> EntryCard {
     let names = NameFields {
         romaji: forms(std::slice::from_ref(&node.title_romaji)),
         english: forms(std::slice::from_ref(&node.title_english)),
@@ -434,6 +449,7 @@ fn card(node: &GraphNode, alternates: &[String], absolute: Option<i32>) -> Entry
             absolute,
             ..Frames::default()
         },
+        on_chain: false,
     }
 }
 
@@ -508,10 +524,7 @@ mod tests {
         };
         let f = graph.build(3, &[]).expect("target is a node");
         let abs = |id| f.entry(id).unwrap().frames.absolute;
-        assert_eq!(
-            (abs(1), abs(2), abs(3), abs(4)),
-            (Some(0), Some(24), Some(47), None)
-        );
+        assert_eq!((abs(1), abs(2), abs(3), abs(4)), (0, 24, 47, 0));
         assert_eq!(f.entry(1).unwrap().seasons, [1]);
         assert_eq!(f.entry(2).unwrap().seasons, [2]);
 
@@ -521,12 +534,18 @@ mod tests {
             episodes: 50,
         });
         let f = curated.build(3, &[]).unwrap();
-        assert_eq!(f.entry(3).unwrap().frames.absolute, Some(50));
+        assert_eq!(f.entry(3).unwrap().frames.absolute, 50);
         assert!(graph.build(99, &[]).is_none());
     }
 
     #[test]
-    fn a_shared_tvdb_season_offsets_its_later_entries() {
+    fn tvdb_rows_give_seasons_offsets_and_the_shows_first_year() {
+        let row = |id, season, episode_offset| TvdbRow {
+            id,
+            tvdb_id: 262954,
+            season,
+            episode_offset,
+        };
         let graph = FranchiseGraph {
             nodes: vec![
                 node(1, "JoJo no Kimyou na Bouken", "TV", 26, 2012),
@@ -544,38 +563,24 @@ mod tests {
                     24,
                     2015,
                 ),
+                node(4, "Kishibe Rohan wa Ugokanai", "OVA", 4, 2007),
             ],
             edges: vec![prequel(2, 1), prequel(3, 2)],
             tvdb: vec![
-                TvdbRow {
-                    id: 1,
-                    tvdb_id: 262954,
-                    season: 1,
-                },
-                TvdbRow {
-                    id: 2,
-                    tvdb_id: 262954,
-                    season: 2,
-                },
-                TvdbRow {
-                    id: 3,
-                    tvdb_id: 262954,
-                    season: 2,
-                },
+                row(1, 1, Some(0)),
+                row(2, 2, Some(0)),
+                row(3, 2, Some(24)),
+                // A special filed under season 0 starts nothing.
+                row(4, 0, None),
             ],
             ..FranchiseGraph::default()
         };
         let f = graph.build(3, &[]).unwrap();
         let egypt = f.entry(3).unwrap();
-        assert_eq!(
-            (
-                egypt.frames.tvdb_season,
-                egypt.frames.tvdb_offset,
-                egypt.frames.tvdb_start_year
-            ),
-            (Some(2), Some(24), Some(2012))
-        );
-        assert_eq!(f.entry(2).unwrap().frames.tvdb_offset, Some(0));
+        assert_eq!(egypt.frames.tvdb, [(2, Some(24))]);
+        assert_eq!(egypt.frames.tvdb_start_year, Some(2012));
         assert_eq!(egypt.seasons, [2]);
+        let rohan = f.entry(4).unwrap();
+        assert!(rohan.frames.tvdb.is_empty() && rohan.seasons.is_empty());
     }
 }
