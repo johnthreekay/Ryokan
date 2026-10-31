@@ -633,10 +633,18 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
     // Decompose all titles (primary + synonyms) into sub-phrases.
     // Nyaa releases often use just the subtitle portion
     // (e.g. "Steel Ball Run" from "JoJo's Bizarre Adventure: Part 7–Steel Ball Run").
+    // A franchise head ("JoJo's Bizarre Adventure" there) is left out:
+    // see `franchise_head_aliases`.
+    let heads: HashSet<String> = franchise_head_aliases(detail)
+        .iter()
+        .map(|h| normalize_title(h))
+        .collect();
     let all_titles: Vec<String> = primary.iter().chain(extra.iter()).cloned().collect();
     for title in &all_titles {
         for segment in split_title_segments(title, &related) {
-            extra.push(segment);
+            if !heads.contains(&normalize_title(&segment)) {
+                extra.push(segment);
+            }
         }
     }
 
@@ -645,6 +653,68 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
     dedupe_strings(extra)
         .into_iter()
         .filter(|s| !primary_lower.contains(&s.to_lowercase()))
+        .collect()
+}
+
+/// Issue #300. The head segments of this series' compound titles that
+/// name its franchise rather than the series: "JoJo no Kimyou na
+/// Bouken" from "JoJo no Kimyou na Bouken: Steel Ball Run". Only an
+/// entry further down a franchise has them, one with a PREQUEL or a
+/// PARENT anime relation; for the franchise's first entry the head is
+/// that entry's own short name ("Mushoku Tensei" for the first cour),
+/// and it stays an alias.
+///
+/// A release named by the head alone is the franchise's first entry,
+/// numbered its own way, so as an alias the head matched
+/// "[RH] JoJo no Kimyou na Bouken - 01-03" (the 2012 series) for
+/// Steel Ball Run's episode 1 verbatim. The head stays usable where
+/// a number picks this entry out: the franchise pass (`resolve_search_overrides`
+/// adds it to the franchise aliases when the series has an absolute
+/// offset), whose target is the absolute episode. A head that is also
+/// one of the series' own full titles or synonyms is the series' name
+/// and is not returned.
+pub fn franchise_head_aliases(detail: &AnimeDetail) -> Vec<String> {
+    let further_down = detail.relations.iter().any(|rel| {
+        rel.media_type.eq_ignore_ascii_case("ANIME")
+            && (rel.relation_type.eq_ignore_ascii_case("PREQUEL")
+                || rel.relation_type.eq_ignore_ascii_case("PARENT"))
+    });
+    if !further_down {
+        return Vec::new();
+    }
+    let own: Vec<String> = collect_aliases(detail)
+        .into_iter()
+        .chain(detail.synonyms.iter().cloned())
+        .collect();
+    let own_full: HashSet<String> = own.iter().map(|t| normalize_title(t)).collect();
+    let mut heads = Vec::new();
+    for title in &own {
+        let parts = title_parts(title);
+        if parts.len() < 2 {
+            continue;
+        }
+        let head = parts[0].as_str();
+        if head.len() < 5 || head.split_whitespace().count() < 2 {
+            continue;
+        }
+        let normalized = normalize_title(head);
+        if normalized.is_empty() || own_full.contains(&normalized) {
+            continue;
+        }
+        heads.push(head.to_string());
+    }
+    dedupe_strings(heads)
+}
+
+/// A compound title split at its delimiters: en and em dashes, a colon
+/// followed by a space ("Re:Zero" stays whole), and a spaced hyphen.
+fn title_parts(title: &str) -> Vec<String> {
+    title
+        .replace(['–', '—'], "|")
+        .replace(": ", "|")
+        .replace(" - ", "|")
+        .split('|')
+        .map(|p| p.trim().to_string())
         .collect()
 }
 
@@ -692,12 +762,8 @@ fn related_anime_titles(detail: &AnimeDetail) -> HashSet<String> {
 /// tokens remain — those are specific enough that substring-matching them
 /// against an unrelated release is vanishingly unlikely.
 fn split_title_segments(title: &str, related_titles: &HashSet<String>) -> Vec<String> {
-    // Normalize various dash types to a common delimiter for splitting.
-    let normalized = title
-        .replace(['–', '—'], "|") // en dash and em dash
-        .replace(": ", "|") // colon+space (keep "Re:Zero" intact)
-        .replace(" - ", "|");
-    let parts: Vec<&str> = normalized.split('|').map(str::trim).collect();
+    let parts = title_parts(title);
+    let parts: Vec<&str> = parts.iter().map(String::as_str).collect();
     let related_head = (1..parts.len())
         .rev()
         .find(|&k| related_titles.contains(&normalize_title(&parts[..k].join(" "))))

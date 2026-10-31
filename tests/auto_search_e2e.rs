@@ -2071,3 +2071,110 @@ async fn interactive_batch_list_offers_unnumbered_packs_and_the_auto_grab_does_n
 
     unset_nyaa_base();
 }
+
+#[tokio::test]
+async fn a_queued_pack_skips_only_the_episodes_it_covers() {
+    // Issue #300: a pack found for an early target ended the whole
+    // series search ("Season pack queued; stopping episode search"),
+    // so an episode the pack does not hold was never searched. The
+    // pack now skips the targets it covers and the rest still run.
+    let _gate = ENV_LOCK.lock().await;
+    let server = MockServer::start().await;
+    let rows = [
+        nyaa_row(
+            &format!("{:040x}", 0x300a),
+            30001,
+            "[Group] Pack Show - 01-03 [BD 1080p]",
+            "6.0 GiB",
+            40,
+        ),
+        nyaa_row(
+            &format!("{:040x}", 0x300b),
+            30002,
+            "[Group] Pack Show - 06 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            40,
+        ),
+        nyaa_row(
+            &format!("{:040x}", 0x300c),
+            30003,
+            "[Group] Pack Show - 05 [BD 1080p].mkv",
+            "2.0 GiB",
+            40,
+        ),
+    ]
+    .concat();
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page(&rows)))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9300;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Pack Show").await;
+    // Episodes 1, 2 and 5 are on disk below the cutoff, so they are
+    // upgrade targets, searched after the missing episode 6; an
+    // upgrade target takes a pack (the issue's case).
+    let media_root = tempfile::tempdir().unwrap();
+    let folder = media_root.path().join("Pack Show");
+    std::fs::create_dir_all(&folder).unwrap();
+    for ep in [1, 2, 5] {
+        std::fs::write(
+            folder.join(format!("Pack Show - {ep:02} (720p) [WEB].mkv")),
+            b"x",
+        )
+        .unwrap();
+    }
+    let cfg = Config {
+        media_root: media_root.path().to_string_lossy().into_owned(),
+        cutoff_source: "bluray".into(),
+        cutoff_resolution: "1080".into(),
+        ..default_config()
+    };
+    ryokan::models::config::save_config(&state.db, &cfg)
+        .await
+        .unwrap();
+    for ep in [1, 2, 5, 6] {
+        ryokan::models::monitoring::set_episode_monitored(&state.db, series_id, ep, true)
+            .await
+            .unwrap();
+    }
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let axum::response::Json(report) = auto_search_series(
+        axum::extract::State(state.clone()),
+        axum::extract::Path(series_id),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await
+    .expect("series search");
+
+    let titles: Vec<&str> = report
+        .grabbed
+        .iter()
+        .map(|h| h.release_title.as_str())
+        .collect();
+    assert_eq!(
+        titles,
+        [
+            "[Group] Pack Show - 06 (1080p) [WEB].mkv",
+            "[Group] Pack Show - 01-03 [BD 1080p]",
+            // Searched after the pack: it used to end the search here.
+            "[Group] Pack Show - 05 [BD 1080p].mkv",
+        ],
+        "{report:?}\n{}",
+        dump_logs(&state.db).await
+    );
+    assert_eq!(client.add_calls().len(), 3);
+    assert!(
+        report
+            .skipped
+            .iter()
+            .any(|s| s == "Season pack queued; skipped 1 episode search it covers"),
+        "episode 2 is in the pack: {report:?}"
+    );
+
+    unset_nyaa_base();
+}

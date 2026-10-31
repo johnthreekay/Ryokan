@@ -213,6 +213,10 @@ pub struct VerdictInput<'a> {
     /// The season number the series maps to (0 when unknown); only
     /// used for an advisory note.
     pub expected_season: i32,
+    /// Head segments that name the series' franchise, not the series
+    /// (`auto_search::franchise_head_aliases`). A colon or dash segment
+    /// of an alias equal to one does not count as naming the series.
+    pub franchise_heads: &'a [String],
 }
 
 /// Flatten a relative path so the top-level folder counts as part of
@@ -385,14 +389,29 @@ pub(crate) struct PreparedAlias {
     forms: Vec<(String, HashSet<String>)>,
 }
 
-pub(crate) fn prepare_aliases(aliases: &[String]) -> Vec<PreparedAlias> {
+/// A segment form equal to one of `franchise_heads` is left out
+/// (issue #300): "JoJo no Kimyou na Bouken - 01" is the 2012 series,
+/// and the head of Steel Ball Run's "JoJo no Kimyou na Bouken: Steel
+/// Ball Run" verified it. The alias itself is always kept.
+pub(crate) fn prepare_aliases(
+    aliases: &[String],
+    franchise_heads: &[String],
+) -> Vec<PreparedAlias> {
+    let heads: HashSet<String> = franchise_heads
+        .iter()
+        .map(|h| normalize_title(h))
+        .filter(|h| !h.is_empty())
+        .collect();
     aliases
         .iter()
         .map(|alias| PreparedAlias {
             alias: alias.clone(),
             forms: alias_forms(alias)
                 .into_iter()
-                .map(|form| normalize_title(&form))
+                .enumerate()
+                .map(|(i, form)| (i, normalize_title(&form)))
+                .filter(|(i, normalized)| *i == 0 || !heads.contains(normalized))
+                .map(|(_, normalized)| normalized)
                 .filter(|normalized| !normalized.is_empty())
                 .map(|normalized| {
                     let tokens = token_set(&normalized);
@@ -470,7 +489,7 @@ pub fn assess(input: &VerdictInput<'_>) -> Verdict {
         .collect();
 
     let known = alias_content_tokens(&aliases);
-    let prepared = prepare_aliases(&aliases);
+    let prepared = prepare_aliases(&aliases, input.franchise_heads);
     let mut claimed_memo: HashMap<String, HashSet<String>> = HashMap::new();
     let mut any_signal = false;
     let mut shares_a_word = false;
@@ -533,6 +552,7 @@ mod tests {
             sibling_aliases: &siblings,
             filenames: &files,
             expected_season: season,
+            franchise_heads: &[],
         })
     }
 
@@ -541,6 +561,39 @@ mod tests {
         "コワレモノ:璃沙 THE ANIMATION",
         "Risa THE ANIMATION",
     ];
+
+    #[test]
+    fn a_franchise_head_does_not_name_a_later_entry() {
+        // Issue #300: the 2012 series' files named Steel Ball Run's
+        // "JoJo no Kimyou na Bouken: Steel Ball Run" through its head.
+        let own = strs(&[
+            "STEEL BALL RUN JoJo's Bizarre Adventure 2nd - 3rd STAGE",
+            "JoJo no Kimyou na Bouken: Steel Ball Run",
+            "JoJo's Bizarre Adventure: Part 7-Steel Ball Run",
+        ]);
+        let heads = strs(&["JoJo no Kimyou na Bouken", "JoJo's Bizarre Adventure"]);
+        let judge = |files: &[&str], heads: &[String]| {
+            assess(&VerdictInput {
+                own_aliases: &own,
+                sibling_aliases: &[],
+                filenames: &strs(files),
+                expected_season: 0,
+                franchise_heads: heads,
+            })
+        };
+        let rh =
+            ["[RH] JoJo no Kimyou na Bouken - 01 (JoJo's Bizarre Adventure) [BDRip] [1080p].mkv"];
+        let windstorm = ["[Windstorm] JoJo's Bizarre Adventure - S01E01 (BD 1080p HEVC).mkv"];
+        for files in [&rh[..], &windstorm[..]] {
+            assert_eq!(judge(files, &[]).as_str(), "verified", "{files:?}");
+            // Too related to condemn, no longer verified.
+            assert_eq!(judge(files, &heads).as_str(), "unverifiable", "{files:?}");
+        }
+        let own_files = [
+            "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 06 [1080p NF WEBRip HEVC AAC].mkv",
+        ];
+        assert_eq!(judge(&own_files, &heads).as_str(), "verified");
+    }
 
     #[test]
     fn grisaia_pack_against_kowaremono_aliases_is_misgrab() {
@@ -820,6 +873,7 @@ mod tests {
             sibling_aliases: &[],
             filenames: &files,
             expected_season: 0,
+            franchise_heads: &[],
         });
         let d = v.detail(&files);
         assert_eq!(v.as_str(), "misgrab");

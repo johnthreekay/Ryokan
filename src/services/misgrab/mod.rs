@@ -41,6 +41,8 @@ pub struct AliasSet {
     pub own: Vec<String>,
     pub siblings: Vec<String>,
     pub expected_season: i32,
+    /// Head segments naming the franchise, not the series (issue #300).
+    pub franchise_heads: Vec<String>,
 }
 
 /// Own titles plus synonyms, and every related entry's titles plus the
@@ -75,6 +77,7 @@ pub fn aliases_from_detail(detail: &AnimeDetail, filenames: &[String]) -> AliasS
         own,
         siblings: auto_search::dedupe_strings(siblings),
         expected_season: auto_search::infer_season_from_detail(detail),
+        franchise_heads: auto_search::franchise_head_aliases(detail),
     }
 }
 
@@ -108,6 +111,7 @@ pub async fn aliases_for_grab(
         own,
         siblings: Vec::new(),
         expected_season: 0,
+        franchise_heads: Vec::new(),
     })
 }
 
@@ -139,12 +143,14 @@ pub async fn assess_and_stamp(
         let siblings = aliases.siblings.clone();
         let files = filenames.to_vec();
         let expected_season = aliases.expected_season;
+        let heads = aliases.franchise_heads.clone();
         tokio::task::spawn_blocking(move || {
             assess(&VerdictInput {
                 own_aliases: &own,
                 sibling_aliases: &siblings,
                 filenames: &files,
                 expected_season,
+                franchise_heads: &heads,
             })
         })
         .await
@@ -647,6 +653,7 @@ mod tests {
             own: vec!["Kowaremono: Risa THE ANIMATION".to_string()],
             siblings: Vec::new(),
             expected_season: 0,
+            franchise_heads: Vec::new(),
         };
         let verdict = assess_and_stamp(&db, &grab, &[GRISAIA.to_string()], &aliases).await;
         assert!(matches!(verdict, Verdict::Verified { .. }), "{verdict:?}");
