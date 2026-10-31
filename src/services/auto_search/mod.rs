@@ -28,7 +28,7 @@ pub use aliases::{
     classify_match, collect_aliases, collect_extended_aliases, collect_sibling_aliases,
     dedupe_strings, distinctive_overlap_ratio, franchise_names, is_generic_title_token,
     matches_target, names_more_than_the_series, normalize_title, sequel_variant_aliases,
-    token_overlap_ratio, token_set, with_alternate_titles,
+    sole_bracket_group, token_overlap_ratio, token_set, with_alternate_titles,
 };
 pub use pack_detection::{
     TRANSITIVE_WALK_MAX_FETCHES, detect_sibling_entries_in_pack,

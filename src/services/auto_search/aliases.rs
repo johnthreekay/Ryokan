@@ -78,7 +78,7 @@ pub fn normalize_title(input: &str) -> String {
 /// The text inside `input` when the whole (trimmed) input is a single
 /// bracket group, depth counted the way `normalize_title` counts it.
 /// `[Group][Show][01]` is several groups and answers `None`.
-fn sole_bracket_group(input: &str) -> Option<&str> {
+pub fn sole_bracket_group(input: &str) -> Option<&str> {
     let trimmed = input.trim();
     if !trimmed.starts_with(['[', '(', '{']) {
         return None;
