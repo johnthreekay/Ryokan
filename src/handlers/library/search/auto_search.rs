@@ -1286,8 +1286,10 @@ pub async fn auto_search_episode(
 
     if let Some(_tracked) = tracked_row {
         // Monitoring status does not block manual episode searches.
-    } else if matches!(detail.format.as_str(), "MOVIE" | "SPECIAL" | "OVA" | "ONA")
-        && episode_number != 1
+    } else if matches!(
+        auto_search::SearchTarget::for_episode(&detail, episode_number),
+        auto_search::SearchTarget::Single
+    ) && episode_number != 1
     {
         return Err((
             axum::http::StatusCode::BAD_REQUEST,
