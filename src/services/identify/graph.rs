@@ -216,6 +216,11 @@ pub struct EntryCard {
     /// Reached from the target through `PREQUEL` / `SEQUEL` / `PARENT`
     /// edges alone (the target included).
     pub on_chain: bool,
+    /// The entry's Latin titles (romaji, English, synonyms, and the
+    /// target's alternate titles) as `names::clean_title` reads them: a
+    /// title that is exactly one of these names the entry outright, the
+    /// way Sonarr matches a release to a series.
+    pub(super) exact_names: Vec<String>,
 }
 
 impl EntryCard {
@@ -285,7 +290,8 @@ impl FranchiseGraph {
                     .get(&node.id)
                     .copied()
                     .unwrap_or_else(|| walk_offset(node.id, &prequels, &by_id));
-                card(node, node_names, absolute)
+                let alternates = if i == target_index { alternates } else { &[] };
+                card(node, node_names, alternates, absolute)
             })
             .collect();
 
@@ -431,7 +437,7 @@ pub(super) fn node_names(node: &GraphNode, alternates: &[String]) -> NameFields 
     }
 }
 
-fn card(node: &GraphNode, names: NameFields, absolute: i32) -> EntryCard {
+fn card(node: &GraphNode, names: NameFields, alternates: &[String], absolute: i32) -> EntryCard {
     let mut seasons: Vec<i32> = Vec::new();
     let mut parts: Vec<i32> = Vec::new();
     let mut sequence = None;
@@ -457,6 +463,15 @@ fn card(node: &GraphNode, names: NameFields, absolute: i32) -> EntryCard {
         .find(|t| !t.trim().is_empty())
         .cloned()
         .unwrap_or_else(|| node.id.to_string());
+    let mut exact_names: Vec<String> = [&node.title_romaji, &node.title_english]
+        .into_iter()
+        .chain(&node.synonyms)
+        .chain(alternates)
+        .map(|t| super::names::clean_title(t))
+        .filter(|t| !t.is_empty())
+        .collect();
+    exact_names.sort();
+    exact_names.dedup();
     EntryCard {
         id: node.id,
         mal_id: node.mal_id,
@@ -474,6 +489,7 @@ fn card(node: &GraphNode, names: NameFields, absolute: i32) -> EntryCard {
             ..Frames::default()
         },
         on_chain: false,
+        exact_names,
     }
 }
 

@@ -296,10 +296,38 @@ fn structure_a_year_the_target_misses_and_the_remake_fits() {
         2,
         Tier::Structure,
     );
-    // No year: the remake and the original fit alike.
-    assert_ambiguous(
+    // No year: both fit, and the title is the original's name exactly,
+    // which is how Sonarr reads it.
+    assert_rival(
         verdict(&fruits_basket(), 2, "[Group] Fruits Basket - 05 [1080p]"),
         1,
+        Tier::NamesFully,
+    );
+}
+
+#[test]
+fn an_exact_name_decides_a_tie_either_way() {
+    // AniList's titles: the remake is `Fruits Basket 1st Season`. Markers
+    // aside the two say the same words; the whole name is the remake's.
+    let g = graph(
+        &[
+            tv(120, "Fruits Basket", "Fruits Basket", 26, 2001),
+            tv(
+                105334,
+                "Fruits Basket 1st Season",
+                "Fruits Basket: 1st Season",
+                25,
+                2019,
+            ),
+        ],
+        &[],
+    );
+    let batch = "[Erai-raws] Fruits Basket 1st Season - 01 ~ 25 [1080p][BATCH][Multiple Subtitle]";
+    assert_rival(verdict(&g, 120, batch), 105334, Tier::NamesFully);
+    assert_eq!(verdict(&g, 105334, batch), Verdict::Target);
+    assert_eq!(
+        verdict(&g, 120, "[Group] Fruits Basket - 05 [DVD]"),
+        Verdict::Target
     );
 }
 
@@ -334,8 +362,18 @@ fn ties_between_same_named_entries_are_ambiguous() {
         ],
         &[],
     );
-    assert_ambiguous(verdict(&hxh, 2, "[DP] Hunter x Hunter - 003 [DVD]"), 1);
-    assert_ambiguous(verdict(&hxh, 1, "[DP] Hunter x Hunter - 003 [DVD]"), 2);
+    // The yearless name is the 1999 series' exactly: Sonarr's reading,
+    // since TVDB's title for the other is `Hunter x Hunter (2011)` too.
+    let title = "[DP] Hunter x Hunter - 003 [DVD]";
+    assert_rival(verdict(&hxh, 2, title), 1, Tier::NamesFully);
+    assert_eq!(verdict(&hxh, 1, title), Verdict::Target);
+    // An alternate title is the library's scene mapping: with it the name
+    // is both entries' exactly, and the tie stands.
+    let with_alternate = identify(
+        &hxh.build(2, &["Hunter x Hunter".to_string()]).unwrap(),
+        title,
+    );
+    assert_ambiguous(with_alternate, 1);
 
     let kaguya = graph(
         &[

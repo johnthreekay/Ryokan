@@ -214,7 +214,7 @@ pub fn identify_prepared(franchise: &Franchise, title: &PreparedTitle) -> Verdic
         return Verdict::Neither;
     }
 
-    let tie = rivals
+    let ties: Vec<&Evidence> = rivals
         .iter()
         .filter(|r| {
             let names_as_well = r.said.is_superset(&t.said)
@@ -229,22 +229,47 @@ pub fn identify_prepared(franchise: &Franchise, title: &PreparedTitle) -> Verdic
             let fits_as_well = !(t.fits.confirmed() && !r.fits.confirmed());
             names_as_well && fits_as_well || t.fits.incompatible() && r.said.is_superset(&t.said)
         })
-        .min_by_key(|r| closeness(r));
-    match tie {
-        // What the title writes beside or in its name breaks a tie for the
-        // target only, too weak to veto with: notes naming the target, or
-        // a marker the target's names carry and the rival's don't
-        // (`Spy x Family Part 2 - 05`).
-        Some(r)
-            if !(view.notes_name(target) && !view.notes_name(r.entry))
-                && !(t.names_stated_marker && !r.names_stated_marker) =>
-        {
-            Verdict::Ambiguous {
-                entry: r.entry.id,
-                title: r.entry.title.clone(),
-            }
-        }
-        _ => Verdict::Target,
+        .collect();
+    if ties.is_empty() {
+        return Verdict::Target;
+    }
+
+    // Sonarr's identity: a title whose name is exactly an entry's (clean
+    // titles equal, years and season words kept) is that entry's. It
+    // decides a tie either way: `Fruits Basket 1st Season - 01 ~ 25` is
+    // the 2019 remake's AniList title, not the 2001 series'.
+    let target_exact = view.is_exactly(target);
+    let exact_ties: Vec<&&Evidence> = ties.iter().filter(|r| view.is_exactly(r.entry)).collect();
+    if !target_exact && let Some(r) = exact_ties.iter().min_by_key(|r| closeness(r)) {
+        return Verdict::Rival(Rival {
+            entry: r.entry.id,
+            title: r.entry.title.clone(),
+            tier: Tier::NamesFully,
+            reason: format!("the title is {}'s name exactly", r.entry.title),
+        });
+    }
+    if target_exact && exact_ties.is_empty() {
+        return Verdict::Target;
+    }
+    let r = if target_exact {
+        exact_ties.into_iter().copied().min_by_key(|r| closeness(r))
+    } else {
+        ties.into_iter().min_by_key(|r| closeness(r))
+    }
+    .expect("a tie");
+
+    // What the title writes beside or in its name breaks a remaining tie
+    // for the target only, too weak to veto with: notes naming the target,
+    // or a marker the target's names carry and the rival's don't
+    // (`Spy x Family Part 2 - 05`).
+    if view.notes_name(target) && !view.notes_name(r.entry)
+        || t.names_stated_marker && !r.names_stated_marker
+    {
+        return Verdict::Target;
+    }
+    Verdict::Ambiguous {
+        entry: r.entry.id,
+        title: r.entry.title.clone(),
     }
 }
 
@@ -261,6 +286,8 @@ struct TitleView {
     notes_latin: HashSet<String>,
     notes_text: String,
     claims: Claims,
+    /// The main names as `names::clean_title` reads them.
+    exact: Vec<String>,
 }
 
 impl TitleView {
@@ -285,7 +312,18 @@ impl TitleView {
             notes_text: names::fold(&zones.notes.join(" ")),
             notes,
             claims: Claims::of(parsed, mains.iter().find_map(|f| f.part)),
+            exact: zones
+                .names
+                .iter()
+                .map(|n| names::clean_title(n))
+                .filter(|n| !n.is_empty())
+                .collect(),
         }
+    }
+
+    /// The title's name is exactly one of the entry's titles.
+    fn is_exactly(&self, entry: &EntryCard) -> bool {
+        self.exact.iter().any(|n| entry.exact_names.contains(n))
     }
 
     fn says_latin(&self, token: &str) -> bool {

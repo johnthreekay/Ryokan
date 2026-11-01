@@ -154,18 +154,20 @@ const CASES: &[(&str, i64, &str, Expect)] = &[
         "[Leopard-Raws] Fruits Basket (2019) - 25 END (TX 1280x720 x264 AAC).mp4",
         Rival(Structure, 105334),
     ),
-    // Same name, both long enough: either series.
+    // Same words, both long enough, but the name is the 1999 series'
+    // exactly (the 2011 one is `HUNTER×HUNTER (2011)`): Sonarr's reading.
+    // An alternate title on the 2011 series restores the tie.
     (
         "hunter-x-hunter",
         11061,
         "[DP] Hunter x Hunter - 003 [Multi Subs][Tri Audio][BDRip][1080p][Hi10][FLAC/EAC3]",
-        Ambiguous(136),
+        Rival(NamesFully, 136),
     ),
     (
         "hunter-x-hunter",
         136,
         "[DP] Hunter x Hunter - 003 [Multi Subs][Tri Audio][BDRip][1080p][Hi10][FLAC/EAC3]",
-        Ambiguous(11061),
+        Target,
     ),
     // The first two seasons' names differ by a question mark, and the
     // third's (`Kaguya-sama wa Kokurasetai: Ultra Romantic`) leaves the

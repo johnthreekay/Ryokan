@@ -138,6 +138,23 @@ pub(super) fn is_cjk(c: char) -> bool {
         | '\u{31F0}'..='\u{31FF}')
 }
 
+/// A name as Sonarr's `CleanSeriesTitle` compares it: folded, `&` read as
+/// `and`, every run of non-alphanumerics a break, and the articles and
+/// conjunctions `a` / `an` / `the` / `and` / `or` / `of` dropped unless
+/// first, then the words joined. Years, numbers and season words stay, so
+/// `Fruits Basket 1st Season` and `Fruits Basket` are different names, as
+/// are `Ranma 1/2 (2024)` and `Ranma 1/2`.
+pub(super) fn clean_title(text: &str) -> String {
+    let folded = fold(text).replace('&', " and ");
+    folded
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .enumerate()
+        .filter(|(i, w)| *i == 0 || !matches!(*w, "a" | "an" | "the" | "and" | "or" | "of"))
+        .map(|(_, w)| w)
+        .collect()
+}
+
 /// Lowercase, apostrophes deleted, diacritics folded.
 pub(super) fn fold(text: &str) -> String {
     let mut out = String::with_capacity(text.len());

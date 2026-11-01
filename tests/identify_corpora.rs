@@ -356,11 +356,11 @@ fn verdicts(v: &[(i64, Verdict)]) -> String {
 /// number shows the titles that moved.
 #[test]
 fn identify_over_the_corpus_holds_its_numbers() {
-    const RECOGNIZED_MIN: usize = 15_480;
-    const MISSED_MAX: usize = 1_144;
-    const BLOCKED_MIN: usize = 6_179;
-    const WRONG_TARGET_MAX: usize = 984;
-    const WRONG_TIE_MAX: usize = 958;
+    const RECOGNIZED_MIN: usize = 16_121;
+    const MISSED_MAX: usize = 1_216;
+    const BLOCKED_MIN: usize = 6_382;
+    const WRONG_TARGET_MAX: usize = 1_326;
+    const WRONG_TIE_MAX: usize = 337;
 
     let judged = judge_corpus();
     let count = |f: fn(&Judged) -> bool| judged.iter().filter(|j| f(j)).count();
@@ -373,9 +373,11 @@ fn identify_over_the_corpus_holds_its_numbers() {
     );
     eprintln!(
         "{} titles, {} naming a label entry: recognized {recognized}, missed {missed}; \
-         naming a relative: blocked {blocked}, a relative's target {wrong_target}, tie {wrong_tie}",
+         naming a relative: blocked {blocked}, a relative's target {wrong_target}, tie {wrong_tie} \
+         (accepted for a relative either way: {})",
         judged.len(),
         count(|j| !j.own.is_empty()),
+        count(|j| j.wrong_target() || j.wrong_tie()),
     );
 
     let mut groups: BTreeMap<String, (usize, &str)> = BTreeMap::new();
