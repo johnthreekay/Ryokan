@@ -223,9 +223,9 @@ impl EntryCard {
         matches!(self.format.as_str(), "TV" | "TV_SHORT")
     }
 
-    /// One release is the whole entry: a movie, or one episode.
+    /// One release is the whole entry (`media::EntryShape`).
     pub(super) fn is_single_entry(&self) -> bool {
-        self.format == "MOVIE" || self.episodes == Some(1)
+        crate::services::media::EntryShape::of(&self.format, self.episodes).is_single()
     }
 }
 

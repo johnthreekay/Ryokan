@@ -359,6 +359,34 @@ pub fn is_tv_format(format: &str) -> bool {
     )
 }
 
+/// Whether one release can be the whole of an AniList entry: the
+/// question the series-level search builder, the per-episode target and
+/// `services::identify`'s part-number reading all ask.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryShape {
+    /// A movie (whatever its episode count says), or an entry AniList
+    /// gives exactly one episode.
+    Single,
+    /// Numbered episodes: a multi-episode entry of any format, or one
+    /// whose count is not known yet (an airing series, Steel Ball Run
+    /// 2nd - 3rd STAGE in #300).
+    Episodic,
+}
+
+impl EntryShape {
+    pub fn of(format: &str, episodes: Option<i32>) -> Self {
+        if format.trim().eq_ignore_ascii_case("MOVIE") || episodes == Some(1) {
+            EntryShape::Single
+        } else {
+            EntryShape::Episodic
+        }
+    }
+
+    pub fn is_single(self) -> bool {
+        self == EntryShape::Single
+    }
+}
+
 /// Extract quality/resolution from filename.
 fn parse_quality(lower: &str) -> String {
     // Source type. Names match `ClassificationResult::label()` in
@@ -543,6 +571,19 @@ mod folder_name_tests {
 #[cfg(test)]
 mod tests {
     use super::parse_episode_number;
+
+    #[test]
+    fn an_entry_is_one_release_when_it_is_a_movie_or_one_episode() {
+        use super::EntryShape::{self, Episodic, Single};
+        assert_eq!(EntryShape::of("MOVIE", None), Single);
+        assert_eq!(EntryShape::of("MOVIE", Some(2)), Single);
+        assert_eq!(EntryShape::of(" movie ", Some(1)), Single);
+        assert_eq!(EntryShape::of("OVA", Some(1)), Single);
+        assert_eq!(EntryShape::of("TV", Some(1)), Single);
+        assert_eq!(EntryShape::of("ONA", Some(11)), Episodic);
+        assert_eq!(EntryShape::of("TV", None), Episodic);
+        assert_eq!(EntryShape::of("SPECIAL", None), Episodic);
+    }
 
     // Fixtures here are real-world filenames captured verbatim from
     // an actual library, lower-cased to match the parser's input. They

@@ -50,11 +50,15 @@ impl SearchTarget {
     ///   episode numbers, and for ambiguous formats with unknown episode
     ///   count the safe default is to keep `Episode(n)` — the failure
     ///   mode there is "no results" rather than "wrong series grabbed".
+    ///
+    /// The shape is `media::EntryShape`'s; the one exception is a TV
+    /// series of one episode, whose release still carries the `- 01`.
     pub fn for_episode(detail: &AnimeDetail, episode_number: i32) -> Self {
-        match detail.format.as_str() {
-            "MOVIE" => SearchTarget::Single,
-            "SPECIAL" | "OVA" | "ONA" if detail.episodes == Some(1) => SearchTarget::Single,
-            _ => SearchTarget::Episode(episode_number),
+        let single = media::EntryShape::of(&detail.format, detail.episodes).is_single();
+        if single && !media::is_tv_format(&detail.format) {
+            SearchTarget::Single
+        } else {
+            SearchTarget::Episode(episode_number)
         }
     }
 }
@@ -68,7 +72,7 @@ impl SearchTarget {
 /// searched as one release and grabbed episode 5 for the missing
 /// episode 6).
 fn is_single_entry(detail: &AnimeDetail) -> bool {
-    detail.format == "MOVIE" || detail.episodes == Some(1)
+    media::EntryShape::of(&detail.format, detail.episodes).is_single()
 }
 
 pub fn build_missing_targets(detail: &AnimeDetail, existing_episodes: &[i32]) -> Vec<SearchTarget> {
