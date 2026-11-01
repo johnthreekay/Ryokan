@@ -118,28 +118,45 @@ pub fn identify(franchise: &Franchise, title: &str) -> Verdict {
 
 /// [`identify`] for a title already parsed.
 pub fn identify_parsed(franchise: &Franchise, parsed: &ParsedTitle) -> Verdict {
-    let view = TitleView::of(parsed);
+    identify_prepared(franchise, &PreparedTitle::of(parsed))
+}
+
+/// A title read once for judging against many franchises (reading its
+/// names runs the release-title parser on each).
+pub struct PreparedTitle(TitleView);
+
+impl PreparedTitle {
+    pub fn of(parsed: &ParsedTitle) -> Self {
+        Self(TitleView::of(parsed))
+    }
+}
+
+/// [`identify`] for a [`PreparedTitle`].
+pub fn identify_prepared(franchise: &Franchise, title: &PreparedTitle) -> Verdict {
+    let view = &title.0;
     let target = franchise.target();
-    let t = Evidence::own(target, &view);
+    let t = Evidence::own(target, view);
 
     let all: Vec<Evidence> = franchise
         .entries()
         .iter()
-        .map(|e| Evidence::own(e, &view))
+        .map(|e| Evidence::own(e, view))
         .collect();
     if all.iter().all(|e| e.said.is_empty()) {
         return Verdict::Neither;
     }
-    if spans(franchise, &view, &all) {
+    if spans(franchise, view, &all) {
         return Verdict::Spans;
     }
 
+    // `against` reads a subset of the fields `own` does: an entry whose
+    // own names say nothing of the title says nothing as a rival either.
     let rivals: Vec<Evidence> = franchise
         .entries()
         .iter()
         .enumerate()
-        .filter(|(i, _)| *i != franchise.target)
-        .map(|(_, r)| Evidence::against(r, target, &view))
+        .filter(|(i, _)| *i != franchise.target && !all[*i].said.is_empty())
+        .map(|(_, r)| Evidence::against(r, target, view))
         .filter(|r| !r.fits.incompatible() && !r.said.is_empty())
         .collect();
 

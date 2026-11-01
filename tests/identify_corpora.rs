@@ -10,12 +10,24 @@
 //! would cache it. `GraphIndex::around` cuts one entry's franchise out of
 //! it with the walk `identify::load_graph` makes. Both are vendored by the
 //! ignored `vendor_corpus_franchises`.
+//!
+//! `identify_over_the_corpus_holds_its_numbers` judges every labeled
+//! title as each entry the title names would (its label's entries, and
+//! the main-chain relatives of their franchises) and holds the totals as
+//! floors and ceilings, with a snapshot of every missed, wrong and tied
+//! title. The labels are AniDB's grain, not AniList's (`Chitose-kun wa
+//! Ramune Bin no Naka - 14` is labeled the first cour; anibridge has no
+//! AniList entry for the second in that AniDB anime) and AnimeTosho's
+//! matching is sometimes wrong, so the numbers are a baseline to move
+//! from, not a score. `probe` (ignored, `ID_PROBE='<id>|<title>'`) prints
+//! one entry's franchise and its verdict on one title.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::{BufRead, Read};
 use std::path::PathBuf;
 
-use ryokan::services::identify::FranchiseGraph;
+use ryokan::services::identify::{self, Franchise, FranchiseGraph, GraphIndex, Verdict};
+use ryokan::services::{auto_search, release_title};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -104,6 +116,310 @@ fn vendored_franchises_are_well_formed() {
     assert!(labeled >= 24_000, "{labeled} labeled titles");
 }
 
+/// What `identify` made of one labeled title, as each entry would judge
+/// it were it the library series: the label's own entries, then the
+/// relatives on their franchises' main chains. Only entries the title
+/// names are judged: the automatic gate takes a release only when it
+/// names the series verbatim (one of its titles, normalized, inside the
+/// normalized release title), and `identify` runs after that.
+struct Judged {
+    title: String,
+    label: Vec<i64>,
+    own: Vec<(i64, Verdict)>,
+    relatives: Vec<(i64, Verdict)>,
+}
+
+impl Judged {
+    /// A label entry the title names, and every one of them vetoes it
+    /// for an entry outside the label. (A veto for another label entry is
+    /// right: `Jujutsu Kaisen - 55` is the third season's, which the
+    /// AniDB anime covers too.)
+    fn missed(&self) -> bool {
+        !self.own.is_empty()
+            && self.own.iter().all(|(_, v)| match v {
+                Verdict::Rival(r) => !self.label.contains(&r.entry),
+                _ => false,
+            })
+    }
+
+    /// A label entry takes the title as its own.
+    fn recognized(&self) -> bool {
+        self.own.iter().any(|(_, v)| *v == Verdict::Target)
+    }
+
+    /// A relative the title names takes it as its own: a wrong-entry
+    /// accept.
+    fn wrong_target(&self) -> bool {
+        self.relatives.iter().any(|(_, v)| *v == Verdict::Target)
+    }
+
+    /// A relative the title names ties over it (accepted at a small
+    /// score cost).
+    fn wrong_tie(&self) -> bool {
+        self.relatives
+            .iter()
+            .any(|(_, v)| matches!(v, Verdict::Ambiguous { .. }))
+    }
+
+    /// Every relative the title names vetoes it: the name gate alone
+    /// would have taken it for the wrong entry.
+    fn blocked(&self) -> bool {
+        !self.relatives.is_empty() && self.relatives.iter().all(|(_, v)| v.is_veto())
+    }
+}
+
+fn short(verdict: &Verdict) -> String {
+    match verdict {
+        Verdict::Target => "target".to_string(),
+        Verdict::Rival(r) => format!("rival {} ({})", r.entry, r.tier.as_str()),
+        Verdict::Spans => "spans".to_string(),
+        Verdict::Ambiguous { entry, .. } => format!("tie {entry}"),
+        Verdict::Neither => "neither".to_string(),
+    }
+}
+
+/// `work` on every item, on every core: each thread takes the next item
+/// off a shared queue (a few franchises hold most of the work) and keeps
+/// its own index of `graph` and its own `state`. Results in `items`' order.
+fn in_parallel<T: Send, R: Send, S: Default>(
+    graph: &FranchiseGraph,
+    items: Vec<T>,
+    work: impl Fn(&GraphIndex<'_>, &mut S, T) -> R + Sync,
+) -> Vec<R> {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let items: Vec<Mutex<Option<T>>> = items.into_iter().map(|t| Mutex::new(Some(t))).collect();
+    let results: Vec<Mutex<Option<R>>> = items.iter().map(|_| Mutex::new(None)).collect();
+    let next = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for _ in 0..threads {
+            scope.spawn(|| {
+                let index = graph.index();
+                let mut state = S::default();
+                loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(slot) = items.get(i) else {
+                        break;
+                    };
+                    let item = slot.lock().unwrap().take().expect("taken once");
+                    *results[i].lock().unwrap() = Some(work(&index, &mut state, item));
+                }
+            });
+        }
+    });
+    results
+        .into_iter()
+        .map(|r| r.into_inner().unwrap().expect("every item worked"))
+        .collect()
+}
+
+/// One labeled anime: its label, the main-chain relatives of its label
+/// entries, and the smallest id among them (the anime of one franchise
+/// sort together).
+struct Group {
+    key: i64,
+    label: Vec<i64>,
+    relatives: Vec<i64>,
+    titles: Vec<String>,
+}
+
+/// Every labeled title judged. Franchises are built once per entry and
+/// kept while the titles of one franchise run.
+fn judge_corpus() -> Vec<Judged> {
+    let vendored = vendored();
+    // Each entry's titles as the gate compares them.
+    let names: HashMap<i64, Vec<String>> = vendored
+        .graph
+        .nodes
+        .iter()
+        .map(|n| {
+            let mut forms: Vec<String> = [&n.title_romaji, &n.title_english]
+                .into_iter()
+                .chain(&n.synonyms)
+                .map(|t| auto_search::normalize_title(t))
+                .filter(|t| t.chars().filter(|c| c.is_alphanumeric()).count() >= 3)
+                .collect();
+            forms.sort();
+            forms.dedup();
+            (n.id, forms)
+        })
+        .collect();
+    let mut by_aid: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+    for (title, aid) in labeled_titles() {
+        if vendored.labels.contains_key(&aid) {
+            by_aid.entry(aid).or_default().push(title);
+        }
+    }
+    let mut groups = in_parallel(
+        &vendored.graph,
+        by_aid.into_iter().collect(),
+        |index, _: &mut (), (aid, titles): (i64, Vec<String>)| {
+            let label = vendored.labels[&aid].clone();
+            let mut chain: BTreeSet<i64> = BTreeSet::new();
+            for id in &label {
+                if let Some(franchise) = index.franchise(*id) {
+                    chain.extend(
+                        franchise
+                            .entries()
+                            .iter()
+                            .filter(|e| e.on_chain)
+                            .map(|e| e.id),
+                    );
+                }
+            }
+            Group {
+                key: chain.first().copied().unwrap_or(label[0]),
+                relatives: chain.into_iter().filter(|id| !label.contains(id)).collect(),
+                label,
+                titles,
+            }
+        },
+    );
+    groups.sort_by(|a, b| (a.key, &a.label).cmp(&(b.key, &b.label)));
+    // The long-runners (Detective Conan, Pokémon, One Piece) have
+    // hundreds of titles and franchises of a hundred entries: split
+    // every anime's titles so the threads share them.
+    let groups: Vec<Group> = groups
+        .into_iter()
+        .flat_map(|group| {
+            group
+                .titles
+                .chunks(16)
+                .map(|titles| Group {
+                    key: group.key,
+                    label: group.label.clone(),
+                    relatives: group.relatives.clone(),
+                    titles: titles.to_vec(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    let judged: Vec<Vec<Judged>> = in_parallel(
+        &vendored.graph,
+        groups,
+        |index, cache: &mut (Option<i64>, HashMap<i64, Option<Franchise>>), group: Group| {
+            if cache.0 != Some(group.key) {
+                cache.1.clear();
+                cache.0 = Some(group.key);
+            }
+            let franchises = &mut cache.1;
+            for id in group.label.iter().chain(&group.relatives) {
+                franchises
+                    .entry(*id)
+                    .or_insert_with(|| index.franchise(*id));
+            }
+            let judge = |ids: &[i64], normalized: &str, prepared: &identify::PreparedTitle| {
+                ids.iter()
+                    .filter(|id| {
+                        names.get(id).is_some_and(|forms| {
+                            forms.iter().any(|f| normalized.contains(f.as_str()))
+                        })
+                    })
+                    .filter_map(|id| {
+                        let franchise = franchises.get(id)?.as_ref()?;
+                        Some((*id, identify::identify_prepared(franchise, prepared)))
+                    })
+                    .collect::<Vec<_>>()
+            };
+            group
+                .titles
+                .into_iter()
+                .map(|title| {
+                    let prepared = identify::PreparedTitle::of(&release_title::parse(&title));
+                    let normalized = auto_search::normalize_title(&title);
+                    Judged {
+                        own: judge(&group.label, &normalized, &prepared),
+                        relatives: judge(&group.relatives, &normalized, &prepared),
+                        label: group.label.clone(),
+                        title,
+                    }
+                })
+                .collect()
+        },
+    );
+    judged.into_iter().flatten().collect()
+}
+
+fn verdicts(v: &[(i64, Verdict)]) -> String {
+    v.iter()
+        .map(|(id, v)| format!("{id}: {}", short(v)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The corpus through `identify`, held to its numbers. When a change
+/// moves one: if it improved, tighten the limit; if it is a deliberate
+/// trade, loosen it and say why in the commit. The snapshot lists every
+/// missed, wrong and tied title, grouped by what happened, so a moved
+/// number shows the titles that moved.
+#[test]
+fn identify_over_the_corpus_holds_its_numbers() {
+    const RECOGNIZED_MIN: usize = 15_495;
+    const MISSED_MAX: usize = 1_117;
+    const BLOCKED_MIN: usize = 5_985;
+    const WRONG_TARGET_MAX: usize = 1_167;
+    const WRONG_TIE_MAX: usize = 995;
+
+    let judged = judge_corpus();
+    let count = |f: fn(&Judged) -> bool| judged.iter().filter(|j| f(j)).count();
+    let (recognized, missed, blocked, wrong_target, wrong_tie) = (
+        count(Judged::recognized),
+        count(Judged::missed),
+        count(Judged::blocked),
+        count(Judged::wrong_target),
+        count(Judged::wrong_tie),
+    );
+    eprintln!(
+        "{} titles, {} naming a label entry: recognized {recognized}, missed {missed}; \
+         naming a relative: blocked {blocked}, a relative's target {wrong_target}, tie {wrong_tie}",
+        judged.len(),
+        count(|j| !j.own.is_empty()),
+    );
+
+    let mut groups: BTreeMap<String, (usize, &str)> = BTreeMap::new();
+    for j in &judged {
+        for (kind, hit) in [
+            ("missed", j.missed()),
+            ("wrong", j.wrong_target()),
+            ("tie", j.wrong_tie()),
+        ] {
+            if hit {
+                let key = format!(
+                    "{kind} {:?} [{}] relatives [{}]",
+                    j.label,
+                    verdicts(&j.own),
+                    verdicts(&j.relatives)
+                );
+                groups.entry(key).or_insert((0, &j.title)).0 += 1;
+            }
+        }
+    }
+    let lines: Vec<String> = groups
+        .iter()
+        .map(|(key, (n, title))| format!("{key} x{n}\n    {title}"))
+        .collect();
+    insta::assert_snapshot!("identify_corpus", lines.join("\n"));
+
+    let mut failures = Vec::new();
+    for (name, value, limit, floor) in [
+        ("recognized", recognized, RECOGNIZED_MIN, true),
+        ("missed", missed, MISSED_MAX, false),
+        ("blocked", blocked, BLOCKED_MIN, true),
+        ("a relative's target", wrong_target, WRONG_TARGET_MAX, false),
+        ("a relative's tie", wrong_tie, WRONG_TIE_MAX, false),
+    ] {
+        if floor && value < limit {
+            failures.push(format!("{name}: {value}, floor {limit}"));
+        }
+        if !floor && value > limit {
+            failures.push(format!("{name}: {value}, ceiling {limit}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 /// Vendors `franchises.json.gz`: loads anibridge's mappings (cached under
 /// `ID_CACHE`, default `target/identify-cache`), labels every corpus AniDB
 /// anime with its AniList entries, then fetches from AniList, level by
@@ -188,4 +504,22 @@ async fn vendor_corpus_franchises() {
         vendored.graph.nodes.len(),
         vendored.graph.edges.len()
     );
+}
+
+#[test]
+#[ignore = "probe: ID_PROBE='<anilist id>|<title>'"]
+fn probe() {
+    let probe = std::env::var("ID_PROBE").expect("ID_PROBE");
+    let (id, title) = probe.split_once('|').expect("id|title");
+    let id: i64 = id.parse().expect("id");
+    let vendored = vendored();
+    let index = vendored.graph.index();
+    let franchise = index.franchise(id).expect("entry");
+    for e in franchise.entries() {
+        eprintln!(
+            "  {} {:?} {} {:?} chain={}",
+            e.id, e.title, e.format, e.episodes, e.on_chain
+        );
+    }
+    eprintln!("{:?}", identify::identify(&franchise, title));
 }
