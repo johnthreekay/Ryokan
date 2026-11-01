@@ -20,7 +20,10 @@ use crate::models::local_metadata::same_relation_entry;
 use crate::services::anilist::{AnimeDetail, RelatedEntry};
 use crate::services::{anibridge, anime_relations};
 
-use super::graph::{Franchise, FranchiseGraph, GraphEdge, GraphNode, OffsetRow, Relation, TvdbRow};
+use super::graph::{
+    Franchise, FranchiseGraph, GraphEdge, GraphNode, NameFields, OffsetRow, Relation, TvdbRow,
+    node_names,
+};
 
 /// Entries on the main chain the walk takes at most.
 pub const MAX_CHAIN: usize = 40;
@@ -162,56 +165,221 @@ async fn load_with_print(
     franchise
 }
 
-/// The graph [`load_franchise`] builds from.
-pub async fn load_graph(db: &SqlitePool, detail: &AnimeDetail, offset: i32) -> FranchiseGraph {
-    let mut nodes: BTreeMap<i64, GraphNode> = BTreeMap::new();
-    let mut edges: Vec<GraphEdge> = Vec::new();
-    nodes.insert(detail.id, node_from_detail(detail));
-    let mut chain: HashSet<i64> = HashSet::from([detail.id]);
-    let mut walked: HashSet<i64> = HashSet::new();
-    let mut level: Vec<i64> = vec![detail.id];
-    while !level.is_empty() {
-        level.retain(|id| walked.insert(*id));
-        if level.is_empty() {
-            break;
+/// The walk [`load_graph`] makes, fed one level of relation edges at a
+/// time: chain edges (prequels and sequels either way, parents upward)
+/// up to [`MAX_CHAIN`] entries, and one hop from the chain through side
+/// edges. [`FranchiseGraph::around`] runs the same walk over a graph in
+/// memory.
+pub(super) struct Walk {
+    nodes: BTreeMap<i64, GraphNode>,
+    edges: Vec<GraphEdge>,
+    chain: HashSet<i64>,
+    walked: HashSet<i64>,
+    level: Vec<i64>,
+}
+
+impl Walk {
+    pub(super) fn new(root: GraphNode) -> Self {
+        let id = root.id;
+        Walk {
+            nodes: BTreeMap::from([(id, root)]),
+            edges: Vec::new(),
+            chain: HashSet::from([id]),
+            walked: HashSet::new(),
+            level: vec![id],
         }
+    }
+
+    /// The entries whose edges the next [`Walk::step`] wants; empty when
+    /// the walk is done.
+    pub(super) fn level(&mut self) -> &[i64] {
+        let walked = &mut self.walked;
+        self.level.retain(|id| walked.insert(*id));
+        &self.level
+    }
+
+    /// One level's edges (every edge touching an entry of [`Walk::level`]),
+    /// each with the node on its `to` side when the source knows it.
+    pub(super) fn step<'a>(
+        &mut self,
+        edges: impl IntoIterator<Item = (&'a GraphEdge, Option<GraphNode>)>,
+    ) {
+        let level = std::mem::take(&mut self.level);
         let mut next: Vec<i64> = Vec::new();
-        for row in relation_rows(db, &level).await {
-            let relation = Relation::parse(&row.relation);
+        for (edge, to_node) in edges {
+            let relation = Relation::parse(&edge.relation);
             if !(relation.is_chain() || relation.is_side()) {
                 continue;
             }
             // The neighbor on the far side of this edge from the level.
-            let (near, far) = if level.contains(&row.from) {
-                (row.from, row.to)
+            let (near, far) = if level.contains(&edge.from) {
+                (edge.from, edge.to)
             } else {
-                (row.to, row.from)
+                (edge.to, edge.from)
             };
             // A side entry's own edges are never walked.
-            if !chain.contains(&near) {
+            if !self.chain.contains(&near) {
                 continue;
             }
-            edges.push(GraphEdge {
-                from: row.from,
-                to: row.to,
-                relation: row.relation.clone(),
-            });
-            if far == row.to {
-                nodes.entry(far).or_insert_with(|| node_from_row(&row));
-            } else {
-                nodes.entry(far).or_insert_with(|| GraphNode {
+            self.edges.push(edge.clone());
+            let node = match to_node {
+                Some(node) if far == edge.to => node,
+                _ => GraphNode {
                     id: far,
                     ..GraphNode::default()
-                });
-            }
+                },
+            };
+            self.nodes.entry(far).or_insert(node);
             // `far`'s parent is `near`: a child, a side entry.
-            let child = relation == Relation::Parent && far == row.from;
-            if relation.is_chain() && !child && chain.len() < MAX_CHAIN && chain.insert(far) {
+            let child = relation == Relation::Parent && far == edge.from;
+            if relation.is_chain()
+                && !child
+                && self.chain.len() < MAX_CHAIN
+                && self.chain.insert(far)
+            {
                 next.push(far);
             }
         }
-        level = next;
+        self.level = next;
     }
+
+    pub(super) fn finish(self) -> (BTreeMap<i64, GraphNode>, Vec<GraphEdge>) {
+        (self.nodes, self.edges)
+    }
+}
+
+impl FranchiseGraph {
+    /// The part of this graph [`load_graph`] would walk from `root` had
+    /// the caches held exactly this graph: for cutting one entry's
+    /// franchise out of a graph of many (the corpus tests). `None` when
+    /// `root` is not a node. [`FranchiseGraph::index`] once, then
+    /// [`GraphIndex::around`], for many roots.
+    pub fn around(&self, root: i64) -> Option<FranchiseGraph> {
+        self.index().around(root)
+    }
+
+    pub fn index(&self) -> GraphIndex<'_> {
+        let mut touching: HashMap<i64, Vec<usize>> = HashMap::new();
+        for (i, edge) in self.edges.iter().enumerate() {
+            touching.entry(edge.from).or_default().push(i);
+            if edge.to != edge.from {
+                touching.entry(edge.to).or_default().push(i);
+            }
+        }
+        GraphIndex {
+            graph: self,
+            by_id: self.nodes.iter().map(|n| (n.id, n)).collect(),
+            touching,
+            names: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+/// A [`FranchiseGraph`] indexed by entry, for cutting many franchises out
+/// of one graph.
+pub struct GraphIndex<'a> {
+    graph: &'a FranchiseGraph,
+    by_id: HashMap<i64, &'a GraphNode>,
+    touching: HashMap<i64, Vec<usize>>,
+    /// Each entry's names, read once for every franchise built here.
+    names: Mutex<HashMap<i64, NameFields>>,
+}
+
+impl GraphIndex<'_> {
+    /// `around(root)`, built with `root` as the target. The same as
+    /// `around(root)?.build(root, &[])`, with each entry's names read
+    /// once however many franchises it is in.
+    pub fn franchise(&self, root: i64) -> Option<Franchise> {
+        let graph = self.around(root)?;
+        let mut names = self.names.lock().unwrap();
+        graph.build_with_names(root, &[], &mut |node| {
+            names
+                .entry(node.id)
+                .or_insert_with(|| node_names(node, &[]))
+                .clone()
+        })
+    }
+
+    /// [`FranchiseGraph::around`].
+    pub fn around(&self, root: i64) -> Option<FranchiseGraph> {
+        let mut walk = Walk::new((*self.by_id.get(&root)?).clone());
+        loop {
+            let level = walk.level();
+            if level.is_empty() {
+                break;
+            }
+            let mut found: Vec<usize> = level
+                .iter()
+                .filter_map(|id| self.touching.get(id))
+                .flatten()
+                .copied()
+                .collect();
+            found.sort_unstable();
+            found.dedup();
+            let edges: Vec<(&GraphEdge, Option<GraphNode>)> = found
+                .into_iter()
+                .map(|i| {
+                    let edge = &self.graph.edges[i];
+                    (edge, self.by_id.get(&edge.to).map(|n| (*n).clone()))
+                })
+                .collect();
+            walk.step(edges);
+        }
+        let (mut nodes, mut edges) = walk.finish();
+        for node in nodes.values_mut() {
+            if let Some(full) = self.by_id.get(&node.id) {
+                *node = (*full).clone();
+            }
+        }
+        edges.retain(|e| nodes.contains_key(&e.from) && nodes.contains_key(&e.to));
+        edges.sort_by(|a, b| (a.from, a.to, &a.relation).cmp(&(b.from, b.to, &b.relation)));
+        edges.dedup();
+        Some(FranchiseGraph {
+            tvdb: self
+                .graph
+                .tvdb
+                .iter()
+                .filter(|r| nodes.contains_key(&r.id))
+                .cloned()
+                .collect(),
+            offsets: self
+                .graph
+                .offsets
+                .iter()
+                .filter(|r| nodes.contains_key(&r.id))
+                .cloned()
+                .collect(),
+            nodes: nodes.into_values().collect(),
+            edges,
+        })
+    }
+}
+
+/// The graph [`load_franchise`] builds from.
+pub async fn load_graph(db: &SqlitePool, detail: &AnimeDetail, offset: i32) -> FranchiseGraph {
+    let mut walk = Walk::new(node_from_detail(detail));
+    loop {
+        let level = walk.level().to_vec();
+        if level.is_empty() {
+            break;
+        }
+        let rows = relation_rows(db, &level).await;
+        let edges: Vec<(GraphEdge, GraphNode)> = rows
+            .iter()
+            .map(|row| {
+                (
+                    GraphEdge {
+                        from: row.from,
+                        to: row.to,
+                        relation: row.relation.clone(),
+                    },
+                    node_from_row(row),
+                )
+            })
+            .collect();
+        walk.step(edges.iter().map(|(edge, node)| (edge, Some(node.clone()))));
+    }
+    let (mut nodes, mut edges) = walk.finish();
 
     // Full details (synonyms, end year) where the sweep cached them.
     let ids: Vec<i64> = nodes
@@ -532,6 +700,74 @@ mod tests {
         assert_eq!(franchise.entry(3).unwrap().frames.absolute, 24);
         assert!(franchise.entry(1).unwrap().on_chain);
         assert!(!franchise.entry(10).unwrap().on_chain);
+    }
+
+    #[test]
+    fn around_cuts_one_franchise_out_of_many() {
+        let node = |id: i64, title: &str, format: &str| GraphNode {
+            id,
+            title_romaji: title.to_string(),
+            format: format.to_string(),
+            episodes: Some(12),
+            ..GraphNode::default()
+        };
+        let edge = |from: i64, to: i64, relation: &str| GraphEdge {
+            from,
+            to,
+            relation: relation.to_string(),
+        };
+        let graph = FranchiseGraph {
+            nodes: vec![
+                node(1, "Show", "TV"),
+                node(2, "Show 2nd Season", "TV"),
+                node(3, "Show 3rd Season", "TV"),
+                node(10, "Show OVA", "OVA"),
+                node(11, "Show Spin-off", "TV"),
+                node(20, "Other", "TV"),
+                node(21, "Other 2nd Season", "TV"),
+            ],
+            edges: vec![
+                edge(1, 2, "SEQUEL"),
+                edge(2, 3, "SEQUEL"),
+                edge(2, 10, "SIDE_STORY"),
+                // A side story's own relations are never walked.
+                edge(10, 11, "SPIN_OFF"),
+                edge(20, 21, "SEQUEL"),
+            ],
+            tvdb: vec![
+                TvdbRow {
+                    id: 3,
+                    tvdb_id: 1,
+                    season: 3,
+                    episode_offset: Some(0),
+                },
+                TvdbRow {
+                    id: 21,
+                    tvdb_id: 2,
+                    season: 2,
+                    episode_offset: Some(0),
+                },
+            ],
+            offsets: Vec::new(),
+        };
+        let cut = graph.around(3).unwrap();
+        let ids: Vec<i64> = cut.nodes.iter().map(|n| n.id).collect();
+        assert_eq!(ids, [1, 2, 3, 10]);
+        assert_eq!(cut.edges.len(), 3);
+        assert_eq!(cut.tvdb.len(), 1);
+        assert_eq!(cut.nodes[3].title_romaji, "Show OVA", "full node kept");
+        let franchise = cut.build(3, &[]).unwrap();
+        assert_eq!(franchise.entry(3).unwrap().frames.absolute, 24);
+        assert!(graph.around(99).is_none());
+        // From the other franchise, nothing of the first.
+        let other: Vec<i64> = graph
+            .around(21)
+            .unwrap()
+            .nodes
+            .iter()
+            .map(|n| n.id)
+            .collect();
+        assert_eq!(other, [20, 21]);
     }
 
     #[tokio::test]

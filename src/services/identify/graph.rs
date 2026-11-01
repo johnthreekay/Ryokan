@@ -254,6 +254,18 @@ impl FranchiseGraph {
     /// The franchise as seen from `target`, every node an entry. `None`
     /// when the target is not a node.
     pub fn build(&self, target: i64, alternates: &[String]) -> Option<Franchise> {
+        self.build_with_names(target, alternates, &mut |node| node_names(node, &[]))
+    }
+
+    /// [`FranchiseGraph::build`], with each non-target entry's names from
+    /// `names` (a memo shared across builds: reading a name runs the
+    /// release-title parser).
+    pub(super) fn build_with_names(
+        &self,
+        target: i64,
+        alternates: &[String],
+        names: &mut dyn FnMut(&GraphNode) -> NameFields,
+    ) -> Option<Franchise> {
         let target_index = self.nodes.iter().position(|n| n.id == target)?;
         let by_id: HashMap<i64, &GraphNode> = self.nodes.iter().map(|n| (n.id, n)).collect();
         let prequels = self.tv_prequels(&by_id);
@@ -264,12 +276,16 @@ impl FranchiseGraph {
             .iter()
             .enumerate()
             .map(|(i, node)| {
-                let alternates = if i == target_index { alternates } else { &[] };
+                let node_names = if i == target_index && !alternates.is_empty() {
+                    node_names(node, alternates)
+                } else {
+                    names(node)
+                };
                 let absolute = curated
                     .get(&node.id)
                     .copied()
                     .unwrap_or_else(|| walk_offset(node.id, &prequels, &by_id));
-                card(node, alternates, absolute)
+                card(node, node_names, absolute)
             })
             .collect();
 
@@ -404,14 +420,18 @@ fn forms(names: &[String]) -> Vec<NameForm> {
         .collect()
 }
 
-fn card(node: &GraphNode, alternates: &[String], absolute: i32) -> EntryCard {
-    let names = NameFields {
+/// An entry's names as `identify` reads them.
+pub(super) fn node_names(node: &GraphNode, alternates: &[String]) -> NameFields {
+    NameFields {
         romaji: forms(std::slice::from_ref(&node.title_romaji)),
         english: forms(std::slice::from_ref(&node.title_english)),
         native: forms(std::slice::from_ref(&node.title_native)),
         synonyms: forms(&node.synonyms),
         alternates: forms(alternates),
-    };
+    }
+}
+
+fn card(node: &GraphNode, names: NameFields, absolute: i32) -> EntryCard {
     let mut seasons: Vec<i32> = Vec::new();
     let mut parts: Vec<i32> = Vec::new();
     let mut sequence = None;

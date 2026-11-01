@@ -190,6 +190,12 @@ struct MappingCache {
     /// episodes fall there when the mappings say (`services::identify`
     /// reads a release's `S06E04` through it).
     anilist_tvdb_placements: HashMap<i64, Vec<TvdbPlacement>>,
+    /// AniDB anime ID → every AniList entry the mappings pair it with,
+    /// ascending. AniDB and AniList split shows differently (One Piece is
+    /// one AniDB anime; a two-cour AniList show can be two AniDB ones),
+    /// so it is a set. Read by the release-identity corpus tests, whose
+    /// titles AnimeTosho labels by AniDB id.
+    anidb_to_anilist: HashMap<i64, Vec<i64>>,
 }
 
 /// Where an AniList entry sits on TVDB: show, season, and the offset
@@ -437,6 +443,16 @@ pub async fn tvdb_placements(anilist_id: i64) -> Vec<TvdbPlacement> {
         .unwrap_or_default()
 }
 
+/// The AniList entries the mappings pair AniDB anime `aid` with,
+/// ascending; empty when none or the mappings are not loaded.
+pub async fn anilist_ids_for_anidb(aid: i64) -> Vec<i64> {
+    let cache = CACHE.read().await;
+    cache
+        .as_ref()
+        .and_then(|c| c.data.anidb_to_anilist.get(&aid).cloned())
+        .unwrap_or_default()
+}
+
 /// `(anilist_id, anilist_episode)` for TMDB episode `ep` of a season,
 /// given that season's spans. `None` when no span covers it.
 pub fn map_tmdb_episode(spans: &[EpisodeSpan], ep: i32) -> Option<(i64, i32)> {
@@ -536,6 +552,7 @@ pub async fn seed_mal_to_anilist_for_tests(pairs: &[(i64, i64)]) {
         anilist_to_tvdb: HashMap::new(),
         mal_to_tvdb: HashMap::new(),
         anilist_tvdb_placements: HashMap::new(),
+        anidb_to_anilist: HashMap::new(),
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -626,6 +643,7 @@ pub async fn seed_external_mappings_for_tests(
         anilist_to_tvdb,
         mal_to_tvdb,
         anilist_tvdb_placements: HashMap::new(),
+        anidb_to_anilist: HashMap::new(),
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -672,6 +690,7 @@ pub async fn seed_tmdb_episode_spans_for_tests(spans: &[(i64, i32, i32, i32, i64
         anilist_to_tvdb: HashMap::new(),
         mal_to_tvdb: HashMap::new(),
         anilist_tvdb_placements: HashMap::new(),
+        anidb_to_anilist: HashMap::new(),
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -910,6 +929,7 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
     let mut anilist_tvdb_placements: HashMap<i64, Vec<TvdbPlacement>> = HashMap::new();
     // Seasons an entry is named in, for placements no span covers.
     let mut anilist_tvdb_seasons: HashMap<i64, Vec<(i64, i32)>> = HashMap::new();
+    let mut anidb_to_anilist: HashMap<i64, Vec<i64>> = HashMap::new();
 
     let obj = match data.as_object() {
         Some(o) => o,
@@ -924,6 +944,7 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
                 anilist_to_tvdb,
                 mal_to_tvdb,
                 anilist_tvdb_placements,
+                anidb_to_anilist,
             };
         }
     };
@@ -960,11 +981,16 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
 
         let mut anilist_ids: Vec<i64> = Vec::new();
         let mut mal_ids: Vec<i64> = Vec::new();
+        let mut anidb_ids: Vec<i64> = Vec::new();
         let mut tmdb_ids: Vec<(i64, i32)> = Vec::new();
         let mut tvdb_ids: Vec<(i64, i32)> = Vec::new();
 
         for key in &all_keys {
-            if let Some(id) = parse_provider_id(key, "anilist") {
+            if let Some(id) = parse_provider_id(key, "anidb") {
+                if !anidb_ids.contains(&id) {
+                    anidb_ids.push(id);
+                }
+            } else if let Some(id) = parse_provider_id(key, "anilist") {
                 if !anilist_ids.contains(&id) {
                     anilist_ids.push(id);
                 }
@@ -980,6 +1006,15 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
                 && !tvdb_ids.contains(&id_season)
             {
                 tvdb_ids.push(id_season);
+            }
+        }
+
+        for &aid in &anidb_ids {
+            let list = anidb_to_anilist.entry(aid).or_default();
+            for &al in &anilist_ids {
+                if !list.contains(&al) {
+                    list.push(al);
+                }
             }
         }
 
@@ -1083,6 +1118,10 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
     for v in anilist_tvdb_placements.values_mut() {
         v.sort_by_key(|p| (p.tvdb_id, p.season, p.episode_offset));
     }
+    anidb_to_anilist.retain(|_, v| !v.is_empty());
+    for v in anidb_to_anilist.values_mut() {
+        v.sort_unstable();
+    }
 
     MappingCache {
         tmdb_to_anime,
@@ -1094,6 +1133,7 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
         anilist_to_tvdb,
         mal_to_tvdb,
         anilist_tvdb_placements,
+        anidb_to_anilist,
     }
 }
 
@@ -1980,6 +2020,23 @@ mod episode_span_tests {
             map_tmdb_episode(&spans(&cache, 37854, 1), 61),
             Some((69, 61))
         );
+    }
+
+    #[test]
+    fn anidb_ids_index_every_anilist_entry_either_side_names() {
+        let data = json!({
+            // One AniDB anime, two AniList cours, plus its specials key.
+            "anidb:100:R": {"anilist:202": {"13-24": "1-12"}, "anilist:201": {"1-12": "1-12"}},
+            "anidb:100:S": {"anilist:203": {"1": "1"}},
+            // An AniList record naming its AniDB anime.
+            "anilist:300": {"anidb:101:R": {"1-12": "1-12"}, "mal:300": {"1-12": "1-12"}},
+            // No AniList entry: not indexed.
+            "anidb:102:R": {"mal:9": {"1": "1"}}
+        });
+        let cache = build_cache(&data);
+        assert_eq!(cache.anidb_to_anilist.get(&100), Some(&vec![201, 202, 203]));
+        assert_eq!(cache.anidb_to_anilist.get(&101), Some(&vec![300]));
+        assert_eq!(cache.anidb_to_anilist.get(&102), None);
     }
 
     #[test]
