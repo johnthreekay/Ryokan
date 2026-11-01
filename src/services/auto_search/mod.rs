@@ -23,6 +23,7 @@ mod scoring;
 mod seadex_lookup;
 mod search_target;
 
+use aliases::GatePrecompute;
 pub use aliases::{
     MatchOutcome, classify_match, classify_match_detailed, collect_aliases,
     collect_extended_aliases, collect_sibling_aliases, dedupe_strings, distinctive_overlap_ratio,
@@ -30,7 +31,6 @@ pub use aliases::{
     normalize_title, sequel_variant_aliases, sole_bracket_group, token_overlap_ratio, token_set,
     with_alternate_titles,
 };
-use aliases::{SiblingRejectPrecompute, sibling_match_rejects};
 pub use pack_detection::{
     TRANSITIVE_WALK_MAX_FETCHES, detect_sibling_entries_in_pack,
     expand_parent_with_transitive_relations, is_transitive_walk_source,
@@ -255,7 +255,6 @@ async fn find_all_for_target_with_probes(
     let seadex_hashes = seadex_payload.hashes;
 
     let expected_season = infer_season_from_detail(detail);
-    let sibling_aliases = collect_sibling_aliases(detail, &aliases);
     let franchise = identify::load_franchise(
         db,
         detail,
@@ -263,7 +262,7 @@ async fn find_all_for_target_with_probes(
         &series_ctx.alternate_titles,
     )
     .await;
-    let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases)
+    let gate = GatePrecompute::build(&aliases)
         .with_series_format(&detail.format)
         .with_franchise(franchise.clone());
     let categories = nyaa_search_categories(config, &detail.format);
@@ -292,7 +291,7 @@ async fn find_all_for_target_with_probes(
         phase: MatchPhase::Primary,
         aliases: &aliases,
         indexer_categories: &indexer_categories,
-        sibling_precompute: &sibling_precompute,
+        gate: &gate,
         preferred_groups: &preferred_groups,
         preferred_resolution: &preferred_res,
         target,
@@ -324,12 +323,9 @@ async fn find_all_for_target_with_probes(
         run_queries_interactive(&probe_queries, ctx, &mut seen, &mut candidates).await;
     }
 
-    // Try extended aliases if primary queries found nothing. Extended
-    // aliases expand the own-side of the sibling-rejection comparison,
-    // so rebuild the precompute with the full alias list — otherwise
-    // an extended alias that legitimately overlaps with a sibling (e.g.
-    // a synonym that happens to share tokens) would look like a sibling
-    // win and get rejected.
+    // Try extended aliases if primary queries found nothing. The gate is
+    // rebuilt so the episode check reads the extended aliases and the
+    // franchise names as the series' names.
     if candidates.is_empty() {
         let extended = collect_extended_aliases(detail);
         if !extended.is_empty() {
@@ -338,17 +334,14 @@ async fn find_all_for_target_with_probes(
                 &series_ctx.custom_tokens,
             );
             let all_aliases = [aliases.clone(), extended].concat();
-            let ext_precompute = SiblingRejectPrecompute::build_with_anchors(
-                &all_aliases,
-                &sibling_aliases,
-                &franchise_names(detail),
-            )
-            .with_series_format(&detail.format)
-            .with_franchise(franchise.clone());
+            let ext_precompute =
+                GatePrecompute::build_with_anchors(&all_aliases, &franchise_names(detail))
+                    .with_series_format(&detail.format)
+                    .with_franchise(franchise.clone());
             let ext_ctx = InteractiveQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
-                sibling_precompute: &ext_precompute,
+                gate: &ext_precompute,
                 ..ctx
             };
             run_queries_interactive(&ext_queries, ext_ctx, &mut seen, &mut candidates).await;
@@ -392,10 +385,9 @@ async fn find_all_for_target_with_probes(
     // 2 tokens with the release, below the 0.5 overlap threshold.
     //
     // This pass runs with a different ctx that treats franchise aliases
-    // as the own-side, the computed absolute episode as the target, and
-    // an empty sibling set (the base franchise name trivially substring-
-    // matches every sibling in the graph, so re-using Phase 1's sibling
-    // list would reject every absolute-numbered release).
+    // as the own-side and the computed absolute episode as the target.
+    // `identify` judges each hit against the franchise: the absolute
+    // number is what places `Jujutsu Kaisen - 56` in the third season.
     let franchise_precompute;
     let absolute_target;
     if series_ctx.absolute_offset > 0
@@ -403,7 +395,7 @@ async fn find_all_for_target_with_probes(
         && let SearchTarget::Episode(ep) = target
     {
         absolute_target = SearchTarget::Episode(ep.saturating_add(series_ctx.absolute_offset));
-        franchise_precompute = SiblingRejectPrecompute::build(&series_ctx.franchise_aliases, &[])
+        franchise_precompute = GatePrecompute::build(&series_ctx.franchise_aliases)
             .with_series_format(&detail.format)
             .with_franchise(franchise.clone());
         let franchise_queries = append_custom_tokens(
@@ -417,7 +409,7 @@ async fn find_all_for_target_with_probes(
         let franchise_ctx = InteractiveQueryCtx {
             phase: MatchPhase::Franchise,
             aliases: &series_ctx.franchise_aliases,
-            sibling_precompute: &franchise_precompute,
+            gate: &franchise_precompute,
             target: &absolute_target,
             // `target` already carries the absolute number, so no
             // secondary offset on top of that.
@@ -818,7 +810,6 @@ pub async fn collect_scored_batches_for_target_with_diag(
     let seadex_hashes = seadex_payload.hashes;
 
     let expected_season = infer_season_from_detail(detail);
-    let sibling_aliases = collect_sibling_aliases(detail, &aliases);
     let franchise = identify::load_franchise(
         db,
         detail,
@@ -826,7 +817,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
         &series_ctx.alternate_titles,
     )
     .await;
-    let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases)
+    let gate = GatePrecompute::build(&aliases)
         .with_series_format(&detail.format)
         .with_franchise(franchise.clone());
     let mut seen = HashSet::new();
@@ -861,7 +852,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
         fuzzy_rejected: &fuzzy_rejected,
         aliases: &aliases,
         indexer_categories: &indexer_categories,
-        sibling_precompute: &sibling_precompute,
+        gate: &gate,
         preferred_groups: &preferred_groups,
         preferred_resolution: &preferred_res,
         target,
@@ -960,7 +951,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
     // for the 2001 series). A SeaDex pick of that shape, kept below
     // anyway, is marked the same way.
     if list == BatchList::Interactive {
-        let anchors = sibling_precompute.anchors();
+        let anchors = gate.anchors();
         let start = detail.season_year;
         let end = detail.end_year.or(start);
         for c in candidates.iter_mut() {
@@ -1130,7 +1121,6 @@ async fn collect_scored_for_target(
     let seadex_hashes = seadex_payload.hashes;
 
     let expected_season = infer_season_from_detail(detail);
-    let sibling_aliases = collect_sibling_aliases(detail, &aliases);
     let franchise = identify::load_franchise(
         db,
         detail,
@@ -1138,7 +1128,7 @@ async fn collect_scored_for_target(
         &series_ctx.alternate_titles,
     )
     .await;
-    let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases)
+    let gate = GatePrecompute::build(&aliases)
         .with_series_format(&detail.format)
         .with_franchise(franchise.clone());
     let mut seen = HashSet::new();
@@ -1186,7 +1176,7 @@ async fn collect_scored_for_target(
         fuzzy_rejected: &fuzzy_rejected,
         aliases: &aliases,
         indexer_categories: &indexer_categories,
-        sibling_precompute: &sibling_precompute,
+        gate: &gate,
         preferred_groups: &preferred_groups,
         preferred_resolution: &preferred_res,
         target,
@@ -1206,9 +1196,8 @@ async fn collect_scored_for_target(
     run_queries(&queries, ctx, &mut seen, &mut candidates).await;
 
     // Phase 1.5: if no candidates, try extended aliases (synonyms +
-    // decomposed sub-phrases). Rebuild the sibling precompute with the
-    // full alias list so own-vs-sibling overlap comparisons see the
-    // extended aliases too.
+    // decomposed sub-phrases), with the gate rebuilt so the episode check
+    // reads them as the series' names.
     if candidates.is_empty() {
         let extended = collect_extended_aliases(detail);
         if !extended.is_empty() {
@@ -1217,17 +1206,14 @@ async fn collect_scored_for_target(
                 &series_ctx.custom_tokens,
             );
             let all_aliases = [aliases.clone(), extended].concat();
-            let ext_precompute = SiblingRejectPrecompute::build_with_anchors(
-                &all_aliases,
-                &sibling_aliases,
-                &franchise_names(detail),
-            )
-            .with_series_format(&detail.format)
-            .with_franchise(franchise.clone());
+            let ext_precompute =
+                GatePrecompute::build_with_anchors(&all_aliases, &franchise_names(detail))
+                    .with_series_format(&detail.format)
+                    .with_franchise(franchise.clone());
             let ext_ctx = AutoQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
-                sibling_precompute: &ext_precompute,
+                gate: &ext_precompute,
                 ..ctx
             };
             run_queries(&ext_queries, ext_ctx, &mut seen, &mut candidates).await;
@@ -1307,7 +1293,7 @@ async fn collect_scored_for_target(
         && let SearchTarget::Episode(ep) = target
     {
         absolute_target = SearchTarget::Episode(ep.saturating_add(series_ctx.absolute_offset));
-        franchise_precompute = SiblingRejectPrecompute::build(&series_ctx.franchise_aliases, &[])
+        franchise_precompute = GatePrecompute::build(&series_ctx.franchise_aliases)
             .with_series_format(&detail.format)
             .with_franchise(franchise.clone());
         let franchise_queries = append_custom_tokens(
@@ -1321,7 +1307,7 @@ async fn collect_scored_for_target(
         let franchise_ctx = AutoQueryCtx {
             phase: MatchPhase::Franchise,
             aliases: &series_ctx.franchise_aliases,
-            sibling_precompute: &franchise_precompute,
+            gate: &franchise_precompute,
             target: &absolute_target,
             absolute_offset: 0,
             ..ctx
@@ -1443,7 +1429,7 @@ impl AutoQueryCtx<'_> {
         let outcome = classify_match_detailed(
             &result.title,
             self.aliases,
-            self.sibling_precompute,
+            self.gate,
             self.target,
             self.expected_season,
             self.batch_episode_match && result.is_batch,
@@ -1508,14 +1494,9 @@ struct AutoQueryCtx<'a> {
     /// Torznab / newznab categories to ask indexers for (see
     /// `indexers::search_categories`).
     indexer_categories: &'a [i32],
-    /// Precomputed token sets for own + sibling aliases, used by
-    /// [`sibling_match_rejects`] to reject a release that looks MORE
-    /// like a sequel/prequel/side-story than the target. Built once
-    /// at the top of the collect function so the ~50-candidates ×
-    /// ~5-siblings normalize/tokenize loop runs once per sweep
-    /// instead of once per candidate. See `collect_sibling_aliases`
-    /// for the JJK S1→S3 motivating case.
-    sibling_precompute: &'a SiblingRejectPrecompute,
+    /// The series' names for the episode check and its franchise for
+    /// `identify`, built once per pass (see `GatePrecompute`).
+    gate: &'a GatePrecompute,
     preferred_groups: &'a [String],
     preferred_resolution: &'a str,
     target: &'a SearchTarget,
@@ -1577,7 +1558,7 @@ struct InteractiveQueryCtx<'a> {
     /// Torznab / newznab categories to ask indexers for (see
     /// `indexers::search_categories`).
     indexer_categories: &'a [i32],
-    sibling_precompute: &'a SiblingRejectPrecompute,
+    gate: &'a GatePrecompute,
     preferred_groups: &'a [String],
     preferred_resolution: &'a str,
     target: &'a SearchTarget,
@@ -1763,8 +1744,7 @@ async fn run_queries(
                 continue;
             }
             if ctx.reject_specials
-                && release_title::parse(&result.title)
-                    .is_special_for(ctx.sibling_precompute.anchors())
+                && release_title::parse(&result.title).is_special_for(ctx.gate.anchors())
             {
                 tracing::debug!("auto-search: skipping special release {:?}", result.title);
                 rejected_here.insert(dedupe_key);
@@ -1801,7 +1781,7 @@ async fn run_queries(
             continue;
         }
         if ctx.reject_specials
-            && release_title::parse(&result.title).is_special_for(ctx.sibling_precompute.anchors())
+            && release_title::parse(&result.title).is_special_for(ctx.gate.anchors())
         {
             tracing::debug!("auto-search: skipping special release {:?}", result.title);
             rejected_here.insert(dedupe_key);
@@ -1940,7 +1920,7 @@ async fn fan_out_indexers_for_interactive(
 
 /// Per-result interactive filter. Pulled out of `run_queries_interactive`
 /// so both the Nyaa loop and the indexer-fan-out loop apply the
-/// same relaxed-alias / sibling-rejection / season / episode gate
+/// same relaxed-alias / season / episode / identify gate
 /// without code duplication.
 fn apply_interactive_filter_and_push(
     mut result: SearchResult,
@@ -2011,15 +1991,6 @@ fn apply_interactive_filter_and_push(
     ) else {
         return;
     };
-    // Sibling rejection: same sequel/prequel guard as the auto path —
-    // a release that matches a sibling more tightly than us is almost
-    // certainly for the sibling. With the franchise loaded, `identify`
-    // judges instead, below.
-    if ctx.sibling_precompute.franchise().is_none()
-        && sibling_match_rejects(&normalized_title, &title_tokens, ctx.sibling_precompute)
-    {
-        return;
-    }
     // Season check: reject results clearly from a different season
     let release = release_title::parse(&result.title);
     if release.conflicts_with_season(ctx.expected_season) {
@@ -2040,15 +2011,13 @@ fn apply_interactive_filter_and_push(
         if release.half_episode || release.extra {
             return;
         }
-        let parsed = release
-            .for_series(ctx.sibling_precompute.anchors())
-            .episodes;
+        let parsed = release.for_series(ctx.gate.anchors()).episodes;
         if !parsed.is_empty() && !episode_match(&parsed, *target_ep, ctx.absolute_offset) {
             return;
         }
     }
     let mut provenance = alias_match.into_provenance(ctx.phase);
-    if let Some(franchise) = ctx.sibling_precompute.franchise() {
+    if let Some(franchise) = ctx.gate.franchise() {
         let verdict = identify::identify_parsed(franchise, &release);
         // The person choosing still sees a release another entry fits
         // better, labeled and scored below this series' own; one whose
@@ -2727,7 +2696,7 @@ mod tests {
         // Build a permissive ctx so the alias / season / episode
         // gate downstream of the dedup doesn't reject anything.
         let aliases = vec!["Monogatari".to_string(), "Nisemonogatari".to_string()];
-        let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let preferred_groups: Vec<String> = Vec::new();
         let target = SearchTarget::Single;
         let seadex_hashes = std::collections::HashSet::new();
@@ -2736,7 +2705,7 @@ mod tests {
             phase: MatchPhase::Primary,
             aliases: &aliases,
             indexer_categories: &[],
-            sibling_precompute: &sibling_precompute,
+            gate: &gate,
             preferred_groups: &preferred_groups,
             preferred_resolution: "1080p",
             target: &target,
@@ -2810,7 +2779,7 @@ mod tests {
         };
 
         let aliases = vec!["Monogatari".to_string()];
-        let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let preferred_groups: Vec<String> = Vec::new();
         let target = SearchTarget::Single;
         let seadex_hashes = std::collections::HashSet::new();
@@ -2819,7 +2788,7 @@ mod tests {
             phase: MatchPhase::Primary,
             aliases: &aliases,
             indexer_categories: &[],
-            sibling_precompute: &sibling_precompute,
+            gate: &gate,
             preferred_groups: &preferred_groups,
             preferred_resolution: "1080p",
             target: &target,
@@ -3426,8 +3395,8 @@ mod tests {
 
         let aliases: Vec<String> = collect_aliases(&d).into_iter().chain(extended).collect();
         // The extended pass's gate: the franchise names are anchors.
-        let precompute = SiblingRejectPrecompute::build_with_anchors(&aliases, &[], &heads)
-            .with_series_format(&d.format);
+        let precompute =
+            GatePrecompute::build_with_anchors(&aliases, &heads).with_series_format(&d.format);
         let season = infer_season_from_detail(&d);
         let gate = |title: &str, ep: i32| {
             matches_target(
@@ -3556,8 +3525,7 @@ mod tests {
             }
 
             let aliases: Vec<String> = collect_aliases(&d).into_iter().chain(extended).collect();
-            let precompute =
-                SiblingRejectPrecompute::build(&aliases, &[]).with_series_format(&d.format);
+            let precompute = GatePrecompute::build(&aliases).with_series_format(&d.format);
             let gate = |title: &str, ep: i32| {
                 matches_target(
                     title,
@@ -3649,9 +3617,8 @@ mod tests {
             .into_iter()
             .chain(collect_extended_aliases(d))
             .collect();
-        let precompute =
-            SiblingRejectPrecompute::build_with_anchors(&aliases, &[], &franchise_names(d))
-                .with_series_format(&d.format);
+        let precompute = GatePrecompute::build_with_anchors(&aliases, &franchise_names(d))
+            .with_series_format(&d.format);
         classify_match(
             title,
             &aliases,
@@ -3992,7 +3959,7 @@ mod tests {
             }
         }
         let aliases = vec!["Sousou no Frieren".to_string()];
-        let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let preferred_groups: Vec<String> = Vec::new();
         let target = SearchTarget::Single;
         let seadex_hashes: HashSet<String> = ["cafebabe".to_string()].into_iter().collect();
@@ -4000,7 +3967,7 @@ mod tests {
         let ctx = InteractiveQueryCtx {
             phase: MatchPhase::Extended,
             aliases: &aliases,
-            sibling_precompute: &sibling_precompute,
+            gate: &gate,
             preferred_groups: &preferred_groups,
             preferred_resolution: "1080p",
             target: &target,

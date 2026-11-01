@@ -2,9 +2,9 @@
 //!
 //! The query builder turns an `AnimeDetail` into a set of alias strings,
 //! then `matches_target` filters Nyaa releases down to those that plausibly
-//! describe the same series. Sibling-rejection keeps sequels / prequels /
-//! arcs from false-positive matching via `SiblingRejectPrecompute` +
-//! `sibling_match_rejects`.
+//! describe the same series. Sequels, prequels and arcs that the title
+//! also names are `services::identify`'s to judge, through the franchise
+//! on the `GatePrecompute`.
 
 use std::collections::HashSet;
 use std::sync::{Arc, LazyLock};
@@ -106,12 +106,10 @@ pub fn token_set(value: &str) -> HashSet<String> {
         .split_whitespace()
         // Keep single-character tokens only when they're numeric —
         // single digits like "0" in "Jujutsu Kaisen 0" are the only
-        // thing distinguishing the prequel movie's sibling alias from
-        // the base franchise's own alias "Jujutsu Kaisen", so dropping
-        // them lets sibling_match_rejects tie on tokens and fail to
-        // reject the movie release for an S1 episode target. Single
-        // alphabetic characters (stray "a", "I", "N") remain filtered
-        // out because they carry no disambiguation value.
+        // thing distinguishing the prequel movie's title from the base
+        // franchise's "Jujutsu Kaisen". Single alphabetic characters
+        // (stray "a", "I", "N") remain filtered out because they carry
+        // no disambiguation value.
         .filter(|token| token.len() > 1 || token.chars().all(|c| c.is_ascii_digit()))
         .map(|token| token.to_string())
         .collect()
@@ -451,8 +449,9 @@ pub fn sequel_variant_aliases(aliases: &[String]) -> Vec<String> {
 }
 
 /// Distinctive titles of this series' siblings (sequels, prequels, side
-/// stories, alternative versions, spin-offs, summaries) — used to reject
-/// releases that look MORE like a sibling than the target.
+/// stories, alternative versions, spin-offs, summaries). The misgrab
+/// verdict counts a file naming one as related; the search gate judges
+/// relatives through `services::identify` instead.
 ///
 /// The motivating bug: auto-searching for Jujutsu Kaisen S1 E6 grabbed a
 /// release titled `[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen -
@@ -521,40 +520,24 @@ pub fn collect_sibling_aliases(detail: &AnimeDetail, own_aliases: &[String]) -> 
     dedupe_strings(out)
 }
 
-/// Precomputed normalized token sets for the own-alias and sibling-alias
-/// lists used by [`sibling_match_rejects`]. Built once per target sweep
-/// (per call to `find_all_for_target` / `collect_scored_for_target` /
-/// `collect_scored_batches_for_target`) and reused across every release
-/// candidate the sweep checks against the target, instead of re-running
-/// `normalize_title` + `token_set` on the same alias strings ~50×
-/// (candidates) per target. Pure perf hoist — the rejection semantics
-/// are identical to the prior per-call implementation.
+/// What the auto-search title gate holds for one sweep: the series'
+/// names as `release_title` reads them (for the episode check) and its
+/// franchise (for `identify`). Built once per collector pass and reused
+/// for every candidate.
 #[derive(Debug, Clone, Default)]
-pub struct SiblingRejectPrecompute {
-    /// Token sets for own aliases. Used to find the best target-alias
-    /// overlap with any release — a sibling only wins if it beats this
-    /// number strictly.
-    own_token_sets: Vec<HashSet<String>>,
-    /// Sibling entries as `(normalized_title, token_set)` pairs. The
-    /// normalized title is kept alongside its token set so the
-    /// contiguous-substring fallback has a stable, deterministic string
-    /// to match against (the old implementation rebuilt this from
-    /// `HashSet::iter()` per call, which is nondeterministic order and
-    /// would silently misbehave on contiguous-substring checks).
-    siblings: Vec<(String, HashSet<String>)>,
+pub struct GatePrecompute {
     /// The own aliases as `release_title` reads them, for the episode
     /// check: a bare number right after the series' name is its episode,
     /// a number inside the name (`Mob Psycho 100`) never is.
     anchors: SeriesAnchors,
     /// The series' franchise. When set, `services::identify` decides
-    /// whether another entry fits a release better, in place of
-    /// [`sibling_match_rejects`].
+    /// whether another entry fits a release better.
     franchise: Option<Arc<Franchise>>,
 }
 
-impl SiblingRejectPrecompute {
-    pub fn build(own_aliases: &[String], sibling_aliases: &[String]) -> Self {
-        Self::build_with_anchors(own_aliases, sibling_aliases, &[])
+impl GatePrecompute {
+    pub fn build(own_aliases: &[String]) -> Self {
+        Self::build_with_anchors(own_aliases, &[])
     }
 
     /// `build`, with names the episode check reads the series by that
@@ -562,44 +545,11 @@ impl SiblingRejectPrecompute {
     /// #300). The extended pass had them as aliases before; without
     /// them as anchors `Steel Ball Run - JoJo's Bizarre Adventure 02`
     /// lost its episode, the number right after a name.
-    pub fn build_with_anchors(
-        own_aliases: &[String],
-        sibling_aliases: &[String],
-        anchor_names: &[String],
-    ) -> Self {
-        let own_token_sets = own_aliases
-            .iter()
-            .map(|a| token_set(&normalize_title(a)))
-            .collect();
-        let siblings = sibling_aliases
-            .iter()
-            .filter_map(|s| {
-                let normalized = normalize_title(s);
-                let tokens = token_set(&normalized);
-                if tokens.is_empty() {
-                    None
-                } else {
-                    Some((normalized, tokens))
-                }
-            })
-            .collect();
+    pub fn build_with_anchors(own_aliases: &[String], anchor_names: &[String]) -> Self {
         Self {
-            own_token_sets,
-            siblings,
             anchors: SeriesAnchors::new(&[own_aliases, anchor_names].concat()),
             franchise: None,
         }
-    }
-
-    /// Judge releases against the series' franchise (`identify`) instead
-    /// of the sibling-title overlap.
-    pub fn with_franchise(mut self, franchise: Arc<Franchise>) -> Self {
-        self.franchise = Some(franchise);
-        self
-    }
-
-    pub fn franchise(&self) -> Option<&Arc<Franchise>> {
-        self.franchise.as_ref()
     }
 
     /// The series' AniList format decides what a special is: for a TV
@@ -612,67 +562,19 @@ impl SiblingRejectPrecompute {
         self
     }
 
+    /// Judge releases against the series' franchise (`identify`).
+    pub fn with_franchise(mut self, franchise: Arc<Franchise>) -> Self {
+        self.franchise = Some(franchise);
+        self
+    }
+
+    pub fn franchise(&self) -> Option<&Arc<Franchise>> {
+        self.franchise.as_ref()
+    }
+
     pub fn anchors(&self) -> &SeriesAnchors {
         &self.anchors
     }
-}
-
-/// Reject a release when it looks MORE like one of our siblings than
-/// it does like us. The check compares token overlap: if any sibling
-/// alias shares strictly more tokens with the release than the best
-/// target alias does, the release is for the sibling.
-///
-/// Returns `true` to reject, `false` to keep.
-///
-/// Called from `matches_target` and the interactive-search path. Both
-/// are guarded by an upstream basic alias-match, so by the time we get
-/// here the release already passes the "could plausibly be us" gate —
-/// the sibling check is the last defense against "plausibly us" also
-/// being "more plausibly a sibling".
-pub(super) fn sibling_match_rejects(
-    normalized_release: &str,
-    normalized_release_tokens: &HashSet<String>,
-    precompute: &SiblingRejectPrecompute,
-) -> bool {
-    if precompute.siblings.is_empty() {
-        return false;
-    }
-
-    // Best token overlap COUNT between release and any of our own aliases.
-    // Using absolute overlap count (not ratio) so a sibling with 4 matching
-    // tokens beats a target alias with 2 matching tokens even if the target
-    // alias has fewer tokens overall.
-    let best_own_overlap: usize = precompute
-        .own_token_sets
-        .iter()
-        .map(|tokens| normalized_release_tokens.intersection(tokens).count())
-        .max()
-        .unwrap_or(0);
-
-    for (normalized_sibling, sibling_tokens) in &precompute.siblings {
-        let sibling_overlap = normalized_release_tokens
-            .intersection(sibling_tokens)
-            .count();
-        // Strictly greater: a tie means both the target and the sibling
-        // match equally well, which is the normal case for a release
-        // like "Jujutsu Kaisen - 06" where sibling "Jujutsu Kaisen 2nd
-        // Season" also overlaps on {jujutsu, kaisen}. Only reject when
-        // the sibling picks up EXTRA tokens that the target doesn't.
-        if sibling_overlap > best_own_overlap {
-            // Also require that the sibling's entire normalized title
-            // is either a contiguous substring of the release or that
-            // ALL of its tokens appear in the release. This prevents
-            // freak two-token overlaps ("side story" + some other
-            // common fragment) from tripping the rejection.
-            let all_tokens_present = sibling_tokens
-                .iter()
-                .all(|t| normalized_release_tokens.contains(t));
-            if all_tokens_present || normalized_release.contains(normalized_sibling.as_str()) {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 /// Extended aliases: synonyms + decomposed sub-phrases from compound titles.
@@ -999,9 +901,9 @@ pub fn dedupe_strings(values: Vec<String>) -> Vec<String> {
 /// `token_overlap_ratio` both grant 1.0 to ANY release whose title
 /// contains that token — including unrelated shows whose names happen
 /// to share a Japanese word in common ("nichijou" = "everyday", a word
-/// that appears in many slice-of-life titles). Existing
-/// `sibling_match_rejects` only catches relatives in the AL graph; an
-/// unrelated show isn't reachable that way.
+/// that appears in many slice-of-life titles). `identify` only judges
+/// relatives in the franchise graph; an unrelated show isn't reachable
+/// that way.
 ///
 /// This helper requires that the release's content tokens (title minus
 /// pure-numeric metadata like episode numbers and years) don't
@@ -1286,14 +1188,14 @@ pub enum MatchOutcome {
 }
 
 /// The auto-search title gate. With a franchise attached
-/// ([`SiblingRejectPrecompute::with_franchise`]), `identify` judges the
-/// release against the series' relatives after the season and episode
-/// checks pass; without one, the sibling-title overlap rejects it up
-/// front.
+/// ([`GatePrecompute::with_franchise`]), `identify` judges the release
+/// against the series' relatives after the season and episode checks
+/// pass; every collector attaches one (`identify::load_franchise` falls
+/// back to the detail's own relations).
 pub fn classify_match_detailed(
     title: &str,
     aliases: &[String],
-    sibling_precompute: &SiblingRejectPrecompute,
+    gate: &GatePrecompute,
     target: &SearchTarget,
     expected_season: i32,
     allow_batch_episode: bool,
@@ -1311,15 +1213,6 @@ pub fn classify_match_detailed(
         return MatchOutcome::NoMatch;
     };
 
-    // Sibling rejection: if the release looks more like a sequel /
-    // prequel / side story than it looks like us, reject. See the
-    // JJK S1→S3 case in the `collect_sibling_aliases` docstring.
-    if sibling_precompute.franchise.is_none()
-        && sibling_match_rejects(&normalized_title, &title_tokens, sibling_precompute)
-    {
-        return MatchOutcome::NoMatch;
-    }
-
     let mut release = None;
     if let SearchTarget::Episode(target_ep) = target {
         // Season check: reject if release has an explicit season that doesn't match
@@ -1328,9 +1221,7 @@ pub fn classify_match_detailed(
             return MatchOutcome::NoMatch;
         }
 
-        let parsed = parsed_title
-            .for_series(&sibling_precompute.anchors)
-            .episodes;
+        let parsed = parsed_title.for_series(&gate.anchors).episodes;
         if parsed.is_empty() {
             return MatchOutcome::NoMatch;
         }
@@ -1349,7 +1240,7 @@ pub fn classify_match_detailed(
         }
     }
 
-    let Some(franchise) = &sibling_precompute.franchise else {
+    let Some(franchise) = &gate.franchise else {
         return MatchOutcome::Matched(alias_match, None);
     };
     let release = release.unwrap_or_else(|| release_title::parse(title));
@@ -1363,7 +1254,7 @@ pub fn classify_match_detailed(
 pub fn classify_match(
     title: &str,
     aliases: &[String],
-    sibling_precompute: &SiblingRejectPrecompute,
+    gate: &GatePrecompute,
     target: &SearchTarget,
     expected_season: i32,
     allow_batch_episode: bool,
@@ -1372,7 +1263,7 @@ pub fn classify_match(
     match classify_match_detailed(
         title,
         aliases,
-        sibling_precompute,
+        gate,
         target,
         expected_season,
         allow_batch_episode,
@@ -1388,7 +1279,7 @@ pub fn classify_match(
 pub fn matches_target(
     title: &str,
     aliases: &[String],
-    sibling_precompute: &SiblingRejectPrecompute,
+    gate: &GatePrecompute,
     target: &SearchTarget,
     expected_season: i32,
     allow_batch_episode: bool,
@@ -1397,7 +1288,7 @@ pub fn matches_target(
     classify_match(
         title,
         aliases,
-        sibling_precompute,
+        gate,
         target,
         expected_season,
         allow_batch_episode,
@@ -1595,7 +1486,7 @@ mod tests {
         // release has more than 1 surplus content token beyond a
         // single-token alias.
         let aliases = vec!["Shortname".to_string()];
-        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
 
         // The legit release: alias is the only content token aside
         // from the group + episode. Surplus = 1 (group), at tolerance.
@@ -1604,7 +1495,7 @@ mod tests {
             matches_target(
                 legit,
                 &aliases,
-                &no_siblings,
+                &gate,
                 &SearchTarget::Episode(12),
                 0,
                 false,
@@ -1621,7 +1512,7 @@ mod tests {
             !matches_target(
                 false_positive,
                 &aliases,
-                &no_siblings,
+                &gate,
                 &SearchTarget::Episode(12),
                 0,
                 false,
@@ -1640,13 +1531,13 @@ mod tests {
         // to normalize_title's filter list to free the slot. Pin
         // the legit case here.
         let aliases = vec!["Shortname".to_string()];
-        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let with_episode_marker = "[Group] Shortname Episode 12 [BD 1080p].mkv";
         assert!(
             matches_target(
                 with_episode_marker,
                 &aliases,
-                &no_siblings,
+                &gate,
                 &SearchTarget::Episode(12),
                 0,
                 false,
@@ -1660,7 +1551,7 @@ mod tests {
             matches_target(
                 with_revision,
                 &aliases,
-                &no_siblings,
+                &gate,
                 &SearchTarget::Episode(12),
                 0,
                 false,
@@ -1677,13 +1568,13 @@ mod tests {
         // 2-token aliases is 3 surplus, so a release with one
         // additional subtitle word is well within budget.
         let aliases = vec!["Sword Art".to_string()]; // synthetic 2-tok
-        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let legit = "[Group] Sword Art Online - Alicization - 12 [BD 1080p].mkv";
         assert!(
             matches_target(
                 legit,
                 &aliases,
-                &no_siblings,
+                &gate,
                 &SearchTarget::Episode(12),
                 0,
                 false,
@@ -1705,7 +1596,7 @@ mod tests {
             "Main Title: Subtitle One".to_string(),
             "Main Title: Subtitle Two".to_string(),
         ];
-        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let unrelated_release =
             "[Group] Totally Different Show - Subtitle One-Word Thing - 01 [1080p].mkv";
         // The release shares only the word "Subtitle" with the primary
@@ -1718,7 +1609,7 @@ mod tests {
             !matches_target(
                 unrelated_release,
                 &aliases,
-                &no_siblings,
+                &gate,
                 &SearchTarget::Episode(1),
                 0,
                 false,
@@ -1731,84 +1622,13 @@ mod tests {
     #[test]
     fn matches_target_accepts_release_with_full_primary_alias_substring() {
         let aliases = vec!["Main Title Subtitle One".to_string()];
-        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let good_release = "[Group] Main Title Subtitle One [BD 1080p].mkv";
         assert!(matches_target(
             good_release,
             &aliases,
-            &no_siblings,
+            &gate,
             &SearchTarget::Single,
-            0,
-            false,
-            0
-        ));
-    }
-
-    #[test]
-    fn matches_target_rejects_sibling_arc_release() {
-        // Regression: auto-searching JJK S1 E6 used to grab
-        // `[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06`
-        // because the sibling arc title has no explicit "S02"/"Season 2"
-        // marker for the season check to catch, but "Jujutsu Kaisen" is
-        // a substring of the release. The sibling check resolves this:
-        // the sibling alias "Jujutsu Kaisen: Shimetsu Kaiyuu" has 4
-        // overlapping tokens with the release vs the target's 2, so the
-        // sibling wins and the release is rejected.
-        let own = vec!["Jujutsu Kaisen".to_string()];
-        let siblings = vec!["Jujutsu Kaisen: Shimetsu Kaiyuu".to_string()];
-        let precompute = SiblingRejectPrecompute::build(&own, &siblings);
-        let release = "[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06 [1080p CR WEBRip HEVC AAC].mkv";
-        assert!(
-            !matches_target(
-                release,
-                &own,
-                &precompute,
-                &SearchTarget::Episode(6),
-                1,
-                false,
-                0
-            ),
-            "sibling arc release must not match the base-franchise target"
-        );
-    }
-
-    #[test]
-    fn matches_target_keeps_base_franchise_release_despite_siblings() {
-        // Symmetric: with the same sibling list, a plain JJK S1 release
-        // should still match the target. The sibling overlaps on only
-        // 2 tokens ({jujutsu, kaisen}) — the same as the target's own
-        // overlap — so the sibling check is a no-op.
-        let own = vec!["Jujutsu Kaisen".to_string()];
-        let siblings = vec!["Jujutsu Kaisen: Shimetsu Kaiyuu".to_string()];
-        let precompute = SiblingRejectPrecompute::build(&own, &siblings);
-        let release = "[Erai-raws] Jujutsu Kaisen - 06 [1080p].mkv";
-        assert!(matches_target(
-            release,
-            &own,
-            &precompute,
-            &SearchTarget::Episode(6),
-            1,
-            false,
-            0
-        ));
-    }
-
-    #[test]
-    fn matches_target_keeps_target_arc_release_against_unrelated_sibling() {
-        // A JJK S2 Shibuya Incident target should still accept its own
-        // arc release even when the sibling list includes another arc.
-        let own = vec!["Jujutsu Kaisen: Shimetsu Kaiyuu".to_string()];
-        let siblings = vec![
-            "Jujutsu Kaisen".to_string(),
-            "Jujutsu Kaisen: Kaigyoku Gyokusetsu".to_string(),
-        ];
-        let precompute = SiblingRejectPrecompute::build(&own, &siblings);
-        let release = "[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06 [1080p].mkv";
-        assert!(matches_target(
-            release,
-            &own,
-            &precompute,
-            &SearchTarget::Episode(6),
             0,
             false,
             0
@@ -1876,12 +1696,12 @@ mod tests {
         // for JJK S3 E9 must pass through `matches_target` when the
         // cumulative S1+S2 offset (47) is supplied.
         let own = vec!["Jujutsu Kaisen".to_string()];
-        let no_siblings = SiblingRejectPrecompute::build(&own, &[]);
+        let gate = GatePrecompute::build(&own);
         let release = "[SubsPlease] Jujutsu Kaisen - 56 (1080p) [0F106B43].mkv";
         assert!(matches_target(
             release,
             &own,
-            &no_siblings,
+            &gate,
             &SearchTarget::Episode(9),
             // `expected_season` is the season check's target, not the
             // numbering target — this is 3 because we're asking for S3.
@@ -1894,7 +1714,7 @@ mod tests {
     /// `matches_target` for one episode of a series named `aliases`.
     fn accepts(title: &str, aliases: &[&str], episode: i32, format: &str) -> bool {
         let own: Vec<String> = aliases.iter().map(|a| a.to_string()).collect();
-        let precompute = SiblingRejectPrecompute::build(&own, &[]).with_series_format(format);
+        let precompute = GatePrecompute::build(&own).with_series_format(format);
         matches_target(
             title,
             &own,
@@ -1961,7 +1781,7 @@ mod tests {
         // reading; a series whose own name ends in `Special` keeps its
         // weeklies.
         let own = vec!["A Returner's Magic Should Be Special".to_string()];
-        let precompute = SiblingRejectPrecompute::build(&own, &[]).with_series_format("TV");
+        let precompute = GatePrecompute::build(&own).with_series_format("TV");
         let weekly = release_title::parse(
             "[Doomdos] - A Returner's Magic Should Be Special - S02E03 [1080p]",
         );
@@ -2193,7 +2013,7 @@ mod tests {
         let primary = vec!["Kizumonogatari II: Nekketsu-hen".to_string()];
         let variants = sequel_variant_aliases(&primary);
         let all_aliases: Vec<String> = primary.iter().chain(variants.iter()).cloned().collect();
-        let precompute = SiblingRejectPrecompute::build(&all_aliases, &[]);
+        let precompute = GatePrecompute::build(&all_aliases);
         let release = "[MTBB] Kizumonogatari - 02 [BD 1080p FLAC].mkv";
         assert!(
             matches_target(
@@ -2221,13 +2041,13 @@ mod tests {
         let primary = vec!["Kizumonogatari II: Nekketsu-hen".to_string()];
         let variants = sequel_variant_aliases(&primary);
         let all_aliases: Vec<String> = primary.iter().chain(variants.iter()).cloned().collect();
-        let no_siblings = SiblingRejectPrecompute::build(&all_aliases, &[]);
+        let gate = GatePrecompute::build(&all_aliases);
         let wrong_entry = "[MTBB] Kizumonogatari - 01 [BD 1080p FLAC].mkv";
         assert!(
             !matches_target(
                 wrong_entry,
                 &all_aliases,
-                &no_siblings,
+                &gate,
                 &SearchTarget::Single,
                 0,
                 false,
@@ -2245,12 +2065,12 @@ mod tests {
         // (absolute 48); release is absolute 60 = S3 E13 — wrong
         // episode.
         let own = vec!["Jujutsu Kaisen".to_string()];
-        let no_siblings = SiblingRejectPrecompute::build(&own, &[]);
+        let gate = GatePrecompute::build(&own);
         let release = "[SubsPlease] Jujutsu Kaisen - 60 (1080p).mkv";
         assert!(!matches_target(
             release,
             &own,
-            &no_siblings,
+            &gate,
             &SearchTarget::Episode(1),
             3,
             false,
@@ -2272,7 +2092,7 @@ mod tests {
             "コワレモノ:璃沙 THE ANIMATION".to_string(),
             "Risa THE ANIMATION".to_string(),
         ];
-        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let target = SearchTarget::Single;
         for legit in [
             "[H-Enc] コワレモノ：璃沙 THE ANIMATION / Kowaremono Risa The Animation 01-02 (BDRip 1080p HEVC AAC)",
@@ -2280,7 +2100,7 @@ mod tests {
             "[Diogo4D] Kowaremono Risa The Animation [DVD][576p][Uncensored] [7FED77BC].mkv",
         ] {
             assert!(
-                matches_target(legit, &aliases, &no_siblings, &target, 0, false, 0),
+                matches_target(legit, &aliases, &gate, &target, 0, false, 0),
                 "the real release must still match: {legit}"
             );
         }
@@ -2296,7 +2116,7 @@ mod tests {
             "[Kira-Fansub] Amagami SS Risa and Miya Arc (BD 1920x1080 h264 AAC)",
         ] {
             assert!(
-                !matches_target(wrong, &aliases, &no_siblings, &target, 0, false, 0),
+                !matches_target(wrong, &aliases, &gate, &target, 0, false, 0),
                 "unrelated release must be rejected: {wrong}"
             );
         }
@@ -2337,11 +2157,11 @@ mod tests {
             "Frieren Journey Beyond".to_string(),
             "Frieren Beyond Journeys End".to_string(),
         ];
-        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let m = classify_match(
             "[G] Frieren Beyond Journeys End - 01 [1080p].mkv",
             &aliases,
-            &no_siblings,
+            &gate,
             &SearchTarget::Episode(1),
             0,
             false,
@@ -2359,7 +2179,7 @@ mod tests {
             "Boku no Hero Academia Final Season".to_string(),
             "Boku no Hero Academia".to_string(),
         ];
-        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         // "boku hero academia 12": alias 1 has distinctive tokens
         // {boku, hero, academia, final} -> 0.75; alias 2 has
         // {boku, hero, academia} -> 1.0 but not a substring because
@@ -2367,7 +2187,7 @@ mod tests {
         let m = classify_match(
             "[G] Boku Hero Academia - 12 [1080p].mkv",
             &aliases,
-            &no_siblings,
+            &gate,
             &SearchTarget::Episode(12),
             0,
             false,
@@ -2382,13 +2202,13 @@ mod tests {
     #[test]
     fn classify_match_returns_none_when_episode_check_fails() {
         let aliases = vec!["Sousou no Frieren".to_string()];
-        let no_siblings = SiblingRejectPrecompute::build(&aliases, &[]);
+        let gate = GatePrecompute::build(&aliases);
         let title = "[G] Sousou no Frieren - 07 [1080p].mkv";
         assert!(
             classify_match(
                 title,
                 &aliases,
-                &no_siblings,
+                &gate,
                 &SearchTarget::Episode(7),
                 0,
                 false,
@@ -2400,7 +2220,7 @@ mod tests {
             classify_match(
                 title,
                 &aliases,
-                &no_siblings,
+                &gate,
                 &SearchTarget::Episode(8),
                 0,
                 false,
@@ -2442,7 +2262,7 @@ mod tests {
         // AniList's English title for Oshi no Ko is `[Oshi No Ko]`. It
         // normalized to "" and matched every release verbatim.
         let aliases = vec!["[Oshi No Ko]".to_string()];
-        let precompute = SiblingRejectPrecompute::build(&aliases, &[]);
+        let precompute = GatePrecompute::build(&aliases);
         let matches = |title: &str| {
             matches_target(
                 title,
@@ -2499,8 +2319,7 @@ mod tests {
     #[test]
     fn with_a_franchise_the_gate_names_the_rival_and_stamps_the_verdict() {
         let aliases = vec!["Jujutsu Kaisen".to_string()];
-        let precompute =
-            SiblingRejectPrecompute::build(&aliases, &[]).with_franchise(jjk_franchise(1));
+        let precompute = GatePrecompute::build(&aliases).with_franchise(jjk_franchise(1));
         let outcome = |title: &str, ep| {
             classify_match_detailed(
                 title,
@@ -2544,25 +2363,18 @@ mod tests {
     }
 
     #[test]
-    fn a_franchise_replaces_the_sibling_overlap_rule() {
-        // The episode's own title spells a sibling's name, so the sibling
-        // overlap rule takes the release for the sibling; the franchise
-        // reads 30 as the sequel's absolute number (24 + 6).
+    fn identify_reads_an_episode_title_that_spells_a_relatives_name() {
+        // The episode's own title spells a relative's name; the franchise
+        // reads 30 as the sequel's absolute number (24 + 6). The old
+        // sibling-title overlap rule took it for the relative.
         let own = vec![
             "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen".to_string(),
             "Jujutsu Kaisen".to_string(),
         ];
-        let siblings = vec!["Jujutsu Kaisen Shibuya Jihen".to_string()];
         let title = "[G] Jujutsu Kaisen - 30 - Shibuya Jihen (1080p)";
-        let target = SearchTarget::Episode(6);
-        let without = SiblingRejectPrecompute::build(&own, &siblings);
-        assert_eq!(
-            classify_match_detailed(title, &own, &without, &target, 0, false, 24),
-            MatchOutcome::NoMatch
-        );
-        let with = without.with_franchise(jjk_franchise(2));
+        let gate = GatePrecompute::build(&own).with_franchise(jjk_franchise(2));
         assert!(matches!(
-            classify_match_detailed(title, &own, &with, &target, 0, false, 24),
+            classify_match_detailed(title, &own, &gate, &SearchTarget::Episode(6), 0, false, 24),
             MatchOutcome::Matched(_, Some(_))
         ));
     }

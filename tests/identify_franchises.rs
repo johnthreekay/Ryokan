@@ -93,6 +93,25 @@ const CASES: &[(&str, i64, &str, Expect)] = &[
         "JUJUTSU KAISEN S03E08 Tokyo Colony No 1-Part 2 1080p CR WEB-DL AAC2.0 H 264-VARYG (Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen, Multi-Subs)",
         Rival(Structure, 172463),
     ),
+    // The gate's old sibling-overlap cases, now identify's.
+    (
+        "jujutsu-kaisen",
+        113415,
+        "[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06 [1080p CR WEBRip HEVC AAC].mkv",
+        Rival(NamesMore, 172463),
+    ),
+    (
+        "jujutsu-kaisen",
+        113415,
+        "[Erai-raws] Jujutsu Kaisen - 06 [1080p].mkv",
+        Target,
+    ),
+    (
+        "jujutsu-kaisen",
+        172463,
+        "[Erai-raws] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06 [1080p].mkv",
+        Target,
+    ),
     // 24 + 23 episodes before it: 56 is the third season's ninth.
     (
         "jujutsu-kaisen",
