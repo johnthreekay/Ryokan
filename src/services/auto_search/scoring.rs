@@ -19,7 +19,9 @@ use crate::services::scoring::ScoreComponent;
 use crate::services::seadex;
 use crate::services::source::{self, ClassificationResult, Resolution, Source};
 
-use super::{MatchKind, SearchTarget, distinctive_overlap_ratio, normalize_title, token_set};
+use super::{
+    IdentityVerdict, MatchKind, SearchTarget, distinctive_overlap_ratio, normalize_title, token_set,
+};
 use crate::services::release_title::{self, SeriesAnchors};
 
 /// Misgrab guardrails: a fuzzy title match loses to an otherwise-equal
@@ -32,6 +34,14 @@ use crate::services::release_title::{self, SeriesAnchors};
 /// looks at the CF subtotal, so these can never drop a candidate.
 pub(super) const FUZZY_MATCH_PENALTY: i32 = -25;
 pub(super) const FALLBACK_PHASE_PENALTY: i32 = -10;
+
+/// `services::identify` found another entry of the franchise that fits
+/// the release better (a rival, kept only on the interactive lists) or
+/// as well (a tie, kept everywhere). A rival costs more than a fuzzy
+/// match on a fallback pass, so it sorts below the target's own releases
+/// of the same quality; a tie's cost is a tiebreaker.
+pub(super) const IDENTITY_RIVAL_PENALTY: i32 = -40;
+pub(super) const IDENTITY_TIE_PENALTY: i32 = -10;
 
 /// Apply the Custom Format + SeaDex overlay to a base score.
 ///
@@ -317,6 +327,15 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
             });
         } else {
             add(&mut parts, "Title Match Confidence", delta, detail);
+        }
+        if let Some(identity) = &p.identity
+            && let Some(entry) = identity.looks_like()
+        {
+            let (delta, detail) = match identity.verdict {
+                IdentityVerdict::Rival => (IDENTITY_RIVAL_PENALTY, format!("looks like {entry}")),
+                _ => (IDENTITY_TIE_PENALTY, format!("fits {entry} as well")),
+            };
+            add(&mut parts, "Franchise Identity", delta, Some(detail));
         }
     }
 
@@ -878,6 +897,7 @@ mod tests {
             kind,
             alias: "Show".to_string(),
             ratio: 1.0,
+            identity: None,
         });
         r
     }
@@ -1118,5 +1138,58 @@ mod tests {
             .find(|p| p.label == "Title Alias Match")
             .expect("its own release matches");
         assert_eq!(alias_part.delta, 40);
+    }
+
+    #[test]
+    fn a_rival_or_a_tie_costs_a_franchise_identity_line() {
+        use crate::services::auto_search::{IdentityNote, IdentityVerdict, MatchPhase};
+        let c = cls(Source::Web, Resolution::R1080p);
+        let parts_for = |verdict: Option<IdentityVerdict>| {
+            let mut r = stamped(
+                "[G] Show - 05 [1080p].mkv",
+                MatchKind::Verbatim,
+                MatchPhase::Primary,
+            );
+            if let Some(verdict) = verdict {
+                r.match_provenance.as_mut().unwrap().identity = Some(IdentityNote {
+                    verdict,
+                    entry: Some(2),
+                    entry_title: "Show 2nd Season".to_string(),
+                    tier: None,
+                });
+            }
+            rescore(
+                &r,
+                &c,
+                &SearchTarget::Episode(5),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                0,
+                false,
+            )
+            .1
+        };
+        let line = |parts: &[ScoreComponent]| {
+            parts
+                .iter()
+                .find(|p| p.label == "Franchise Identity")
+                .map(|p| (p.delta, p.detail.clone().unwrap_or_default()))
+        };
+        assert_eq!(
+            line(&parts_for(Some(IdentityVerdict::Rival))),
+            Some((
+                IDENTITY_RIVAL_PENALTY,
+                "looks like Show 2nd Season".to_string()
+            ))
+        );
+        assert_eq!(
+            line(&parts_for(Some(IdentityVerdict::Ambiguous))),
+            Some((
+                IDENTITY_TIE_PENALTY,
+                "fits Show 2nd Season as well".to_string()
+            ))
+        );
+        assert_eq!(line(&parts_for(Some(IdentityVerdict::Target))), None);
+        assert_eq!(line(&parts_for(None)), None);
     }
 }

@@ -448,23 +448,12 @@ pub async fn search_batch_releases(
     match best {
         None => {
             // Same hint as the episode path: a batch the exact title
-            // gate turned away is worth telling the user about, since
-            // an alternate title on the series page admits it.
-            let message = if looked_close.is_empty() {
-                "No batch release found".to_string()
-            } else {
-                let sample = looked_close
-                    .iter()
-                    .take(2)
-                    .map(|t| format!("\"{t}\""))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!(
-                    "{} batch release(s) looked close but none named the series exactly, for example {}. Add an alternate title on the series page if one of them is right.",
-                    looked_close.len(),
-                    sample
-                )
-            };
+            // gate turned away is worth telling the user about (an
+            // alternate title on the series page admits a loose name; a
+            // batch that fit another entry better is named as such).
+            let message = looked_close
+                .describe("batch release")
+                .unwrap_or_else(|| "No batch release found".to_string());
             if let Some(h) = &progress_handle {
                 h.emit("done", "warn", &message, None, true).await;
             }

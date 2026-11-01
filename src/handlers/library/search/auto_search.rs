@@ -972,32 +972,22 @@ async fn run_auto_search_targets_with_upgrades(
                     "",
                 )
                 .await;
-                if fuzzy_only.is_empty() {
-                    skipped.push(format!("{}: no matching release found", label));
-                } else {
-                    let sample = fuzzy_only
-                        .iter()
-                        .take(2)
-                        .map(|t| format!("\"{t}\""))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    skipped.push(format!(
-                        "{}: {} release(s) looked close but none named the series exactly, for example {}. Add an alternate title on the series page if one of them is right.",
-                        label,
-                        fuzzy_only.len(),
-                        sample
-                    ));
-                    logger::info(
-                        &state.db,
-                        LogCategory::AutoSearch,
-                        &format!(
-                            "Skipped {} release(s) that did not name the series exactly for {}",
-                            fuzzy_only.len(),
-                            label
-                        ),
-                        &fuzzy_only.join(" | "),
-                    )
-                    .await;
+                match fuzzy_only.describe("release") {
+                    None => skipped.push(format!("{}: no matching release found", label)),
+                    Some(message) => {
+                        skipped.push(format!("{}: {}", label, message));
+                        logger::info(
+                            &state.db,
+                            LogCategory::AutoSearch,
+                            &format!(
+                                "Skipped {} release(s) that did not name the series exactly or fit another entry better for {}",
+                                fuzzy_only.len(),
+                                label
+                            ),
+                            &fuzzy_only.log_detail(),
+                        )
+                        .await;
+                    }
                 }
             }
         }

@@ -2178,3 +2178,148 @@ async fn a_queued_pack_skips_only_the_episodes_it_covers() {
 
     unset_nyaa_base();
 }
+
+/// A sequel cour beside a first season, in the metadata caches the
+/// 12-hour sweep fills (`identify::load_franchise` reads them).
+async fn seed_sequel_in_caches(db: &sqlx::SqlitePool, first: &AnimeDetail, sequel: &AnimeDetail) {
+    let mut first = first.clone();
+    first.relations = vec![ryokan::services::anilist::RelatedEntry {
+        id: sequel.id,
+        id_mal: None,
+        title_romaji: sequel.title_romaji.clone(),
+        title_english: sequel.title_english.clone(),
+        title_native: sequel.title_native.clone(),
+        cover_url: String::new(),
+        format: "TV".into(),
+        status: "FINISHED".into(),
+        status_display: String::new(),
+        episodes: sequel.episodes,
+        relation_type: "SEQUEL".into(),
+        season_year: sequel.season_year,
+        media_type: "ANIME".into(),
+    }];
+    for d in [&first, sequel] {
+        ryokan::models::local_metadata::replace_relations_for_provider(db, d.id, d)
+            .await
+            .unwrap();
+        ryokan::models::metadata_cache::upsert_provider(db, d.id, None, d)
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn auto_search_episode_handler_skips_a_release_another_entry_fits_better() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // The release contains the series' name verbatim, but its names are
+    // the sequel's in full: `identify` vetoes it for the first season,
+    // and the report says which entry it looked like instead of
+    // advising an alternate title.
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "1212121212121212121212121212121212121212",
+        99201,
+        "[SubsPlease] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06 (1080p) [ABCD1234].mkv",
+        "1.4 GiB",
+        200,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9101;
+    let state = build_state().await;
+    let _series_id = seed_series_with_cache(&state, anilist_id, "Jujutsu Kaisen").await;
+    let mut sequel = detail_for(9102, "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen");
+    sequel.season_year = Some(2026);
+    seed_sequel_in_caches(
+        &state.db,
+        &detail_for(anilist_id, "Jujutsu Kaisen"),
+        &sequel,
+    )
+    .await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 6_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert!(report.grabbed.is_empty(), "report={report:?}");
+    assert!(client.add_calls().is_empty());
+    let note = report
+        .skipped
+        .iter()
+        .find(|s| s.contains("fit another entry of it better"))
+        .unwrap_or_else(|| panic!("report should name the other entry; report={report:?}"));
+    assert!(
+        note.contains("looks like Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen"),
+        "{note}"
+    );
+    assert!(!note.contains("alternate title"), "{note}");
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn auto_search_episode_handler_takes_the_sequels_absolute_number_with_the_franchise_loaded() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // The same franchise from the sequel's side: `Jujutsu Kaisen - 18`
+    // is past the first season's twelve, so it is the sequel's sixth,
+    // and identify keeps it (the old franchise pass ran with no sibling
+    // guard at all to let these through).
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "3434343434343434343434343434343434343434",
+        99202,
+        "[SubsPlease] Jujutsu Kaisen - 18 (1080p) [ABCD1234].mkv",
+        "1.4 GiB",
+        200,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let first = detail_for(9111, "Jujutsu Kaisen");
+    let mut sequel = detail_for(9112, "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen");
+    sequel.season_year = Some(2026);
+    let state = build_state().await;
+    let series_id =
+        seed_series_with_cache(&state, 9112, "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen").await;
+    sqlx::query("UPDATE series SET cumulative_prior_episodes = 12 WHERE id = ?")
+        .bind(series_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    seed_sequel_in_caches(&state.db, &first, &sequel).await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((9112, 6_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert_eq!(report.grabbed.len(), 1, "report={report:?}");
+    assert_eq!(client.add_calls().len(), 1);
+    let detail: String = sqlx::query_scalar(
+        "SELECT detail FROM logs WHERE message LIKE 'Grabbed: %' ORDER BY id DESC LIMIT 1",
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert!(detail.contains("identity=target"), "{detail}");
+
+    unset_nyaa_base();
+}

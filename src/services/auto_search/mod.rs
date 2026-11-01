@@ -9,7 +9,7 @@ use crate::services::custom_formats::CompiledCustomFormat;
 use crate::services::source::{self, ClassificationResult, Resolution, Source};
 use crate::services::{
     anilist::AnimeDetail,
-    media,
+    identify, media,
     nyaa::{self, SearchOptions, SearchResult},
     quality,
     release_title::{self, SeriesAnchors},
@@ -23,18 +23,22 @@ mod scoring;
 mod seadex_lookup;
 mod search_target;
 
-use aliases::{SiblingRejectPrecompute, sibling_match_rejects};
 pub use aliases::{
-    classify_match, collect_aliases, collect_extended_aliases, collect_sibling_aliases,
-    dedupe_strings, distinctive_overlap_ratio, franchise_names, is_generic_title_token,
-    matches_target, names_more_than_the_series, normalize_title, sequel_variant_aliases,
-    sole_bracket_group, token_overlap_ratio, token_set, with_alternate_titles,
+    MatchOutcome, classify_match, classify_match_detailed, collect_aliases,
+    collect_extended_aliases, collect_sibling_aliases, dedupe_strings, distinctive_overlap_ratio,
+    franchise_names, is_generic_title_token, matches_target, names_more_than_the_series,
+    normalize_title, sequel_variant_aliases, sole_bracket_group, token_overlap_ratio, token_set,
+    with_alternate_titles,
 };
+use aliases::{SiblingRejectPrecompute, sibling_match_rejects};
 pub use pack_detection::{
     TRANSITIVE_WALK_MAX_FETCHES, detect_sibling_entries_in_pack,
     expand_parent_with_transitive_relations, is_transitive_walk_source,
 };
-pub use provenance::{AliasMatch, MatchKind, MatchPhase, MatchProvenance, history_summary};
+pub use provenance::{
+    AliasMatch, IdentityNote, IdentityVerdict, MatchKind, MatchPhase, MatchProvenance,
+    history_summary,
+};
 pub(crate) use release_parse::is_media_filename;
 pub use release_parse::{
     has_selective_discriminator, infer_season_from_detail, pick_wanted_file_indices,
@@ -79,6 +83,95 @@ pub struct AutoSearchReport {
     /// because the sticky progress toast shows one event at a time.
     #[serde(default)]
     pub notes: Vec<String>,
+}
+
+/// What the automatic title gate turned away during one search, for the
+/// report: titles that named the series only loosely (an alternate
+/// title would admit them), and titles that named it but fit another
+/// entry of its franchise better (`services::identify`), which no
+/// alternate title should admit.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GateDiagnostics {
+    pub inexact: Vec<String>,
+    /// `(release title, the entry it looked like)`.
+    pub looked_like: Vec<(String, String)>,
+}
+
+impl GateDiagnostics {
+    pub fn is_empty(&self) -> bool {
+        self.inexact.is_empty() && self.looked_like.is_empty()
+    }
+
+    fn note_inexact(&mut self, title: &str) {
+        if !self.inexact.iter().any(|t| t.eq_ignore_ascii_case(title)) {
+            self.inexact.push(title.to_string());
+        }
+    }
+
+    fn note_looked_like(&mut self, title: &str, entry: &str) {
+        if !self
+            .looked_like
+            .iter()
+            .any(|(t, _)| t.eq_ignore_ascii_case(title))
+        {
+            self.looked_like
+                .push((title.to_string(), entry.to_string()));
+        }
+    }
+
+    /// One user-facing sentence per kind, `noun` naming what was
+    /// searched for (`release`, `batch release`). `None` when nothing was
+    /// turned away.
+    pub fn describe(&self, noun: &str) -> Option<String> {
+        let mut parts = Vec::new();
+        if !self.inexact.is_empty() {
+            let sample = self
+                .inexact
+                .iter()
+                .take(2)
+                .map(|t| format!("\"{t}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            parts.push(format!(
+                "{} {noun}(s) looked close but none named the series exactly, for example {}. Add an alternate title on the series page if one of them is right.",
+                self.inexact.len(),
+                sample
+            ));
+        }
+        if !self.looked_like.is_empty() {
+            let sample = self
+                .looked_like
+                .iter()
+                .take(2)
+                .map(|(t, entry)| format!("\"{t}\" (looks like {entry})"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            parts.push(format!(
+                "{} {noun}(s) named the series but fit another entry of it better, for example {}.",
+                self.looked_like.len(),
+                sample
+            ));
+        }
+        (!parts.is_empty()).then(|| parts.join(" "))
+    }
+
+    /// Every title turned away, for a log line's detail.
+    pub fn log_detail(&self) -> String {
+        self.inexact
+            .iter()
+            .cloned()
+            .chain(
+                self.looked_like
+                    .iter()
+                    .map(|(t, entry)| format!("{t} (looks like {entry})")),
+            )
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+
+    pub fn len(&self) -> usize {
+        self.inexact.len() + self.looked_like.len()
+    }
 }
 
 /// Return all scored candidates for an episode target without grabbing anything.
@@ -163,8 +256,16 @@ async fn find_all_for_target_with_probes(
 
     let expected_season = infer_season_from_detail(detail);
     let sibling_aliases = collect_sibling_aliases(detail, &aliases);
+    let franchise = identify::load_franchise(
+        db,
+        detail,
+        series_ctx.absolute_offset,
+        &series_ctx.alternate_titles,
+    )
+    .await;
     let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases)
-        .with_series_format(&detail.format);
+        .with_series_format(&detail.format)
+        .with_franchise(franchise.clone());
     let categories = nyaa_search_categories(config, &detail.format);
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
@@ -242,7 +343,8 @@ async fn find_all_for_target_with_probes(
                 &sibling_aliases,
                 &franchise_names(detail),
             )
-            .with_series_format(&detail.format);
+            .with_series_format(&detail.format)
+            .with_franchise(franchise.clone());
             let ext_ctx = InteractiveQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
@@ -302,7 +404,8 @@ async fn find_all_for_target_with_probes(
     {
         absolute_target = SearchTarget::Episode(ep.saturating_add(series_ctx.absolute_offset));
         franchise_precompute = SiblingRejectPrecompute::build(&series_ctx.franchise_aliases, &[])
-            .with_series_format(&detail.format);
+            .with_series_format(&detail.format)
+            .with_franchise(franchise.clone());
         let franchise_queries = append_custom_tokens(
             build_queries_from_aliases(
                 &series_ctx.franchise_aliases,
@@ -421,9 +524,8 @@ pub async fn find_best_for_target(
     .0
 }
 
-/// `find_best_for_target` plus the titles that matched the series only
-/// fuzzily and were therefore not considered, so the caller can tell
-/// the user what it saw and that an alternate title would admit it.
+/// `find_best_for_target` plus what the title gate turned away
+/// ([`GateDiagnostics`]), so the caller can tell the user what it saw.
 #[allow(clippy::too_many_arguments)]
 pub async fn find_best_for_target_with_diag(
     db: &SqlitePool,
@@ -434,7 +536,7 @@ pub async fn find_best_for_target_with_diag(
     batch_episode_match: bool,
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
-) -> (Option<SearchResult>, Vec<String>) {
+) -> (Option<SearchResult>, GateDiagnostics) {
     let (scored, fuzzy_only) = collect_scored_for_target(
         db,
         detail,
@@ -623,7 +725,7 @@ pub async fn find_best_batch_for_target_with_diag(
     target: &SearchTarget,
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
-) -> (Option<SearchResult>, Vec<String>) {
+) -> (Option<SearchResult>, GateDiagnostics) {
     let (scored, rejected) = collect_scored_batches_for_target_with_diag(
         db,
         detail,
@@ -687,7 +789,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
     list: BatchList,
-) -> (Vec<SearchResult>, Vec<String>) {
+) -> (Vec<SearchResult>, GateDiagnostics) {
     let require_verbatim = list == BatchList::AutoGrab;
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
@@ -717,8 +819,16 @@ pub async fn collect_scored_batches_for_target_with_diag(
 
     let expected_season = infer_season_from_detail(detail);
     let sibling_aliases = collect_sibling_aliases(detail, &aliases);
+    let franchise = identify::load_franchise(
+        db,
+        detail,
+        series_ctx.absolute_offset,
+        &series_ctx.alternate_titles,
+    )
+    .await;
     let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases)
-        .with_series_format(&detail.format);
+        .with_series_format(&detail.format)
+        .with_franchise(franchise.clone());
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
 
@@ -742,7 +852,7 @@ pub async fn collect_scored_batches_for_target_with_diag(
     let indexers_arc = indexers_cache.read().await.clone();
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
-    let fuzzy_rejected = std::sync::Mutex::new(Vec::new());
+    let fuzzy_rejected = std::sync::Mutex::new(GateDiagnostics::default());
     let indexer_categories =
         crate::services::indexers::search_categories(&detail.format, detail.is_adult);
     let ctx = AutoQueryCtx {
@@ -981,7 +1091,7 @@ async fn collect_scored_for_target(
     batch_episode_match: bool,
     cfs: &[CompiledCustomFormat],
     indexers_cache: &crate::IndexerCache,
-) -> (Vec<SearchResult>, Vec<String>) {
+) -> (Vec<SearchResult>, GateDiagnostics) {
     let require_verbatim = true;
     let (aliases, canonical_aliases, variant_aliases) = collect_aliases_with_variants(detail);
     let series_ctx = resolve_search_overrides(db, detail, config).await;
@@ -1021,8 +1131,16 @@ async fn collect_scored_for_target(
 
     let expected_season = infer_season_from_detail(detail);
     let sibling_aliases = collect_sibling_aliases(detail, &aliases);
+    let franchise = identify::load_franchise(
+        db,
+        detail,
+        series_ctx.absolute_offset,
+        &series_ctx.alternate_titles,
+    )
+    .await;
     let sibling_precompute = SiblingRejectPrecompute::build(&aliases, &sibling_aliases)
-        .with_series_format(&detail.format);
+        .with_series_format(&detail.format)
+        .with_franchise(franchise.clone());
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
 
@@ -1059,7 +1177,7 @@ async fn collect_scored_for_target(
     let indexers_arc = indexers_cache.read().await.clone();
     let indexers: &[std::sync::Arc<dyn crate::services::indexers::Indexer>] = &indexers_arc[..];
 
-    let fuzzy_rejected = std::sync::Mutex::new(Vec::new());
+    let fuzzy_rejected = std::sync::Mutex::new(GateDiagnostics::default());
     let indexer_categories =
         crate::services::indexers::search_categories(&detail.format, detail.is_adult);
     let ctx = AutoQueryCtx {
@@ -1104,7 +1222,8 @@ async fn collect_scored_for_target(
                 &sibling_aliases,
                 &franchise_names(detail),
             )
-            .with_series_format(&detail.format);
+            .with_series_format(&detail.format)
+            .with_franchise(franchise.clone());
             let ext_ctx = AutoQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
@@ -1189,7 +1308,8 @@ async fn collect_scored_for_target(
     {
         absolute_target = SearchTarget::Episode(ep.saturating_add(series_ctx.absolute_offset));
         franchise_precompute = SiblingRejectPrecompute::build(&series_ctx.franchise_aliases, &[])
-            .with_series_format(&detail.format);
+            .with_series_format(&detail.format)
+            .with_franchise(franchise.clone());
         let franchise_queries = append_custom_tokens(
             build_queries_from_aliases(
                 &series_ctx.franchise_aliases,
@@ -1307,14 +1427,70 @@ async fn collect_scored_for_target(
 /// Phase 1.5 alias override can reuse most fields via
 /// `AutoQueryCtx { aliases: &all_aliases, ..ctx }`.
 impl AutoQueryCtx<'_> {
-    /// Remember a release the verbatim gate turned away, once. The same
-    /// release comes back from every query and category of a sweep,
-    /// and the report lists these titles.
-    fn note_rejected(&self, title: &str) {
-        let mut rejected = self.fuzzy_rejected.lock().unwrap();
-        if !rejected.iter().any(|t| t.eq_ignore_ascii_case(title)) {
-            rejected.push(title.to_string());
+    /// The gate's decision for one release: accepted with its provenance,
+    /// or turned away (`None`). A release turned away for a reason the
+    /// report names is noted once; the same release comes back from
+    /// every query and category of a sweep.
+    fn gate(&self, result: &SearchResult) -> Option<MatchProvenance> {
+        if is_seadex_match(&result.info_hash, self.seadex_hashes) {
+            tracing::debug!(
+                "seadex: bypassing heuristic filters for SeaDex-best release title={:?} hash={}",
+                result.title,
+                result.info_hash
+            );
+            return Some(MatchProvenance::seadex(self.phase));
         }
+        let outcome = classify_match_detailed(
+            &result.title,
+            self.aliases,
+            self.sibling_precompute,
+            self.target,
+            self.expected_season,
+            self.batch_episode_match && result.is_batch,
+            self.absolute_offset,
+        );
+        let (alias_match, identity) = match outcome {
+            MatchOutcome::NoMatch => return None,
+            MatchOutcome::Rival(alias_match, rival) => {
+                // An automatic path never takes another entry's release.
+                // The interactive batch list keeps one the person may
+                // still want, as the sibling-title guard did, unless its
+                // names say outright that it is the other entry's.
+                if self.require_verbatim || rival.tier == identify::Tier::NamesMore {
+                    tracing::debug!(
+                        "identify: {:?} looks like {} ({}: {})",
+                        result.title,
+                        rival.title,
+                        rival.tier.as_str(),
+                        rival.reason
+                    );
+                    if self.require_verbatim {
+                        self.fuzzy_rejected
+                            .lock()
+                            .unwrap()
+                            .note_looked_like(&result.title, &rival.title);
+                    }
+                    return None;
+                }
+                let note = IdentityNote::from_verdict(&identify::Verdict::Rival(rival));
+                (alias_match, Some(note))
+            }
+            MatchOutcome::Matched(alias_match, identity) => (alias_match, identity),
+        };
+        if self.require_verbatim
+            && (alias_match.kind == MatchKind::Fuzzy
+                || alias_match.kind == MatchKind::Verbatim
+                    && aliases::names_more_than_the_series(&result.title, self.aliases))
+        {
+            self.fuzzy_rejected
+                .lock()
+                .unwrap()
+                .note_inexact(&result.title);
+            return None;
+        }
+        let mut provenance = alias_match.into_provenance(self.phase);
+        provenance.identity = identity;
+        Some(provenance)
     }
 }
 
@@ -1327,7 +1503,7 @@ struct AutoQueryCtx<'a> {
     /// interactive batch list passes `false` and keeps fuzzy matches
     /// for the person choosing.
     require_verbatim: bool,
-    fuzzy_rejected: &'a std::sync::Mutex<Vec<String>>,
+    fuzzy_rejected: &'a std::sync::Mutex<GateDiagnostics>,
     aliases: &'a [String],
     /// Torznab / newznab categories to ask indexers for (see
     /// `indexers::search_categories`).
@@ -1594,40 +1770,9 @@ async fn run_queries(
                 rejected_here.insert(dedupe_key);
                 continue;
             }
-            let provenance = if is_seadex_match(&result.info_hash, ctx.seadex_hashes) {
-                tracing::debug!(
-                    "seadex: bypassing heuristic filters for SeaDex-best release title={:?} hash={}",
-                    result.title,
-                    result.info_hash
-                );
-                MatchProvenance::seadex(ctx.phase)
-            } else {
-                match classify_match(
-                    &result.title,
-                    ctx.aliases,
-                    ctx.sibling_precompute,
-                    ctx.target,
-                    ctx.expected_season,
-                    ctx.batch_episode_match && result.is_batch,
-                    ctx.absolute_offset,
-                ) {
-                    Some(m) if ctx.require_verbatim && m.kind == MatchKind::Fuzzy => {
-                        ctx.note_rejected(&result.title);
-                        rejected_here.insert(dedupe_key);
-                        continue;
-                    }
-                    Some(m)
-                        if ctx.require_verbatim
-                            && m.kind == MatchKind::Verbatim
-                            && aliases::names_more_than_the_series(&result.title, ctx.aliases) =>
-                    {
-                        ctx.note_rejected(&result.title);
-                        rejected_here.insert(dedupe_key);
-                        continue;
-                    }
-                    Some(m) => m.into_provenance(ctx.phase),
-                    None => continue,
-                }
+            let Some(provenance) = ctx.gate(&result) else {
+                rejected_here.insert(dedupe_key);
+                continue;
             };
             // Only an accepted candidate counts as seen: a release a later
             // pass can admit (an alternate title in the extended pass) must
@@ -1662,35 +1807,9 @@ async fn run_queries(
             rejected_here.insert(dedupe_key);
             continue;
         }
-        let provenance = if is_seadex_match(&result.info_hash, ctx.seadex_hashes) {
-            MatchProvenance::seadex(ctx.phase)
-        } else {
-            match classify_match(
-                &result.title,
-                ctx.aliases,
-                ctx.sibling_precompute,
-                ctx.target,
-                ctx.expected_season,
-                ctx.batch_episode_match && result.is_batch,
-                ctx.absolute_offset,
-            ) {
-                Some(m) if ctx.require_verbatim && m.kind == MatchKind::Fuzzy => {
-                    ctx.note_rejected(&result.title);
-                    rejected_here.insert(dedupe_key);
-                    continue;
-                }
-                Some(m)
-                    if ctx.require_verbatim
-                        && m.kind == MatchKind::Verbatim
-                        && aliases::names_more_than_the_series(&result.title, ctx.aliases) =>
-                {
-                    ctx.note_rejected(&result.title);
-                    rejected_here.insert(dedupe_key);
-                    continue;
-                }
-                Some(m) => m.into_provenance(ctx.phase),
-                None => continue,
-            }
+        let Some(provenance) = ctx.gate(&result) else {
+            rejected_here.insert(dedupe_key);
+            continue;
         };
         // Only an accepted candidate counts as seen: a release a later
         // pass can admit (an alternate title in the extended pass) must
@@ -4077,6 +4196,40 @@ mod episode_set_tests {
         assert_eq!(
             titles,
             vec!["[EA]Dark_Gathering_24_[1920x1080][HEVC][831E9094].mkv"]
+        );
+    }
+}
+
+#[cfg(test)]
+mod gate_diagnostics_tests {
+    use super::GateDiagnostics;
+
+    #[test]
+    fn the_report_separates_loose_names_from_other_entries() {
+        let mut d = GateDiagnostics::default();
+        assert!(d.is_empty() && d.describe("release").is_none());
+        d.note_inexact("[G] Deluxe Show - 03");
+        d.note_inexact("[g] deluxe show - 03");
+        assert_eq!(d.len(), 1, "noted once, case-insensitively");
+        let only_inexact = d.describe("release").unwrap();
+        assert!(only_inexact.contains("alternate title"), "{only_inexact}");
+        d.note_looked_like("[G] Show: Sequel - 03", "Show: Sequel");
+        let both = d.describe("batch release").unwrap();
+        assert!(
+            both.contains("1 batch release(s) named the series but fit another entry of it better, for example \"[G] Show: Sequel - 03\" (looks like Show: Sequel)."),
+            "{both}"
+        );
+        assert_eq!(
+            d.log_detail(),
+            "[G] Deluxe Show - 03 | [G] Show: Sequel - 03 (looks like Show: Sequel)"
+        );
+        let mut looked = GateDiagnostics::default();
+        looked.note_looked_like("[G] Show: Sequel - 03", "Show: Sequel");
+        assert!(
+            !looked
+                .describe("release")
+                .unwrap()
+                .contains("alternate title")
         );
     }
 }
