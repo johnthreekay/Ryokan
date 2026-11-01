@@ -10,6 +10,7 @@ parsers. Read by `tests/release_title_corpora.rs`.
 | `file-lists.jsonl.gz` | file lists of 3,007 of those torrents |
 | `labels/labels.jsonl` | 1,000 of the titles, labeled blind |
 | `labels/GUIDE.md` | the instructions the labels follow |
+| `franchises.json.gz` | the AniList entries of every AniDB anime the titles carry (through anibridge), and one AniList graph holding their franchises, for `tests/identify_corpora.rs` |
 
 ## Where it came from
 
@@ -72,6 +73,12 @@ A long range is written as its two ends with `"range"` in `unsure`.
 | `batch_flag_tracks_file_counts` | 67 of 19,594 one-file titles read as batches; 4,484 of 6,915 titles of 10+ files do |
 | `file_lists_read_as_before` | 27,171 of 27,798 episode-like videos read; 67 packs claim one episode twice; no file named as an extra takes a slot |
 | `default_episode_names_read_back_for_every_corpus_show` | Ryokan's default episode name reads back for every show name |
+
+`tests/identify_corpora.rs` holds `services::identify`'s numbers over the
+AniDB-labeled titles (recognized, missed, blocked, a relative's target or tie)
+and snapshots every missed, wrong and tied title; see
+`src/services/identify/AGENTS.md`. `franchises.json.gz` is rebuilt by its
+ignored `vendor_corpus_franchises` (about ten minutes against AniList).
 
 When a parser change moves a number: if it improved, raise the limit in the
 test; if it is a deliberate trade, lower it and say why in the commit.

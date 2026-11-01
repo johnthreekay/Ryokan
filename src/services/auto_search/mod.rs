@@ -1440,8 +1440,8 @@ impl AutoQueryCtx<'_> {
             MatchOutcome::Rival(alias_match, rival) => {
                 // An automatic path never takes another entry's release.
                 // The interactive batch list keeps one the person may
-                // still want, as the sibling-title guard did, unless its
-                // names say outright that it is the other entry's.
+                // still want, unless its names say outright that it is
+                // the other entry's.
                 if self.require_verbatim || rival.tier == identify::Tier::NamesMore {
                     tracing::debug!(
                         "identify: {:?} looks like {} ({}: {})",
@@ -2021,8 +2021,7 @@ fn apply_interactive_filter_and_push(
         let verdict = identify::identify_parsed(franchise, &release);
         // The person choosing still sees a release another entry fits
         // better, labeled and scored below this series' own; one whose
-        // names say outright that it is the other entry's is dropped,
-        // as the sibling guard did.
+        // names say outright that it is the other entry's is dropped.
         if let identify::Verdict::Rival(rival) = &verdict
             && rival.tier == identify::Tier::NamesMore
         {
