@@ -217,6 +217,9 @@ pub struct VerdictInput<'a> {
     /// (`auto_search::franchise_names`). A colon or dash segment
     /// of an alias equal to one does not count as naming the series.
     pub franchise_names: &'a [String],
+    /// The series' franchise (`services::identify`). It can only make a
+    /// verdict less sure, never a misgrab: see [`apply_identity`].
+    pub franchise: Option<&'a crate::services::identify::Franchise>,
 }
 
 /// Flatten a relative path so the top-level folder counts as part of
@@ -455,6 +458,86 @@ fn alias_content_tokens(aliases: &[String]) -> HashSet<String> {
 }
 
 pub fn assess(input: &VerdictInput<'_>) -> Verdict {
+    let verdict = assess_names(input);
+    match input.franchise {
+        Some(franchise) => apply_identity(verdict, input.filenames, franchise),
+        None => verdict,
+    }
+}
+
+/// What `identify` makes of one file: its own name, else the folder it
+/// sits in (`Show S01/01.mkv`).
+fn identify_file(
+    path: &str,
+    franchise: &crate::services::identify::Franchise,
+) -> crate::services::identify::Verdict {
+    use crate::services::identify::{self, Verdict as Identity};
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let folder = path
+        .contains(['/', '\\'])
+        .then(|| path.split(['/', '\\']).next())
+        .flatten();
+    match identify::identify(franchise, name) {
+        Identity::Neither => folder
+            .map(|folder| identify::identify(franchise, folder))
+            .unwrap_or(Identity::Neither),
+        verdict => verdict,
+    }
+}
+
+/// The franchise's say over a verdict, one way only: the failure mode
+/// of a false misgrab (deleting a correct download) is worse than a
+/// missed one, so `identify` never condemns a grab. A misgrab whose
+/// files `identify` reads as the series, a tie or a pack across its
+/// entries is unverifiable; a verified grab whose every titled file is
+/// another entry's by name or structure (tiers A and S) is unverifiable
+/// too.
+pub(crate) fn apply_identity(
+    verdict: Verdict,
+    filenames: &[String],
+    franchise: &crate::services::identify::Franchise,
+) -> Verdict {
+    use crate::services::identify::{Tier, Verdict as Identity};
+    let media: Vec<&String> = filenames.iter().filter(|f| is_media_filename(f)).collect();
+    match verdict {
+        Verdict::Misgrab { .. }
+            if media.iter().any(|f| {
+                matches!(
+                    identify_file(f, franchise),
+                    Identity::Target | Identity::Ambiguous { .. } | Identity::Spans
+                )
+            }) =>
+        {
+            Verdict::Unverifiable {
+                reason: "a file names an entry of the series' franchise",
+            }
+        }
+        Verdict::Verified { .. } => {
+            let mut memo: HashMap<String, HashSet<String>> = HashMap::new();
+            let titled: Vec<&&String> = media
+                .iter()
+                .filter(|f| has_title_signal(&claimed_title_tokens(f, &mut memo)))
+                .collect();
+            let all_rivals = !titled.is_empty()
+                && titled.iter().all(|f| {
+                    matches!(
+                        identify_file(f, franchise),
+                        Identity::Rival(r) if matches!(r.tier, Tier::NamesMore | Tier::Structure)
+                    )
+                });
+            if all_rivals {
+                Verdict::Unverifiable {
+                    reason: "every titled file fits another entry of the series' franchise better",
+                }
+            } else {
+                verdict
+            }
+        }
+        verdict => verdict,
+    }
+}
+
+fn assess_names(input: &VerdictInput<'_>) -> Verdict {
     let media: Vec<&String> = input
         .filenames
         .iter()
@@ -553,6 +636,7 @@ mod tests {
             filenames: &files,
             expected_season: season,
             franchise_names: &[],
+            franchise: None,
         })
     }
 
@@ -588,6 +672,7 @@ mod tests {
                 filenames: &strs(files),
                 expected_season: 0,
                 franchise_names: heads,
+                franchise: None,
             })
         };
         let rh =
@@ -883,6 +968,7 @@ mod tests {
             filenames: &files,
             expected_season: 0,
             franchise_names: &[],
+            franchise: None,
         });
         let d = v.detail(&files);
         assert_eq!(v.as_str(), "misgrab");
@@ -892,5 +978,131 @@ mod tests {
         let json = serde_json::to_string(&d).unwrap();
         let back: VerificationDetail = serde_json::from_str(&json).unwrap();
         assert_eq!(back.files, d.files);
+    }
+
+    mod identity {
+        use super::*;
+        use crate::services::identify::{Franchise, FranchiseGraph, GraphEdge, GraphNode};
+
+        fn node(id: i64, romaji: &str, english: &str, episodes: i32, year: i32) -> GraphNode {
+            GraphNode {
+                id,
+                title_romaji: romaji.to_string(),
+                title_english: english.to_string(),
+                format: "TV".to_string(),
+                episodes: Some(episodes),
+                season_year: Some(year),
+                ..GraphNode::default()
+            }
+        }
+
+        fn franchise(nodes: Vec<GraphNode>, target: i64) -> Franchise {
+            let edges = nodes
+                .windows(2)
+                .map(|w| GraphEdge {
+                    from: w[1].id,
+                    to: w[0].id,
+                    relation: "PREQUEL".to_string(),
+                })
+                .collect();
+            FranchiseGraph {
+                nodes,
+                edges,
+                ..FranchiseGraph::default()
+            }
+            .build(target, &[])
+            .unwrap()
+        }
+
+        fn judge(own: &[&str], files: &[&str], franchise: Option<&Franchise>) -> Verdict {
+            assess(&VerdictInput {
+                own_aliases: &strs(own),
+                sibling_aliases: &[],
+                filenames: &strs(files),
+                expected_season: 0,
+                franchise_names: &[],
+                franchise,
+            })
+        }
+
+        fn kny() -> Franchise {
+            franchise(
+                vec![
+                    node(
+                        1,
+                        "Kimetsu no Yaiba",
+                        "Demon Slayer: Kimetsu no Yaiba",
+                        26,
+                        2019,
+                    ),
+                    node(
+                        2,
+                        "Kimetsu no Yaiba: Yuukaku-hen",
+                        "Demon Slayer: Kimetsu no Yaiba Entertainment District Arc",
+                        11,
+                        2021,
+                    ),
+                ],
+                2,
+            )
+        }
+
+        fn jjk() -> Franchise {
+            franchise(
+                vec![
+                    node(1, "Jujutsu Kaisen", "", 24, 2020),
+                    node(2, "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen", "", 12, 2026),
+                ],
+                1,
+            )
+        }
+
+        #[test]
+        fn a_file_the_franchise_reads_as_the_series_is_no_misgrab() {
+            // The aliases the verdict holds lack the English title the
+            // franchise knows (a detail from a fallback provider).
+            let own = ["Kimetsu no Yaiba: Yuukaku-hen"];
+            let files = ["[G] Demon Slayer Entertainment District Arc - 05 [1080p].mkv"];
+            assert!(judge(&own, &files, None).is_misgrab());
+            assert_eq!(
+                judge(&own, &files, Some(&kny())),
+                Verdict::Unverifiable {
+                    reason: "a file names an entry of the series' franchise"
+                }
+            );
+        }
+
+        #[test]
+        fn a_grab_whose_files_are_another_entrys_is_no_longer_verified() {
+            let own = ["Jujutsu Kaisen"];
+            let files = [
+                "[SubsPlease] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06 (1080p).mkv",
+                "[SubsPlease] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 07 (1080p).mkv",
+            ];
+            assert_eq!(judge(&own, &files, None).as_str(), "verified");
+            assert_eq!(judge(&own, &files, Some(&jjk())).as_str(), "unverifiable");
+            // One file of the series' own keeps the grab verified.
+            let mixed = [files[0], "[SubsPlease] Jujutsu Kaisen - 06 (1080p).mkv"];
+            assert_eq!(judge(&own, &mixed, Some(&jjk())).as_str(), "verified");
+        }
+
+        #[test]
+        fn the_franchise_never_makes_a_misgrab() {
+            // Files that are another entry's, and no alias words: whatever
+            // identify says, the names alone decide a misgrab.
+            let own = ["Jujutsu Kaisen"];
+            for files in [
+                &["[G] Totally Different Show - 01.mkv"][..],
+                &["[G] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06.mkv"][..],
+                &["01.mkv", "02.mkv"][..],
+            ] {
+                let without = judge(&own, files, None);
+                let with = judge(&own, files, Some(&jjk()));
+                assert!(
+                    !with.is_misgrab() || without.is_misgrab(),
+                    "{files:?}: {without:?} -> {with:?}"
+                );
+            }
+        }
     }
 }

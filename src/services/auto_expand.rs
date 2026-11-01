@@ -76,8 +76,11 @@ pub async fn expand_from_files(
         Some(_) => false,
         None => match grabbed_torrents::get_by_id(db, grab_id).await {
             Ok(Some(grab)) => {
+                let franchise =
+                    crate::services::identify::load_franchise(db, parent_detail, 0, &[]).await;
                 let aliases =
-                    crate::services::misgrab::aliases_from_detail(parent_detail, filenames);
+                    crate::services::misgrab::aliases_from_detail(parent_detail, filenames)
+                        .with_franchise(franchise);
                 crate::services::misgrab::assess_and_stamp(db, &grab, filenames, &aliases)
                     .await
                     .is_misgrab()
