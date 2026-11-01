@@ -185,3 +185,74 @@ fn without_a_franchise_the_matcher_is_unchanged() {
         best_series_match(&release, &all).map(|m| m.series.id)
     );
 }
+
+/// Kaguya-sama's first two seasons: English titles that clean to the
+/// same name (`Kaguya-sama: Love is War` and `... Love is War?`), and
+/// both fit an episode 5.
+fn kaguya() -> FranchiseGraph {
+    let node = |id, romaji: &str, english: &str, year| GraphNode {
+        title_english: english.to_string(),
+        ..node(id, romaji, "TV", 12, year)
+    };
+    FranchiseGraph {
+        nodes: vec![
+            node(
+                101921,
+                "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen",
+                "Kaguya-sama: Love is War",
+                2019,
+            ),
+            node(
+                112641,
+                "Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen",
+                "Kaguya-sama: Love is War?",
+                2020,
+            ),
+        ],
+        edges: vec![GraphEdge {
+            from: 112641,
+            to: 101921,
+            relation: "PREQUEL".to_string(),
+        }],
+        ..FranchiseGraph::default()
+    }
+}
+
+#[test]
+fn a_release_two_tracked_series_fit_alike_goes_to_neither() {
+    let mut first = series(
+        1,
+        101921,
+        "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen",
+        12,
+        2019,
+    );
+    first.title_english = "Kaguya-sama: Love is War".to_string();
+    let mut second = series(
+        2,
+        112641,
+        "Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen",
+        12,
+        2020,
+    );
+    second.title_english = "Kaguya-sama: Love is War?".to_string();
+    let graph = kaguya();
+    let release = item("[Group] Kaguya-sama - Love is War - 05 [1080p].mkv");
+
+    // One of them tracked: the tie is with an entry the library doesn't
+    // have, and the release is the tracked season's.
+    let alone = vec![meta(&first, &graph)];
+    assert!(
+        identified_series_match(&release, &alone)
+            .found()
+            .is_some_and(|m| m.series.id == 1)
+    );
+
+    // Both tracked: Sonarr's ambiguous release.
+    let both = vec![meta(&first, &graph), meta(&second, &graph)];
+    assert!(best_series_match(&release, &both).is_some());
+    match identified_series_match(&release, &both) {
+        SeriesMatch::Shared { other, .. } => assert!(other.starts_with("Kaguya-sama"), "{other}"),
+        _ => panic!("expected the release to fit both tracked seasons"),
+    }
+}

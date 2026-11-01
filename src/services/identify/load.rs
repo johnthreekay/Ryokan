@@ -165,6 +165,27 @@ async fn load_with_print(
     franchise
 }
 
+/// The franchise's entries, other than its target, that are library
+/// series: by AniList id, or for a MAL-fallback row (`anilist_id =
+/// -mal_id`) by the entry's MAL id. A tie with one of these is the
+/// ambiguity Sonarr rejects (two library series fitting one release).
+pub async fn tracked_entries(db: &SqlitePool, franchise: &Franchise) -> HashSet<i64> {
+    let rows: HashSet<i64> = sqlx::query_scalar::<_, i64>("SELECT anilist_id FROM series")
+        .fetch_all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let target = franchise.target().id;
+    franchise
+        .entries()
+        .iter()
+        .filter(|e| e.id != target)
+        .filter(|e| rows.contains(&e.id) || e.mal_id.is_some_and(|m| rows.contains(&-m)))
+        .map(|e| e.id)
+        .collect()
+}
+
 /// The walk [`load_graph`] makes, fed one level of relation edges at a
 /// time: chain edges (prequels and sequels either way, parents upward)
 /// up to [`MAX_CHAIN`] entries, and one hop from the chain through side

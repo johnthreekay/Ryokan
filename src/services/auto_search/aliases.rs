@@ -533,6 +533,11 @@ pub struct GatePrecompute {
     /// The series' franchise. When set, `services::identify` decides
     /// whether another entry fits a release better.
     franchise: Option<Arc<Franchise>>,
+    /// Franchise entries that are library series too
+    /// (`identify::tracked_entries`). An automatic path rejects a release
+    /// that ties with one, as Sonarr rejects a release two library series
+    /// fit.
+    tracked: Arc<HashSet<i64>>,
 }
 
 impl GatePrecompute {
@@ -549,6 +554,7 @@ impl GatePrecompute {
         Self {
             anchors: SeriesAnchors::new(&[own_aliases, anchor_names].concat()),
             franchise: None,
+            tracked: Arc::default(),
         }
     }
 
@@ -570,6 +576,16 @@ impl GatePrecompute {
 
     pub fn franchise(&self) -> Option<&Arc<Franchise>> {
         self.franchise.as_ref()
+    }
+
+    /// The franchise entries that are library series too.
+    pub fn with_tracked(mut self, tracked: Arc<HashSet<i64>>) -> Self {
+        self.tracked = tracked;
+        self
+    }
+
+    pub fn is_tracked(&self, entry: i64) -> bool {
+        self.tracked.contains(&entry)
     }
 
     pub fn anchors(&self) -> &SeriesAnchors {

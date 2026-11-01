@@ -736,6 +736,31 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                 .await;
                 continue;
             }
+            SeriesMatch::Shared { winner, other } => {
+                skipped += 1;
+                let reason = format!(
+                    "Fits {other} as well, also in the library | {}",
+                    build_match_diag(&item, Some(&winner), 0)
+                );
+                let _ = rss::record_decision(
+                    &state.db,
+                    rss::DecisionRecord {
+                        item_key: &item_key,
+                        title: &item.title,
+                        link: &item.link,
+                        series_id: Some(winner.series.id),
+                        series_title: &winner.series.title,
+                        group_name: &item.group,
+                        is_batch: item.is_batch,
+                        decision: "rejected",
+                        reason: &reason,
+                        source: src_str,
+                        source_id: src_id,
+                    },
+                )
+                .await;
+                continue;
+            }
             SeriesMatch::None => None,
         };
         let Some(found) = found else {
@@ -2295,6 +2320,12 @@ enum SeriesMatch {
         winner: MatchResult,
         rival: identify::Rival,
     },
+    /// Another tracked series fits the release just as well: Sonarr's
+    /// ambiguous release, which neither takes.
+    Shared {
+        winner: MatchResult,
+        other: String,
+    },
     None,
 }
 
@@ -2302,7 +2333,7 @@ impl SeriesMatch {
     fn found(self) -> Option<MatchResult> {
         match self {
             SeriesMatch::Found(m) => Some(m),
-            SeriesMatch::LooksLike { .. } | SeriesMatch::None => None,
+            SeriesMatch::LooksLike { .. } | SeriesMatch::Shared { .. } | SeriesMatch::None => None,
         }
     }
 }
@@ -2311,7 +2342,9 @@ impl SeriesMatch {
 /// of the winner's franchise fits the release better, that entry takes it
 /// if it is a tracked series the release also matches; otherwise nothing
 /// does. Never a runner-up by score: the runner-up is the series the
-/// release fits worse.
+/// release fits worse. When another tracked series fits it just as well
+/// (a tie), neither takes it, as Sonarr rejects a release two library
+/// series match.
 fn identified_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> SeriesMatch {
     let Some(winner) = best_series_match(item, all_meta) else {
         return SeriesMatch::None;
@@ -2323,18 +2356,28 @@ fn identified_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> SeriesMat
     else {
         return SeriesMatch::Found(winner);
     };
-    let identify::Verdict::Rival(rival) =
-        identify::identify_parsed(franchise, &winner.parsed.title)
-    else {
-        return SeriesMatch::Found(winner);
+    // The library row that is franchise entry `entry`, if any.
+    let row_for = |entry: i64| {
+        all_meta.iter().find(|m| {
+            m.series.id != winner.series.id
+                && (m.series.anilist_id == entry
+                    || franchise
+                        .entry(entry)
+                        .and_then(|e| e.mal_id)
+                        .is_some_and(|mal| m.series.anilist_id < 0 && m.series.mal_id == Some(mal)))
+        })
     };
-    let rival_row = all_meta.iter().find(|m| {
-        m.series.anilist_id == rival.entry
-            || franchise
-                .entry(rival.entry)
-                .and_then(|e| e.mal_id)
-                .is_some_and(|mal| m.series.anilist_id < 0 && m.series.mal_id == Some(mal))
-    });
+    let rival = match identify::identify_parsed(franchise, &winner.parsed.title) {
+        identify::Verdict::Rival(rival) => rival,
+        identify::Verdict::Ambiguous { entry, title } if row_for(entry).is_some() => {
+            return SeriesMatch::Shared {
+                winner,
+                other: title,
+            };
+        }
+        _ => return SeriesMatch::Found(winner),
+    };
+    let rival_row = row_for(rival.entry);
     if let Some(row) = rival_row {
         let parsed = parse_release(item);
         let item_tokens = auto_search::token_set(&parsed.normalized_title);

@@ -55,7 +55,9 @@ use std::collections::HashSet;
 pub use graph::{
     EntryCard, Franchise, FranchiseGraph, GraphEdge, GraphNode, OffsetRow, Relation, TvdbRow,
 };
-pub use load::{GraphIndex, MAX_CHAIN, load_franchise, load_franchises_for_series, load_graph};
+pub use load::{
+    GraphIndex, MAX_CHAIN, load_franchise, load_franchises_for_series, load_graph, tracked_entries,
+};
 
 use crate::services::release_title::{self, ParsedTitle};
 use graph::{Field, NameFields};

@@ -2182,6 +2182,17 @@ async fn a_queued_pack_skips_only_the_episodes_it_covers() {
 /// A sequel cour beside a first season, in the metadata caches the
 /// 12-hour sweep fills (`identify::load_franchise` reads them).
 async fn seed_sequel_in_caches(db: &sqlx::SqlitePool, first: &AnimeDetail, sequel: &AnimeDetail) {
+    seed_related_in_caches(db, first, sequel, "SEQUEL").await;
+}
+
+/// `first` and `other` in the metadata caches, `other` related to `first`
+/// as `relation`.
+async fn seed_related_in_caches(
+    db: &sqlx::SqlitePool,
+    first: &AnimeDetail,
+    sequel: &AnimeDetail,
+    relation: &str,
+) {
     let mut first = first.clone();
     first.relations = vec![ryokan::services::anilist::RelatedEntry {
         id: sequel.id,
@@ -2194,7 +2205,7 @@ async fn seed_sequel_in_caches(db: &sqlx::SqlitePool, first: &AnimeDetail, seque
         status: "FINISHED".into(),
         status_display: String::new(),
         episodes: sequel.episodes,
-        relation_type: "SEQUEL".into(),
+        relation_type: relation.into(),
         season_year: sequel.season_year,
         media_type: "ANIME".into(),
     }];
@@ -2265,6 +2276,83 @@ async fn auto_search_episode_handler_skips_a_release_another_entry_fits_better()
     assert!(!note.contains("alternate title"), "{note}");
 
     unset_nyaa_base();
+}
+
+/// Hunter x Hunter 2011 tracked with the alternate title `Hunter x
+/// Hunter`, and `[DP] Hunter x Hunter - 003`: the name is the 1999
+/// series' exactly and, through the alternate, the 2011 one's too.
+/// Returns the report and the number of grabs.
+async fn search_hxh_2011_episode_3(track_1999: bool) -> (Vec<String>, usize) {
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "3434343434343434343434343434343434343434",
+        99301,
+        "[DP] Hunter x Hunter - 003 [Multi Subs][BDRip][1080p]",
+        "1.4 GiB",
+        200,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let state = build_state().await;
+    let mut hxh_2011 = detail_for(11061, "HUNTER×HUNTER (2011)");
+    hxh_2011.title_english = "Hunter x Hunter (2011)".into();
+    hxh_2011.episodes = Some(148);
+    hxh_2011.season_year = Some(2011);
+    let mut hxh_1999 = detail_for(136, "HUNTER×HUNTER");
+    hxh_1999.title_english = "Hunter x Hunter".into();
+    hxh_1999.episodes = Some(62);
+    hxh_1999.season_year = Some(1999);
+
+    let series_id =
+        ryokan::test_support::seed_series(&state.db, 11061, "HUNTER×HUNTER (2011)").await;
+    ryokan::models::metadata_cache::upsert(&state.db, series_id, 11061, None, &hxh_2011)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE series SET alternate_titles = 'Hunter x Hunter' WHERE id = ?")
+        .bind(series_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    if track_1999 {
+        ryokan::test_support::seed_series(&state.db, 136, "HUNTER×HUNTER").await;
+    }
+    seed_related_in_caches(&state.db, &hxh_2011, &hxh_1999, "ALTERNATIVE").await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((11061_i64, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    unset_nyaa_base();
+    (report.skipped, client.add_calls().len())
+}
+
+#[tokio::test]
+async fn auto_search_skips_a_release_another_tracked_series_fits_as_well() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // Only the 2011 series tracked: the tie is with an entry the library
+    // doesn't have (Sonarr never sees it), and the release is grabbed.
+    let (_, grabs) = search_hxh_2011_episode_3(false).await;
+    assert_eq!(grabs, 1);
+
+    // Both tracked: Sonarr's ambiguous release, which neither takes
+    // automatically. The report says which series it also fits.
+    let (skipped, grabs) = search_hxh_2011_episode_3(true).await;
+    assert_eq!(grabs, 0, "{skipped:?}");
+    let note = skipped
+        .iter()
+        .find(|s| s.contains("fit another series in the library just as well"))
+        .unwrap_or_else(|| panic!("report should name the other series: {skipped:?}"));
+    assert!(note.contains("(also HUNTER×HUNTER)"), "{note}");
 }
 
 #[tokio::test]

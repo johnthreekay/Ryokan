@@ -95,11 +95,23 @@ pub struct GateDiagnostics {
     pub inexact: Vec<String>,
     /// `(release title, the entry it looked like)`.
     pub looked_like: Vec<(String, String)>,
+    /// `(release title, the other library series it fits as well)`.
+    pub shared: Vec<(String, String)>,
 }
 
 impl GateDiagnostics {
     pub fn is_empty(&self) -> bool {
-        self.inexact.is_empty() && self.looked_like.is_empty()
+        self.inexact.is_empty() && self.looked_like.is_empty() && self.shared.is_empty()
+    }
+
+    fn note_shared(&mut self, title: &str, entry: &str) {
+        if !self
+            .shared
+            .iter()
+            .any(|(t, _)| t.eq_ignore_ascii_case(title))
+        {
+            self.shared.push((title.to_string(), entry.to_string()));
+        }
     }
 
     fn note_inexact(&mut self, title: &str) {
@@ -152,6 +164,20 @@ impl GateDiagnostics {
                 sample
             ));
         }
+        if !self.shared.is_empty() {
+            let sample = self
+                .shared
+                .iter()
+                .take(2)
+                .map(|(t, entry)| format!("\"{t}\" (also {entry})"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            parts.push(format!(
+                "{} {noun}(s) fit another series in the library just as well, for example {}. An alternate title on the series page that the release uses tells them apart.",
+                self.shared.len(),
+                sample
+            ));
+        }
         (!parts.is_empty()).then(|| parts.join(" "))
     }
 
@@ -165,12 +191,17 @@ impl GateDiagnostics {
                     .iter()
                     .map(|(t, entry)| format!("{t} (looks like {entry})")),
             )
+            .chain(
+                self.shared
+                    .iter()
+                    .map(|(t, entry)| format!("{t} (also {entry})")),
+            )
             .collect::<Vec<_>>()
             .join(" | ")
     }
 
     pub fn len(&self) -> usize {
-        self.inexact.len() + self.looked_like.len()
+        self.inexact.len() + self.looked_like.len() + self.shared.len()
     }
 }
 
@@ -262,9 +293,11 @@ async fn find_all_for_target_with_probes(
         &series_ctx.alternate_titles,
     )
     .await;
+    let tracked = std::sync::Arc::new(identify::tracked_entries(db, &franchise).await);
     let gate = GatePrecompute::build(&aliases)
         .with_series_format(&detail.format)
-        .with_franchise(franchise.clone());
+        .with_franchise(franchise.clone())
+        .with_tracked(tracked.clone());
     let categories = nyaa_search_categories(config, &detail.format);
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
@@ -337,7 +370,8 @@ async fn find_all_for_target_with_probes(
             let ext_precompute =
                 GatePrecompute::build_with_anchors(&all_aliases, &franchise_names(detail))
                     .with_series_format(&detail.format)
-                    .with_franchise(franchise.clone());
+                    .with_franchise(franchise.clone())
+                    .with_tracked(tracked.clone());
             let ext_ctx = InteractiveQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
@@ -397,7 +431,8 @@ async fn find_all_for_target_with_probes(
         absolute_target = SearchTarget::Episode(ep.saturating_add(series_ctx.absolute_offset));
         franchise_precompute = GatePrecompute::build(&series_ctx.franchise_aliases)
             .with_series_format(&detail.format)
-            .with_franchise(franchise.clone());
+            .with_franchise(franchise.clone())
+            .with_tracked(tracked.clone());
         let franchise_queries = append_custom_tokens(
             build_queries_from_aliases(
                 &series_ctx.franchise_aliases,
@@ -817,9 +852,11 @@ pub async fn collect_scored_batches_for_target_with_diag(
         &series_ctx.alternate_titles,
     )
     .await;
+    let tracked = std::sync::Arc::new(identify::tracked_entries(db, &franchise).await);
     let gate = GatePrecompute::build(&aliases)
         .with_series_format(&detail.format)
-        .with_franchise(franchise.clone());
+        .with_franchise(franchise.clone())
+        .with_tracked(tracked.clone());
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
 
@@ -1128,9 +1165,11 @@ async fn collect_scored_for_target(
         &series_ctx.alternate_titles,
     )
     .await;
+    let tracked = std::sync::Arc::new(identify::tracked_entries(db, &franchise).await);
     let gate = GatePrecompute::build(&aliases)
         .with_series_format(&detail.format)
-        .with_franchise(franchise.clone());
+        .with_franchise(franchise.clone())
+        .with_tracked(tracked.clone());
     let mut seen = HashSet::new();
     let mut candidates: Vec<SearchResult> = Vec::new();
 
@@ -1209,7 +1248,8 @@ async fn collect_scored_for_target(
             let ext_precompute =
                 GatePrecompute::build_with_anchors(&all_aliases, &franchise_names(detail))
                     .with_series_format(&detail.format)
-                    .with_franchise(franchise.clone());
+                    .with_franchise(franchise.clone())
+                    .with_tracked(tracked.clone());
             let ext_ctx = AutoQueryCtx {
                 phase: MatchPhase::Extended,
                 aliases: &all_aliases,
@@ -1295,7 +1335,8 @@ async fn collect_scored_for_target(
         absolute_target = SearchTarget::Episode(ep.saturating_add(series_ctx.absolute_offset));
         franchise_precompute = GatePrecompute::build(&series_ctx.franchise_aliases)
             .with_series_format(&detail.format)
-            .with_franchise(franchise.clone());
+            .with_franchise(franchise.clone())
+            .with_tracked(tracked.clone());
         let franchise_queries = append_custom_tokens(
             build_queries_from_aliases(
                 &series_ctx.franchise_aliases,
@@ -1461,7 +1502,27 @@ impl AutoQueryCtx<'_> {
                 let note = IdentityNote::from_verdict(&identify::Verdict::Rival(rival));
                 (alias_match, Some(note))
             }
-            MatchOutcome::Matched(alias_match, identity) => (alias_match, identity),
+            MatchOutcome::Matched(alias_match, identity) => {
+                // A tie with another library series is Sonarr's
+                // ambiguous release: neither series takes it automatically.
+                if self.require_verbatim
+                    && let Some(note) = &identity
+                    && note.verdict == IdentityVerdict::Ambiguous
+                    && note.entry.is_some_and(|e| self.gate.is_tracked(e))
+                {
+                    tracing::debug!(
+                        "identify: {:?} fits {} as well, also in the library",
+                        result.title,
+                        note.entry_title
+                    );
+                    self.fuzzy_rejected
+                        .lock()
+                        .unwrap()
+                        .note_shared(&result.title, &note.entry_title);
+                    return None;
+                }
+                (alias_match, identity)
+            }
         };
         if self.require_verbatim
             && (alias_match.kind == MatchKind::Fuzzy
