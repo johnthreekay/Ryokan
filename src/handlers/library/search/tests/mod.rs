@@ -1102,6 +1102,78 @@ mod handler_endpoints {
         }
     }
 
+    #[test]
+    fn interactive_search_partial_labels_a_release_another_entry_fits_better() {
+        use crate::services::auto_search::{
+            IdentityNote, IdentityVerdict, MatchKind, MatchPhase, MatchProvenance,
+        };
+        use crate::services::nyaa::SearchResult;
+        use askama::Template;
+
+        let row = |title: &str, identity: Option<IdentityNote>| SearchResult {
+            match_provenance: Some(MatchProvenance {
+                phase: MatchPhase::Primary,
+                kind: MatchKind::Verbatim,
+                alias: "Fruits Basket".into(),
+                ratio: 1.0,
+                identity,
+            }),
+            title: title.into(),
+            link: "https://nyaa.example/view/42".into(),
+            magnet: "magnet:?xt=urn:btih:abc123".into(),
+            torrent: String::new(),
+            size: "1.4 GiB".into(),
+            size_bytes: 1_500_000_000,
+            seeders: 42,
+            leechers: 3,
+            downloads: 200,
+            group: "Group".into(),
+            resolution: "1080".into(),
+            quality_label: "WEB-1080p".into(),
+            source: "Web".into(),
+            web_kind: String::new(),
+            is_remux: false,
+            is_bdmv: false,
+            is_batch: false,
+            is_trusted: false,
+            score: 50,
+            info_hash: "abc123abc123abc123abc123abc123abc123abc1".into(),
+            score_breakdown: vec![],
+            upload_date: String::new(),
+            indexer_id: None,
+            indexer_name: String::new(),
+        };
+        let note = |verdict| IdentityNote {
+            verdict,
+            entry: Some(105334),
+            entry_title: "Fruits Basket: 1st Season".into(),
+            tier: None,
+        };
+        let html = super::super::interactive::test_helpers::build_partial_for_test(
+            vec![
+                row(
+                    "[Leopard-Raws] Fruits Basket (2019) - 05",
+                    Some(note(IdentityVerdict::Rival)),
+                ),
+                row(
+                    "[G] Fruits Basket - 05",
+                    Some(note(IdentityVerdict::Ambiguous)),
+                ),
+                row("[G] Fruits Basket - 05 v2", None),
+            ],
+            Some(5),
+            false,
+        )
+        .render()
+        .expect("partial renders");
+        // Only the rival is labeled; a tie costs a little score and no tag.
+        assert_eq!(html.matches("tag-looks-like").count(), 1, "{html}");
+        assert!(
+            html.contains("looks like Fruits Basket: 1st Season"),
+            "{html}"
+        );
+    }
+
     // ─── Interactive-search partial render (issue #166) ─────────
 
     /// HTMX path on `interactive_search_episode` returns a rendered

@@ -2323,3 +2323,133 @@ async fn auto_search_episode_handler_takes_the_sequels_absolute_number_with_the_
 
     unset_nyaa_base();
 }
+
+/// A target and its relatives, by relation, in the metadata caches.
+async fn seed_relatives_in_caches(
+    db: &sqlx::SqlitePool,
+    target: &AnimeDetail,
+    relatives: &[(&AnimeDetail, &str)],
+) {
+    let mut target = target.clone();
+    target.relations = relatives
+        .iter()
+        .map(|(rel, relation)| ryokan::services::anilist::RelatedEntry {
+            id: rel.id,
+            id_mal: None,
+            title_romaji: rel.title_romaji.clone(),
+            title_english: rel.title_english.clone(),
+            title_native: rel.title_native.clone(),
+            cover_url: String::new(),
+            format: rel.format.clone(),
+            status: "FINISHED".into(),
+            status_display: String::new(),
+            episodes: rel.episodes,
+            relation_type: (*relation).into(),
+            season_year: rel.season_year,
+            media_type: "ANIME".into(),
+        })
+        .collect();
+    ryokan::models::local_metadata::replace_relations_for_provider(db, target.id, &target)
+        .await
+        .unwrap();
+    ryokan::models::metadata_cache::upsert_provider(db, target.id, None, &target)
+        .await
+        .unwrap();
+    for (rel, _) in relatives {
+        ryokan::models::metadata_cache::upsert_provider(db, rel.id, None, rel)
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn find_all_for_target_labels_a_rival_and_drops_one_its_names_give_away() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // For the 2001 series: its own release, the 2019 remake's (the year
+    // fits only the remake: kept, labeled, scored below), and a sequel
+    // named by its subtitle (dropped, as the sibling guard did).
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&format!(
+        "{}{}{}",
+        nyaa_row(
+            "5656565656565656565656565656565656565656",
+            99301,
+            "[Leopard-Raws] Fruits Basket (2019) - 05 (TX 1280x720 x264 AAC).mp4",
+            "400 MiB",
+            300,
+        ),
+        nyaa_row(
+            "7878787878787878787878787878787878787878",
+            99302,
+            "[Group] Fruits Basket - 05 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            20,
+        ),
+        nyaa_row(
+            "9090909090909090909090909090909090909090",
+            99303,
+            "[Group] Fruits Basket The Final - 05 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            50,
+        ),
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let mut original = detail_for(9301, "Fruits Basket");
+    original.season_year = Some(2001);
+    original.end_year = Some(2001);
+    let mut remake = detail_for(9302, "Fruits Basket (2019)");
+    remake.season_year = Some(2019);
+    remake.end_year = Some(2019);
+    let mut finale = detail_for(9303, "Fruits Basket: The Final");
+    finale.season_year = Some(2021);
+    finale.end_year = Some(2021);
+    let state = build_state().await;
+    seed_relatives_in_caches(
+        &state.db,
+        &original,
+        &[(&remake, "ALTERNATIVE"), (&finale, "SEQUEL")],
+    )
+    .await;
+
+    let cfs: Vec<ryokan::services::custom_formats::CompiledCustomFormat> = vec![];
+    let results = find_all_for_target(
+        &state.db,
+        &original,
+        &default_config(),
+        &SearchTarget::Episode(5),
+        true,
+        &cfs,
+        &state.indexers,
+    )
+    .await;
+    let titles: Vec<&str> = results.iter().map(|r| r.title.as_str()).collect();
+    assert_eq!(titles.len(), 2, "{titles:?}");
+    assert!(
+        titles[0].starts_with("[Group] Fruits Basket - 05"),
+        "{titles:?}"
+    );
+    assert!(titles[1].starts_with("[Leopard-Raws]"), "{titles:?}");
+    let rival = results[1]
+        .match_provenance
+        .as_ref()
+        .and_then(|p| p.identity.as_ref())
+        .expect("the remake's release carries the verdict");
+    assert_eq!(rival.looks_like(), Some("Fruits Basket (2019)"));
+    assert!(
+        results[1]
+            .score_breakdown
+            .iter()
+            .any(|p| p.label == "Franchise Identity" && p.delta < 0),
+        "{:?}",
+        results[1].score_breakdown
+    );
+
+    unset_nyaa_base();
+}

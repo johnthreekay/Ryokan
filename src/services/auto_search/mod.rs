@@ -2013,8 +2013,11 @@ fn apply_interactive_filter_and_push(
     };
     // Sibling rejection: same sequel/prequel guard as the auto path —
     // a release that matches a sibling more tightly than us is almost
-    // certainly for the sibling.
-    if sibling_match_rejects(&normalized_title, &title_tokens, ctx.sibling_precompute) {
+    // certainly for the sibling. With the franchise loaded, `identify`
+    // judges instead, below.
+    if ctx.sibling_precompute.franchise().is_none()
+        && sibling_match_rejects(&normalized_title, &title_tokens, ctx.sibling_precompute)
+    {
         return;
     }
     // Season check: reject results clearly from a different season
@@ -2044,7 +2047,21 @@ fn apply_interactive_filter_and_push(
             return;
         }
     }
-    result.match_provenance = Some(alias_match.into_provenance(ctx.phase));
+    let mut provenance = alias_match.into_provenance(ctx.phase);
+    if let Some(franchise) = ctx.sibling_precompute.franchise() {
+        let verdict = identify::identify_parsed(franchise, &release);
+        // The person choosing still sees a release another entry fits
+        // better, labeled and scored below this series' own; one whose
+        // names say outright that it is the other entry's is dropped,
+        // as the sibling guard did.
+        if let identify::Verdict::Rival(rival) = &verdict
+            && rival.tier == identify::Tier::NamesMore
+        {
+            return;
+        }
+        provenance.identity = Some(IdentityNote::from_verdict(&verdict));
+    }
+    result.match_provenance = Some(provenance);
     candidates.push(result);
 }
 
