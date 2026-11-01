@@ -383,6 +383,7 @@ pub(super) fn parse(title: &str) -> ParsedTitle {
     }
     out.title = primary_title(&ctx);
     out.series_title = series_title(&ctx);
+    out.name_notes = name_notes(&ctx, out.group.as_deref(), out.series_title.as_deref());
     out.anchor_words = title_words(ctx.toks, &ctx.skip, &ctx.class);
     out
 }
@@ -2130,6 +2131,85 @@ fn series_title(ctx: &Ctx) -> Option<String> {
     latin
         .or((!titles.is_empty()).then_some(0))
         .map(|at| titles.swap_remove(at))
+}
+
+/// Alternate names the title writes beside its main name, for
+/// `ParsedTitle::name_zones`: a bracket holding only title words
+/// (`Kimetsu no Yaiba (Demon Slayer) - 05`, the other title brackets of
+/// `[SweetSub][冰之城墙][Koori no Jouheki][18]`), and a ` | ` tail after
+/// the metadata (`Show - 01 (1080p) | Alt Title`). The leading group, the
+/// group and the main name itself are never notes.
+fn name_notes(ctx: &Ctx, group: Option<&str>, main: Option<&str>) -> Vec<String> {
+    let is_main = |text: &str| main.is_some_and(|m| m.eq_ignore_ascii_case(text));
+    let is_group = |text: &str| group.is_some_and(|g| g.eq_ignore_ascii_case(text));
+    let mut notes: Vec<String> = Vec::new();
+    let push = |text: String, notes: &mut Vec<String>| {
+        if !text.is_empty()
+            && !is_main(&text)
+            && !is_group(&text)
+            && !notes.iter().any(|n| n.eq_ignore_ascii_case(&text))
+        {
+            notes.push(text);
+        }
+    };
+    for g in ctx.groups {
+        if g.kind == '{' {
+            continue;
+        }
+        let content = ctx.content(g);
+        let titled = content.iter().any(|&i| {
+            ctx.toks[i].is_word()
+                && ctx.class[i] == Class::Plain
+                && ctx.toks[i]
+                    .text
+                    .chars()
+                    .filter(|c| c.is_alphabetic())
+                    .count()
+                    >= 2
+                && !is_crc(&ctx.toks[i].text)
+        });
+        let plain = content.iter().all(|&i| match ctx.toks[i].kind {
+            Kind::Word => matches!(ctx.class[i], Class::Plain | Class::Of),
+            Kind::Num { .. } => true,
+            Kind::Other | Kind::Amp | Kind::Comma | Kind::Colon | Kind::LeadDash => true,
+            Kind::SegDash | Kind::Alt => true,
+            _ => false,
+        });
+        if titled && plain {
+            push(ctx.inner_text(g), &mut notes);
+        }
+    }
+    // A ` | ` / ` / ` tail at top level, past the main name.
+    let top: Vec<usize> = (0..ctx.toks.len())
+        .filter(|&i| !ctx.skip[i] && ctx.toks[i].depth == 0)
+        .collect();
+    if let Some(at) = top
+        .iter()
+        .rposition(|&i| ctx.toks[i].kind == Kind::Alt && ctx.toks[i].sep != Sep::None)
+    {
+        let mut words: Vec<&str> = Vec::new();
+        for &i in &top[at + 1..] {
+            let tok = &ctx.toks[i];
+            let title_word = tok.is_word() && matches!(ctx.class[i], Class::Plain | Class::Of);
+            if !(title_word || tok.num().is_some()) {
+                if words.is_empty() {
+                    continue;
+                }
+                break;
+            }
+            words.push(&tok.text);
+        }
+        let text = words.join(" ");
+        let inside_main = main.is_some_and(|m| m.to_lowercase().contains(&text.to_lowercase()));
+        if words
+            .iter()
+            .any(|w| w.chars().filter(|c| c.is_alphabetic()).count() >= 2)
+            && !inside_main
+        {
+            push(text, &mut notes);
+        }
+    }
+    notes
 }
 
 /// The title words of one run of tokens (top level, or one bracket's

@@ -8,7 +8,9 @@
 //! fact, and the interactive search breakdown shows it as "Title Match
 //! Confidence". The string forms below are the contract shared by JSON,
 //! the log, and the `episode_grab_history` columns; the round-trip test
-//! at the bottom keeps them from drifting.
+//! at the bottom keeps them from drifting. `identity` carries what
+//! `services::identify` said about the release against the series'
+//! franchise (JSON and log only).
 
 use serde::{Deserialize, Serialize};
 
@@ -125,7 +127,110 @@ impl AliasMatch {
             kind: self.kind,
             alias: self.alias,
             ratio: self.ratio,
+            identity: None,
         }
+    }
+}
+
+/// What `services::identify` said about a release, in string forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentityVerdict {
+    Target,
+    Rival,
+    Ambiguous,
+    Spans,
+    Neither,
+}
+
+impl IdentityVerdict {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IdentityVerdict::Target => "target",
+            IdentityVerdict::Rival => "rival",
+            IdentityVerdict::Ambiguous => "ambiguous",
+            IdentityVerdict::Spans => "spans",
+            IdentityVerdict::Neither => "neither",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "target" => Some(IdentityVerdict::Target),
+            "rival" => Some(IdentityVerdict::Rival),
+            "ambiguous" => Some(IdentityVerdict::Ambiguous),
+            "spans" => Some(IdentityVerdict::Spans),
+            "neither" => Some(IdentityVerdict::Neither),
+            _ => None,
+        }
+    }
+}
+
+/// The identify verdict stamped on a candidate: the other entry it
+/// looks like (a rival or a tie), and for a rival the tier its claim
+/// rests on (`Tier::as_str`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct IdentityNote {
+    pub verdict: IdentityVerdict,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<i64>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub entry_title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+}
+
+impl IdentityNote {
+    pub fn from_verdict(verdict: &crate::services::identify::Verdict) -> Self {
+        use crate::services::identify::Verdict;
+        let bare = |verdict| IdentityNote {
+            verdict,
+            entry: None,
+            entry_title: String::new(),
+            tier: None,
+        };
+        match verdict {
+            Verdict::Target => bare(IdentityVerdict::Target),
+            Verdict::Spans => bare(IdentityVerdict::Spans),
+            Verdict::Neither => bare(IdentityVerdict::Neither),
+            Verdict::Ambiguous { entry, title } => IdentityNote {
+                verdict: IdentityVerdict::Ambiguous,
+                entry: Some(*entry),
+                entry_title: title.clone(),
+                tier: None,
+            },
+            Verdict::Rival(r) => IdentityNote {
+                verdict: IdentityVerdict::Rival,
+                entry: Some(r.entry),
+                entry_title: r.title.clone(),
+                tier: Some(r.tier.as_str().to_string()),
+            },
+        }
+    }
+
+    /// Key-value fragment for log lines.
+    pub fn log_fragment(&self) -> String {
+        let mut out = format!("identity={}", self.verdict.as_str());
+        if let Some(tier) = &self.tier {
+            out.push_str(&format!(" tier={tier}"));
+        }
+        if let Some(entry) = self.entry {
+            out.push_str(&format!(
+                " entry={entry} entry_title={:?}",
+                self.entry_title
+            ));
+        }
+        out
+    }
+
+    /// The entry the release looks like, for a rival or a tie.
+    pub fn looks_like(&self) -> Option<&str> {
+        matches!(
+            self.verdict,
+            IdentityVerdict::Rival | IdentityVerdict::Ambiguous
+        )
+        .then_some(self.entry_title.as_str())
+        .filter(|t| !t.is_empty())
     }
 }
 
@@ -136,6 +241,10 @@ pub struct MatchProvenance {
     pub kind: MatchKind,
     pub alias: String,
     pub ratio: f32,
+    /// `None` when the gate ran without a franchise (or the candidate is
+    /// a SeaDex pick).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<IdentityNote>,
 }
 
 impl MatchProvenance {
@@ -147,18 +256,24 @@ impl MatchProvenance {
             kind: MatchKind::SeadexCurated,
             alias: String::new(),
             ratio: 1.0,
+            identity: None,
         }
     }
 
     /// Key-value fragment for log detail strings.
     pub fn log_fragment(&self) -> String {
-        format!(
+        let mut out = format!(
             "match={} phase={} alias={:?} ratio={:.2}",
             self.kind.as_str(),
             self.phase.as_str(),
             self.alias,
             self.ratio
-        )
+        );
+        if let Some(identity) = &self.identity {
+            out.push(' ');
+            out.push_str(&identity.log_fragment());
+        }
+        out
     }
 
     /// The suffix appended to a grab log line: `, match=...` or
@@ -280,6 +395,60 @@ mod tests {
         assert_eq!(seadex.summary(), "SeaDex curated release (SeaDex seed)");
         assert_eq!(seadex.ratio, 1.0);
         assert!(seadex.alias.is_empty());
+    }
+
+    #[test]
+    fn identity_string_forms_round_trip_and_log() {
+        use crate::services::identify::{Rival, Tier, Verdict};
+        for verdict in [
+            IdentityVerdict::Target,
+            IdentityVerdict::Rival,
+            IdentityVerdict::Ambiguous,
+            IdentityVerdict::Spans,
+            IdentityVerdict::Neither,
+        ] {
+            assert_eq!(IdentityVerdict::parse(verdict.as_str()), Some(verdict));
+            assert_eq!(
+                serde_json::to_string(&verdict).unwrap(),
+                format!("\"{}\"", verdict.as_str())
+            );
+        }
+        let rival = IdentityNote::from_verdict(&Verdict::Rival(Rival {
+            entry: 14719,
+            title: "JoJo no Kimyou na Bouken (TV)".to_string(),
+            tier: Tier::NamesFully,
+            reason: String::new(),
+        }));
+        assert_eq!(
+            rival.log_fragment(),
+            "identity=rival tier=names_fully entry=14719 entry_title=\"JoJo no Kimyou na Bouken (TV)\""
+        );
+        assert_eq!(rival.looks_like(), Some("JoJo no Kimyou na Bouken (TV)"));
+        let target = IdentityNote::from_verdict(&Verdict::Target);
+        assert_eq!(target.log_fragment(), "identity=target");
+        assert_eq!(target.looks_like(), None);
+
+        // On a provenance: the log carries it, JSON round-trips it, and a
+        // provenance without one serializes as before.
+        let mut p = AliasMatch {
+            kind: MatchKind::Verbatim,
+            alias: "X".to_string(),
+            ratio: 1.0,
+        }
+        .into_provenance(MatchPhase::Primary);
+        let plain = serde_json::to_string(&p).unwrap();
+        assert!(!plain.contains("identity"), "{plain}");
+        p.identity = Some(rival.clone());
+        assert!(
+            p.log_fragment().ends_with(" identity=rival tier=names_fully entry=14719 entry_title=\"JoJo no Kimyou na Bouken (TV)\""),
+            "{}",
+            p.log_fragment()
+        );
+        let back: MatchProvenance =
+            serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
+        let legacy: MatchProvenance = serde_json::from_str(&plain).unwrap();
+        assert_eq!(legacy.identity, None);
     }
 
     #[test]

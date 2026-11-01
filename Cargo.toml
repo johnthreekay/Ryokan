@@ -121,6 +121,16 @@ path = "tests/release_title_corpora.rs"
 required-features = ["test-support"]
 
 [[test]]
+name = "identify_franchises"
+path = "tests/identify_franchises.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "identify_corpora"
+path = "tests/identify_corpora.rs"
+required-features = ["test-support"]
+
+[[test]]
 name = "proptest_invariants"
 path = "tests/proptest_invariants.rs"
 required-features = ["test-support"]

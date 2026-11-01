@@ -166,6 +166,23 @@ pub struct ParsedTitle {
     /// series named that way vetoes (see [`ParsedTitle::is_special_for`]).
     special_from_title_word: bool,
     anchor_words: Vec<anchors::Word>,
+    /// Alternate names written beside the main one (see
+    /// [`ParsedTitle::name_zones`]).
+    name_notes: Vec<String>,
+}
+
+/// Where a title names its show, for readers that compare names: the
+/// main name's alternates and the notes beside them. The episode's own
+/// title is in neither.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NameZones {
+    /// `series_title` split at its ` / ` alternates (a ` | ` reads as one
+    /// too): `86 Part 2 | 86 Eighty-Six Part 2` is two names.
+    pub names: Vec<String>,
+    /// Bracketed alternate names (`(Demon Slayer)`, the other title
+    /// brackets of a bracket-only title) and a ` | ` tail after the
+    /// metadata. Weaker than a name: they only break ties.
+    pub notes: Vec<String>,
 }
 
 /// The episodes a release holds for one series.
@@ -408,6 +425,26 @@ impl ParsedTitle {
     /// before the first dash (`Kekkon Special - 01`) is the name.
     fn file_special(&self) -> bool {
         self.special && !self.special_from_title_word
+    }
+
+    /// The title's name zones: the main name's alternates and the notes
+    /// beside them.
+    pub fn name_zones(&self) -> NameZones {
+        let names = self
+            .series_title
+            .as_deref()
+            .map(|t| {
+                t.split(" / ")
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        NameZones {
+            names,
+            notes: self.name_notes.clone(),
+        }
     }
 
     /// The single season the title names, if exactly one.
@@ -882,6 +919,29 @@ mod tests {
             group("[G] Show - 05 [1080p][Multi-Subs]").as_deref(),
             Some("G")
         );
+    }
+
+    #[test]
+    fn name_zones_split_alternates_and_keep_notes_apart() {
+        let zones = |t: &str| super::parse(t).name_zones();
+        let z =
+            zones("[DB] 86 Part 2 | 86 Eighty-Six Part 2 [Dual Audio 10bit BD1080p][HEVC-x265]");
+        assert_eq!(z.names, ["86 Part 2", "86 Eighty-Six Part 2"]);
+        let z = zones("[G] Kimetsu no Yaiba (Demon Slayer) Mugen Ressha-hen - 05");
+        assert_eq!(z.names, ["Kimetsu no Yaiba Mugen Ressha-hen"]);
+        assert_eq!(z.notes, ["Demon Slayer"]);
+        let z = zones("[SweetSub][冰之城墙][Koori no Jouheki][18][WebRip][1080P]");
+        assert_eq!(z.names, ["Koori no Jouheki"]);
+        assert_eq!(z.notes, ["冰之城墙"]);
+        let z = zones("Show - 01 (1080p) [A1B2C3D4] | Alt Title");
+        assert_eq!(z.names, ["Show"]);
+        assert_eq!(z.notes, ["Alt Title"]);
+        // Groups, metadata and CRCs are no notes; `Ranma 1/2` is one name.
+        let z = zones("[SubsPlease] Ranma 1/2 (2024) - 05 (1080p) [ABCD1234].mkv");
+        assert_eq!(z.names, ["Ranma 1/2"]);
+        assert!(z.notes.is_empty(), "{:?}", z.notes);
+        assert_eq!(zones("[Group][Show][01][1080p]").names, ["Show"]);
+        assert!(zones("S02E04E05.720p.BluRay-FUTV").names.is_empty());
     }
 
     #[test]

@@ -1,0 +1,180 @@
+{
+  "name": "fruits-basket",
+  "roots": [
+    120,
+    105334
+  ],
+  "nodes": [
+    {
+      "id": 120,
+      "mal_id": 120,
+      "title_romaji": "Fruits Basket",
+      "title_english": "Fruits Basket",
+      "title_native": "フルーツバスケット",
+      "synonyms": [
+        "Furuba",
+        "Fruba",
+        "フルバ"
+      ],
+      "format": "TV",
+      "episodes": 26,
+      "season_year": 2001,
+      "end_year": 2001
+    },
+    {
+      "id": 105334,
+      "mal_id": 38680,
+      "title_romaji": "Fruits Basket: 1st Season",
+      "title_english": "Fruits Basket (2019)",
+      "title_native": "フルーツバスケット 1st Season",
+      "synonyms": [
+        "Fruits Basket (Zenpen)",
+        "Furuba",
+        "Fruba",
+        "フルバ",
+        "水果篮子（第一季）",
+        "水果篮子（2019）",
+        "เสน่ห์สาวข้าวปั้น",
+        "Корзинка фруктов"
+      ],
+      "format": "TV",
+      "episodes": 25,
+      "season_year": 2019,
+      "end_year": 2019
+    },
+    {
+      "id": 111762,
+      "mal_id": 40417,
+      "title_romaji": "Fruits Basket: 2nd Season",
+      "title_english": "Fruits Basket Season 2",
+      "title_native": "フルーツバスケット 2nd Season",
+      "synonyms": [
+        "Furuba",
+        "Fruba",
+        "フルバ",
+        "水果篮子 第二季",
+        "เสน่ห์สาวข้าวปั้น ภาค 2",
+        "Fruits Basket (2019) 2",
+        "Корзинка фруктов 2"
+      ],
+      "format": "TV",
+      "episodes": 25,
+      "season_year": 2020,
+      "end_year": 2020
+    },
+    {
+      "id": 124194,
+      "mal_id": 42938,
+      "title_romaji": "Fruits Basket: The Final",
+      "title_english": "Fruits Basket The Final Season",
+      "title_native": "フルーツバスケットThe Final",
+      "synonyms": [
+        "Furuba",
+        "Fruba",
+        "フルバ",
+        "Fruits Basket Season 3",
+        "水果篮子 最终季",
+        "เสน่ห์สาวข้าวปั้น ภาค 3",
+        "เสน่ห์สาวข้าวปั้น ภาคสุดท้าย",
+        "Корзинка фруктов: Финал"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 136192,
+      "mal_id": 49310,
+      "title_romaji": "Fruits Basket: prelude",
+      "title_english": "Fruits Basket -prelude-",
+      "title_native": "フルーツバスケット -prelude-",
+      "synonyms": [
+        "The Story of Kyoko and Katsuya",
+        "今日子と勝也の物語",
+        "Kyouko to Katsuya no Monogatari",
+        "Fruits Basket Movie",
+        "Корзинка фруктов: Прелюдия"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2022,
+      "end_year": 2022
+    }
+  ],
+  "edges": [
+    {
+      "from": 120,
+      "to": 105334,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 105334,
+      "to": 120,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 105334,
+      "to": 111762,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 111762,
+      "to": 105334,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 111762,
+      "to": 124194,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 124194,
+      "to": 111762,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 124194,
+      "to": 136192,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 136192,
+      "to": 124194,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 120,
+      "tvdb_id": 78900,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 105334,
+      "tvdb_id": 357488,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 111762,
+      "tvdb_id": 357488,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 124194,
+      "tvdb_id": 357488,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 136192,
+      "tvdb_id": 357488,
+      "season": 0,
+      "episode_offset": 0
+    }
+  ],
+  "offsets": []
+}

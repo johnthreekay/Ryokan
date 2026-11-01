@@ -145,3 +145,30 @@ fn a_part_dash_episode_scores_as_a_season_dash_episode() {
     let item = item("[Group] Show Part 2 - 05 (1080p)");
     assert_eq!(parse_release(&item).parse_mode, "season_dash_episode");
 }
+
+#[test]
+fn a_bracket_only_item_matches_no_series_by_its_empty_name() {
+    // `[Group][Show][01][1080p]` normalizes to nothing, and an empty
+    // title is contained in every alias: it used to score 1.0 against
+    // every library row.
+    let mut oshi = series(1, "Oshi no Ko", 11, 0);
+    oshi.title_english = "[Oshi No Ko]".to_string();
+    let meta = vec![
+        SeriesMeta::from_series(&series(2, "Kaiju No. 8", 12, 0)),
+        SeriesMeta::from_series(&oshi),
+    ];
+    assert!(best_series_match(&item("[Group][Show][01][1080p]"), &meta).is_none());
+    // Where the parser reads a series title, the item matches by it.
+    let found = best_series_match(&item("[SubsPlease][Oshi no Ko][01][1080p]"), &meta)
+        .expect("the series title names Oshi no Ko");
+    assert_eq!(found.series.id, 1);
+    assert_eq!(resolved(&found), vec![1]);
+    // The bracketed English title matches Oshi no Ko's releases only.
+    let found = best_series_match(&item("[SubsPlease] Oshi no Ko - 05 (1080p)"), &meta)
+        .expect("Oshi no Ko matches");
+    assert_eq!(found.series.id, 1);
+    assert!(
+        best_series_match(&item("[SubsPlease] Kaiju No. 8 - 05 (1080p)"), &meta)
+            .is_some_and(|found| found.series.id == 2)
+    );
+}

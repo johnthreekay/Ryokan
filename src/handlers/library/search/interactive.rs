@@ -61,6 +61,11 @@ struct InteractiveSearchRow {
     /// `BatchList::Interactive`): the row says so, and its Grab opens the
     /// file picker even when grab previews are off.
     unnumbered_pack: bool,
+    /// The franchise entry that fits this release better
+    /// (`services::identify`, a rival the interactive list keeps): the
+    /// row says so, and the score line already sorted it below the
+    /// series' own releases.
+    looks_like: Option<String>,
 }
 
 /// Which page asked for the partial. The Wanted page renders the same
@@ -124,6 +129,13 @@ fn build_interactive_search_partial(
             let data_result_json = serde_json::to_string(&result).unwrap_or_else(|_| "{}".into());
             let unnumbered_pack =
                 result.is_batch && !crate::services::release_title::parse(&result.title).is_batch();
+            let looks_like = result
+                .match_provenance
+                .as_ref()
+                .and_then(|p| p.identity.as_ref())
+                .filter(|i| i.verdict == crate::services::auto_search::IdentityVerdict::Rival)
+                .and_then(|i| i.looks_like())
+                .map(str::to_string);
             InteractiveSearchRow {
                 result,
                 score_class,
@@ -132,6 +144,7 @@ fn build_interactive_search_partial(
                 grab_episode: grab_episode_number,
                 episode_label: String::new(),
                 unnumbered_pack,
+                looks_like,
             }
         })
         .collect();
@@ -448,23 +461,12 @@ pub async fn search_batch_releases(
     match best {
         None => {
             // Same hint as the episode path: a batch the exact title
-            // gate turned away is worth telling the user about, since
-            // an alternate title on the series page admits it.
-            let message = if looked_close.is_empty() {
-                "No batch release found".to_string()
-            } else {
-                let sample = looked_close
-                    .iter()
-                    .take(2)
-                    .map(|t| format!("\"{t}\""))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!(
-                    "{} batch release(s) looked close but none named the series exactly, for example {}. Add an alternate title on the series page if one of them is right.",
-                    looked_close.len(),
-                    sample
-                )
-            };
+            // gate turned away is worth telling the user about (an
+            // alternate title on the series page admits a loose name; a
+            // batch that fit another entry better is named as such).
+            let message = looked_close
+                .describe("batch release")
+                .unwrap_or_else(|| "No batch release found".to_string());
             if let Some(h) = &progress_handle {
                 h.emit("done", "warn", &message, None, true).await;
             }

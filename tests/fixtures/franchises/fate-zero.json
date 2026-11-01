@@ -1,0 +1,690 @@
+{
+  "name": "fate-zero",
+  "roots": [
+    10087
+  ],
+  "nodes": [
+    {
+      "id": 356,
+      "mal_id": 356,
+      "title_romaji": "Fate/stay night",
+      "title_english": "Fate/stay night",
+      "title_native": "Fate/stay night",
+      "synonyms": [
+        "フェイト/ステイナイト",
+        "Судьба/Ночь схватки"
+      ],
+      "format": "TV",
+      "episodes": 24,
+      "season_year": 2006,
+      "end_year": 2006
+    },
+    {
+      "id": 6922,
+      "mal_id": 6922,
+      "title_romaji": "Fate/stay night Movie: UNLIMITED BLADE WORKS",
+      "title_english": "Fate/stay night: Unlimited Blade Works (Movie)",
+      "title_native": "劇場版 Fate/stay night UNLIMITED BLADE WORKS",
+      "synonyms": [
+        "Gekijouban Fate/Stay Night: Unlimited Blade Works",
+        "Fate/stay night UBW",
+        "Судaьба/Ночь схватки: Бесконечный мир клинков"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2010,
+      "end_year": 2010
+    },
+    {
+      "id": 10087,
+      "mal_id": 10087,
+      "title_romaji": "Fate/Zero",
+      "title_english": "Fate/Zero",
+      "title_native": "Fate/Zero",
+      "synonyms": [
+        "フェイト/ゼロ",
+        "F/Z",
+        "القدر/زيرو",
+        "פייט/זירו",
+        "Судьба/Начало"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2011,
+      "end_year": 2011
+    },
+    {
+      "id": 11741,
+      "mal_id": 11741,
+      "title_romaji": "Fate/Zero 2nd Season",
+      "title_english": "Fate/Zero Season 2",
+      "title_native": "Fate/Zero 2ndシーズン",
+      "synonyms": [
+        "フェイト/ゼロ 2ndシーズン",
+        "F/Z",
+        "Судьба/Начало 2"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2012,
+      "end_year": 2012
+    },
+    {
+      "id": 12565,
+      "mal_id": 12565,
+      "title_romaji": "Fate/Prototype",
+      "title_english": "",
+      "title_native": "Fate/Prototype",
+      "synonyms": [
+        "フェイト/プロトタイプ",
+        "Судьба/Прототип"
+      ],
+      "format": "OVA",
+      "episodes": 1,
+      "season_year": 2011,
+      "end_year": 2011
+    },
+    {
+      "id": 13263,
+      "mal_id": 13263,
+      "title_romaji": "Fate/Zero: Onegai! Einzbern Soudanshitsu",
+      "title_english": "Fate/Zero: Please! Einzbern Counseling Room",
+      "title_native": "お願い!アインツベルン相談室",
+      "synonyms": [
+        "Fate/Zero Specials",
+        "Please! Einzbern Consultation Room",
+        "Tiger/Zero",
+        "Судьба/Начало: Пожалуйста! Консультация с Айнцберн"
+      ],
+      "format": "SPECIAL",
+      "episodes": 6,
+      "season_year": 2012,
+      "end_year": 2012
+    },
+    {
+      "id": 14829,
+      "mal_id": 14829,
+      "title_romaji": "Fate/kaleid liner Prisma☆Illya",
+      "title_english": "Fate/kaleid liner Prisma☆Illya",
+      "title_native": "Fate/kaleid liner プリズマ☆イリヤ",
+      "synonyms": [
+        "Судьба: Девочка-волшебница Иллия"
+      ],
+      "format": "ONA",
+      "episodes": 10,
+      "season_year": 2013,
+      "end_year": 2013
+    },
+    {
+      "id": 19603,
+      "mal_id": 22297,
+      "title_romaji": "Fate/stay night: Unlimited Blade Works",
+      "title_english": "Fate/stay night: Unlimited Blade Works",
+      "title_native": "Fate/stay night [Unlimited Blade Works]",
+      "synonyms": [
+        "フェイト/ステイナイト Unlimited Blade Works",
+        "Fate/UBW",
+        "פייט/סטיי נייט: מלאכת חרבות אינסופית",
+        "Судьба/Ночь схватки: Бесконечный мир клинков"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2014,
+      "end_year": 2014
+    },
+    {
+      "id": 20791,
+      "mal_id": 25537,
+      "title_romaji": "Fate/stay night [Heaven's Feel] I. presage flower",
+      "title_english": "Fate/stay night [Heaven's Feel] I. presage flower",
+      "title_native": "Fate/stay night[Heaven's Feel] Ⅰ.presage flower",
+      "synonyms": [
+        "Fate/HF",
+        "Судьба/Ночь схватки: Прикосновение небес"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2017,
+      "end_year": 2017
+    },
+    {
+      "id": 20792,
+      "mal_id": 28701,
+      "title_romaji": "Fate/stay night: Unlimited Blade Works 2nd Season",
+      "title_english": "Fate/stay night: Unlimited Blade Works 2nd Season",
+      "title_native": "Fate/stay night [Unlimited Blade Works] 2ndシーズン",
+      "synonyms": [
+        "フェイト/ステイナイト Unlimited Blade Works 2ndシーズン",
+        "Судьба/Ночь схватки: Бесконечный мир клинков 2"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2015,
+      "end_year": 2015
+    },
+    {
+      "id": 21318,
+      "mal_id": 31389,
+      "title_romaji": "Fate/stay night: Unlimited Blade Works 2nd Season - sunny day",
+      "title_english": "Fate/stay night: Unlimited Blade Works 2nd Season - sunny day",
+      "title_native": "Fate/stay night [Unlimited Blade Works] 2ndシーズン - sunny day",
+      "synonyms": [
+        "フェイト/ステイナイト Unlimited Blade Works 2ndシーズン - sunny day"
+      ],
+      "format": "SPECIAL",
+      "episodes": 1,
+      "season_year": 2015,
+      "end_year": 2015
+    },
+    {
+      "id": 21717,
+      "mal_id": 33047,
+      "title_romaji": "Fate/EXTRA Last Encore",
+      "title_english": "Fate/EXTRA Last Encore",
+      "title_native": "Fate/EXTRA Last Encore",
+      "synonyms": [
+        "Oblitus Copernican Theory",
+        "Illustrias Geocentric Theory",
+        "פייט/אקסטרה ההדרן האחרון",
+        "Судьба/Дополнение: Последний вызов на бис"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2018,
+      "end_year": 2018
+    },
+    {
+      "id": 21718,
+      "mal_id": 33049,
+      "title_romaji": "Fate/stay night [Heaven's Feel] II. lost butterfly",
+      "title_english": "Fate/stay night [Heaven's Feel] II. lost butterfly",
+      "title_native": "Fate/stay night[Heaven's Feel] ⅠⅠ.lost butterfly",
+      "synonyms": [
+        "Fate/HF II",
+        "Судьба/Ночь схватки: Прикосновение небес 2"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2019,
+      "end_year": 2019
+    },
+    {
+      "id": 21719,
+      "mal_id": 33050,
+      "title_romaji": "Fate/stay night [Heaven's Feel] III. spring song",
+      "title_english": "Fate/stay night [Heaven’s Feel] III. spring song",
+      "title_native": "Fate/stay night[Heaven's Feel] ⅠⅠⅠ.spring song",
+      "synonyms": [
+        "Fate/HF III",
+        "Судьба/Ночь схватки: Прикосновение небес 3"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2020,
+      "end_year": 2020
+    },
+    {
+      "id": 97815,
+      "mal_id": 34321,
+      "title_romaji": "Fate/Grand Order: First Order",
+      "title_english": "Fate/Grand Order: First Order",
+      "title_native": "Fate/Grand Order -First Order-",
+      "synonyms": [
+        "פייט/המסדר העליון: הפקודה הראשונה",
+        "Судьба/Великий приказ: Первый приказ"
+      ],
+      "format": "SPECIAL",
+      "episodes": 1,
+      "season_year": 2016,
+      "end_year": 2016
+    },
+    {
+      "id": 98035,
+      "mal_id": 34662,
+      "title_romaji": "Fate/Apocrypha",
+      "title_english": "Fate/Apocrypha",
+      "title_native": "Fate/Apocrypha",
+      "synonyms": [
+        "פייט/אפוקריפה",
+        "Судьба/Апокриф"
+      ],
+      "format": "TV",
+      "episodes": 25,
+      "season_year": 2017,
+      "end_year": 2017
+    },
+    {
+      "id": 100855,
+      "mal_id": 37033,
+      "title_romaji": "Emiya-san Chi no Kyou no Gohan",
+      "title_english": "Today's Menu for the Emiya Family",
+      "title_native": "衛宮さんちの今日のごはん",
+      "synonyms": [
+        "Сегодняшнее меню для Эмии"
+      ],
+      "format": "ONA",
+      "episodes": 13,
+      "season_year": 2018,
+      "end_year": 2019
+    },
+    {
+      "id": 106918,
+      "mal_id": 38959,
+      "title_romaji": "Lord El-Melloi II-sei no Jikenbo: \"Rail Zeppelin\" Grace note",
+      "title_english": "Lord El-Melloi II's Case Files {Rail Zeppelin} Grace note",
+      "title_native": "ロード・エルメロイⅡ世の事件簿 {魔眼蒐集列車} Grace note",
+      "synonyms": [
+        "Досье лорда Эль-Меллоя II"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2019,
+      "end_year": 2019
+    },
+    {
+      "id": 154966,
+      "mal_id": 53127,
+      "title_romaji": "Fate/strange Fake: Whispers of Dawn",
+      "title_english": "Fate/strange Fake -Whispers of Dawn-",
+      "title_native": "Fate/strange Fake -Whispers of Dawn-",
+      "synonyms": [
+        "Судьба/Странная подделка. Шёпот рассвета"
+      ],
+      "format": "SPECIAL",
+      "episodes": 1,
+      "season_year": 2023,
+      "end_year": 2023
+    }
+  ],
+  "edges": [
+    {
+      "from": 356,
+      "to": 6922,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 356,
+      "to": 11741,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 356,
+      "to": 12565,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 356,
+      "to": 14829,
+      "relation": "SPIN_OFF"
+    },
+    {
+      "from": 356,
+      "to": 19603,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 356,
+      "to": 20791,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 356,
+      "to": 21717,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 356,
+      "to": 97815,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 356,
+      "to": 98035,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 356,
+      "to": 100855,
+      "relation": "SPIN_OFF"
+    },
+    {
+      "from": 6922,
+      "to": 356,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 6922,
+      "to": 11741,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 6922,
+      "to": 12565,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 6922,
+      "to": 14829,
+      "relation": "SPIN_OFF"
+    },
+    {
+      "from": 6922,
+      "to": 19603,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 6922,
+      "to": 20791,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 6922,
+      "to": 21318,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 6922,
+      "to": 21717,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 6922,
+      "to": 97815,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 6922,
+      "to": 98035,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 10087,
+      "to": 11741,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 10087,
+      "to": 13263,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 10087,
+      "to": 154966,
+      "relation": "SPIN_OFF"
+    },
+    {
+      "from": 11741,
+      "to": 356,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 11741,
+      "to": 6922,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 11741,
+      "to": 10087,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 11741,
+      "to": 13263,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 11741,
+      "to": 19603,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 11741,
+      "to": 20791,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 11741,
+      "to": 106918,
+      "relation": "SPIN_OFF"
+    },
+    {
+      "from": 19603,
+      "to": 356,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 19603,
+      "to": 6922,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 19603,
+      "to": 11741,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 19603,
+      "to": 12565,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 19603,
+      "to": 14829,
+      "relation": "SPIN_OFF"
+    },
+    {
+      "from": 19603,
+      "to": 20791,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 19603,
+      "to": 20792,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 19603,
+      "to": 21717,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 19603,
+      "to": 97815,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 19603,
+      "to": 98035,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20791,
+      "to": 356,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20791,
+      "to": 6922,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20791,
+      "to": 11741,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 20791,
+      "to": 12565,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20791,
+      "to": 14829,
+      "relation": "SPIN_OFF"
+    },
+    {
+      "from": 20791,
+      "to": 19603,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20791,
+      "to": 21717,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20791,
+      "to": 21718,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 20791,
+      "to": 97815,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20791,
+      "to": 98035,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20792,
+      "to": 19603,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 20792,
+      "to": 21318,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 21718,
+      "to": 20791,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 21718,
+      "to": 21719,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 21719,
+      "to": 21718,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 356,
+      "tvdb_id": 79151,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 10087,
+      "tvdb_id": 275798,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 11741,
+      "tvdb_id": 275798,
+      "season": 1,
+      "episode_offset": 13
+    },
+    {
+      "id": 12565,
+      "tvdb_id": 251047,
+      "season": 0,
+      "episode_offset": 2
+    },
+    {
+      "id": 13263,
+      "tvdb_id": 275798,
+      "season": 0,
+      "episode_offset": 2
+    },
+    {
+      "id": 14829,
+      "tvdb_id": 269319,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 19603,
+      "tvdb_id": 278626,
+      "season": 0,
+      "episode_offset": 0
+    },
+    {
+      "id": 19603,
+      "tvdb_id": 278626,
+      "season": 1,
+      "episode_offset": -1
+    },
+    {
+      "id": 20792,
+      "tvdb_id": 278626,
+      "season": 1,
+      "episode_offset": 12
+    },
+    {
+      "id": 21318,
+      "tvdb_id": 278626,
+      "season": 0,
+      "episode_offset": 1
+    },
+    {
+      "id": 21717,
+      "tvdb_id": 337018,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 21717,
+      "tvdb_id": 337018,
+      "season": 2,
+      "episode_offset": -10
+    },
+    {
+      "id": 97815,
+      "tvdb_id": 353666,
+      "season": 0,
+      "episode_offset": 0
+    },
+    {
+      "id": 98035,
+      "tvdb_id": 326332,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 100855,
+      "tvdb_id": 340138,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 106918,
+      "tvdb_id": 357492,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 154966,
+      "tvdb_id": 436779,
+      "season": 0,
+      "episode_offset": 0
+    }
+  ],
+  "offsets": [
+    {
+      "id": 11741,
+      "episodes": 13
+    },
+    {
+      "id": 20792,
+      "episodes": 12
+    }
+  ]
+}

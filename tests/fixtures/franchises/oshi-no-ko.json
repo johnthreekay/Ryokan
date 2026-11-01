@@ -1,0 +1,144 @@
+{
+  "name": "oshi-no-ko",
+  "roots": [
+    150672
+  ],
+  "nodes": [
+    {
+      "id": 150672,
+      "mal_id": 52034,
+      "title_romaji": "[Oshi no Ko]",
+      "title_english": "OSHI NO KO",
+      "title_native": "【推しの子】",
+      "synonyms": [
+        "Favorite Girl",
+        "My Idol's Child",
+        "[Mein*Star]",
+        "เกิดใหม่เป็นลูกโอชิ",
+        "Anak Idola",
+        "【OSHI NO KO】",
+        "【推しの子】Mother and Children",
+        "[Oshi no Ko] Mother and Children",
+        "我推的孩子",
+        "【최애의 아이】",
+        "Đứa Con Của Thần Tượng",
+        "[OSHI NO KO]"
+      ],
+      "format": "TV",
+      "episodes": 11,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 166531,
+      "mal_id": 55791,
+      "title_romaji": "[Oshi no Ko] 2nd Season",
+      "title_english": "OSHI NO KO Season 2",
+      "title_native": "【推しの子】第2期",
+      "synonyms": [
+        "我推的孩子",
+        "[OSHI NO KO] Season 2",
+        "【OSHI NO KO】Season 2"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2024,
+      "end_year": 2024
+    },
+    {
+      "id": 182587,
+      "mal_id": 60058,
+      "title_romaji": "[Oshi no Ko] 3rd Season",
+      "title_english": "OSHI NO KO Season 3",
+      "title_native": "【推しの子】第3期",
+      "synonyms": [
+        "[OSHI NO KO] Season 3",
+        "【OSHI NO KO】Season 3"
+      ],
+      "format": "TV",
+      "episodes": 11,
+      "season_year": 2026,
+      "end_year": 2026
+    },
+    {
+      "id": 209827,
+      "mal_id": 63794,
+      "title_romaji": "[Oshi no Ko] Final Season",
+      "title_english": "",
+      "title_native": "【推しの子】第4期 Final Season",
+      "synonyms": [
+        "OSHI NO KO Season 4",
+        "[OSHI NO KO] Season 4",
+        "【OSHI NO KO】Season 4"
+      ],
+      "format": "TV",
+      "episodes": null,
+      "season_year": null,
+      "end_year": null
+    }
+  ],
+  "edges": [
+    {
+      "from": 150672,
+      "to": 166531,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 166531,
+      "to": 150672,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 166531,
+      "to": 182587,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 182587,
+      "to": 166531,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 182587,
+      "to": 209827,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 209827,
+      "to": 182587,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 150672,
+      "tvdb_id": 421069,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 166531,
+      "tvdb_id": 421069,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 182587,
+      "tvdb_id": 421069,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 209827,
+      "tvdb_id": 421069,
+      "season": 4,
+      "episode_offset": 0
+    }
+  ],
+  "offsets": [
+    {
+      "id": 166531,
+      "episodes": 11
+    }
+  ]
+}

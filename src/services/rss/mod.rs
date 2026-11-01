@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
-    sync::LazyLock,
+    sync::{Arc, LazyLock},
 };
 
 use regex_lite::Regex;
@@ -12,7 +12,8 @@ use crate::{
     models::{config, episode_tags, monitoring, rss, series},
     services::source::{self, ClassificationResult, Resolution, Source},
     services::{
-        auto_search, logger, media, monitoring as monitoring_service, quality, release_title,
+        auto_search, identify, logger, media, monitoring as monitoring_service, quality,
+        release_title,
     },
 };
 
@@ -185,13 +186,23 @@ struct CandidateDecision {
 #[derive(Clone)]
 struct SeriesMeta {
     series: series::Series,
-    aliases: Vec<String>,
+    /// Every alias form (titles, their normalized and core forms, the
+    /// season variants), each normalized once with its token set: the
+    /// sweep matches every feed item and about 5,000 history titles
+    /// against every row.
+    alias_forms: Vec<(String, HashSet<String>)>,
     core_aliases: Vec<String>,
+    /// Token sets of `core_aliases`, index for index.
+    core_tokens: Vec<HashSet<String>>,
     collapsed_aliases: Vec<String>,
     collapsed_core_aliases: Vec<String>,
     season_num: Option<i32>,
     /// The series' own names for `release_title`'s series-aware reading.
     anchors: release_title::SeriesAnchors,
+    /// The series' franchise (`identify::load_franchises_for_series`),
+    /// when its metadata is cached: the matcher's winner is checked
+    /// against it.
+    franchise: Option<Arc<identify::Franchise>>,
 }
 
 #[derive(Clone)]
@@ -250,16 +261,44 @@ impl SeriesMeta {
             }
         }
 
+        let alias_forms = auto_search::dedupe_strings(expanded)
+            .iter()
+            .map(|alias| {
+                let normalized = auto_search::normalize_title(alias);
+                let tokens = auto_search::token_set(&normalized);
+                (normalized, tokens)
+            })
+            .collect();
+        let core_aliases = auto_search::dedupe_strings(core_aliases);
+        let core_tokens = core_aliases
+            .iter()
+            .map(|core| auto_search::token_set(core))
+            .collect();
         Self {
             series: series.clone(),
-            aliases: auto_search::dedupe_strings(expanded),
-            core_aliases: auto_search::dedupe_strings(core_aliases),
+            alias_forms,
+            core_aliases,
+            core_tokens,
             collapsed_aliases: auto_search::dedupe_strings(collapsed_aliases),
             collapsed_core_aliases: auto_search::dedupe_strings(collapsed_core_aliases),
             season_num,
             anchors,
+            franchise: None,
         }
     }
+
+    fn with_franchise(mut self, franchise: Option<Arc<identify::Franchise>>) -> Self {
+        self.franchise = franchise;
+        self
+    }
+}
+
+/// Every library row as the matcher reads it, with its franchise.
+async fn series_metas(db: &sqlx::SqlitePool, rows: &[series::Series]) -> Vec<SeriesMeta> {
+    let franchises = identify::load_franchises_for_series(db, rows).await;
+    rows.iter()
+        .map(|row| SeriesMeta::from_series(row).with_franchise(franchises.get(&row.id).cloned()))
+        .collect()
 }
 
 pub async fn sync_once(state: &AppState, trigger: &str) -> Result<SyncSummary, String> {
@@ -598,7 +637,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
 
     let whitelist = quality::parse_group_list(&cfg.preferred_groups);
     let blacklist = quality::parse_group_list(&cfg.blocked_groups);
-    let all_meta: Vec<SeriesMeta> = tracked.iter().map(SeriesMeta::from_series).collect();
+    let all_meta = series_metas(&state.db, &tracked).await;
     let mut canonical_history =
         load_canonical_history(&state.db, nyaa_client.as_deref(), &all_meta).await;
 
@@ -667,7 +706,64 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             continue;
         }
 
-        let Some(found) = best_series_match(&item, &all_meta) else {
+        let found = match identified_series_match(&item, &all_meta) {
+            SeriesMatch::Found(found) => Some(found),
+            SeriesMatch::LooksLike { winner, rival } => {
+                skipped += 1;
+                let reason = format!(
+                    "Looks like {} ({}: {}) | {}",
+                    rival.title,
+                    rival.tier.as_str(),
+                    rival.reason,
+                    build_match_diag(&item, Some(&winner), 0)
+                );
+                let _ = rss::record_decision(
+                    &state.db,
+                    rss::DecisionRecord {
+                        item_key: &item_key,
+                        title: &item.title,
+                        link: &item.link,
+                        series_id: Some(winner.series.id),
+                        series_title: &winner.series.title,
+                        group_name: &item.group,
+                        is_batch: item.is_batch,
+                        decision: "rejected",
+                        reason: &reason,
+                        source: src_str,
+                        source_id: src_id,
+                    },
+                )
+                .await;
+                continue;
+            }
+            SeriesMatch::Shared { winner, other } => {
+                skipped += 1;
+                let reason = format!(
+                    "Fits {other} as well, also in the library | {}",
+                    build_match_diag(&item, Some(&winner), 0)
+                );
+                let _ = rss::record_decision(
+                    &state.db,
+                    rss::DecisionRecord {
+                        item_key: &item_key,
+                        title: &item.title,
+                        link: &item.link,
+                        series_id: Some(winner.series.id),
+                        series_title: &winner.series.title,
+                        group_name: &item.group,
+                        is_batch: item.is_batch,
+                        decision: "rejected",
+                        reason: &reason,
+                        source: src_str,
+                        source_id: src_id,
+                    },
+                )
+                .await;
+                continue;
+            }
+            SeriesMatch::None => None,
+        };
+        let Some(found) = found else {
             skipped += 1;
             let diag = build_match_diag(&item, None, 0);
             let reason = format!("No tracked series match | {}", diag);
@@ -1455,7 +1551,9 @@ async fn load_canonical_history(
 
 /// Match a release title against every tracked series in the library
 /// and return the best match's series id + resolved episode set, or
-/// `None` if no series cleared the matcher's confidence threshold.
+/// `None` if no series cleared the matcher's confidence threshold or the
+/// winner's franchise gives the release to an entry the library doesn't
+/// track (`identified_series_match`, the sweep's rule).
 /// Used by the manual-search grab path (v1.3.0 plan item 6d) to
 /// link grabs to existing library entries without re-implementing
 /// the RSS matcher.
@@ -1473,7 +1571,7 @@ pub async fn match_library_title(
     if all_series.is_empty() {
         return None;
     }
-    let all_meta: Vec<SeriesMeta> = all_series.iter().map(SeriesMeta::from_series).collect();
+    let all_meta = series_metas(db, &all_series).await;
     // Synthetic RssItem for the matcher — `source` doesn't matter
     // here because this path is title-only matching for the
     // post-grab attribution helper, not a sync-time fetch.
@@ -1490,7 +1588,7 @@ pub async fn match_library_title(
         is_batch,
         source: RssSource::Nyaa,
     };
-    let found = best_series_match(&pseudo, &all_meta)?;
+    let found = identified_series_match(&pseudo, &all_meta).found()?;
     let eps: Vec<i32> = found.resolved_eps.iter().copied().collect();
     Some((found.series, eps))
 }
@@ -1545,7 +1643,7 @@ impl CanonicalHistory {
             is_batch: fields.is_batch,
             source: RssSource::Nyaa,
         };
-        if let Some(found) = best_series_match(&pseudo, all_meta) {
+        if let Some(found) = identified_series_match(&pseudo, all_meta).found() {
             self.insert(&found, title);
         }
     }
@@ -2104,9 +2202,6 @@ fn best_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> Option<MatchRes
     let parsed = parse_release(item);
     let item_tokens = auto_search::token_set(&parsed.normalized_title);
     let item_core_tokens = auto_search::token_set(&parsed.core_title);
-
-    let mut best: Option<(f32, MatchTie, MatchResult)> = None;
-
     let item_view = ItemView {
         normalized: &parsed.normalized_title,
         tokens: &item_tokens,
@@ -2116,73 +2211,10 @@ fn best_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> Option<MatchRes
         collapsed_core: &parsed.collapsed_core_title,
     };
 
+    let mut best: Option<(f32, MatchTie, MatchResult)> = None;
     for meta in all_meta {
-        let alias_set = AliasSet {
-            aliases: &meta.aliases,
-            core_aliases: &meta.core_aliases,
-            collapsed_aliases: &meta.collapsed_aliases,
-            collapsed_core_aliases: &meta.collapsed_core_aliases,
-        };
-        let alias_score = score_alias_overlap(&item_view, &alias_set);
-        if alias_score < 0.82 {
+        let Some((score, tie, result)) = match_against(&parsed, &item_view, meta, all_meta) else {
             continue;
-        }
-
-        let siblings = related_family(meta, all_meta);
-        let reading = parsed.title.for_series(&meta.anchors);
-        let (resolved_eps, resolution_mode) =
-            resolve_episode_numbers(&parsed, &reading.episodes, meta, &siblings);
-        let canonical_abs_eps = canonical_absolute_numbers(meta, &siblings, &resolved_eps);
-        let family_key = canonical_family_key(&siblings);
-
-        let mut score = alias_score;
-        if let Some(item_season) = parsed.season_hint {
-            match meta.season_num {
-                Some(season) if season == item_season => score += 0.55,
-                Some(_) => score -= 0.45,
-                // A series named by no season is its first: an item naming
-                // season 2+ is another entry's, episodes or not (a pack with
-                // none used to clear the bar and grab for a finished series).
-                None if item_season > 1 => score -= 0.45,
-                None => score -= 0.10,
-            }
-        }
-        if !reading.episodes.is_empty() {
-            if resolved_eps.is_empty() {
-                score -= 0.45;
-            } else {
-                score += 0.22;
-            }
-        }
-        if !canonical_abs_eps.is_empty() {
-            score += 0.08;
-        }
-
-        if score < 0.88 {
-            continue;
-        }
-
-        let mut matched = parsed.clone();
-        if reading.via == release_title::ReadingSource::AfterName {
-            matched.parse_mode = "after_name";
-        }
-        // Ties: an exact alias, then the item's own season, then episodes
-        // this series can place, then the oldest row. List order used to
-        // decide.
-        let tie = (
-            alias_score >= 1.0,
-            parsed.season_hint.is_some() && parsed.season_hint == meta.season_num,
-            !resolved_eps.is_empty(),
-            std::cmp::Reverse(meta.series.id),
-        );
-        let result = MatchResult {
-            series: meta.series.clone(),
-            parsed: matched,
-            resolved_eps,
-            canonical_abs_eps,
-            family_key,
-            alias_score,
-            resolution_mode,
         };
         let better = match &best {
             None => true,
@@ -2197,6 +2229,172 @@ fn best_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> Option<MatchRes
     }
 
     best.map(|(_, _, result)| result)
+}
+
+/// One row's match for a release: its season- and episode-adjusted
+/// score and tie-break, or `None` below the bar.
+fn match_against(
+    parsed: &ParsedRelease,
+    item_view: &ItemView<'_>,
+    meta: &SeriesMeta,
+    all_meta: &[SeriesMeta],
+) -> Option<(f32, MatchTie, MatchResult)> {
+    let alias_set = AliasSet {
+        alias_forms: &meta.alias_forms,
+        core_aliases: &meta.core_aliases,
+        core_tokens: &meta.core_tokens,
+        collapsed_aliases: &meta.collapsed_aliases,
+        collapsed_core_aliases: &meta.collapsed_core_aliases,
+    };
+    let alias_score = score_alias_overlap(item_view, &alias_set);
+    if alias_score < 0.82 {
+        return None;
+    }
+
+    let siblings = related_family(meta, all_meta);
+    let reading = parsed.title.for_series(&meta.anchors);
+    let (resolved_eps, resolution_mode) =
+        resolve_episode_numbers(parsed, &reading.episodes, meta, &siblings);
+    let canonical_abs_eps = canonical_absolute_numbers(meta, &siblings, &resolved_eps);
+    let family_key = canonical_family_key(&siblings);
+
+    let mut score = alias_score;
+    if let Some(item_season) = parsed.season_hint {
+        match meta.season_num {
+            Some(season) if season == item_season => score += 0.55,
+            Some(_) => score -= 0.45,
+            // A series named by no season is its first: an item naming
+            // season 2+ is another entry's, episodes or not (a pack with
+            // none used to clear the bar and grab for a finished series).
+            None if item_season > 1 => score -= 0.45,
+            None => score -= 0.10,
+        }
+    }
+    if !reading.episodes.is_empty() {
+        if resolved_eps.is_empty() {
+            score -= 0.45;
+        } else {
+            score += 0.22;
+        }
+    }
+    if !canonical_abs_eps.is_empty() {
+        score += 0.08;
+    }
+
+    if score < 0.88 {
+        return None;
+    }
+
+    let mut matched = parsed.clone();
+    if reading.via == release_title::ReadingSource::AfterName {
+        matched.parse_mode = "after_name";
+    }
+    // Ties: an exact alias, then the item's own season, then episodes
+    // this series can place, then the oldest row. List order used to
+    // decide.
+    let tie = (
+        alias_score >= 1.0,
+        parsed.season_hint.is_some() && parsed.season_hint == meta.season_num,
+        !resolved_eps.is_empty(),
+        std::cmp::Reverse(meta.series.id),
+    );
+    let result = MatchResult {
+        series: meta.series.clone(),
+        parsed: matched,
+        resolved_eps,
+        canonical_abs_eps,
+        family_key,
+        alias_score,
+        resolution_mode,
+    };
+    Some((score, tie, result))
+}
+
+/// What the matcher made of a release once `identify` has seen its
+/// winner.
+enum SeriesMatch {
+    Found(MatchResult),
+    /// The winner's franchise has an entry that fits the release better,
+    /// and it is not a tracked series the release also matches.
+    LooksLike {
+        winner: MatchResult,
+        rival: identify::Rival,
+    },
+    /// Another tracked series fits the release just as well: Sonarr's
+    /// ambiguous release, which neither takes.
+    Shared {
+        winner: MatchResult,
+        other: String,
+    },
+    None,
+}
+
+impl SeriesMatch {
+    fn found(self) -> Option<MatchResult> {
+        match self {
+            SeriesMatch::Found(m) => Some(m),
+            SeriesMatch::LooksLike { .. } | SeriesMatch::Shared { .. } | SeriesMatch::None => None,
+        }
+    }
+}
+
+/// `best_series_match`, then `identify` on the winner. When another entry
+/// of the winner's franchise fits the release better, that entry takes it
+/// if it is a tracked series the release also matches; otherwise nothing
+/// does. Never a runner-up by score: the runner-up is the series the
+/// release fits worse. When another tracked series fits it just as well
+/// (a tie), neither takes it, as Sonarr rejects a release two library
+/// series match.
+fn identified_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> SeriesMatch {
+    let Some(winner) = best_series_match(item, all_meta) else {
+        return SeriesMatch::None;
+    };
+    let Some(franchise) = all_meta
+        .iter()
+        .find(|m| m.series.id == winner.series.id)
+        .and_then(|m| m.franchise.as_ref())
+    else {
+        return SeriesMatch::Found(winner);
+    };
+    // The library row that is franchise entry `entry`, if any.
+    let row_for = |entry: i64| {
+        all_meta.iter().find(|m| {
+            m.series.id != winner.series.id
+                && (m.series.anilist_id == entry
+                    || franchise
+                        .entry(entry)
+                        .and_then(|e| e.mal_id)
+                        .is_some_and(|mal| m.series.anilist_id < 0 && m.series.mal_id == Some(mal)))
+        })
+    };
+    let rival = match identify::identify_parsed(franchise, &winner.parsed.title) {
+        identify::Verdict::Rival(rival) => rival,
+        identify::Verdict::Ambiguous { entry, title } if row_for(entry).is_some() => {
+            return SeriesMatch::Shared {
+                winner,
+                other: title,
+            };
+        }
+        _ => return SeriesMatch::Found(winner),
+    };
+    let rival_row = row_for(rival.entry);
+    if let Some(row) = rival_row {
+        let parsed = parse_release(item);
+        let item_tokens = auto_search::token_set(&parsed.normalized_title);
+        let item_core_tokens = auto_search::token_set(&parsed.core_title);
+        let item_view = ItemView {
+            normalized: &parsed.normalized_title,
+            tokens: &item_tokens,
+            core: &parsed.core_title,
+            core_tokens: &item_core_tokens,
+            collapsed: &parsed.collapsed_title,
+            collapsed_core: &parsed.collapsed_core_title,
+        };
+        if let Some((_, _, result)) = match_against(&parsed, &item_view, row, all_meta) {
+            return SeriesMatch::Found(result);
+        }
+    }
+    SeriesMatch::LooksLike { winner, rival }
 }
 
 fn canonical_family_key(family: &[SeriesMeta]) -> String {
@@ -2303,28 +2501,28 @@ struct ItemView<'a> {
 /// for the same reason as `ItemView`: four `&[String]` args in a row
 /// is a positional-swap hazard.
 struct AliasSet<'a> {
-    aliases: &'a [String],
+    alias_forms: &'a [(String, HashSet<String>)],
     core_aliases: &'a [String],
+    core_tokens: &'a [HashSet<String>],
     collapsed_aliases: &'a [String],
     collapsed_core_aliases: &'a [String],
 }
 
 fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
     let alias_max = meta
-        .aliases
+        .alias_forms
         .iter()
-        .map(|alias| {
-            let normalized_alias = auto_search::normalize_title(alias);
-            let alias_tokens = auto_search::token_set(&normalized_alias);
+        .map(|(normalized_alias, alias_tokens)| {
             let mut score = 0.0f32;
             if !normalized_alias.is_empty()
-                && (item.normalized.contains(&normalized_alias)
+                && !item.normalized.is_empty()
+                && (item.normalized.contains(normalized_alias.as_str())
                     || normalized_alias.contains(item.normalized))
             {
                 score = score.max(1.0);
             }
-            let overlap_ab = auto_search::token_overlap_ratio(item.tokens, &alias_tokens);
-            let overlap_ba = auto_search::token_overlap_ratio(&alias_tokens, item.tokens);
+            let overlap_ab = auto_search::token_overlap_ratio(item.tokens, alias_tokens);
+            let overlap_ba = auto_search::token_overlap_ratio(alias_tokens, item.tokens);
             score.max(overlap_ab.min(overlap_ba))
         })
         .fold(0.0f32, f32::max);
@@ -2332,8 +2530,8 @@ fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
     let core_max = meta
         .core_aliases
         .iter()
-        .map(|alias_core| {
-            let core_tokens = auto_search::token_set(alias_core);
+        .zip(meta.core_tokens)
+        .map(|(alias_core, core_tokens)| {
             let mut score = 0.0f32;
             if !alias_core.is_empty()
                 && !item.core.is_empty()
@@ -2341,8 +2539,8 @@ fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
             {
                 score = score.max(1.0);
             }
-            let overlap_ab = auto_search::token_overlap_ratio(item.core_tokens, &core_tokens);
-            let overlap_ba = auto_search::token_overlap_ratio(&core_tokens, item.core_tokens);
+            let overlap_ab = auto_search::token_overlap_ratio(item.core_tokens, core_tokens);
+            let overlap_ba = auto_search::token_overlap_ratio(core_tokens, item.core_tokens);
             score.max(overlap_ab.min(overlap_ba))
         })
         .fold(0.0f32, f32::max);
@@ -2358,7 +2556,7 @@ fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
             if item.collapsed == *alias
                 || item.collapsed_core == *alias
                 || item.collapsed.contains(alias)
-                || alias.contains(item.collapsed_core)
+                || (!item.collapsed_core.is_empty() && alias.contains(item.collapsed_core))
             {
                 1.0
             } else {
@@ -2384,11 +2582,19 @@ fn collapse_alias(value: &str) -> String {
 }
 
 fn parse_release(item: &RssItem) -> ParsedRelease {
-    let normalized_title = auto_search::normalize_title(&item.title);
+    let title = release_title::parse(&item.title);
+    let mut normalized_title = auto_search::normalize_title(&item.title);
+    // `[SubsPlease][Oshi no Ko][01][1080p]` is all bracket groups and
+    // normalizes to nothing; the show's name is the parser's series title.
+    // With no series title either, the empty views match no series.
+    if normalized_title.is_empty()
+        && let Some(series_title) = title.series_title.as_deref()
+    {
+        normalized_title = auto_search::normalize_title(series_title);
+    }
     let core_title = normalize_core_title(&normalized_title);
     let collapsed_title = collapse_alias(&normalized_title);
     let collapsed_core_title = collapse_alias(&core_title);
-    let title = release_title::parse(&item.title);
     let claim = title.episodes.as_ref();
     let season_bound = claim.is_some_and(|c| c.season.is_some());
     let parse_mode = match claim {

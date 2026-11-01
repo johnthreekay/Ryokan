@@ -1,0 +1,239 @@
+{
+  "name": "mushoku-tensei",
+  "roots": [
+    108465
+  ],
+  "nodes": [
+    {
+      "id": 108465,
+      "mal_id": 39535,
+      "title_romaji": "Mushoku Tensei: Isekai Ittara Honki Dasu",
+      "title_english": "Mushoku Tensei: Jobless Reincarnation",
+      "title_native": "無職転生 ～異世界行ったら本気だす～",
+      "synonyms": [
+        "Jobless Reincarnation: I Will Seriously Try If I Go To Another World",
+        "无职转生 ~到了异世界就拿出真本事~",
+        "เกิดชาตินี้พี่ต้องเทพ",
+        "Thất nghiệp chuyển sinh"
+      ],
+      "format": "TV",
+      "episodes": 11,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 127720,
+      "mal_id": 45576,
+      "title_romaji": "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2",
+      "title_english": "Mushoku Tensei: Jobless Reincarnation Cour 2",
+      "title_native": "無職転生 ～異世界行ったら本気だす～ 第2クール",
+      "synonyms": [
+        "Mushoku Tensei: Jobless Reincarnation Part 2",
+        "เกิดชาตินี้พี่ต้องเทพ พาร์ท 2"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 141534,
+      "mal_id": 50360,
+      "title_romaji": "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2 - Eris no Goblin Toubatsu",
+      "title_english": "Mushoku Tensei: Jobless Reincarnation Cour 2 - Eris the Goblin Slayer",
+      "title_native": "無職転生 ～異世界行ったら本気だす～ 第2クール エリスのゴブリン討伐",
+      "synonyms": [
+        "Mushoku Tensei: Jobless Reincarnation Cour 2 Special",
+        "Mushoku Tensei: Jobless Reincarnation Part 2 Special",
+        "เกิดชาตินี้พี่ต้องเทพ OVA",
+        "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2 Special"
+      ],
+      "format": "SPECIAL",
+      "episodes": 1,
+      "season_year": 2022,
+      "end_year": 2022
+    },
+    {
+      "id": 146065,
+      "mal_id": 51179,
+      "title_romaji": "Mushoku Tensei II: Isekai Ittara Honki Dasu",
+      "title_english": "Mushoku Tensei: Jobless Reincarnation Season 2",
+      "title_native": "無職転生Ⅱ ～異世界行ったら本気だす～",
+      "synonyms": [
+        "เกิดชาตินี้พี่ต้องเทพ ซีซั่น 2",
+        "Mushoku Tensei: Isekai Ittara Honki Dasu 2nd Season",
+        "Mushoku Tensei II: Jobless Reincarnation",
+        "Mushoku Tensei II: Reencarnación desde cero",
+        "无职转生～到了异世界就拿出真本事～第2季"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 166873,
+      "mal_id": 55888,
+      "title_romaji": "Mushoku Tensei II: Isekai Ittara Honki Dasu Part 2",
+      "title_english": "Mushoku Tensei: Jobless Reincarnation Season 2 Part 2",
+      "title_native": "無職転生Ⅱ ～異世界行ったら本気だす～ 第2クール",
+      "synonyms": [
+        "Mushoku Tensei: Jobless Reincarnation Season 2 Cour 2",
+        "เกิดชาตินี้พี่ต้องเทพ ซีซั่น 2 ครึ่งหลัง",
+        "Mushoku Tensei: Isekai Ittara Honki Dasu 2nd Season Part 2",
+        "Mushoku Tensei II: Jobless Reincarnation Part 2",
+        "Mushoku Tensei II: Reencarnación desde cero",
+        "无职转生～到了异世界就拿出真本事～第2季"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2024,
+      "end_year": 2024
+    },
+    {
+      "id": 178789,
+      "mal_id": 59193,
+      "title_romaji": "Mushoku Tensei III: Isekai Ittara Honki Dasu",
+      "title_english": "Mushoku Tensei: Jobless Reincarnation Season 3",
+      "title_native": "無職転生Ⅲ ～異世界行ったら本気だす～",
+      "synonyms": [
+        "無職転生 ～異世界行ったら本気だす～ 第3期",
+        "Mushoku Tensei: Isekai Ittara Honki Dasu 3rd Season",
+        "เกิดชาตินี้พี่ต้องเทพ ซีซั่น 3"
+      ],
+      "format": "TV",
+      "episodes": 14,
+      "season_year": 2026,
+      "end_year": 2026
+    },
+    {
+      "id": 217434,
+      "mal_id": 65077,
+      "title_romaji": "Mushoku Tensei III: Isekai Ittara Honki Dasu Part 2",
+      "title_english": "",
+      "title_native": "無職転生Ⅲ ～異世界行ったら本気だす～ 第2クール",
+      "synonyms": [
+        "Mushoku Tensei: Jobless Reincarnation Season 3 Part 2"
+      ],
+      "format": "TV",
+      "episodes": null,
+      "season_year": 2027,
+      "end_year": null
+    }
+  ],
+  "edges": [
+    {
+      "from": 108465,
+      "to": 127720,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 127720,
+      "to": 108465,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 127720,
+      "to": 141534,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 127720,
+      "to": 146065,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 146065,
+      "to": 127720,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 146065,
+      "to": 166873,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 166873,
+      "to": 146065,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 166873,
+      "to": 178789,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 178789,
+      "to": 166873,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 178789,
+      "to": 217434,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 217434,
+      "to": 178789,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 108465,
+      "tvdb_id": 371310,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 127720,
+      "tvdb_id": 371310,
+      "season": 1,
+      "episode_offset": 11
+    },
+    {
+      "id": 141534,
+      "tvdb_id": 371310,
+      "season": 0,
+      "episode_offset": 0
+    },
+    {
+      "id": 146065,
+      "tvdb_id": 371310,
+      "season": 0,
+      "episode_offset": 1
+    },
+    {
+      "id": 146065,
+      "tvdb_id": 371310,
+      "season": 2,
+      "episode_offset": -1
+    },
+    {
+      "id": 166873,
+      "tvdb_id": 371310,
+      "season": 2,
+      "episode_offset": 12
+    },
+    {
+      "id": 178789,
+      "tvdb_id": 371310,
+      "season": 3,
+      "episode_offset": 0
+    }
+  ],
+  "offsets": [
+    {
+      "id": 127720,
+      "episodes": 11
+    },
+    {
+      "id": 141534,
+      "episodes": 23
+    },
+    {
+      "id": 166873,
+      "episodes": 12
+    }
+  ]
+}

@@ -1,0 +1,616 @@
+{
+  "name": "shingeki-no-kyojin",
+  "roots": [
+    16498
+  ],
+  "nodes": [
+    {
+      "id": 16498,
+      "mal_id": 16498,
+      "title_romaji": "Shingeki no Kyojin",
+      "title_english": "Attack on Titan",
+      "title_native": "進撃の巨人",
+      "synonyms": [
+        "SnK",
+        "AoT",
+        "Ataque a los Titanes",
+        "Ataque dos Titãs",
+        "L'Attacco dei Giganti",
+        "מתקפת הטיטאנים",
+        "进击的巨人",
+        "L’Attaque des Titans",
+        "الهجوم على العمالقة",
+        "ผ่าพิภพไททัน",
+        "حمله به تایتان",
+        "Ataque de Titãs",
+        "Atak Tytanów",
+        "Атака титанов",
+        "Đại Chiến Titan"
+      ],
+      "format": "TV",
+      "episodes": 25,
+      "season_year": 2013,
+      "end_year": 2013
+    },
+    {
+      "id": 18397,
+      "mal_id": 18397,
+      "title_romaji": "Shingeki no Kyojin OVA",
+      "title_english": "Attack on Titan OVA",
+      "title_native": "進撃の巨人 OVA",
+      "synonyms": [
+        "Attack on Titan: Ilse's Journal",
+        "Attack on Titan: A Sudden Visitor",
+        "ผ่าพิภพไททัน OAD",
+        "Атака титанов OVA"
+      ],
+      "format": "OVA",
+      "episodes": 3,
+      "season_year": 2013,
+      "end_year": 2014
+    },
+    {
+      "id": 20691,
+      "mal_id": 23775,
+      "title_romaji": "Shingeki no Kyojin Zenpen: Guren no Yumiya",
+      "title_english": "Attack on Titan Part I: Crimson Bow and Arrow",
+      "title_native": "劇場版「進撃の巨人」前編～紅蓮の弓矢～",
+      "synonyms": [
+        "Attack on Titan Teil I: Feuerroter Pfeil und Bogen",
+        "Attack on Titan: O Arco e Flecha Escarlate"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2014,
+      "end_year": 2014
+    },
+    {
+      "id": 20692,
+      "mal_id": 23777,
+      "title_romaji": "Shingeki no Kyojin Kouhen: Jiyuu no Tsubasa",
+      "title_english": "Attack on Titan Part II: Wings of Freedom",
+      "title_native": "劇場版「進撃の巨人」後編～自由の翼～",
+      "synonyms": [
+        "Attack on Titan: Asas da Liberdade"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2015,
+      "end_year": 2015
+    },
+    {
+      "id": 20811,
+      "mal_id": 25781,
+      "title_romaji": "Shingeki no Kyojin Gaiden: Kuinaki Sentaku",
+      "title_english": "Attack on Titan: No Regrets",
+      "title_native": "進撃の巨人 外伝 悔いなき選択",
+      "synonyms": [
+        "SnK",
+        "AoT",
+        "ผ่าพิภพไททัน ภาค OAD No Regret",
+        "ผ่าพิภพไททัน OAD ",
+        "Атака титанов: Выбор без сожалений"
+      ],
+      "format": "OVA",
+      "episodes": 2,
+      "season_year": 2015,
+      "end_year": 2015
+    },
+    {
+      "id": 20958,
+      "mal_id": 25777,
+      "title_romaji": "Shingeki no Kyojin Season 2",
+      "title_english": "Attack on Titan Season 2",
+      "title_native": "進撃の巨人 Season２",
+      "synonyms": [
+        "SnK 2",
+        "AoT 2",
+        "+מתקפת הטיטאנים עונה 2",
+        "L'Attacco dei Giganti 2",
+        "L'Attacco dei Giganti - Seconda Stagione",
+        "ผ่าพิภพไททัน ภาค 2",
+        "حمله به تایتان فصل 2",
+        "Атака титанов 2"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2017,
+      "end_year": 2017
+    },
+    {
+      "id": 21281,
+      "mal_id": 31374,
+      "title_romaji": "Shingeki! Kyojin Chuugakkou",
+      "title_english": "Attack on Titan: Junior High",
+      "title_native": "進撃！巨人中学校",
+      "synonyms": [
+        "Ataque a los Titanes: Junior High",
+        "ผ่ามัธยมไททัน",
+        "ผ่า! มัธยมไททัน"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2015,
+      "end_year": 2015
+    },
+    {
+      "id": 99147,
+      "mal_id": 35760,
+      "title_romaji": "Shingeki no Kyojin Season 3",
+      "title_english": "Attack on Titan Season 3",
+      "title_native": "進撃の巨人 Season３",
+      "synonyms": [
+        "SnK 3",
+        "AoT 3",
+        "מתקפת הטיטאנים עונה 3",
+        "L'Attacco dei Giganti 3",
+        "L'Attacco dei Giganti - Terza Stagione",
+        "ผ่าพิภพไททัน ภาค 3",
+        "حمله به تایتان فصل 3",
+        "ผ่าพิภพไททัน ภาค 3 Part 1",
+        "Атака титанов 3"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2018,
+      "end_year": 2018
+    },
+    {
+      "id": 99634,
+      "mal_id": 36106,
+      "title_romaji": "Shingeki no Kyojin: LOST GIRLS",
+      "title_english": "Attack on Titan: Lost Girls",
+      "title_native": "進撃の巨人 LOST GIRLS",
+      "synonyms": [
+        "Episode 16.5A: Wall Sina. Goodbye",
+        "Episode 16.5B: Wall Sina. Goodbye",
+        "SnK",
+        "AoT",
+        "ผ่าพิภพไททัน OAD",
+        "ผ่าพิภพไททัน ภาค OAD Lost Girls",
+        "Атака титанов: Потерянные девушки"
+      ],
+      "format": "OVA",
+      "episodes": 3,
+      "season_year": 2017,
+      "end_year": 2018
+    },
+    {
+      "id": 100465,
+      "mal_id": 36702,
+      "title_romaji": "Shingeki no Kyojin Season 2: Kakusei no Houkou",
+      "title_english": "Attack on Titan: The Roar of Awakening",
+      "title_native": "劇場版「進撃の巨人」Season 2～覚醒の咆哮～",
+      "synonyms": [
+        "AoT",
+        "SnK",
+        "Attack on Titan: O Rugido do Despertar"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2018,
+      "end_year": 2018
+    },
+    {
+      "id": 104578,
+      "mal_id": 38524,
+      "title_romaji": "Shingeki no Kyojin Season 3 Part 2",
+      "title_english": "Attack on Titan Season 3 Part 2",
+      "title_native": "進撃の巨人 Season３ Part.2",
+      "synonyms": [
+        "SnK 3",
+        "AoT 3",
+        "Shingeki no Kyojin Season 3 (2019)",
+        "L'Attaco dei Giganti 3 Parte 2",
+        "L'Attacco dei Giganti - Terza Stagione Parte 2",
+        "מתקפת הטיטאנים עונה 3 חלק 2",
+        "L'Attaque des Titans Saison 3 Partie 2 ",
+        "ผ่าพิภพไททัน ภาค 3 Part 2",
+        "ผ่าพิภพไททัน ภาค 3 พาร์ท 2",
+        "حمله به تایتان فصل 3"
+      ],
+      "format": "TV",
+      "episodes": 10,
+      "season_year": 2019,
+      "end_year": 2019
+    },
+    {
+      "id": 110277,
+      "mal_id": 40028,
+      "title_romaji": "Shingeki no Kyojin: The Final Season",
+      "title_english": "Attack on Titan Final Season",
+      "title_native": "進撃の巨人 The Final Season",
+      "synonyms": [
+        "SnK 4",
+        "AoT 4",
+        "Shingeki no Kyojin 4",
+        "進撃の巨人4",
+        "Attack on Titan Season 4",
+        "진격의 거인 더 파이널 시즌",
+        "מתקפת הטיטאנים העונה האחרונה",
+        "L'Attaque des Titans Saison Finale",
+        "L'Attacco dei Giganti 4",
+        "L'Attacco dei Giganti - La Stagione Finale",
+        "حمله به تایتان فصل 4 ",
+        " ผ่าพิภพไททัน ไฟนอล ซีซั่น",
+        "ผ่าพิภพไททัน Final Season",
+        "ผ่าพิภพไททัน ภาค 4",
+        "هجوم العملاقة الجزء الأخير",
+        "Атака Титанов: Финал"
+      ],
+      "format": "TV",
+      "episodes": 16,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 119113,
+      "mal_id": 42091,
+      "title_romaji": "Shingeki no Kyojin: Chronicle",
+      "title_english": "Attack on Titan ~Chronicle~",
+      "title_native": "進撃の巨人 〜クロニクル〜",
+      "synonyms": [
+        "ผ่าพิภพไททัน Chronicle"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2020,
+      "end_year": 2020
+    },
+    {
+      "id": 131681,
+      "mal_id": 48583,
+      "title_romaji": "Shingeki no Kyojin: The Final Season Part 2",
+      "title_english": "Attack on Titan Final Season Part 2",
+      "title_native": "進撃の巨人 The Final Season Part 2",
+      "synonyms": [
+        "SnK 4",
+        "AoT 4",
+        "L'attaque des titans Saison Finale Partie 2",
+        "Shingeki no Kyojin: The Final Season (2022)",
+        "اتک عن تایتان",
+        "حمله به غول ها",
+        "حمله به تایتان فصل 4 ",
+        " ผ่าพิภพไททัน ไฟนอล ซีซั่น Part 2",
+        "ผ่าพิภพไททัน ภาค 4",
+        "L'Attacco dei Giganti 4 Parte 2",
+        "Атака титанов: Финал. Часть 2"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2022,
+      "end_year": 2022
+    },
+    {
+      "id": 146984,
+      "mal_id": 51535,
+      "title_romaji": "Shingeki no Kyojin: The Final Season - Kanketsu-hen Zenpen",
+      "title_english": "Attack on Titan Final Season THE FINAL CHAPTERS Special 1",
+      "title_native": "進撃の巨人 The Final Season完結編 前編",
+      "synonyms": [
+        "Shingeki no Kyojin: The Final Season Final Edition",
+        "Shingeki no Kyojin: The Final Season Part 3",
+        "ผ่าพิภพไททัน ภาค 4",
+        "ผ่าพิภพไททัน ไฟนอล ซีซั่น Part 3",
+        "Attack on Titan Final Season Part 3 Final Arc Part 1",
+        "Attack on Titan The Final Season The Final Part Special",
+        "Attack on Titan The Final Season The Final Part Part 1",
+        "حمله به تایتان فصل آخر قسمت ویژه 1 ",
+        "SnK 4",
+        "AoT 4"
+      ],
+      "format": "SPECIAL",
+      "episodes": 1,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 162314,
+      "mal_id": null,
+      "title_romaji": "Shingeki no Kyojin: The Final Season - Kanketsu-hen Kouhen",
+      "title_english": "Attack on Titan Final Season THE FINAL CHAPTERS Special 2",
+      "title_native": "進撃の巨人 The Final Season完結編 後編",
+      "synonyms": [
+        "Shingeki no Kyojin: The Final Season Final Edition",
+        "Attack on Titan Final Season Part 3 Final Arc Part 2",
+        "Attack on Titan: The Final Season Part 4",
+        "Shingeki no Kyojin: The Final Season Part 4",
+        "SnK 4",
+        "AoT 4"
+      ],
+      "format": "SPECIAL",
+      "episodes": 1,
+      "season_year": 2023,
+      "end_year": 2023
+    }
+  ],
+  "edges": [
+    {
+      "from": 16498,
+      "to": 18397,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 16498,
+      "to": 20691,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 16498,
+      "to": 20692,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 16498,
+      "to": 20811,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 16498,
+      "to": 20958,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 16498,
+      "to": 21281,
+      "relation": "SPIN_OFF"
+    },
+    {
+      "from": 16498,
+      "to": 99634,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 16498,
+      "to": 119113,
+      "relation": "SUMMARY"
+    },
+    {
+      "from": 20811,
+      "to": 16498,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 20958,
+      "to": 16498,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 20958,
+      "to": 99147,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 20958,
+      "to": 100465,
+      "relation": "SUMMARY"
+    },
+    {
+      "from": 20958,
+      "to": 119113,
+      "relation": "SUMMARY"
+    },
+    {
+      "from": 99147,
+      "to": 20958,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 99147,
+      "to": 99634,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 99147,
+      "to": 104578,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 99147,
+      "to": 119113,
+      "relation": "SUMMARY"
+    },
+    {
+      "from": 104578,
+      "to": 99147,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 104578,
+      "to": 110277,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 104578,
+      "to": 119113,
+      "relation": "SUMMARY"
+    },
+    {
+      "from": 110277,
+      "to": 104578,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 110277,
+      "to": 131681,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 131681,
+      "to": 110277,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 131681,
+      "to": 146984,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 146984,
+      "to": 131681,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 146984,
+      "to": 162314,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 162314,
+      "to": 146984,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 16498,
+      "tvdb_id": 267440,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 18397,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 6
+    },
+    {
+      "id": 18397,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 10
+    },
+    {
+      "id": 20691,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 0
+    },
+    {
+      "id": 20691,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 13
+    },
+    {
+      "id": 20692,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 17
+    },
+    {
+      "id": 20811,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 14
+    },
+    {
+      "id": 20811,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 15
+    },
+    {
+      "id": 20958,
+      "tvdb_id": 267440,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 21281,
+      "tvdb_id": 299882,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 99147,
+      "tvdb_id": 267440,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 99634,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 19
+    },
+    {
+      "id": 99634,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 20
+    },
+    {
+      "id": 100465,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 20
+    },
+    {
+      "id": 104578,
+      "tvdb_id": 267440,
+      "season": 3,
+      "episode_offset": 12
+    },
+    {
+      "id": 110277,
+      "tvdb_id": 267440,
+      "season": 4,
+      "episode_offset": 0
+    },
+    {
+      "id": 119113,
+      "tvdb_id": 267440,
+      "season": 0,
+      "episode_offset": 30
+    },
+    {
+      "id": 131681,
+      "tvdb_id": 267440,
+      "season": 4,
+      "episode_offset": 16
+    },
+    {
+      "id": 146984,
+      "tvdb_id": 267440,
+      "season": 4,
+      "episode_offset": 28
+    },
+    {
+      "id": 162314,
+      "tvdb_id": 267440,
+      "season": 4,
+      "episode_offset": 29
+    }
+  ],
+  "offsets": [
+    {
+      "id": 20811,
+      "episodes": 3
+    },
+    {
+      "id": 20958,
+      "episodes": 25
+    },
+    {
+      "id": 99147,
+      "episodes": 37
+    },
+    {
+      "id": 99634,
+      "episodes": 5
+    },
+    {
+      "id": 104578,
+      "episodes": 49
+    },
+    {
+      "id": 110277,
+      "episodes": 59
+    },
+    {
+      "id": 131681,
+      "episodes": 75
+    }
+  ]
+}

@@ -1,0 +1,452 @@
+{
+  "name": "jojo",
+  "roots": [
+    14719
+  ],
+  "nodes": [
+    {
+      "id": 665,
+      "mal_id": 665,
+      "title_romaji": "JoJo no Kimyou na Bouken (2000)",
+      "title_english": "JoJo's Bizarre Adventure (2000)",
+      "title_native": "ジョジョの奇妙な冒険 (2000)",
+      "synonyms": [
+        "JoJo no Kimyou na Bouken: Adventure"
+      ],
+      "format": "OVA",
+      "episodes": 7,
+      "season_year": 2000,
+      "end_year": 2000
+    },
+    {
+      "id": 666,
+      "mal_id": 666,
+      "title_romaji": "JoJo no Kimyou na Bouken",
+      "title_english": "JoJo's Bizarre Adventure",
+      "title_native": "ジョジョの奇妙な冒険",
+      "synonyms": [
+        "JoJo's Bizarre Adventure OVA 1"
+      ],
+      "format": "OVA",
+      "episodes": 6,
+      "season_year": 1993,
+      "end_year": 1994
+    },
+    {
+      "id": 3603,
+      "mal_id": 3603,
+      "title_romaji": "JoJo no Kimyou na Bouken: Phantom Blood",
+      "title_english": "",
+      "title_native": "ジョジョの奇妙な冒険 ファントム ブラッド",
+      "synonyms": [
+        "JoJo's Bizarre Adventure: Phantom Blood"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2007,
+      "end_year": 2007
+    },
+    {
+      "id": 14719,
+      "mal_id": 14719,
+      "title_romaji": "JoJo no Kimyou na Bouken (TV)",
+      "title_english": "JoJo's Bizarre Adventure (TV)",
+      "title_native": "ジョジョの奇妙な冒険 (TV)",
+      "synonyms": [
+        "JoJo no Kimyou na Bouken (2012)",
+        "JoJo no Kimyou na Bouken: Sentou Chouryuu",
+        "JoJo's Bizarre Adventure: Phantom Blood",
+        "JoJo's Bizarre Adventure: Battle Tendency",
+        "مغامرات جوجو العجيبة",
+        "مغامرات جوجو العجيبة:الدماء الوهمية",
+        "مغامرات جوجو العجيبة:حمى القتال",
+        "Le bizzarre avventure di JoJo (2012)",
+        "Le bizzarre avventure di JoJo: Phantom Blood",
+        "Le bizzarre avventure di JoJo: Battle Tendency",
+        "Химерні пригоди ДжоДжо: Тяжіння до бою",
+        "Химерні пригоди ДжоДжо: Примарна кров",
+        "JJBA",
+        "Невероятные приключения ДжоДжо: Призрачная кровь",
+        "Невероятные приключения ДжоДжо: Стремление к бою"
+      ],
+      "format": "TV",
+      "episodes": 26,
+      "season_year": 2012,
+      "end_year": 2013
+    },
+    {
+      "id": 20474,
+      "mal_id": 20899,
+      "title_romaji": "JoJo no Kimyou na Bouken: Stardust Crusaders",
+      "title_english": "JoJo's Bizarre Adventure: Stardust Crusaders",
+      "title_native": "ジョジョの奇妙な冒険 スターダストクルセイダース",
+      "synonyms": [
+        "Dai San Bu Kujo Jotaro: Mirai e no Isan",
+        "JoJo no Kimyou na Bouken Part 3: Stardust Crusaders",
+        "JoJo's Bizarre Adventure Part 3: Stardust Crusaders",
+        "ההרפתקה המוזרה של ג'וג'ו: צלבני אבק כוכבים ",
+        "مغامرات جوجو العجيبة : فرسان غبار النجم",
+        "Le bizzarre avventure di JoJo: Stardust Crusaders",
+        "Невероятные приключения ДжоДжо: Крестоносцы звездной пыли"
+      ],
+      "format": "TV",
+      "episodes": 24,
+      "season_year": 2014,
+      "end_year": 2014
+    },
+    {
+      "id": 20799,
+      "mal_id": 26055,
+      "title_romaji": "JoJo no Kimyou na Bouken: Stardust Crusaders - Egypt-hen",
+      "title_english": "JoJo's Bizarre Adventure: Stardust Crusaders - Battle in Egypt",
+      "title_native": "ジョジョの奇妙な冒険 スターダストクルセイダース エジプト編",
+      "synonyms": [
+        "Dai San Bu Kujo Jotaro: Mirai e no Isan",
+        "JoJo's Bizarre Adventure: Stardust Crusaders 2nd Season",
+        "JoJo no Kimyou na Bouken: Stardust Crusaders 2nd Season",
+        "JoJo's Bizarre Adventure Part 3: Stardust Crusaders - Battle in Egypt",
+        "JoJo no Kimyou na Bouken Part 3: Stardust Crusaders - Egypt-hen",
+        "JoJo's Bizarre Adventure: Stardust Crusaders - Egypt Arc",
+        "Le bizzarre avventure di JoJo: Stardust Crusaders",
+        "JoJo's Bizarre Adventure: Stardust Crusaders – Starcie w Egipcie"
+      ],
+      "format": "TV",
+      "episodes": 24,
+      "season_year": 2015,
+      "end_year": 2015
+    },
+    {
+      "id": 21450,
+      "mal_id": 31933,
+      "title_romaji": "JoJo no Kimyou na Bouken: Diamond wa Kudakenai",
+      "title_english": "JoJo's Bizarre Adventure: Diamond is Unbreakable",
+      "title_native": "ジョジョの奇妙な冒険 ダイヤモンドは砕けない",
+      "synonyms": [
+        "JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai",
+        "JoJo's Bizarre Adventure Part 4: Diamond is Unbreakable",
+        "مغامرات جوجو العجيبة: الألماس غير قابل للكسر",
+        "Le bizzarre avventure di JoJo: Diamond is Unbreakable",
+        "Невероятные приключения ДжоДжо: Diamond is Unbreakable"
+      ],
+      "format": "TV",
+      "episodes": 39,
+      "season_year": 2016,
+      "end_year": 2016
+    },
+    {
+      "id": 21778,
+      "mal_id": 33191,
+      "title_romaji": "Kishibe Rohan wa Ugokanai",
+      "title_english": "Thus Spoke Rohan Kishibe",
+      "title_native": "岸辺露伴は動かない",
+      "synonyms": [
+        "Thus Spoke Kishibe Rohan",
+        "Assim Falava Kishibe Rohan",
+        "Así habló Kishibe Rohan",
+        "على لسان كيشيبي روهان",
+        "Αυτά Είπε ο Ρόχαν Κίσιμπε"
+      ],
+      "format": "OVA",
+      "episodes": 4,
+      "season_year": 2017,
+      "end_year": 2020
+    },
+    {
+      "id": 102883,
+      "mal_id": 37991,
+      "title_romaji": "JoJo no Kimyou na Bouken: Ougon no Kaze",
+      "title_english": "JoJo's Bizarre Adventure: Golden Wind",
+      "title_native": "ジョジョの奇妙な冒険 黄金の風",
+      "synonyms": [
+        "JoJo's Bizarre Adventure Part 5",
+        "JoJo's Bizarre Adventure: Vento Aureo",
+        "Le Bizzarre Avventure Di GioGio: Vento Aureo",
+        "مغامرات جوجو العجيبة: الرياح الذهبية",
+        "Невероятные приключения ДжоДжо: Золотой ветер"
+      ],
+      "format": "TV",
+      "episodes": 39,
+      "season_year": 2018,
+      "end_year": 2019
+    },
+    {
+      "id": 131942,
+      "mal_id": 48661,
+      "title_romaji": "JoJo no Kimyou na Bouken: Stone Ocean",
+      "title_english": "JoJo's Bizarre Adventure: STONE OCEAN",
+      "title_native": "ジョジョの奇妙な冒険 ストーンオーシャン",
+      "synonyms": [
+        "JoJo's Bizarre Adventure: Stone Ocean",
+        "JoJo's Bizarre Adventure Part 6",
+        "JoJo no Kimyou na Bouken Part 6",
+        "Le bizzarre avventure di JoJo: Stone Ocean",
+        "โจโจ้ ล่าข้ามศตวรรษ: สโตนโอเชียน ",
+        "โจโจ้ ล่าข้ามศตวรรษ ภาค 6",
+        "مغامرات جوجو العجيبة: محيط الأحجار",
+        "ההרפתקה המוזרה של ג'וג'ו: אוקיינוס האבן",
+        "Невероятные приключения ДжоДжо: Каменный океан ",
+        "Химерні пригоди ДжоДжо: Кам'яний океан"
+      ],
+      "format": "ONA",
+      "episodes": 12,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 146722,
+      "mal_id": 51367,
+      "title_romaji": "JoJo no Kimyou na Bouken: Stone Ocean Part 2",
+      "title_english": "JoJo's Bizarre Adventure: STONE OCEAN Part 2",
+      "title_native": "ジョジョの奇妙な冒険 ストーンオーシャン 2クール",
+      "synonyms": [
+        "JoJo's Bizarre Adventure Part 6 (Part 2)",
+        "JoJo no Kimyou na Bouken Part 6 (Part 2)",
+        "JoJo's Bizarre Adventure: STONE OCEAN The Final Episodes"
+      ],
+      "format": "ONA",
+      "episodes": 26,
+      "season_year": 2022,
+      "end_year": 2022
+    },
+    {
+      "id": 190327,
+      "mal_id": 61469,
+      "title_romaji": "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE",
+      "title_english": "STEEL BALL RUN JoJo's Bizarre Adventure 1st STAGE",
+      "title_native": "ジョジョの奇妙な冒険 スティール・ボール・ラン 1st STAGE",
+      "synonyms": [
+        "JoJo's Bizarre Adventure: Part 7–Steel Ball Run",
+        "SBR",
+        "ГОНКА «СТАЛЬНОЙ ШАР»: Невероятные приключения ДжоДжо",
+        "Перегони «Сталева куля»: Химерні пригоди ДжоДжо"
+      ],
+      "format": "ONA",
+      "episodes": 1,
+      "season_year": 2026,
+      "end_year": 2026
+    },
+    {
+      "id": 210482,
+      "mal_id": 61469,
+      "title_romaji": "JoJo no Kimyou na Bouken: Steel Ball Run - 2nd & 3rd STAGE",
+      "title_english": "STEEL BALL RUN JoJo's Bizarre Adventure 2nd - 3rd STAGE",
+      "title_native": "ジョジョの奇妙な冒険 スティール・ボール・ラン 2nd＆3rd STAGE",
+      "synonyms": [
+        "JoJo's Bizarre Adventure: Part 7–Steel Ball Run",
+        "SBR"
+      ],
+      "format": "ONA",
+      "episodes": 11,
+      "season_year": 2026,
+      "end_year": null
+    }
+  ],
+  "edges": [
+    {
+      "from": 14719,
+      "to": 3603,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 14719,
+      "to": 20474,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 20474,
+      "to": 665,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20474,
+      "to": 666,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20474,
+      "to": 14719,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 20474,
+      "to": 20799,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 20799,
+      "to": 665,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20799,
+      "to": 666,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 20799,
+      "to": 20474,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 20799,
+      "to": 21450,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 21450,
+      "to": 20799,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 21450,
+      "to": 21778,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 21450,
+      "to": 102883,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 102883,
+      "to": 21450,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 102883,
+      "to": 131942,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 131942,
+      "to": 102883,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 131942,
+      "to": 146722,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 146722,
+      "to": 131942,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 146722,
+      "to": 190327,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 190327,
+      "to": 146722,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 190327,
+      "to": 210482,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 210482,
+      "to": 190327,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 665,
+      "tvdb_id": 83950,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 666,
+      "tvdb_id": 83950,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 3603,
+      "tvdb_id": 83950,
+      "season": 0,
+      "episode_offset": 0
+    },
+    {
+      "id": 14719,
+      "tvdb_id": 262954,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 20474,
+      "tvdb_id": 262954,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 20799,
+      "tvdb_id": 262954,
+      "season": 2,
+      "episode_offset": 24
+    },
+    {
+      "id": 21450,
+      "tvdb_id": 262954,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 21778,
+      "tvdb_id": 262954,
+      "season": 0,
+      "episode_offset": 0
+    },
+    {
+      "id": 21778,
+      "tvdb_id": 262954,
+      "season": 0,
+      "episode_offset": 3
+    },
+    {
+      "id": 102883,
+      "tvdb_id": 262954,
+      "season": 4,
+      "episode_offset": 0
+    },
+    {
+      "id": 131942,
+      "tvdb_id": 262954,
+      "season": 5,
+      "episode_offset": 0
+    },
+    {
+      "id": 146722,
+      "tvdb_id": 262954,
+      "season": 5,
+      "episode_offset": 12
+    },
+    {
+      "id": 190327,
+      "tvdb_id": 262954,
+      "season": 6,
+      "episode_offset": 0
+    },
+    {
+      "id": 210482,
+      "tvdb_id": 262954,
+      "season": 6,
+      "episode_offset": 1
+    }
+  ],
+  "offsets": [
+    {
+      "id": 20799,
+      "episodes": 24
+    },
+    {
+      "id": 146722,
+      "episodes": 12
+    }
+  ]
+}
