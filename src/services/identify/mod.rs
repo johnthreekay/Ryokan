@@ -151,15 +151,14 @@ pub fn identify_prepared(franchise: &Franchise, title: &PreparedTitle) -> Verdic
 
     // `against` reads a subset of the fields `own` does: an entry whose
     // own names say nothing of the title says nothing as a rival either.
-    let rivals: Vec<Evidence> = franchise
+    let (rivals, unfit): (Vec<Evidence>, Vec<Evidence>) = franchise
         .entries()
         .iter()
         .enumerate()
         .filter(|(i, _)| *i != franchise.target && !all[*i].said.is_empty())
         .map(|(_, r)| Evidence::against(r, target, view))
-        .filter(|r| !r.fits.incompatible() && !r.said.is_empty())
-        .collect();
-
+        .filter(|r| !r.said.is_empty())
+        .partition(|r| !r.fits.incompatible());
     // Among equal rivals, the closer one: fewer unsaid words, then an
     // entry on the target's main chain.
     let closeness = |r: &Evidence| (r.unsaid_marked.unwrap_or(usize::MAX), !r.entry.on_chain);
@@ -173,6 +172,31 @@ pub fn identify_prepared(franchise: &Franchise, title: &PreparedTitle) -> Verdic
             title: r.entry.title.clone(),
             tier,
             reason,
+        });
+    }
+
+    // A rival the title names in full, with more of its words than the
+    // target's, is the title's subject even when its season or episode
+    // numbers fit no frame the franchise knows (`BLEACH Thousand-Year
+    // Blood War S01E43`: Disney+ numbers the four cours as one season).
+    // A year or format it fails still rules it out (`Ranma 1/2 (2024)`).
+    if let Some(r) = unfit
+        .iter()
+        .filter(|r| {
+            r.fits.misnumbered_only()
+                && r.unsaid_marked == Some(0)
+                && r.said.len() > t.said.len()
+                && r.said.is_superset(&t.said)
+        })
+        .min_by_key(|r| closeness(r))
+    {
+        let mut extra: Vec<&str> = r.said.difference(&t.said).map(String::as_str).collect();
+        extra.sort_unstable();
+        return Verdict::Rival(Rival {
+            entry: r.entry.id,
+            title: r.entry.title.clone(),
+            tier: Tier::NamesMore,
+            reason: format!("{} also names {}", r.entry.title, extra.join(" ")),
         });
     }
 

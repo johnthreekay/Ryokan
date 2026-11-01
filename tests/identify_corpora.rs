@@ -356,11 +356,11 @@ fn verdicts(v: &[(i64, Verdict)]) -> String {
 /// number shows the titles that moved.
 #[test]
 fn identify_over_the_corpus_holds_its_numbers() {
-    const RECOGNIZED_MIN: usize = 15_495;
-    const MISSED_MAX: usize = 1_117;
-    const BLOCKED_MIN: usize = 5_985;
-    const WRONG_TARGET_MAX: usize = 1_167;
-    const WRONG_TIE_MAX: usize = 995;
+    const RECOGNIZED_MIN: usize = 15_480;
+    const MISSED_MAX: usize = 1_144;
+    const BLOCKED_MIN: usize = 6_179;
+    const WRONG_TARGET_MAX: usize = 984;
+    const WRONG_TIE_MAX: usize = 958;
 
     let judged = judge_corpus();
     let count = |f: fn(&Judged) -> bool| judged.iter().filter(|j| f(j)).count();

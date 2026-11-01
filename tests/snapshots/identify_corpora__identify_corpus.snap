@@ -102,8 +102,8 @@ missed [120755] [120755: rival 187375 (names_more)] relatives [10278: rival 1207
     THE iDOLM@STER MILLION LIVE!-Itsuka, Mannaka De OVA
 missed [120] [120: rival 105334 (structure)] relatives [] x2
     [HorribleSubs] Fruits Basket (2019) S1 [1080p] (Unofficial Batch)
-missed [121, 430, 664, 908] [121: rival 5114 (names_more)] relatives [] x8
-    Fullmetal Alchemist - Brotherhood [WEB] [1080p] [MX-EN-PT]
+missed [121, 430, 664, 908] [121: rival 5114 (names_more)] relatives [] x20
+    FullMetal Alchemist - Brotherhood - 227 - Flame of Vengeance {C_P}.avi
 missed [121, 430, 664, 908] [121: rival 5114 (structure)] relatives [] x1
     [BDMV] Fullmetal Alchemist: Brotherhood 2009 S01 1080p USA Blu-ray LPCM 2.0
 missed [122519] [122519: rival 198694 (names_more)] relatives [198694: target] x2
@@ -342,10 +342,10 @@ missed [21202] [21202: rival 21699 (structure)] relatives [] x1
     KonoSuba.God's.Blessing.On.This.Wonderful.World.S02.v2.1080p.BluRay.Dual-Audio.Opus.2.0.x265-YURASUKA (Kono Subarashii Sekai ni Shukufuku wo 2nd Season)
 missed [21236] [21236: rival 130253 (names_more)] relatives [130253: target] x1
     [HnY] Beyblade Burst DB 04 - Sturm and Drang! Cyclone Ragnaruk!! (1080p).mkv
-missed [21262] [21262: rival 100815 (structure)] relatives [5081: neither, 21745: rival 100815 (structure)] x1
+missed [21262] [21262: rival 100815 (structure)] relatives [5081: rival 21262 (names_more), 21745: rival 100815 (structure)] x1
     [WBDP] [Coalgirls] Owarimonogatari S1 [BD][1080p-FLAC]
-missed [21298] [21298: rival 98997 (names_more)] relatives [] x1
-    [Galau] Minami Kamakura Koukou Joshi Jitensha-bu: Kita yo, Taiwan! [1080p][444A992B].mkv
+missed [21298] [21298: rival 98997 (names_more)] relatives [] x2
+    [BakedFish] Minami Kamakura Koukou Joshi Jitensha-bu: Kita yo, Taiwan! - 13 - Special [720p][AAC].mp4
 missed [21366] [21366: rival 98478 (structure)] relatives [] x1
     [neoHEVC] March Comes in Like a Lion [Season 2] [BD 1080p x265 HEVC AAC] [Dual Audio]
 missed [21459] [21459: rival 104276 (structure)] relatives [] x1
@@ -424,7 +424,7 @@ missed [30] [30: rival 3786 (structure)] relatives [3784: tie 3786] x1
     [AOT] Evangelion: 2.0 (2.22) You Can (Not) Advance Movie [720p 500MB]
 missed [331] [331: rival 98144 (structure)] relatives [] x1
     [Okay-Subs] Mahoujin Guru Guru (2017) (BD 1080p)
-missed [3455] [3455: rival 13663 (names_more)] relatives [13663: target, 20995: target, 100659: rival 3455 (structure)] x1
+missed [3455] [3455: rival 13663 (names_more)] relatives [13663: rival 20995 (names_more), 20995: target, 100659: rival 3455 (structure)] x1
     [Ohys-Raws] To Love-Ru Trouble - Darkness 2nd EP 13 (BD 1280x720 x264 AAC)
 missed [356] [356: rival 19603 (names_more)] relatives [6922: tie 19603, 19603: target] x2
     [Beatrice-Raws] Fate Stay Night - Unlimited Blade Works TV-1 [BDRip 1920x1080 HEVC TrueHD]
@@ -502,7 +502,7 @@ missed [76] [76: rival 10153 (structure)] relatives [] x2
     [Kaleido-mini] Mahou Shoujo Lyrical Nanoha THE MOVIE 2nd A's (2012) - S00 (BD 1080p AV1 10-bit Opus 2.0 5.1) | Magical Girl Lyrical Nanoha
 missed [76] [76: rival 4985 (names_more)] relatives [] x1
     [Kaleido-subs] Mahou Shoujo Lyrical Nanoha THE MOVIE 1st (2010) - S00E10 - (BD 1080p HEVC x265 10-bit Opus 2.0 5.1) [8864F054] | Magical Girl Lyrical Nanoha
-missed [80] [80: rival 139274 (names_more)] relatives [] x13
+missed [80] [80: rival 139274 (names_more)] relatives [] x26
     [Anime Time] Mobile Suit Gundam - The Witch from Mercury [Dual Audio] [BD][1080p][HEVC 10bit x265][AAC][Eng Sub] [Batch]
 missed [80] [80: rival 139274 (structure)] relatives [] x1
     [RX-78AL] Mobile Suit Gundam - The Witch from Mercury (2022)
@@ -568,8 +568,8 @@ missed [98514] [98514: rival 172420 (names_more)] relatives [] x1
     [a2a] (PREVIEW) Uma Musume Pretty Derby - Shin Jidai no Tobira 7 Min Special [1080p][WebRip 1920x1080 VP9 AAC2.0][1C986D4C].mkv
 missed [98514] [98514: rival 172420 (structure)] relatives [] x4
     [MiniMTBB] Uma Musume Pretty Derby - Beginning of a New Era (2024) (BD 1080p) [ABAE786A].mkv
-missed [9919, 10647, 11266, 11737, 13677, 97891] [9919: rival 21861 (names_more)] relatives [21861: target] x10
-    [BlurayDesuYo] Ao no Exorcist - Kyoto Fujouou-hen - Vol. 1 (BD 1280x720 10bit AAC)
+missed [9919, 10647, 11266, 11737, 13677, 97891] [9919: rival 21861 (names_more)] relatives [21861: target] x11
+    [BlurayDesuYo] Ao no Exorcist - Kyoto Fujouou-hen - 14 (OVA2) (DVD 1024x576 10bit AAC) [0759836D].mkv
 missed [99699, 102977] [99699: rival 142343 (structure)] relatives [] x3
     [SubsPlease] Golden Kamuy (37-49) (1080p) [Batch]
 missed [99749] [99749: rival 6702 (structure)] relatives [6702: target, 20626: rival 6702 (structure)] x1
@@ -656,8 +656,6 @@ tie [11319] [11319: tie 1195] relatives [1195: tie 11319] x1
     [Project Angel] Zero no Tsukaima F [BD 1080p] [10-bit x265 HEVC | Opus] [Dual Audio]
 tie [113472] [] relatives [19157: tie 130445, 108767: rival 19157 (structure), 130445: tie 19157] x1
     [Rododendron] Youkai Watch Jam - Youkai Gakuen Y 1-63 (HDTV 720p) [COMPLETE]
-tie [117002] [] relatives [9756: tie 11977, 104051: rival 117002 (structure)] x1
-    Magia.Record.Puella.Magi.Madoka.Magica.Side.Story.S02.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0
 tie [117448] [117448: tie 101004] relatives [101004: tie 117448] x1
     [DB] Isekai Maou to Shoukan Shoujo no Dorei Majutsu Ω | How Not to Summon a Demon Lord Ω [Dual Audio 10bit BD1080p][HEVC-x265]
 tie [11757, 16099, 20021, 20895, 21155, 21403, 101965, 124140, 140999] [11757: target] relatives [100182: tie 11757] x1
@@ -668,7 +666,7 @@ tie [120209] [120209: tie 104647] relatives [104647: tie 120209] x2
     [Golumpa] My Next Life as a Villainess - All Routes Lead to Doom! X - 12 END (Otome Game no Hametsu Flag shika Nai Akuyaku Reijou ni Tensei shiteshimatta... X) [English Dub] [CR-Dub 1080p x264 AAC] [MKV] [9359AE33]
 tie [12365] [12365: tie 102608] relatives [7674: tie 12365] x1
     [Biraru] Bakuman. 3rd Season Specials (BD 1080p x264 Hi10P FLAC)
-tie [124223] [] relatives [98514: tie 124223] x2
+tie [124223] [] relatives [98514: tie 124223] x1
     [Okay-Subs] Uma Musume Pretty Derby S2 - Volume 1 (BD 1080p)
 tie [124641] [124641: tie 100714] relatives [100714: tie 107294, 107294: tie 100714] x1
     [LoliHouse] 邪神与厨二病少女X / Jashin-chan Dropkick X - 01 [WebRip 1080p HEVC-10bit AAC][英文内封字幕]
@@ -690,16 +688,12 @@ tie [131520, 163327, 177191] [163327: tie 103572, 177191: tie 103572] relatives 
     [Yameii] The Quintessential Quintuplets - S00E03 [English Dub] [CR WEB-DL 1080p H264 AAC] [D6DED612] (5-toubun no Hanayome∽ | 5-toubun no Hanayome*)
 tie [13271, 19951] [] relatives [11061: tie 136] x2
     Hunter x Hunter Batch 720p
-tie [136080] [] relatives [9756: tie 11977, 104051: rival 136080 (structure)] x1
-    Magia.Record.Puella.Magi.Madoka.Magica.Side.Story.S03.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0
 tie [137] [] relatives [136: tie 137] x1
     [WIP] Hunter x Hunter: Original Video Animation - OVA
 tie [138, 139, 10189] [] relatives [136: tie 11061] x13
     [DP] Hunter x Hunter - 001 [Multi Subs][Tri Audio][BDRip][1080p][Hi10][FLAC/EAC3]
 tie [138, 139, 10189] [] relatives [136: tie 137] x3
     [BDMV] Hunter x Hunter - The Movie - The Last Mission
-tie [139274, 155158] [139274: rival 155158 (structure)] relatives [80: tie 95] x3
-    [Asakura++] Mobile Suit Gundam: The Witch from Mercury - S01E13 [BD Dual Audio 10bit 1080p x265 HEVC AAC] [v1]
 tie [139630] [] relatives [21459: tie 139630] x2
     My.Hero.Academia.S06.P1.1080p.Blu-Ray.10-Bit.Dual-Audio.TrueHD.x265-iAHD
 tie [14355] [14355: target] relatives [98866: tie 14355, 98868: tie 14355] x1
@@ -752,8 +746,6 @@ tie [16498, 18397, 20691, 20692, 20811, 99634, 100465, 108942, 119113, 120257, 1
     [Erai-raws] Shingeki no Kyojin - The Final Season Part 2 - 12 END [1080p][Multiple Subtitle][D3F79E86].mkv
 tie [16498, 18397, 20691, 20692, 20811, 99634, 100465, 108942, 119113, 120257, 139754, 146984, 162314] [16498: tie 99147, 146984: tie 16498] relatives [110277: tie 16498, 131681: tie 16498] x10
     [ASW] Shingeki no Kyojin - The Final Season Part 3 - 02 [1080p HEVC x265 10Bit][AAC]
-tie [165810] [165810: target] relatives [22: tie 11371, 11371: target, 140187: target] x3
-    [SubsPlease] The Prince of Tennis II - U-17 World Cup Semifinal (01-13) (1080p) [Batch]
 tie [166521] [166521: tie 99699] relatives [99699: tie 166521] x24
     [Erai-raws] Golden Kamuy Final Season - 07 [1080p CR WEB-DL AVC AAC][MultiSub][7FACE119]
 tie [166617] [166617: target] relatives [209984: tie 166617] x1
@@ -826,12 +818,6 @@ tie [19603, 20792, 21318] [19603: target] relatives [356: rival 19603 (names_mor
     Fate Stay Night - Unlimited Blade Works (10bit 720p) [project-gxs] [Horriblesubs UTW]
 tie [19603, 20792, 21318] [] relatives [356: target, 6922: tie 19603] x1
     Fate_Stay_Night_UBW_(TV)_(BD_1080p_Hi10_FLAC)_[Dual-Audio]_[Kametsu]
-tie [199068] [199068: target] relatives [22: tie 11371, 11371: target, 140187: target] x20
-    [ASW] The Prince of Tennis II - U-17 World Cup Final Member Selection Match - 01 [1080p HEVC x265 10Bit][AAC]
-tie [201667] [201667: target] relatives [21311: rival 21679 (structure), 21679: target, 103223: tie 21679, 120150: rival 201667 (structure)] x1
-    [AnoZu] Bungo Stray Dogs Wan! S02 1080p CR WEB-DL Dual-Audio AAC 2.0 H.264 | Bungou Stray Dogs Wan! 2
-tie [201667] [] relatives [21311: rival 21679 (structure), 21679: target, 103223: tie 21679, 120150: rival 201667 (structure)] x3
-    [SubsPlease] Bungou Stray Dogs Wan! S2 (01-12) (1080p) [Batch]
 tie [2025] [2025: target] relatives [4182: tie 7338] x1
     [Headpatter] Darker than Black S00E01 (BD 720p x264 Hi10P Opus) [Dual Audio] | Darker than Black: Beneath Cherry Blossoms in Full Bloom | DARKER THAN BLACK: Kuro no Keiyakusha - Sakura no Hana no Mankai no Shita
 tie [204389] [204389: target] relatives [180523: tie 204389] x19
@@ -916,8 +902,6 @@ tie [31, 32, 2759, 3784, 3785, 3786] [3784: tie 30] relatives [30: tie 3786] x1
     [Beatrice-Raws] Evangelion 2.0 (2.22) You Can (Not) Advance [BDRip 3840x2160 HEVC TrueHD]
 tie [356] [356: rival 19603 (names_more)] relatives [6922: tie 19603, 19603: target] x2
     [Beatrice-Raws] Fate Stay Night - Unlimited Blade Works TV-1 [BDRip 1920x1080 HEVC TrueHD]
-tie [3927] [] relatives [80: tie 214380, 2581: rival 3927 (structure)] x3
-    [Erai-raws] Kidou Senshi Gundam 00 Second Season - 01 ~ 25 [1080p CR WEB-DL AVC AAC][MultiSub] [BATCH]
 tie [4081] [4081: target] relatives [21710: tie 4081] x2
     [LostYears] Natsume's Book of Friends - S00E03 (BDRip 1080p Hi10P AAC FLAC) [Dual-Audio] | Natsume Yuujinchou Go OVA 1 | One Night Sake Cup
 tie [418, 792, 1007, 1008, 1010, 1011, 5493, 6713, 10819, 10824, 10825] [1007: target] relatives [210: tie 1007, 149939: tie 210] x1
@@ -940,8 +924,6 @@ tie [54, 937, 2969, 10689, 20786] [54: tie 937, 937: target] relatives [9737: ti
     APPLESEED (1988-2014) - OVA, 2004 Film, Ex Machina, Alpha, XIII - 480p-720p x264
 tie [550] [550: target] relatives [2006: tie 550] x2
     Yu☆Gi☆Oh! [Season 0] [1998] [VHS Enhanced] [540p] [AVC] [ACC]
-tie [6033, 11359, 20635] [6033: target, 20635: target] relatives [223: tie 813] x1
-    [SoM] Dragon Ball Kai - COMPLETE (01-98) [1080p][JPBD][Dual-Audio]
 tie [6213] [6213: tie 16049] relatives [104462: tie 6213] x4
     [Nep_Blanc] A Certain Scientific Railgun - Toaru Kagaku no Railgun [1080p] [x265] [10Bit] [Dual Audio] [Subbed]
 tie [6213] [6213: tie 16049] relatives [16049: tie 6213] x2
@@ -1026,8 +1008,6 @@ tie [99749] [99749: tie 6702] relatives [6702: tie 20626, 20626: tie 6702] x1
     (unofficial)[HorribleSubs] Fairy Tail Final Season Batch 1080p
 wrong [100183] [] relatives [11757: target] x1
     Sword.Art.Online.Alternative.S01.v2.1080p.Blu-Ray.10-Bit.Dual-Audio.LPCM.x265-iAHD
-wrong [100240, 102351] [100240: target] relatives [20605: target, 21132: rival 20605 (names_fully), 21326: rival 20605 (names_fully)] x1
-    [RE UPLOAD][Moozzi2][OFFICIAL SUBS] Tokyo Ghoul Re S1 (BD 1920x1080 x.264 Flac) - TV + SP
 wrong [100353, 102449, 109819] [] relatives [21507: rival 140439 (structure), 101338: rival 140439 (structure), 140439: target] x5
     [NC-Raws] 路人超能100 III / Mob Psycho 100 III - 08 (B-Global 3840x2160 HEVC AAC MKV)
 wrong [100519, 101595, 129759, 135255, 137612, 143202, 166977, 186716] [101595: target] relatives [98505: target] x1
@@ -1148,22 +1128,16 @@ wrong [113936] [] relatives [105333: target] x1
     Dr.Stone.S01.P2.1080p.Blu-Ray.10-Bit.Dual-Audio.TrueHD.x265-iAHD
 wrong [114446] [] relatives [934: target] x1
     [Dyna] Higurashi When They Cry S01 (BD 1080p AVC Opus 2.0) [Dual Audio] | Higurashi Gou
-wrong [11531, 12411] [11531: target] relatives [10798: target] x1
-    [hchcsen] UN-GO episode:0 INGA-RON (2011) (BD 1080p x264 10-bit Hi10P FLAC 2.0) [Dual-Audio] | Un-Go: Inga-ron | UN-GO: Episode 0: Chapter of Inga
 wrong [11531, 12411] [] relatives [10798: target] x1
     [Yousei-raws] UN-GO [BDrip 1920x1080 x264 FLAC]
 wrong [116674, 159322, 169755, 185874] [116674: target, 159322: target, 169755: target, 185874: target] relatives [269: target] x2
     [Late] Bleach TYBW 46 (Web, x264, 10b. EAC3. ASS) | THOUSAND-YEAR BLOOD WAR SEASON 4 EPISODE 6
 wrong [116674, 159322, 169755, 185874] [116674: target, 159322: tie 116674, 169755: tie 116674, 185874: tie 116674] relatives [269: target] x1
     [Late] Bleach TYBW 47 (Web x264 10bit, EAC3, ASS).mkv
-wrong [116674, 159322, 169755, 185874] [116674: target, 185874: target] relatives [269: target] x2
-    [Doomdos] - Bleach Sennen Kessen-hen - Kashin-tan - S01E49 [1080p BILIBILI INTERNATIONAL WEB-DL] [Bleach: Thousand-Year Blood War - The Calamity]
-wrong [116674, 159322, 169755, 185874] [116674: target] relatives [269: target] x109
-    Bleach Thousand-Year Blood War - S01 E27-E40 - (MULTi-FRENCH/VOSTFR) BDrip 1080p FLAC x265-GundamGuy
+wrong [116674, 159322, 169755, 185874] [116674: target] relatives [269: target] x1
+    [EMBER] Bleach: Sennen Kessen-hen (2024) (Season 3) [1080p] [HEVC WEBRip DDP] (Bleach: Sennen Kessen Hen - Soukoku-tan | Bleach: Thousand-Year Blood War - The Conflict) (Batch)
 wrong [116674, 159322, 169755, 185874] [] relatives [269: target] x5
     Bleach 367 Remaster [Thousand-Year Blood War] (BDRip 1080p x265 AAC Multi) - Ryūjin 竜神
-wrong [117197, 151803] [] relatives [9941: target] x1
-    [Erai-raws] Tiger and Bunny 2 - 01 ~ 25 [1080p][HEVC][BATCH][Multiple Subtitle]
 wrong [11757, 16099, 20021, 20895, 21155, 21403, 101965, 124140, 140999] [11757: rival 100182 (names_more)] relatives [100182: rival 108759 (names_more), 108759: target] x1
     [Unofficial HorribleSubs Batch] Sword Art Online - Alicization - War of Underworld [with chapters] [Complete][1080p]
 wrong [11757, 16099, 20021, 20895, 21155, 21403, 101965, 124140, 140999] [11757: rival 100182 (names_more)] relatives [100182: target] x1
@@ -1206,8 +1180,6 @@ wrong [130003] [130003: target] relatives [165253: target] x1
     BOCCHI THE ROCK S06E00 BOCCHI THE ROCK Recap Part 1 1080p CR WEB-DL AAC2.0 H 264-VARYG (Bocchi the Rock!, Multi-Subs)
 wrong [131520, 163327, 177191] [163327: tie 103572, 177191: rival 103572 (names_more)] relatives [103572: target, 109261: rival 103572 (names_fully)] x2
     [DB] 5-toubun no Hanayome∽ | The Quintessential Quintuplets~ [10bit BD1080p][HEVC-x265]
-wrong [131942, 146722] [131942: target, 146722: target] relatives [14719: target] x13
-    [Anime Chap] JoJo's Bizarre Adventure Part 6: Stone Ocean S05E25 [WEB 1080p] {Corrected Stand Names & OP & ED Lyrics & Netflix Logos Removed} Episode 25 [Dual Audio]
 wrong [131942, 146722] [] relatives [14719: rival 21450 (names_more), 21450: target] x1
     [Cleo] JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai | JoJo's Bizarre Adventure: Diamond is Unbreakable [Dual Audio 10bit BD1080p][HEVC-x265]
 wrong [13271, 19951] [] relatives [11061: target] x2
@@ -1270,8 +1242,6 @@ wrong [14889] [14889: rival 14073 (structure)] relatives [14073: target] x1
     [Headpatter] Ebiten S00E06 (BD Remux 1080p x264 8-bit FLAC) | Ebiten: Kouritsu Ebisugawa Koukou Tenmonbu OVA
 wrong [1514] [1514: target] relatives [1127: target] x1
     [Exiled-Destiny] UFO Ultramaiden Valkyrie 3 [Dual Audio]
-wrong [154966] [154966: target] relatives [166617: target, 209984: target] x1
-    [FakeFan] Fate/strange Fake: Whispers of Dawn (WEB 1080p HEVC DDP) [Dual Audio] | Episode 0
 wrong [154966] [] relatives [166617: target, 209984: rival 166617 (names_fully)] x1
     [Salieri] Fate Strange Fake S1 +Whispers of Dawn - BD (1080p) (HDR) [Dual Audio]
 wrong [154966] [] relatives [166617: target, 209984: tie 166617] x1
@@ -1308,24 +1278,18 @@ wrong [165426] [165426: target] relatives [177518: target] x1
     [Kozame] Odekake Kozame (Little Shark's Outings) Movie Trailer & Preview
 wrong [165523] [] relatives [20: target] x1
     [BlackRabbit] Naruto (2002) - S04 [DVD-480p][Opus 2.0][Dual Audio][AV1]
-wrong [165810] [165810: target] relatives [22: tie 11371, 11371: target, 140187: target] x3
-    [SubsPlease] The Prince of Tennis II - U-17 World Cup Semifinal (01-13) (1080p) [Batch]
 wrong [166715] [] relatives [4898: rival 20606 (structure), 20606: target, 21425: tie 9136] x1
     [Holomux] Black Butler Season 3 (BD 1080p x264 Hi10P FLAC) [Dual Audio] | Black Butler: Book of Circus | Kuroshitsuji: Book of Circus
 wrong [167486, 190054] [] relatives [147103: target] x3
     My Happy Marriage S00E04 Special Part 3 1080p NF WEB-DL DUAL AAC2.0 H.264-VARYG (Watashi no Shiawase na Kekkon, Dual-Audio, Multi-Subs)
 wrong [168082] [] relatives [105626: target] x1
     Stellar Transformation 6th Season
-wrong [169080] [] relatives [104159: target, 114473: rival 169080 (structure)] x4
-    [DKB] Azur Lane: Bisoku Zenshin! - S02E12 [1080p][END][HEVC x265 10bit][Multi-Subs][weekly]
 wrong [169362] [169362: rival 116673 (names_fully)] relatives [116673: target] x1
     [NanakoRaws] Burn The Witch - 0.8 + Season 1 (1080p).mkv
 wrong [17265] [17265: rival 114862 (names_more)] relatives [114862: target] x1
     [Beatrice-Raws] Log Horizon - Entaku Houkai / Destruction of the Round Table [BDRip 1920x1080 HEVC TrueHD]
 wrong [1729, 2954, 3468, 3469, 6299] [] relatives [158: target] x1
     [Yousei-raws] Maria-sama ga Miteru OVA [DVDrip 1264x720 x264 AC-3]
-wrong [173533] [173533: tie 195448] relatives [5081: target] x2
-    [MTBB] Monogatari Series Off & Monster Season S1 (BD 1080p)
 wrong [173533] [] relatives [5081: rival 21745 (structure), 21262: rival 21745 (structure), 21745: target] x4
     Owarimonogatari S2 [with Audio Commentary + Translation] [10bit] [Monogatari Series]
 wrong [1735] [] relatives [20: target] x1
@@ -1336,14 +1300,10 @@ wrong [176, 4849, 4985, 10153, 17947, 98220, 99614] [99614: target] relatives [7
     Sub .ass for [ReinForce] Mahou Shoujo Lyrical Nanoha Detonation (BDRip 1920x1080 x264 FLAC)
 wrong [1760, 1761] [1760: target] relatives [4039: target] x1
     Golgo 13 - Kowloon Assignment (1977) Subtitles
-wrong [176311] [176311: target] relatives [9919: target] x1
-    [EMBER] Ao no Exorcist: Yuki no Hate-hen (2024) (Season 1) [1080p] [HEVC WEBRip DDP] (Blue Exorcist: Beyond the Snow Saga) (Batch)
 wrong [1764, 1861, 2498, 2499, 128207] [1764: target, 128207: target] relatives [170: target] x2
     [MiniMTBB] The First Slam Dunk (2022) (UHD BD 1080p)
 wrong [176496] [] relatives [151807: target] x1
     [Anime Time] Solo Leveling (Season 01) + NC OP & ED + OST [MP3] [Tri Audio] [BD] [1080p][HEVC 10bit x265][AAC][Multi Sub] [Batch] Ore dake Level Up na Ken
-wrong [176509, 210032] [176509: rival 210032 (structure)] relatives [97888: target] x3
-    [Erai-raws] Baki-dou - 14 ~ 25 [1080p NF WEB-DL AVC EAC3][MultiSub] [BATCH]
 wrong [177634, 213658] [177634: rival 105749 (structure), 213658: tie 105749] relatives [18689: rival 21085 (structure), 105749: target] x3
     [Commie] Ace of the Diamond act II ~Second Season~ - 14 [25AEBA2E].mkv
 wrong [177634, 213658] [177634: tie 213658, 213658: target] relatives [18689: target, 105749: tie 213658] x3
@@ -1368,12 +1328,8 @@ wrong [1830, 3593, 6743, 98547, 102573] [] relatives [856: target] x1
     Utawarerumono [GerJap-Dub][GerEng-Sub][THORA][Xell][720P][BD]
 wrong [18397, 20691, 20811, 99634, 108942, 110277, 120257, 131681, 139754, 146984, 162314] [] relatives [16498: target] x2
     [Furretar] 台配 - 进击的巨人 The Final Season 完结篇 (Attack on Titan: The Final Season - Kanketsu-hen) (Mandarin Chinese Dub) (Matching Soft Subs) [繁字][CHT][國語][国语][中文配音][中配版] (Season 4 Part 3) (Shingeki no Kyojin) (進擊的巨人 完結篇)
-wrong [185880] [185880: target] relatives [9919: target] x1
-    [EMBER] Ao no Exorcist: Yosuga-hen (2025) (Season 1) [1080p] [HEVC WEBRip DDP] (Blue Exorcist: The Blue Night Saga) (Batch)
 wrong [1859, 87501] [] relatives [97888: target] x1
     [DreamSubs] Baki (2018) Ep 10 PT-BR +subs
-wrong [18617, 18619, 21649, 99938, 107208, 114052, 124115, 132420, 144803, 154100, 154146, 154147, 176663] [] relatives [14131: target] x1
-    [KoushinRip] [BDMV] Girls und Panzer: das Finale Ep. 1-3 (US)
 wrong [1862, 20650] [] relatives [3667: rival 103119 (names_more), 103119: target] x1
     [DmonHiro] Strike Witches - Road To Berlin (BD, 720p)
 wrong [1862, 20650] [] relatives [3667: rival 9751 (structure), 9751: target] x1
@@ -1410,8 +1366,6 @@ wrong [19603, 20792, 21318] [] relatives [356: target, 6922: tie 19603] x1
     Fate_Stay_Night_UBW_(TV)_(BD_1080p_Hi10_FLAC)_[Dual-Audio]_[Kametsu]
 wrong [198694] [] relatives [122519: target] x10
     Honor of Kings S01E07 1080p CR WEB-DL AAC2.0 H 264-VARYG (Multi-Subs)
-wrong [199068] [199068: target] relatives [22: tie 11371, 11371: target, 140187: target] x20
-    [ASW] The Prince of Tennis II - U-17 World Cup Final Member Selection Match - 01 [1080p HEVC x265 10Bit][AAC]
 wrong [199068] [] relatives [22: target, 11371: rival 22 (structure)] x12
     The Prince of Tennis II S05E03 SUBFRENCH 1080p CR WEB-DL AAC2.0 H.264-Tsundere-Raws (VOSTFR, Shin Tennis no Oujisama U 17 World Cup Kesshou Member Ketteisen, The Prince of Tennis II U 17 World Cup Final Member Selection Match)
 wrong [199111] [199111: rival 100922 (structure)] relatives [100922: target] x1
@@ -1422,12 +1376,8 @@ wrong [2010, 2011, 2013, 3000, 4162, 6312] [] relatives [1372: rival 2013 (struc
     [Exiled-Destiny] You're Under Arrest (Movie) [Dual Audio]
 wrong [201667] [201667: target] relatives [21311: rival 120150 (names_more), 21679: target, 103223: rival 120150 (names_more), 120150: rival 201667 (names_more)] x1
     [Erai-raws] Bungou Stray Dogs Wan 2 - 03 [720p CR WEB-DL AVC AAC][MultiSub][3043DBDD]
-wrong [201667] [201667: target] relatives [21311: rival 21679 (structure), 21679: target, 103223: tie 21679, 120150: rival 201667 (structure)] x1
-    [AnoZu] Bungo Stray Dogs Wan! S02 1080p CR WEB-DL Dual-Audio AAC 2.0 H.264 | Bungou Stray Dogs Wan! 2
 wrong [201667] [] relatives [21311: rival 120150 (names_more), 120150: target] x1
     [DKB] Bungo Stray Dogs WAN! - (Season 01) [1080p][HEVC x265 10bit][Multi-Subs][Batch]
-wrong [201667] [] relatives [21311: rival 21679 (structure), 21679: target, 103223: tie 21679, 120150: rival 201667 (structure)] x3
-    [SubsPlease] Bungou Stray Dogs Wan! S2 (01-12) (1080p) [Batch]
 wrong [204394] [] relatives [131251: target] x4
     [Gecko] Fabulous Beasts - S06E11 (有兽焉; You Shou Yan 6th Season) [BILI.WEB-DL 1080P HEVC, AAC, M-SUB][E64A3050]
 wrong [204431] [] relatives [153288: target] x11
@@ -1436,8 +1386,6 @@ wrong [20458] [20458: rival 112300 (names_more)] relatives [112300: target] x1
     [Beatrice-Raws] Mahouka Koukou no Rettousei - Raihousha Hen [BDRip 1920x1080 HEVC TrueHD]
 wrong [20462] [20462: rival 20719 (names_more)] relatives [20719: target] x2
     [SallySubs] Hitsugi no Chaika + Avenging Battle [BD 1080p FLAC]
-wrong [204650] [204650: target] relatives [177474: target] x5
-    [Doomdos] - Tougen Anki Nikko Kegon no Taki-hen - S01E01 [1080p BILIBILI INTERNATIONAL WEB-DL] [Tougen Anki: Nikko Kegon Falls Arc]
 wrong [204650] [] relatives [177474: target] x1
     [ToonsHub] Tougen Anki S00E27 1080p BILI WEB-DL AAC2.0 H.265 (Multi-Subs)
 wrong [20472, 108758, 139806, 143766] [20472: tie 139806] relatives [16157: target] x2
@@ -1524,8 +1472,6 @@ wrong [21236] [21236: rival 130253 (names_more)] relatives [130253: target] x1
     [HnY] Beyblade Burst DB 04 - Sturm and Drang! Cyclone Ragnaruk!! (1080p).mkv
 wrong [21255, 21376, 21638, 98338, 98876, 100178, 101992, 150429, 177008] [] relatives [20912: target] x1
     [DemiHuman] Sound! Euphonium - S01 + Extras (BD 1080p HEVC Opus 2.0) [Dual-Audio] | Hibike! Euphonium | 響け！ユーフォニアム | feat. the "Ready, Set, Monaka" (Kakedasu Monaka) OVA Episode & "The Everyday Life of Band" (Suisougaku-bu no Nichijou) Short Specials
-wrong [21268, 21749] [21268: rival 21749 (structure)] relatives [80: rival 1968 (structure), 1090: target] x1
-    [PMR] Mobile Suit Gundam Iron-Blooded Orphans Season 2 (S02) (BD Remux 1080p AVC FLAC) [Dual Audio]
 wrong [21305, 87489, 98873, 98874, 101083, 101098, 103209, 107264, 133845, 151898, 170620] [] relatives [20832: target] x1
     [Nep_Blanc] Overlord Movies [1080p] [x265] [10Bit] [Subbed]
 wrong [21316] [21316: tie 97667] relatives [97667: target, 101499: tie 21316] x1
@@ -1560,8 +1506,6 @@ wrong [21691, 98702, 101924] [] relatives [20923: target] x1
     [crane0922] Food Wars - S00E06 - The Third Plate Erina at Polar Star Dormitory (BD 1080p HEVC Opus)
 wrong [21704] [21704: rival 180599 (names_more)] relatives [180599: target] x1
     [Erai-raws] Bananya - Around the World - 01 ~ 04 [1080p][Multiple Subtitle]
-wrong [21749] [] relatives [80: rival 1968 (structure), 1090: target, 21268: rival 21749 (structure)] x1
-    [PMR] Mobile Suit Gundam Iron-Blooded Orphans S02 (BD Remux 1080p AVC FLAC) [Dual Audio]
 wrong [21771, 113595] [] relatives [21732: target] x1
     [Kametsu] Planetarian - Man of the Stars (BD 1080p Hi10 FLAC) [Dual-Audio]
 wrong [21780, 21891, 100049, 120700, 128306, 182417] [] relatives [21355: target, 108632: rival 21355 (marker), 119661: rival 21355 (marker)] x1
@@ -1618,7 +1562,7 @@ wrong [30] [30: rival 32 (names_more)] relatives [32: target] x1
     [Beatrice-Raws] Neon Genesis Evangelion - The End of Evangelion [BDRip 1920x1080 HEVC TrueHD]
 wrong [31, 32, 2759, 3784, 3785, 3786] [] relatives [30: target] x1
     [BDMV] Neon Genesis Evangelion: The Complete Series (Standard Edition) [UKBD ANI0634] [H.264 DTS-HD MA]
-wrong [3455] [3455: rival 13663 (names_more)] relatives [13663: target, 20995: target, 100659: rival 3455 (structure)] x1
+wrong [3455] [3455: rival 13663 (names_more)] relatives [13663: rival 20995 (names_more), 20995: target, 100659: rival 3455 (structure)] x1
     [Ohys-Raws] To Love-Ru Trouble - Darkness 2nd EP 13 (BD 1280x720 x264 AAC)
 wrong [356] [356: rival 19603 (names_more)] relatives [6922: tie 19603, 19603: target] x2
     [Beatrice-Raws] Fate Stay Night - Unlimited Blade Works TV-1 [BDRip 1920x1080 HEVC TrueHD]
@@ -1674,15 +1618,11 @@ wrong [528, 1117, 1118, 1119, 1120, 1121, 1122, 1525, 1526, 1527, 1564, 1565, 17
     [ColdFusion] Pokemon - Adventures in the Orange Islands V2 (080-115, J083-118) English Dub Only
 wrong [5337] [] relatives [2156: rival 10330 (names_more), 10330: target] x2
     Bakugan Battle Brawlers Mechtanium Surge 14 SUB - Descent (1280x720 TVHL).mkv
-wrong [536, 867, 868, 869, 1170, 1171] [1171: target] relatives [534: target, 4028: rival 534 (names_fully)] x1
-    [Mangamannn] Slayers Excellent - 007-009 (480i DVD)
-wrong [536, 867, 868, 869, 1170, 1171] [867: target] relatives [534: target, 4028: target] x1
-    [Mangamannn] Slayers Gorgeous 1998 - 010 (480i DVD)
 wrong [5372] [5372: target] relatives [929: target] x1
     Seisenshi Dunbine OVA (New Story of AURA BATTLER Dunbine)
 wrong [541, 1147] [] relatives [539: target] x1
     [Exiled-Destiny] Tenchi Muyo! Ryo-Ohki OVA 3
-wrong [543] [543: target] relatives [732: target] x2
+wrong [543] [543: target] relatives [732: target] x1
     [AI-Raws] Vampire Hunter D(2001) BDRip 1080p MKV
 wrong [5955, 10249, 11743, 20035, 107692] [] relatives [4654: target] x1
     A Certain Magical Index [Season 1] [01-24] [BDRip] [720p] [Dual Audio] [THORA-Baal]
@@ -1698,7 +1638,7 @@ wrong [666] [666: rival 665 (structure)] relatives [665: target] x1
     [Mangamannn] JoJo's Bizarre Adventure 1993 - 01-07 (480i DVD)
 wrong [666] [666: target] relatives [665: target] x1
     [Mangamannn] JoJo's Bizarre Adventure 1993 - 08-13 (480i DVD)
-wrong [6922] [6922: target] relatives [356: target, 19603: target] x1
+wrong [6922] [6922: target] relatives [356: rival 19603 (names_more), 19603: target] x1
     [UTW Style Subs] Fate/stay night: Unlimited Blade Works - 00 [1080p]
 wrong [6941, 10074, 11787, 17699] [] relatives [10033: target] x1
     [ToonsHub] Toriko EP01 1080p NF WEB-DL DUAL AAC2.0 H.264 (Toriko X One Piece Collaboration Specials, Dual-Audio, English-Sub)
@@ -1706,7 +1646,7 @@ wrong [6956] [6956: rival 10521 (names_more)] relatives [10521: target, 20819: r
     [BlurayDesuYo] Working!!! - Vol. 2 (1920x1080 10bit FLAC)
 wrong [6956] [6956: rival 20819 (names_more)] relatives [10521: rival 20819 (names_more), 20819: target] x1
     [BlurayDesuYo] Working!!! - Vol. 3 (BD 1920x1080 10bit FLAC)
-wrong [779, 780, 781, 1363, 1364, 1365, 1366, 1367, 1368, 1369, 1505, 1506, 2171, 2512, 2513, 2514, 2515, 2597, 4447, 5348, 5460, 5578, 6115, 6198, 6231, 6438, 6467, 8331, 8609, 9963, 10531, 10703, 12117, 13837, 13839, 14735, 18429, 20546, 20859, 20878, 21470, 21646, 98222, 98604, 100653, 106206, 113653, 131770, 139179, 142219, 156841, 158997, 166060, 169754, 184369, 212994] [] relatives [235: target] x2
+wrong [779, 780, 781, 1363, 1364, 1365, 1366, 1367, 1368, 1369, 1505, 1506, 2171, 2512, 2513, 2514, 2515, 2597, 4447, 5348, 5460, 5578, 6115, 6198, 6231, 6438, 6467, 8331, 8609, 9963, 10531, 10703, 12117, 13837, 13839, 14735, 18429, 20546, 20859, 20878, 21470, 21646, 98222, 98604, 100653, 106206, 113653, 131770, 139179, 142219, 156841, 158997, 166060, 169754, 184369, 212994] [] relatives [235: target] x1
     Detective Conan S03E1204 Who Kidnapped Conan and Azusa Part One 1080p CR WEB-DL AAC2.0 H 264-VARYG (Meitantei Conan: Seikimatsu no Majutsushi, Multi-Subs)
 wrong [7858, 9790, 12783] [] relatives [5958: target] x1
     [philosophy-raws] Sora no Otoshimono Tokei Jikake no Angeloid [1080p] (Unofficial release)
@@ -1726,8 +1666,6 @@ wrong [849, 4382] [849: tie 5118, 4382: tie 5118] relatives [7311: target] x1
     [Exiled-Destiny] The Melancholy Of Haruhi Suzumiya (Movie) - The Disappearance Of Haruhi Suzumiya [Dual Audio]
 wrong [856] [856: rival 21218 (names_more)] relatives [21218: target] x4
     [BlurayDesuYo] Utawarerumono - Itsuwari no Kamen - BD Box 1 (BD 1280x720 10bit AAC)
-wrong [866, 1170] [866: target] relatives [534: target, 4028: target] x1
-    [Mangamannn] Slayers Premium 2001 - 063 (480i DVD)
 wrong [8687] [8687: target] relatives [501: target, 2471: target] x2
     [夜莺家族&YYQ字幕组]New Doraemon 哆啦A梦新番[856][2025.03.29][AVC][1080P][GB_JP]
 wrong [8687] [8687: tie 2471] relatives [501: rival 2471 (structure), 2471: target] x24
@@ -1742,8 +1680,8 @@ wrong [87486, 100723, 105893, 108553, 122349, 126659, 126661, 130183, 142411, 14
     My Hero Academia S01 1080p NF WEB-DL MULTi AAC2.0 H 264-VARYG (Boku no Hero Academia, Multi-Audio, Multi-Subs)
 wrong [87528, 106223, 131680, 155017] [155017: rival 97940 (names_fully)] relatives [97940: target] x1
     [Ohys-Raws] Black Clover - 11 (TX 1280x720 x264 AAC).mkv
-wrong [8857] [8857: target] relatives [10165: target] x3
-    Nichijou: Nichijou no 0-wa | My Ordinary Life Episode 0 (DVD x264 8-bit 1024x576 FLAC 2.0)
+wrong [8857] [8857: target] relatives [10165: target] x2
+    [Genesis] Nichijou - S00E01 (OVA) (BD 1080p x265 Opus) | Nichijou: My Ordinary Life - Episode 0
 wrong [8917] [8917: rival 14817 (names_more)] relatives [14817: target] x2
     [Kametsu] Bodacious Space Pirates - Abyss of Hyperspace v2 (BD 1080p Hi10 FLACx2) [E3F3B1D9].mkv
 wrong [894, 895, 896, 897, 898, 899, 900, 901, 902, 903, 904, 905, 906, 984, 985, 986, 5152, 6714, 10017, 12231, 14837, 20778, 138864] [] relatives [223: rival 813 (structure), 813: target] x1
@@ -1770,17 +1708,13 @@ wrong [97938] [] relatives [20: target] x1
     [BlackRabbit] Naruto (2002) - S03 [DVD-480p][Opus 2.0][Dual Audio][AV1]
 wrong [97986] [97986: rival 100643 (names_more)] relatives [100643: target] x4
     [Asenshi-MTBB] Made in Abyss - Dawn of the Deep Soul - PV
-wrong [98056, 112308, 117758, 130033] [98056: target] relatives [75: target] x4
-    [Erai-raws] Soukyuu no Fafner: The Beyond - 01 ~ 12 [1080p CR WEB-DL AVC EAC3][MultiSub] [BATCH]
 wrong [98504] [98504: rival 104557 (names_more)] relatives [80: rival 98504 (names_more), 104557: target] x1
     [Abystoma] Mobile Suit Gundam: Twilight Axis - Red Blur | Kidou Senshi Gundam: Twilight Axis - Akaki Zanei (BD 720p)
 wrong [98878] [] relatives [97863: target] x1
     [CR] Hajimete no Gal (BD 1280x720 x264 AAC) For Ohys-Raws less ep. 11 (OVA)
 wrong [99147, 104578] [] relatives [16498: rival 110277 (structure), 110277: target, 131681: rival 110277 (marker)] x1
     [Anime Time] Attack on Titan (Season 4) Part 2 [Dual Audio][BD][1080p][HEVC 10bit x265][AAC][Eng Sub] [Batch] Shingeki No Kyojin The Final Season
-wrong [9919, 10647, 11266, 11737, 13677, 97891] [9919: rival 21861 (names_more)] relatives [21861: target] x10
-    [BlurayDesuYo] Ao no Exorcist - Kyoto Fujouou-hen - Vol. 1 (BD 1280x720 10bit AAC)
-wrong [9919, 10647, 11266, 11737, 13677, 97891] [9919: target] relatives [21861: target] x1
+wrong [9919, 10647, 11266, 11737, 13677, 97891] [9919: rival 21861 (names_more)] relatives [21861: target] x11
     [BlurayDesuYo] Ao no Exorcist - Kyoto Fujouou-hen - 14 (OVA2) (DVD 1024x576 10bit AAC) [0759836D].mkv
 wrong [99569] [99569: target] relatives [67: target] x1
     Basilisk Ouka Ninpou Chou - 02 (subs for Ohys-Raws)

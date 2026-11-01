@@ -105,6 +105,14 @@ impl Fits {
             .all(|(_, f)| f.is_none_or(|f| f == Fit::Yes))
     }
 
+    /// Some claim is `No`, and only numbering claims (season, part,
+    /// episode): numbers a frame the franchise doesn't know could hold.
+    /// A year or format the entry fails is the title saying it is
+    /// another entry.
+    pub fn misnumbered_only(&self) -> bool {
+        self.incompatible() && self.year != Some(Fit::No) && self.format != Some(Fit::No)
+    }
+
     /// The first claim the entry fails, for reasons.
     pub fn first_no(&self) -> Option<&'static str> {
         self.all()

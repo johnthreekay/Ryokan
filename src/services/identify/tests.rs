@@ -543,3 +543,49 @@ fn a_title_with_no_name_is_neither() {
         Verdict::Neither
     );
 }
+
+#[test]
+fn a_rival_named_in_full_vetoes_through_numbers_no_frame_holds() {
+    // Disney+ numbers the Thousand-Year Blood War cours as one season:
+    // S01E43 fits no TYBW entry (13 episodes) and does fit the 2004
+    // series' 366, but the title names TYBW in full.
+    let g = graph(
+        &[
+            tv(269, "BLEACH", "Bleach", 366, 2004),
+            tv(
+                116674,
+                "BLEACH: Sennen Kessen-hen",
+                "BLEACH: Thousand-Year Blood War",
+                13,
+                2022,
+            ),
+        ],
+        &[(116674, 269)],
+    );
+    assert_rival(
+        verdict(
+            &g,
+            269,
+            "[ToonsHub] BLEACH Thousand-Year Blood War S01E43 1080p DSNP WEB-DL",
+        ),
+        116674,
+        Tier::NamesMore,
+    );
+    // The series' own release is untouched.
+    assert_eq!(verdict(&g, 269, "[G] Bleach - 43 [1080p]"), Verdict::Target);
+}
+
+#[test]
+fn a_year_the_rival_fails_still_rules_it_out() {
+    // AniList's titles: the 1989 series is `Ranma ½` in English, which
+    // the title also writes.
+    let g = graph(
+        &[
+            tv(210, "Ranma 1/2", "Ranma ½", 18, 1989),
+            tv(178533, "Ranma 1/2 (2024)", "Ranma1/2 (2024)", 12, 2024),
+        ],
+        &[(178533, 210)],
+    );
+    let title = "[denisplay] Ranma ½ / Ranma 1/2 (2024) (Season 1) [1080p] [AV1] [Batch]";
+    assert!(!verdict(&g, 178533, title).is_veto());
+}
