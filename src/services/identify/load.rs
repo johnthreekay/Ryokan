@@ -72,6 +72,59 @@ pub async fn load_franchise(
     offset: i32,
     alternates: &[String],
 ) -> Arc<Franchise> {
+    let print = fingerprint(db).await;
+    load_with_print(db, detail, offset, alternates, print.as_ref()).await
+}
+
+/// [`load_franchise`] for every library row the metadata cache holds a
+/// detail for, keyed by series id: one query for the details and one
+/// fingerprint for the lot. Rows with no cached detail are absent.
+pub async fn load_franchises_for_series(
+    db: &SqlitePool,
+    rows: &[crate::models::series::Series],
+) -> HashMap<i64, Arc<Franchise>> {
+    let mut out = HashMap::new();
+    if rows.is_empty() {
+        return out;
+    }
+    let details: HashMap<i64, AnimeDetail> =
+        sqlx::query("SELECT series_id, detail_json FROM series_metadata_cache")
+            .fetch_all(db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| {
+                let detail =
+                    serde_json::from_str::<AnimeDetail>(&row.get::<String, _>("detail_json"))
+                        .ok()?;
+                Some((row.get::<i64, _>("series_id"), detail))
+            })
+            .collect();
+    let print = fingerprint(db).await;
+    for row in rows {
+        let Some(detail) = details.get(&row.id) else {
+            continue;
+        };
+        let franchise = load_with_print(
+            db,
+            detail,
+            row.cumulative_prior_episodes,
+            &row.alternate_title_list(),
+            print.as_ref(),
+        )
+        .await;
+        out.insert(row.id, franchise);
+    }
+    out
+}
+
+async fn load_with_print(
+    db: &SqlitePool,
+    detail: &AnimeDetail,
+    offset: i32,
+    alternates: &[String],
+    print: Option<&Fingerprint>,
+) -> Arc<Franchise> {
     let key = CacheKey {
         root: detail.id,
         offset,
@@ -83,25 +136,28 @@ pub async fn load_franchise(
             detail.episodes,
         ),
     };
-    let print = fingerprint(db).await;
-    if let Some(print) = &print
+    if let Some(print) = print
         && let Some((cached_print, franchise)) = CACHE.lock().unwrap().get(&key)
         && cached_print == print
     {
         return franchise.clone();
     }
     let graph = load_graph(db, detail, offset).await;
-    let franchise = Arc::new(
+    // Nothing cached beyond the target (a series added before its first
+    // metadata sweep): the detail's own relations are better than none.
+    let franchise = Arc::new(if graph.nodes.len() <= 1 {
+        Franchise::from_detail(detail, alternates)
+    } else {
         graph
             .build(detail.id, alternates)
-            .unwrap_or_else(|| Franchise::from_detail(detail, alternates)),
-    );
+            .unwrap_or_else(|| Franchise::from_detail(detail, alternates))
+    });
     if let Some(print) = print {
         let mut cache = CACHE.lock().unwrap();
         if cache.len() >= CACHE_CAP {
             cache.clear();
         }
-        cache.insert(key, (print, franchise.clone()));
+        cache.insert(key, (print.clone(), franchise.clone()));
     }
     franchise
 }
