@@ -3179,6 +3179,7 @@ async fn import_sequel_number(
             title_prefix: "[Group] Long Sequel 2nd Season",
             offset_source: "",
             video: None,
+            title: None,
             stray: None,
         },
         cumulative,
@@ -3200,6 +3201,8 @@ struct SequelShape {
     offset_source: &'static str,
     /// The download's one video when its name is not the title's.
     video: Option<&'static str>,
+    /// The grab's title when it is not `<title_prefix> - <raw> (1080p)`.
+    title: Option<&'static str>,
     /// Another episode's video beside it in the download folder (SAB's
     /// `storage` can be the parent complete dir).
     stray: Option<&'static str>,
@@ -3223,6 +3226,7 @@ async fn import_numbered_file(
         title_prefix,
         offset_source,
         video,
+        title: title_override,
         stray,
     } = shape;
     let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
@@ -3259,7 +3263,8 @@ async fn import_numbered_file(
         std::fs::write(&existing_e01, b"the real e01").unwrap();
     }
 
-    let title = format!("{title_prefix} - {raw} (1080p)");
+    let title =
+        title_override.map_or_else(|| format!("{title_prefix} - {raw} (1080p)"), str::to_string);
     let video = video.map_or_else(|| format!("{title}.mkv"), str::to_string);
     std::fs::write(source_dir.path().join(&video), b"new").unwrap();
     if let Some(stray) = stray {
@@ -3365,6 +3370,7 @@ fn split_part() -> SequelShape {
         title_prefix: "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run",
         offset_source: "split",
         video: None,
+        title: None,
         stray: None,
     }
 }
@@ -3437,18 +3443,19 @@ async fn run_once_never_claims_a_stray_file_by_its_raw_number_under_a_split() {
 #[tokio::test]
 async fn run_once_reads_a_raw_list_of_a_split_part_by_its_raw_numbers_only() {
     // A list recorded before the split was stored (`- 03` as `[3]`): the
-    // grab's own file is claimed through its raw 3 and filed as E02; the
-    // stray `- 02` (raw 2, episode 1) is not in the list either way.
-    let (state, names, e01) = import_numbered_file(
+    // grab's own file is claimed through its raw 3 and filed as E02. The
+    // stray `- 04` beside it reads as episode 3, which is in the list
+    // too; counting both numberings claimed it and filed it as E03.
+    let (state, names, _) = import_numbered_file(
         SequelShape {
-            stray: Some("[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 02 (1080p).mkv"),
+            stray: Some("[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 04 (1080p).mkv"),
             ..split_part()
         },
         1,
         Some(11),
         3,
         &[3],
-        true,
+        false,
     )
     .await;
     assert_eq!(state, "imported");
@@ -3456,8 +3463,36 @@ async fn run_once_reads_a_raw_list_of_a_split_part_by_its_raw_numbers_only() {
         names.iter().any(|n| n.contains("S01E02")),
         "filed as E02: {names:?}"
     );
-    assert!(!names.iter().any(|n| n.contains("S01E03")), "{names:?}");
-    assert_eq!(e01.as_deref(), Some(&b"the real e01"[..]));
+    assert!(
+        !names.iter().any(|n| n.contains("S01E03")),
+        "the stray is no E03: {names:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_once_claims_a_split_parts_file_when_its_title_names_no_episode() {
+    // An unnumbered release grabbed for episode 7 before the split was
+    // stored (`[7]`) holds `- 07`, episode 6 now. The title cannot say
+    // which numbering the list is in, so both count and the file is the
+    // grab's own, filed as E06.
+    let (state, names, _) = import_numbered_file(
+        SequelShape {
+            title: Some("[Group] Steel Ball Run [1080p]"),
+            video: Some("[Group] Steel Ball Run - 07 (1080p).mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        7,
+        &[7],
+        false,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E06")),
+        "filed as E06: {names:?}"
+    );
 }
 
 #[tokio::test]
@@ -3497,6 +3532,7 @@ async fn run_once_reads_a_lone_unnumbered_file_by_the_claim_rule_under_either() 
             title_prefix: "[SubsPlease] Long Sequel",
             offset_source: "walk",
             video: Some("Long Sequel.mkv"),
+            title: None,
             stray: None,
         },
         47,

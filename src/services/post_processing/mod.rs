@@ -1667,21 +1667,24 @@ async fn import_torrent(
     let mut grabs_to_mark_replaced: std::collections::HashSet<i64> =
         std::collections::HashSet::new();
 
-    // #303: whether the grab's own list holds its title's numbers from
-    // before its series' absolute reading was stored
-    // (`grab_commit::list_is_titles_own_numbers`). Read once, for the
-    // grab's own series only: a routed sibling never takes the list.
-    let own_list_is_raw = std::sync::OnceLock::new();
-    let grab_list_is_raw = |series: &series::Series| -> bool {
-        series.id == grab.series_id
-            && *own_list_is_raw.get_or_init(|| {
-                crate::services::grab_commit::list_is_titles_own_numbers(
-                    &grab.torrent_name,
-                    &grab.episode_numbers,
-                    &crate::services::grab_commit::GrabSeries::from_row(series),
-                    grab.is_batch,
-                )
-            })
+    // #303: which numbering the grab's own list is in under its series'
+    // absolute reading (`grab_commit::grab_list_numbering`). Read once,
+    // for the grab's own series only: a routed sibling never takes the
+    // list.
+    let own_list_numbering = std::sync::OnceLock::new();
+    let grab_list_numbering = |series: &series::Series| {
+        use crate::services::grab_commit::{GrabSeries, ListNumbering, grab_list_numbering};
+        if series.id != grab.series_id {
+            return ListNumbering::Series;
+        }
+        *own_list_numbering.get_or_init(|| {
+            grab_list_numbering(
+                &grab.torrent_name,
+                &grab.episode_numbers,
+                &GrabSeries::from_row(series),
+                grab.is_batch,
+            )
+        })
     };
 
     for (file_idx, file) in &video_files {
@@ -1937,7 +1940,8 @@ async fn import_torrent(
             let from_grab_list = parsed.is_none()
                 && fallback.is_some()
                 && ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute
-                && !grab_list_is_raw(&ctx.series);
+                && grab_list_numbering(&ctx.series)
+                    != crate::services::grab_commit::ListNumbering::TitlesOwn;
             let Some(span) = parsed.or(fallback) else {
                 logger::warn(
                     &state.db,
@@ -2004,17 +2008,25 @@ async fn import_torrent(
         // The file's own number counts too, for grab rows that recorded a
         // title's number as it was: a Search-page grab that auto-added the
         // series before its offset was stored. Under the single absolute
-        // reading (#303) the list is one numbering or the other, never
-        // both, so only that one counts: with both, a grab for `[6]`
-        // (`- 07`) also claimed a stray `- 06` beside it (episode 5) and
-        // replaced the library's E05 with it.
-        let absolute_only =
-            ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute;
-        let raw_list = absolute_only && grab_list_is_raw(&ctx.series);
+        // reading (#303) the title says which numbering the list is in,
+        // and only that one counts: with both, a grab for `[6]` (`- 07`)
+        // also claimed a stray `- 06` beside it (episode 5) and replaced
+        // the library's E05 with it. A title naming no episode cannot
+        // say, and both count, as before.
+        let (raw_counts, resolved_counts) = {
+            use crate::services::grab_commit::ListNumbering;
+            let absolute_only =
+                ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute;
+            match grab_list_numbering(&ctx.series) {
+                ListNumbering::Series if absolute_only => (false, true),
+                ListNumbering::TitlesOwn => (true, false),
+                ListNumbering::Series | ListNumbering::Undecided => (true, true),
+            }
+        };
         let mut claim_numbers = resolved
             .raw_episodes()
-            .filter(|_| !absolute_only || raw_list)
-            .chain(resolved.episodes().filter(|_| !raw_list));
+            .filter(|_| raw_counts)
+            .chain(resolved.episodes().filter(|_| resolved_counts));
         let claims_this_episode = claim_numbers.any(|n| {
             grab_claims_episode(
                 grab.is_batch,

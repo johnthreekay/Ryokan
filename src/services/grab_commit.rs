@@ -500,23 +500,39 @@ pub(crate) fn grab_episode_list(
     }
 }
 
-/// #303: true when a grab's recorded `list` is its title's own numbers
-/// rather than the series' current reading of them. A Search-page grab
-/// that auto-adds a split part records `- 07` as `[7]` before the
-/// detached refresh stores the offset; the series now reads that title
-/// as `[6]`. Only the single absolute reading can tell the two apart:
-/// under [`Reading::Either`] a list may hold either numbering and the
-/// import's claim rule reads both, as it did before #303. A list that
-/// neither reading of the title reproduces (an episode endpoint's pick,
-/// the picker's files) was written in the series' numbering.
-pub(crate) fn list_is_titles_own_numbers(
+/// Which numbering a grab's recorded episode list is in, against its
+/// series' current reading (#303, [`grab_list_numbering`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ListNumbering {
+    /// The series' reading: the list was recorded with it, or the series
+    /// has no single absolute reading to tell numberings apart by.
+    Series,
+    /// The title's own numbers, recorded before the split was stored: a
+    /// Search-page grab that auto-adds a split part records `- 07` as
+    /// `[7]` before the detached refresh stores the offset.
+    TitlesOwn,
+    /// The title names no episode, so it cannot say: a click on an
+    /// episode, or the picker's files, before or after the split was
+    /// stored.
+    Undecided,
+}
+
+/// How a grab's recorded `list` reads for `series`. Only the single
+/// absolute reading has two numberings to tell apart: under
+/// [`Reading::Either`] a list may hold either and the import's claim rule
+/// reads both, as it did before #303. The title decides: a list it
+/// reproduces under the series' reading is [`ListNumbering::Series`],
+/// one it reproduces with no offset is [`ListNumbering::TitlesOwn`]; a
+/// title that names no episode under either reading is
+/// [`ListNumbering::Undecided`].
+pub(crate) fn grab_list_numbering(
     title: &str,
     list: &[i32],
     series: &GrabSeries,
     is_batch: bool,
-) -> bool {
+) -> ListNumbering {
     if series.numbering.reading != Reading::Absolute || list.is_empty() {
-        return false;
+        return ListNumbering::Series;
     }
     let mut recorded = list.to_vec();
     recorded.sort_unstable();
@@ -527,14 +543,21 @@ pub(crate) fn list_is_titles_own_numbers(
         eps.dedup();
         eps
     };
-    if read(series) == recorded {
-        return false;
+    let now = read(series);
+    if now == recorded {
+        return ListNumbering::Series;
     }
-    let before = GrabSeries {
+    let before = read(&GrabSeries {
         numbering: Numbering::relative(),
         ..series.clone()
-    };
-    read(&before) == recorded
+    });
+    if before == recorded {
+        ListNumbering::TitlesOwn
+    } else if now.is_empty() && before.is_empty() {
+        ListNumbering::Undecided
+    } else {
+        ListNumbering::Series
+    }
 }
 
 /// The library slots a file's parsed span lands in: the import's own
@@ -1129,28 +1152,33 @@ mod tests {
     }
 
     /// #303: a list recorded before a split part's offset was stored holds
-    /// its title's own numbers; one recorded since, the series' reading.
+    /// its title's own numbers; one recorded since, the series' reading; a
+    /// title that names no episode cannot say which.
     #[test]
     fn a_raw_list_is_told_apart_from_the_series_reading() {
         let sbr = split_part();
         let title = "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 07 [1080p]";
-        assert!(list_is_titles_own_numbers(title, &[7], &sbr, false));
-        assert!(!list_is_titles_own_numbers(title, &[6], &sbr, false));
-        // A list neither reading of the title gives (an episode endpoint's
-        // pick of an unnumbered release) is the series' own.
-        assert!(!list_is_titles_own_numbers(
-            "[Group] Steel Ball Run [1080p]",
-            &[6],
-            &sbr,
-            false
-        ));
+        let reads = |title: &str, list: &[i32], series: &GrabSeries| {
+            grab_list_numbering(title, list, series, false)
+        };
+        assert_eq!(reads(title, &[7], &sbr), ListNumbering::TitlesOwn);
+        assert_eq!(reads(title, &[6], &sbr), ListNumbering::Series);
+        // An unnumbered release grabbed for an episode, or through the
+        // picker, records a list the title cannot place either way.
+        assert_eq!(
+            reads("[Group] Steel Ball Run [1080p]", &[6], &sbr),
+            ListNumbering::Undecided
+        );
+        // A numbered title whose list is neither reading is the series'
+        // own (an episode click on a `- 07` release for episode 3).
+        assert_eq!(reads(title, &[3], &sbr), ListNumbering::Series);
         // Only the single absolute reading can tell them apart.
         let either = GrabSeries {
             numbering: Numbering::either(1),
             ..sbr.clone()
         };
-        assert!(!list_is_titles_own_numbers(title, &[7], &either, false));
-        assert!(!list_is_titles_own_numbers(title, &[], &sbr, false));
+        assert_eq!(reads(title, &[7], &either), ListNumbering::Series);
+        assert_eq!(reads(title, &[], &sbr), ListNumbering::Series);
     }
 
     #[test]
