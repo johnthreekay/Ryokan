@@ -150,12 +150,11 @@ fn resolve_episode(
     claimed: &[i32],
     episode_count: i32,
 ) -> Result<ResolvedEpisode, String> {
-    let episode_offset = route_offset.unwrap_or_else(|| {
-        if span.season.is_some() {
-            0
-        } else {
-            claimed_ep_offset(span.first, numbering, claimed, episode_count)
-        }
+    let episode_offset = route_offset.unwrap_or_else(|| match span.season {
+        // A tag counts within its season, unless it names the TVDB season
+        // a split part counts in (#303: `S06E07` is its episode 6).
+        Some(season) => numbering.file_offset(Some(season), span.first),
+        None => claimed_ep_offset(span.first, numbering, claimed, episode_count),
     });
     let episode = span.first - episode_offset;
     if episode <= 0 {
@@ -1891,8 +1890,14 @@ async fn import_torrent(
                 None
             };
             // A span taken from the grab's own list is series-relative
-            // already: no offset comes off it a second time.
-            let from_grab_list = parsed.is_none() && fallback.is_some();
+            // already under the single absolute reading (#303: every
+            // writer records the resolved episode for it), so no offset
+            // comes off it a second time. Under the either-reading a list
+            // can still hold a title's own absolute number, which the
+            // claim rule below settles as it always has.
+            let from_grab_list = parsed.is_none()
+                && fallback.is_some()
+                && ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute;
             let Some(span) = parsed.or(fallback) else {
                 logger::warn(
                     &state.db,
@@ -1952,24 +1957,18 @@ async fn import_torrent(
         // own numbering when it was read off a title, so an
         // absolute-numbered file (`- 56` for episode 9 after 47 prior
         // episodes) matches by either.
-        // The file's own number counts too, for grab rows that recorded
-        // a title's number as it was; under a single absolute reading
-        // (#303) every writer records the resolved episode, and a row
-        // from before that (`- 06` claimed as episode 6 of a split part,
-        // really its episode 5) must not take over the slot it names.
-        let raw_counts =
-            ctx.series.numbering().reading != crate::services::numbering::Reading::Absolute;
-        let claims_this_episode = resolved
-            .episodes()
-            .chain(resolved.raw_episodes().filter(|_| raw_counts))
-            .any(|n| {
-                grab_claims_episode(
-                    grab.is_batch,
-                    routes_by_file.contains_key(file_idx),
-                    &grab.episode_numbers,
-                    n,
-                )
-            });
+        // The file's own number counts too, for grab rows that recorded a
+        // title's number as it was: a Search-page grab that auto-added the
+        // series before its offset was stored, and (#303) a split part's
+        // rows from before its offset was (`- 07` claimed as `[7]`).
+        let claims_this_episode = resolved.raw_episodes().chain(resolved.episodes()).any(|n| {
+            grab_claims_episode(
+                grab.is_batch,
+                routes_by_file.contains_key(file_idx),
+                &grab.episode_numbers,
+                n,
+            )
+        });
         if !claims_this_episode {
             logger::debug(
                 &state.db,

@@ -1234,7 +1234,10 @@ pub fn classify_match_detailed(
     if let SearchTarget::Episode(target_ep) = target {
         // Season check: reject if release has an explicit season that doesn't match
         let parsed_title = release.insert(release_title::parse(title));
-        if parsed_title.conflicts_with_season(expected_season) {
+        let numbering = numbering.into();
+        // #303 — A split part also answers to the TVDB season its offset
+        // counts in (`S06E07` for Steel Ball Run 2nd - 3rd STAGE).
+        if !numbering.season_allowed(parsed_title, expected_season) {
             return MatchOutcome::NoMatch;
         }
 
@@ -1253,9 +1256,7 @@ pub fn classify_match_detailed(
         // (SubsPlease-style) episode number; #303 — or only the one the
         // series' numbering reads, a season tag staying relative. See
         // `episode_match` for the details.
-        let reading = numbering
-            .into()
-            .for_tag(crate::services::numbering::is_season_tag(parsed_title));
+        let reading = numbering.for_tag(crate::services::numbering::season_tag(parsed_title));
         if !episode_match(&parsed, *target_ep, reading) {
             return MatchOutcome::NoMatch;
         }
@@ -1740,7 +1741,8 @@ mod tests {
         use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
         let own = vec!["Steel Ball Run".to_string()];
         let gate = GatePrecompute::build(&own).with_series_format("ONA");
-        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic);
+        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+            .with_tag_season(Some(6));
         let accepts = |title: &str, episode: i32| {
             matches_target(
                 title,
@@ -1767,9 +1769,24 @@ mod tests {
             "[桜都字幕组] 飙马野郎 JOJO的奇妙冒险 / Steel Ball Run： JoJo no Kimyou na Bouken [07][1080P][简体内嵌]",
             6
         ));
-        // A season tag counts within its season.
+        // A season tag counts within its season...
         assert!(accepts("[Group] Steel Ball Run S01E06 [1080p]", 6));
         assert!(!accepts("[Group] Steel Ball Run S01E07 [1080p]", 6));
+        // ...except TVDB's season 6, where 1st STAGE is S06E01: the
+        // season gate lets it through and it reads like a bare number.
+        let dkb =
+            |n: &str| format!("[DKB] Steel Ball Run: JoJo no Kimyou na Bouken - S06E{n} [1080p]");
+        assert!(accepts(&dkb("07"), 6));
+        assert!(!accepts(&dkb("06"), 6), "S06E06 is episode 5");
+        assert!(!accepts(&dkb("01"), 1), "S06E01 is 1st STAGE's");
+        assert!(
+            !accepts("[Group] Steel Ball Run S05E07 [1080p]", 6),
+            "another season"
+        );
+        // A season marker before a bare number is a bare number.
+        assert!(accepts("[Group] Steel Ball Run S1 - 07 [1080p]", 6));
+        // A run reaching into 1st STAGE is none of this part's.
+        assert!(!accepts(&erai("01-02"), 1));
         // The same releases under a bare offset (#30) read both ways.
         assert!(matches_target(
             &erai("06"),

@@ -419,16 +419,17 @@ fn relative_episodes(
     };
     let cumulative = series.numbering.offset;
     let claim = parsed.episodes.as_ref();
-    let tagged = numbering::is_season_tag(parsed);
+    let tag = numbering::season_tag(parsed);
     let bound_and_fits = !pack
         && claim.is_some_and(|c| c.season.is_some())
         && series.episode_count.is_some_and(|n| last <= n);
     let offset = match series.numbering.reading {
-        _ if tagged => 0,
         Reading::Relative => 0,
-        Reading::Absolute => cumulative,
+        // A tag counts within its season, unless it names the TVDB season
+        // the split counts in (`S06E07`).
+        Reading::Absolute => series.numbering.file_offset(tag, first),
         Reading::Either => match searched {
-            _ if bound_and_fits => 0,
+            _ if tag.is_some() || bound_and_fits => 0,
             Some(ep) if raw.contains(&ep) => 0,
             Some(ep) if cumulative > 0 && raw.contains(&(ep + cumulative)) => cumulative,
             _ => post_processing::fallback_ep_offset(first, cumulative),
@@ -501,11 +502,7 @@ pub(crate) fn file_slot_episodes(
     span: crate::services::media::EpisodeSpan,
     numbering: impl Into<Numbering>,
 ) -> impl Iterator<Item = i32> {
-    let offset = if span.season.is_some() {
-        0
-    } else {
-        numbering.into().run_offset(span.first)
-    };
+    let offset = numbering.into().file_offset(span.season, span.first);
     (span.first - offset..=span.last - offset).filter(|e| *e > 0)
 }
 
@@ -941,7 +938,8 @@ mod tests {
                 1,
                 numbering::OffsetSource::Split,
                 numbering::NumberingSetting::Automatic,
-            ),
+            )
+            .with_tag_season(Some(6)),
             episode_count: Some(11),
         }
     }
@@ -990,6 +988,41 @@ mod tests {
             )
             .collect::<Vec<_>>(),
             vec![6]
+        );
+    }
+
+    /// #303: tags of the TVDB season the split was confirmed in count on
+    /// from 1st STAGE (`S06E07` is episode 6); a season-bound bare number
+    /// is a bare number under the absolute reading, as the import reads it.
+    #[test]
+    fn a_split_part_reads_its_tvdb_season_tags_and_season_bound_numbers_absolute() {
+        let sbr = split_part();
+        for (title, eps) in [
+            (
+                "[DKB] Steel Ball Run: JoJo no Kimyou na Bouken - S06E07 [1080p]",
+                vec![6],
+            ),
+            (
+                "[DKB] Steel Ball Run: JoJo no Kimyou na Bouken - S06E01 [1080p]",
+                vec![],
+            ),
+            ("[Group] Steel Ball Run S1 - 07 [1080p]", vec![6]),
+        ] {
+            assert_eq!(
+                grab_episode_list(title, &sbr, GrabFor::Whole, false),
+                eps,
+                "{title}"
+            );
+        }
+        let span = |season, n| crate::services::media::EpisodeSpan::single(season, n);
+        assert_eq!(
+            file_slot_episodes(span(Some(6), 7), sbr.numbering).collect::<Vec<_>>(),
+            vec![6]
+        );
+        assert!(
+            file_slot_episodes(span(Some(6), 1), sbr.numbering)
+                .next()
+                .is_none()
         );
     }
 

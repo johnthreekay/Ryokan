@@ -317,8 +317,11 @@ pub fn snapshot_date() -> String {
 pub enum OffsetSource {
     Rule(Offset),
     /// Entries AniList split out of the series' own MAL entry before it
-    /// (#303), confirmed by the TVDB mapping.
-    Split,
+    /// (#303), confirmed by the TVDB mapping placing the entry that far
+    /// into `tvdb_season`.
+    Split {
+        tvdb_season: i32,
+    },
     Walk,
 }
 
@@ -327,8 +330,17 @@ impl OffsetSource {
     pub fn stored(&self) -> numbering::OffsetSource {
         match self {
             OffsetSource::Rule(_) => numbering::OffsetSource::Rule,
-            OffsetSource::Split => numbering::OffsetSource::Split,
+            OffsetSource::Split { .. } => numbering::OffsetSource::Split,
             OffsetSource::Walk => numbering::OffsetSource::Walk,
+        }
+    }
+
+    /// The TVDB season whose tags count in the offset's numbering, stored
+    /// as `series.cumulative_offset_season`: a split's, else none.
+    pub fn tag_season(&self) -> Option<i32> {
+        match self {
+            OffsetSource::Split { tvdb_season } => Some(*tvdb_season),
+            OffsetSource::Rule(_) | OffsetSource::Walk => None,
         }
     }
 }
@@ -361,8 +373,8 @@ pub async fn cumulative_prior_episodes(
     if let Some(rule) = offset_for(anilist_id, mal_id) {
         return Some((rule.episodes, OffsetSource::Rule(rule)));
     }
-    if let Some(split) = confirmed_split(db, anilist_id, mal_id).await? {
-        return Some((split, OffsetSource::Split));
+    if let Some((split, tvdb_season)) = confirmed_split(db, anilist_id, mal_id).await? {
+        return Some((split, OffsetSource::Split { tvdb_season }));
     }
     Some((
         local_metadata::compute_cumulative_prior_episodes(db, anilist_id).await,
@@ -371,21 +383,32 @@ pub async fn cumulative_prior_episodes(
 }
 
 /// The split offset of [`cumulative_prior_episodes`]'s second step on its
-/// own: `Some(Some(n))` when the entry continues its MAL entry `n`
-/// episodes in and the TVDB mapping agrees, `Some(None)` when it does
-/// not, `None` when a split was found but the mappings are not loaded.
+/// own: `Some(Some((n, season)))` when the entry continues its MAL entry
+/// `n` episodes in and the TVDB mapping places it that far into
+/// `season`, `Some(None)` when either says no, `None` when a split was
+/// found but the mappings are not loaded.
 pub async fn confirmed_split(
     db: &SqlitePool,
     anilist_id: i64,
     mal_id: Option<i64>,
-) -> Option<Option<i32>> {
+) -> Option<Option<(i32, i32)>> {
     let Some(split) = local_metadata::split_prior_episodes(db, anilist_id, mal_id).await else {
         return Some(None);
     };
-    match anibridge::places_at_offset(anilist_id, split).await? {
-        true => Some(Some(split)),
-        false => Some(None),
-    }
+    Some(
+        anibridge::season_at_offset(anilist_id, split)
+            .await?
+            .map(|season| (split, season)),
+    )
+}
+
+/// The walk alone, for a writer whose [`cumulative_prior_episodes`] came
+/// back undecided while it has no split stored to keep.
+pub async fn walk_only(db: &SqlitePool, anilist_id: i64) -> (i32, OffsetSource) {
+    (
+        local_metadata::compute_cumulative_prior_episodes(db, anilist_id).await,
+        OffsetSource::Walk,
+    )
 }
 
 /// Titles of a rule's source entry, read from `provider_metadata_cache`
@@ -726,6 +749,7 @@ mod tests {
     /// it at TVDB S06 offset 1. The TV walk sees nothing; the split is 1.
     #[tokio::test]
     async fn a_split_confirmed_by_tvdb_takes_the_split_offset() {
+        let _mappings = anibridge::TEST_CACHE_LOCK.lock().await;
         let db = test_pool().await;
         insert_split_prequel(&db, 210482, 190327, 61469, "ONA", Some(1)).await;
         insert_split_prequel(&db, 190327, 146722, 51367, "ONA", Some(26)).await;
@@ -736,7 +760,7 @@ mod tests {
         .await;
         assert_eq!(
             cumulative_prior_episodes(&db, 210482, Some(61469)).await,
-            Some((1, OffsetSource::Split))
+            Some((1, OffsetSource::Split { tvdb_season: 6 }))
         );
         // The first part has no prequel inside the split: the walk (0).
         assert_eq!(
@@ -754,6 +778,7 @@ mod tests {
     /// mappings place it nowhere: no split, and today's walk stands.
     #[tokio::test]
     async fn a_split_the_tvdb_mapping_does_not_confirm_is_ignored() {
+        let _mappings = anibridge::TEST_CACHE_LOCK.lock().await;
         let db = test_pool().await;
         insert_split_prequel(&db, 185729, 153499, 52684, "ONA", Some(130)).await;
         anibridge::seed_tvdb_placements_for_tests(&[(210482, 262954, 6, Some(1))]).await;
@@ -772,6 +797,7 @@ mod tests {
     /// Mappings not loaded yet: the writer keeps what it stored.
     #[tokio::test]
     async fn a_split_without_mappings_is_undecided() {
+        let _mappings = anibridge::TEST_CACHE_LOCK.lock().await;
         let db = test_pool().await;
         insert_split_prequel(&db, 210482, 190327, 61469, "ONA", Some(1)).await;
         anibridge::clear_cache_for_tests().await;

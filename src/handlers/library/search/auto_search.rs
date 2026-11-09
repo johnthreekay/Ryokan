@@ -1360,6 +1360,7 @@ mod upgrade_candidate_tests {
             alternate_titles: String::new(),
             cumulative_prior_episodes: 0,
             cumulative_offset_source: String::new(),
+            cumulative_offset_season: None,
             episode_numbering: String::new(),
             monitor_mode_manual_override: false,
             user_score: None,

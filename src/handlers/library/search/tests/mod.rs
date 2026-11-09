@@ -511,6 +511,7 @@ async fn cumulative_hydration_skips_already_populated_series() {
         series_id,
         24,
         crate::services::numbering::OffsetSource::Walk,
+        None,
         true,
     )
     .await

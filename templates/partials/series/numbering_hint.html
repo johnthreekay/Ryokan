@@ -1,0 +1,5 @@
+{# #303 — The line under the Episode numbering select on the series page:
+   what Automatic resolves to for this series, and what a choice does.
+   The search-overrides save returns it again with `oob` so the line
+   follows the saved choice without a reload. #}
+<span class="form-hint" id="series-episode-numbering-hint"{% if oob %} hx-swap-oob="true"{% endif %}>{{ hint }}</span>

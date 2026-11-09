@@ -721,6 +721,7 @@ async fn merge_skip_already_watched_lands_existing_for_watching_only() {
 
 #[tokio::test]
 async fn resolve_mal_anilist_ids_uses_anibridge_hit() {
+    let _mappings = crate::services::anibridge::TEST_CACHE_LOCK.lock().await;
     // Cache-hit path: MAL 1234 → AL 9999 lives in the seeded
     // anibridge cache, so the resolver writes the real AL id back
     // onto the SyncEntry.
@@ -749,6 +750,7 @@ async fn resolve_mal_anilist_ids_uses_anibridge_hit() {
 
 #[tokio::test]
 async fn resolve_mal_anilist_ids_falls_back_to_negated_sentinel_on_miss() {
+    let _mappings = crate::services::anibridge::TEST_CACHE_LOCK.lock().await;
     // Empty cache → every lookup misses, every MAL entry gets
     // anilist_id = -provider_media_id. This is the reconcile-
     // path-friendly state from the existing Jikan fallback flow.
@@ -786,6 +788,7 @@ async fn resolve_mal_anilist_ids_falls_back_to_negated_sentinel_on_miss() {
 
 #[tokio::test]
 async fn resolve_mal_anilist_ids_passes_through_anilist_entries_unchanged() {
+    let _mappings = crate::services::anibridge::TEST_CACHE_LOCK.lock().await;
     // AL entries (anilist_id != 0) MUST NOT be touched even if a
     // MAL ID with the same numeric value happens to live in the
     // cache. Otherwise an AL entry whose AL id collides with some

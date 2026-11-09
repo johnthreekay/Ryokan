@@ -101,6 +101,7 @@ pub(super) async fn maybe_hydrate_cumulative_offset(
             t.id,
             rule.episodes,
             crate::services::numbering::OffsetSource::Rule,
+            None,
             true,
         )
         .await

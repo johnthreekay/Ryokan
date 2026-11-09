@@ -30,6 +30,7 @@ fn series(id: i64, title: &str, episodes: i32, cumulative_prior_episodes: i32) -
         alternate_titles: String::new(),
         cumulative_prior_episodes,
         cumulative_offset_source: String::new(),
+        cumulative_offset_season: None,
         episode_numbering: String::new(),
         monitor_mode_manual_override: false,
         user_score: None,
@@ -181,6 +182,7 @@ fn a_bracket_only_item_matches_no_series_by_its_empty_name() {
 fn a_split_part_reads_feed_numbers_absolute_only() {
     let mut second = series(2, "Steel Ball Run", 11, 1);
     second.cumulative_offset_source = "split".to_string();
+    second.cumulative_offset_season = Some(6);
     let first = series(1, "Steel Ball Run", 1, 0);
     let title = |n: &str| format!("[Erai-raws] Steel Ball Run - {n} [1080p NF WEB-DL AVC AAC]");
 
@@ -204,6 +206,30 @@ fn a_split_part_reads_feed_numbers_absolute_only() {
     let found = best_series_match(&item(&title("01")), &both).expect("1st STAGE takes - 01");
     assert_eq!(found.series.id, 1);
     assert_eq!(resolved(&found), vec![1]);
+    // Its logical key is 1st STAGE's episode 1; 2nd - 3rd STAGE's `- 02`
+    // (its episode 1) is another item, not a second copy of it.
+    let first_key: Vec<i32> = found.canonical_abs_eps.iter().copied().collect();
+    let found = best_series_match(&item(&title("02")), &both).expect("- 02 matches");
+    assert_eq!(found.series.id, 2);
+    assert_eq!(resolved(&found), vec![1]);
+    let second_key: Vec<i32> = found.canonical_abs_eps.iter().copied().collect();
+    assert_ne!(first_key, second_key);
+
+    // TVDB's season 6 tags count on from 1st STAGE; a season marker
+    // before a bare number is a bare number; another season's tag counts
+    // within it.
+    let alone = [SeriesMeta::from_series(&second)];
+    for (title, eps) in [
+        (
+            "[DKB] Steel Ball Run: JoJo no Kimyou na Bouken - S06E06 [1080p]",
+            vec![5],
+        ),
+        ("[Group] Steel Ball Run S1 - 07 [1080p]", vec![6]),
+        ("[Group] Steel Ball Run S01E06 [1080p]", vec![6]),
+    ] {
+        let found = best_series_match(&item(title), &alone).expect(title);
+        assert_eq!(resolved(&found), eps, "{title}");
+    }
 
     // AniList numbering chosen on the series page: the offset is never
     // applied.

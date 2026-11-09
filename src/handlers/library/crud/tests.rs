@@ -676,6 +676,33 @@ mod crud_ci {
             .is_none()
         );
 
+        // An HTMX save re-sends the hint out of band, for the saved choice.
+        let resp = set_search_overrides(
+            State(state.clone()),
+            axum_htmx::HxRequest(true),
+            axum::Form(save(Some("anilist"))),
+        )
+        .await
+        .expect("saved");
+        let body = String::from_utf8(
+            axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(
+            body.contains(r#"id="series-episode-numbering-hint" hx-swap-oob="true""#),
+            "{body}"
+        );
+        assert_eq!(stored().await, "anilist");
+        let _ = set_search_overrides(
+            State(state.clone()),
+            axum_htmx::HxRequest(false),
+            axum::Form(save(Some("absolute"))),
+        )
+        .await
+        .expect("saved");
         let _ = set_search_overrides(
             State(state.clone()),
             axum_htmx::HxRequest(false),

@@ -733,7 +733,7 @@ pub async fn series_detail(
                 .to_string()
         })
         .unwrap_or_default();
-    let episode_numbering_hint = db_series
+    let hint = db_series
         .as_ref()
         .map(|s| {
             use crate::services::numbering::{self, NumberingSetting, OffsetSource};
@@ -799,7 +799,8 @@ pub async fn series_detail(
         restrict_to_uploader,
         alternate_titles,
         episode_numbering,
-        episode_numbering_hint,
+        hint,
+        oob: false,
         default_custom_query_tokens,
         default_restrict_to_uploader,
         post_processing_enabled,
@@ -916,8 +917,19 @@ pub(super) async fn build_episodes(
     let should_fetch_jikan = !use_cached_eps
         && detail.id_mal.is_some()
         && (episodic_format || ep_count > 1 || is_airing_status);
+    // #303 — The MAL lists are the MAL entry's; a split part starts
+    // `split` episodes into it, as the cached episode map already does.
+    let split = if use_cached_eps {
+        0
+    } else {
+        crate::services::metadata_sync::mal_entry_split(db, detail.id, detail.id_mal).await
+    };
     let jikan_eps = if should_fetch_jikan {
-        jikan::fetch_episode_titles_for_detail(db, detail).await
+        crate::services::metadata_sync::shift_mal_episodes(
+            jikan::fetch_episode_titles_for_detail(db, detail).await,
+            split,
+            |e: &mut jikan::EpisodeInfo| &mut e.title,
+        )
     } else {
         HashMap::new()
     };
@@ -951,7 +963,11 @@ pub(super) async fn build_episodes(
                     .unwrap_or(false)
             }));
     let kitsu_eps: HashMap<i32, kitsu::EpisodeInfo> = if should_try_kitsu {
-        kitsu::fetch_episode_titles_fallback(db, detail.id_mal).await
+        crate::services::metadata_sync::shift_mal_episodes(
+            kitsu::fetch_episode_titles_fallback(db, detail.id_mal).await,
+            split,
+            |e: &mut crate::services::kitsu::EpisodeInfo| &mut e.title,
+        )
     } else {
         HashMap::new()
     };

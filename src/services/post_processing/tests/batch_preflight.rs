@@ -655,3 +655,38 @@ fn a_split_part_pack_skips_the_earlier_part_and_imports_the_rest() {
         .collect();
     assert!(validate_batch_episode_map(&either, &HashSet::new()).is_err());
 }
+
+/// #303: the same pack tagged the way TVDB numbers the show (season 6,
+/// 1st STAGE as `S06E01`), for a split confirmed in TVDB season 6: the
+/// tags count on from 1st STAGE too. A tag of another season counts
+/// within it.
+#[test]
+fn a_split_part_reads_its_tvdb_season_tags_absolute() {
+    use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+    let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+        .with_tag_season(Some(6));
+    let files: Vec<(usize, i64, Option<i32>, Numbering, String)> = (1..=12)
+        .map(|n| {
+            (
+                n as usize,
+                7,
+                None,
+                sbr,
+                format!("[Trix] JoJos Bizarre Adventure (2012) S06E{n:02} 1080p NF WEB-DL.mkv"),
+            )
+        })
+        .chain(std::iter::once((
+            13,
+            7,
+            None,
+            sbr,
+            "[Other] Steel Ball Run S01E11 [1080p].mkv".to_string(),
+        )))
+        .collect();
+    let plan = validate_batch_episode_map(&files[..12], &HashSet::new()).expect("pack plans");
+    assert!(!plan.slots.contains_key(&1), "S06E01 is 1st STAGE's");
+    assert_eq!(plan.slots.get(&7).map(|r| r.episode), Some(6));
+    assert_eq!(plan.slots.get(&12).map(|r| r.episode), Some(11));
+    let other = validate_batch_episode_map(&files[12..], &HashSet::new()).expect("plans");
+    assert_eq!(other.slots.get(&13).map(|r| r.episode), Some(11));
+}

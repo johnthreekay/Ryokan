@@ -550,9 +550,13 @@ pub async fn expand_from_files(
             file_indices: parent_file_indices,
             episode_numbers: parent_episode_numbers.to_vec(),
             matched_subtitle: String::new(),
-            // Parent-route files always use their own arc-local
-            // numbering — no offset ever needed here.
-            episode_offset: 0,
+            // Parent-route files use their own arc-local numbering, no
+            // offset; a split part's are numbered on from the earlier
+            // parts (#303), the way its coverage above was read.
+            episode_offset: match parent_numbering.reading {
+                crate::services::numbering::Reading::Absolute => parent_numbering.offset,
+                _ => 0,
+            },
         });
     }
 

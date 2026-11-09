@@ -52,6 +52,14 @@ struct SaveStatusPillPartial {
     message: String,
 }
 
+/// #303 — The Episode numbering hint, re-sent out of band after a save.
+#[derive(Template)]
+#[template(path = "partials/series/numbering_hint.html")]
+struct NumberingHintPartial {
+    hint: String,
+    oob: bool,
+}
+
 use super::reconcile::reconcile_all_fallback_entries;
 use super::search::{AutoSearchQuery, auto_search_series};
 use super::{
@@ -961,31 +969,35 @@ pub async fn set_search_overrides(
         .episode_numbering
         .as_deref()
         .map(crate::services::numbering::NumberingSetting::from_str);
-    let mut result = series::update_search_overrides(
+    let result = series::update_search_overrides_and_numbering(
         &state.db,
         form.series_id,
         &form.custom_query_tokens,
         &form.restrict_to_uploader,
         &form.alternate_titles,
+        numbering,
     )
     .await;
-    if let (Ok(()), Some(setting)) = (&result, numbering) {
-        result = series::update_episode_numbering(&state.db, form.series_id, setting).await;
-    }
     // The next interactive search reads the new aliases and numbering,
     // not five minutes of the old list.
-    if result.is_ok() {
-        let anilist_id = series::get_by_id(&state.db, form.series_id)
+    let saved_row = if result.is_ok() {
+        series::get_by_id(&state.db, form.series_id)
             .await
             .ok()
             .flatten()
-            .map(|s| s.anilist_id);
+    } else {
+        None
+    };
+    if result.is_ok() {
         crate::services::interactive_search_cache::forget_series(
             &state.interactive_search_cache,
-            &[Some(form.series_id), anilist_id]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
+            &[
+                Some(form.series_id),
+                saved_row.as_ref().map(|s| s.anilist_id),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>(),
         );
     }
     let numbering_log = numbering.map(|n| n.as_str()).unwrap_or("unchanged");
@@ -1016,12 +1028,31 @@ pub async fn set_search_overrides(
             ),
         )
         .await;
-        let html = SaveStatusPillPartial {
+        let mut html = SaveStatusPillPartial {
             ok: true,
             message: String::new(),
         }
         .render()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        // The line under the numbering select follows the saved choice.
+        if let Some(row) = &saved_row {
+            html.push_str(
+                &NumberingHintPartial {
+                    hint: crate::services::numbering::setting_hint(
+                        row.cumulative_prior_episodes,
+                        crate::services::numbering::OffsetSource::from_str(
+                            &row.cumulative_offset_source,
+                        ),
+                        crate::services::numbering::NumberingSetting::from_str(
+                            &row.episode_numbering,
+                        ),
+                    ),
+                    oob: true,
+                }
+                .render()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+            );
+        }
         return Ok(Html(html).into_response());
     }
 

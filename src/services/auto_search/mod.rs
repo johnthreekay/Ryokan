@@ -702,7 +702,7 @@ pub(crate) fn select_episode_set_hits(
             }
             // #303 — One reading per number where the series has one
             // (a split part's `- 07` is episode 6, never also 7).
-            let reading = numbering.for_tag(numbering::is_season_tag(&release));
+            let reading = numbering.for_tag(numbering::season_tag(&release));
             let mut episodes: Vec<i32> = wanted
                 .iter()
                 .copied()
@@ -2071,7 +2071,7 @@ fn apply_interactive_filter_and_push(
     };
     // Season check: reject results clearly from a different season
     let release = release_title::parse(&result.title);
-    if release.conflicts_with_season(ctx.expected_season) {
+    if !ctx.numbering.season_allowed(&release, ctx.expected_season) {
         return;
     }
     // Episode check for single-episode targets (allow batches through).
@@ -2090,7 +2090,7 @@ fn apply_interactive_filter_and_push(
             return;
         }
         let parsed = release.for_series(ctx.gate.anchors()).episodes;
-        let reading = ctx.numbering.for_tag(numbering::is_season_tag(&release));
+        let reading = ctx.numbering.for_tag(numbering::season_tag(&release));
         if !parsed.is_empty() && !episode_match(&parsed, *target_ep, reading) {
             return;
         }
@@ -3133,6 +3133,7 @@ mod tests {
             alternate_titles: String::new(),
             cumulative_prior_episodes: 0,
             cumulative_offset_source: String::new(),
+            cumulative_offset_season: None,
             episode_numbering: String::new(),
             monitor_mode_manual_override: false,
             user_score: None,

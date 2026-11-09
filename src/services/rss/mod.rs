@@ -2258,10 +2258,18 @@ fn match_against(
     let canonical_abs_eps = canonical_absolute_numbers(meta, &siblings, &resolved_eps);
     let family_key = canonical_family_key(&siblings);
 
+    // #303 — A split part's own season is also the TVDB season its
+    // offset counts in (`S06E07` for Steel Ball Run 2nd - 3rd STAGE).
+    let numbering = meta.series.numbering();
+    let own_season = |season: i32| {
+        meta.season_num == Some(season)
+            || (numbering.reading == numbering::Reading::Absolute
+                && numbering.tag_season == Some(season))
+    };
     let mut score = alias_score;
     if let Some(item_season) = parsed.season_hint {
         match meta.season_num {
-            Some(season) if season == item_season => score += 0.55,
+            _ if own_season(item_season) => score += 0.55,
             Some(_) => score -= 0.45,
             // A series named by no season is its first: an item naming
             // season 2+ is another entry's, episodes or not (a pack with
@@ -2294,7 +2302,7 @@ fn match_against(
     // decide.
     let tie = (
         alias_score >= 1.0,
-        parsed.season_hint.is_some() && parsed.season_hint == meta.season_num,
+        parsed.season_hint.is_some_and(own_season),
         !resolved_eps.is_empty(),
         std::cmp::Reverse(meta.series.id),
     );
@@ -2418,7 +2426,15 @@ fn canonical_absolute_numbers(
     if resolved_eps.is_empty() {
         return HashSet::new();
     }
-    let offset = family_offset_for(meta, family);
+    // #303 — A split part names no season, so the family adds nothing;
+    // its own offset keeps its episode 1 apart from the earlier part's
+    // (Steel Ball Run 2nd - 3rd STAGE's `- 02` and 1st STAGE's `- 01`
+    // are two items, not one).
+    let split = match numbering::OffsetSource::from_str(&meta.series.cumulative_offset_source) {
+        numbering::OffsetSource::Split => meta.series.cumulative_prior_episodes.max(0),
+        _ => 0,
+    };
+    let offset = family_offset_for(meta, family) + split;
     resolved_eps.iter().map(|ep| ep + offset).collect()
 }
 
@@ -2636,8 +2652,17 @@ fn resolve_episode_numbers(
     meta: &SeriesMeta,
     family: &[SeriesMeta],
 ) -> (HashSet<i32>, &'static str) {
+    // #303 — Under a single absolute reading (a split part) every number
+    // counts on from the earlier parts, the TVDB season the split counts
+    // in included (`S06E07`); only a tag of another season counts within
+    // it.
+    let numbering = meta.series.numbering();
+    let absolute = numbering.reading == numbering::Reading::Absolute
+        && meta.series.cumulative_prior_episodes > 0;
+    let tag = numbering::season_tag(&parsed.title);
     if let Some(item_season) = parsed.season_hint {
         match meta.season_num {
+            _ if absolute && numbering.tag_season == Some(item_season) => {}
             Some(season) if season != item_season => {
                 return (HashSet::new(), "season_hint_miss");
             }
@@ -2656,21 +2681,26 @@ fn resolve_episode_numbers(
             .map(|total| eps.iter().all(|n| (1..=total).contains(n)))
             .unwrap_or(true)
     };
-    if parsed.season_bound {
-        return (reading.clone(), "explicit_season");
-    }
-    if parsed.season_hint.is_some() {
-        return if fits(reading) {
-            (reading.clone(), "season_hint_relative")
-        } else {
-            (HashSet::new(), "season_hint_abs_miss")
-        };
+    if absolute {
+        if tag.is_some() && tag != numbering.tag_season {
+            return (reading.clone(), "explicit_season");
+        }
+    } else {
+        if parsed.season_bound {
+            return (reading.clone(), "explicit_season");
+        }
+        if parsed.season_hint.is_some() {
+            return if fits(reading) {
+                (reading.clone(), "season_hint_relative")
+            } else {
+                (HashSet::new(), "season_hint_abs_miss")
+            };
+        }
     }
     // #303 — The series' own offset reads the way its numbering says:
     // AniList numbering never maps, and a split part (absolute only)
     // takes no bare number at or below its offset, the way a season-
     // named sequel never has.
-    let numbering = meta.series.numbering();
     let (offset, absolute_only) = if meta.series.cumulative_prior_episodes > 0 {
         match numbering.reading {
             numbering::Reading::Relative => (0, false),

@@ -30,6 +30,7 @@ fn series(id: i64, anilist_id: i64, title: &str, episodes: i32, year: i32) -> se
         alternate_titles: String::new(),
         cumulative_prior_episodes: 0,
         cumulative_offset_source: String::new(),
+        cumulative_offset_season: None,
         episode_numbering: String::new(),
         monitor_mode_manual_override: false,
         user_score: None,

@@ -396,7 +396,7 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
             // #303 — The number the series' numbering reads as the
             // target; a split part's `- 06` is its episode 5 and gets
             // no match here. The detail says which number it was.
-            let reading = numbering.for_tag(crate::services::numbering::is_season_tag(&release));
+            let reading = numbering.for_tag(crate::services::numbering::season_tag(&release));
             if reading.accepts(&parsed, *ep) {
                 let detail = match reading.reading {
                     crate::services::numbering::Reading::Absolute => {

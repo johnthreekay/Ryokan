@@ -106,6 +106,13 @@ pub enum Reading {
 pub struct Numbering {
     pub offset: i32,
     pub reading: Reading,
+    /// The TVDB season a split offset was confirmed in
+    /// (`series.cumulative_offset_season`): under [`Reading::Absolute`] a
+    /// tag naming it (`S06E07` for Steel Ball Run 2nd - 3rd STAGE, TVDB
+    /// season 6 with 1st STAGE as `S06E01`) counts on from the earlier
+    /// parts the way a bare number does. Every other tag counts within
+    /// its own season.
+    pub tag_season: Option<i32>,
 }
 
 impl Default for Numbering {
@@ -128,37 +135,36 @@ impl From<i32> for Numbering {
 pub fn setting_hint(offset: i32, source: OffsetSource, setting: NumberingSetting) -> String {
     let offset = offset.max(0);
     let first_absolute = offset.saturating_add(1);
+    if offset == 0 {
+        return "No earlier episodes are known for this series, so releases are read from episode 1 whichever numbering is picked."
+            .to_string();
+    }
     match setting {
-        NumberingSetting::Absolute | NumberingSetting::AniList if offset == 0 => {
-            "No earlier episodes are known for this series, so every choice reads releases from episode 1."
-                .to_string()
-        }
         NumberingSetting::Absolute => format!(
             "Releases count on from the earlier entries: episode 1 is numbered {first_absolute}, and a number up to {offset} belongs to an earlier entry."
         ),
         NumberingSetting::AniList => {
             "Releases number this series from 1, the way AniList does.".to_string()
         }
-        NumberingSetting::Automatic if offset == 0 => {
-            "Automatic: releases number this series from 1.".to_string()
-        }
         NumberingSetting::Automatic if source == OffsetSource::Split => format!(
-            "Automatic: this series continues an entry it shares with earlier parts on MyAnimeList and TVDB, so episode 1 is numbered {first_absolute}."
+            "Automatic: this series continues an entry it shares with earlier parts on MyAnimeList and TVDB, so episode 1 is numbered {first_absolute}. Pick AniList if its release groups number it from 1."
         ),
         NumberingSetting::Automatic => format!(
-            "Automatic: a release may number episode 1 as 1 or as {first_absolute}, counting the earlier seasons."
+            "Automatic: a release may number episode 1 as 1 or as {first_absolute}, counting the earlier seasons. Pick one when the release groups for this series agree on it."
         ),
     }
 }
 
-/// True when the title's episode claim is a real season tag (`S01E07`,
-/// `1x07`), the claim [`Numbering::for_tag`] keeps relative. A season
-/// marker before a bare number (`S2 - 05`) is not one: the import has
-/// always read those as bare numbers.
-pub fn is_season_tag(parsed: &crate::services::release_title::ParsedTitle) -> bool {
-    parsed.episodes.as_ref().is_some_and(|claim| {
-        claim.rule == crate::services::release_title::ClaimRule::Tag && claim.season.is_some()
-    })
+/// The season of the title's episode claim when it is a real season tag
+/// (`S01E07`, `1x07`), the claim [`Numbering::for_tag`] reads within its
+/// season. A season marker before a bare number (`S2 - 05`) is not one:
+/// the import has always read those as bare numbers.
+pub fn season_tag(parsed: &crate::services::release_title::ParsedTitle) -> Option<i32> {
+    parsed
+        .episodes
+        .as_ref()
+        .filter(|claim| claim.rule == crate::services::release_title::ClaimRule::Tag)
+        .and_then(|claim| claim.season)
 }
 
 impl Numbering {
@@ -167,6 +173,7 @@ impl Numbering {
         Numbering {
             offset: 0,
             reading: Reading::Relative,
+            tag_season: None,
         }
     }
 
@@ -190,7 +197,20 @@ impl Numbering {
             NumberingSetting::Automatic if source == OffsetSource::Split => Reading::Absolute,
             NumberingSetting::Automatic => Reading::Either,
         };
-        Numbering { offset, reading }
+        Numbering {
+            offset,
+            reading,
+            tag_season: None,
+        }
+    }
+
+    /// The same rule with tags of TVDB season `season` read in the
+    /// numbering the offset counts in (see [`Numbering::tag_season`]).
+    pub fn with_tag_season(self, season: Option<i32>) -> Self {
+        Numbering {
+            tag_season: season.filter(|s| *s > 0),
+            ..self
+        }
     }
 
     /// The offset absolute numbers carry, 0 when none are read (no
@@ -202,28 +222,68 @@ impl Numbering {
         }
     }
 
-    /// The reading for a number from a real season tag (`S01E07`): a tag
-    /// counts within its season, so under [`Reading::Absolute`] it stays
-    /// relative, as the import and the grab commit have always read tags.
-    pub fn for_tag(self, tagged: bool) -> Self {
-        if tagged && self.reading == Reading::Absolute {
-            Numbering {
-                reading: Reading::Relative,
-                ..self
+    /// The reading for the numbers of a release whose claim is a real
+    /// season tag of season `tag_season` (`S01E07`), `None` for every
+    /// other claim. A tag counts within its season, so under
+    /// [`Reading::Absolute`] it reads relative, as the import and the grab
+    /// commit have always read tags; the one exception is the TVDB season
+    /// the split was confirmed in ([`Numbering::tag_season`]).
+    pub fn for_tag(self, tag_season: Option<i32>) -> Self {
+        match tag_season {
+            Some(season)
+                if self.reading == Reading::Absolute && self.tag_season != Some(season) =>
+            {
+                Numbering {
+                    reading: Reading::Relative,
+                    ..self
+                }
             }
-        } else {
-            self
+            _ => self,
         }
     }
 
     /// True when the release numbers `parsed` hold episode `episode`.
+    /// Under [`Reading::Absolute`] every number has to be past the
+    /// offset: a run reaching back into an earlier part (`- 01-02` for
+    /// Steel Ball Run 2nd - 3rd STAGE) is no release of this one, which is
+    /// how the import and RSS read it too.
     pub fn accepts(&self, parsed: &HashSet<i32>, episode: i32) -> bool {
         let relative = || parsed.contains(&episode);
         let absolute = || self.offset > 0 && parsed.contains(&episode.saturating_add(self.offset));
         match self.reading {
             Reading::Relative => relative(),
-            Reading::Absolute => absolute(),
+            Reading::Absolute => absolute() && parsed.iter().all(|n| *n > self.offset),
             Reading::Either => relative() || absolute(),
+        }
+    }
+
+    /// True when a release whose seasons `parsed` reads may be this
+    /// series under the season gate: its own `expected` season, or the
+    /// TVDB season its split counts in (`S06E07` for Steel Ball Run 2nd -
+    /// 3rd STAGE, whose own name names no season).
+    pub fn season_allowed(
+        &self,
+        parsed: &crate::services::release_title::ParsedTitle,
+        expected: i32,
+    ) -> bool {
+        !parsed.conflicts_with_season(expected)
+            || (self.reading == Reading::Absolute
+                && self
+                    .tag_season
+                    .is_some_and(|season| !parsed.conflicts_with_season(season)))
+    }
+
+    /// The offset a file name's span (`season` set only for a real tag)
+    /// starting at `first` is read with: a tag counts within its season
+    /// (offset 0) unless it names [`Numbering::tag_season`] under
+    /// [`Reading::Absolute`]; a bare number per [`Numbering::run_offset`].
+    pub fn file_offset(&self, season: Option<i32>, first: i32) -> i32 {
+        match season {
+            Some(s) if self.reading == Reading::Absolute && self.tag_season == Some(s) => {
+                self.offset
+            }
+            Some(_) => 0,
+            None => self.run_offset(first),
         }
     }
 
@@ -342,16 +402,54 @@ mod tests {
     }
 
     #[test]
-    fn a_tag_stays_relative_under_absolute() {
-        let n = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic);
-        assert_eq!(n.for_tag(true).reading, Reading::Relative);
-        assert_eq!(n.for_tag(false), n);
-        let either = Numbering::either(47);
+    fn a_tag_stays_relative_under_absolute_unless_it_names_the_split_season() {
+        let n = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+            .with_tag_season(Some(6));
+        assert_eq!(n.for_tag(Some(1)).reading, Reading::Relative);
+        assert_eq!(n.for_tag(Some(6)), n, "S06E07 counts on from 1st STAGE");
+        assert_eq!(n.for_tag(None), n);
+        assert!(n.for_tag(Some(6)).accepts(&set(&[7]), 6));
+        assert_eq!(n.file_offset(Some(6), 7), 1);
+        assert_eq!(n.file_offset(Some(1), 7), 0);
+        assert_eq!(n.file_offset(None, 7), 1);
+        let either = Numbering::either(47).with_tag_season(Some(3));
         assert_eq!(
-            either.for_tag(true),
+            either.for_tag(Some(3)),
             either,
             "today's tag reading is unchanged"
         );
+        assert_eq!(either.file_offset(Some(3), 52), 0);
+        assert_eq!(either.file_offset(None, 52), 47);
+    }
+
+    #[test]
+    fn an_absolute_run_never_reaches_into_the_earlier_part() {
+        let n = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic);
+        assert!(
+            !n.accepts(&set(&[1, 2]), 1),
+            "- 01-02 holds 1st STAGE's episode"
+        );
+        assert!(n.accepts(&set(&[2, 3]), 1));
+        // Either never had the rule.
+        assert!(Numbering::either(1).accepts(&set(&[1, 2]), 1));
+    }
+
+    #[test]
+    fn the_hint_never_offers_a_choice_that_changes_nothing() {
+        let zero = setting_hint(0, OffsetSource::Walk, NumberingSetting::Absolute);
+        assert!(zero.contains("whichever numbering is picked"), "{zero}");
+        assert!(!zero.contains("Pick"), "{zero}");
+        let split = setting_hint(1, OffsetSource::Split, NumberingSetting::Automatic);
+        assert!(split.contains("episode 1 is numbered 2"), "{split}");
+        for hint in [
+            zero,
+            split,
+            setting_hint(47, OffsetSource::Walk, NumberingSetting::Automatic),
+            setting_hint(47, OffsetSource::Walk, NumberingSetting::AniList),
+            setting_hint(47, OffsetSource::Walk, NumberingSetting::Absolute),
+        ] {
+            assert!(!hint.contains('\u{2014}'), "no em dash: {hint}");
+        }
     }
 
     #[test]

@@ -236,7 +236,10 @@ struct SeriesTemplate {
     /// #303 — The stored episode numbering choice (empty for automatic,
     /// `anilist`, `absolute`) and the line explaining what it reads.
     episode_numbering: String,
-    episode_numbering_hint: String,
+    /// Read by `partials/series/numbering_hint.html` (`hint`; `oob` is
+    /// false on the page itself).
+    hint: String,
+    oob: bool,
     /// #23 — Global defaults, surfaced as placeholder hints so the user
     /// can see what the per-series field will inherit when left blank.
     default_custom_query_tokens: String,

@@ -3070,6 +3070,9 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         // `anilist`, `absolute`). See `services::numbering`.
         "ALTER TABLE series ADD COLUMN cumulative_offset_source TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE series ADD COLUMN episode_numbering TEXT NOT NULL DEFAULT ''",
+        // #303: the TVDB season a split offset was confirmed in; its tags
+        // (`S06E07`) count on from the earlier parts.
+        "ALTER TABLE series ADD COLUMN cumulative_offset_season INTEGER",
     ] {
         sqlx::query(sql).execute(db).await.ok();
     }
