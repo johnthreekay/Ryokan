@@ -3520,6 +3520,62 @@ async fn run_once_reads_a_lone_unnumbered_file_of_a_split_part_by_a_raw_list() {
 }
 
 #[tokio::test]
+async fn run_once_never_claims_a_stray_for_a_title_that_names_no_episode() {
+    // An unnumbered release grabbed for episode 2 after the split was
+    // stored (`[2]`) holds `- 03`; a stray `- 02` (episode 1) sits beside
+    // it. The title cannot say which numbering the list is in, and with
+    // two videos only the series' reading counts: E02 lands, E01 stays.
+    let (state, names, e01) = import_numbered_file(
+        SequelShape {
+            title: Some("[Group] Steel Ball Run [1080p]"),
+            video: Some("[Group] Steel Ball Run - 03 (1080p).mkv"),
+            stray: Some("[Group] Steel Ball Run - 02 (1080p).mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        3,
+        &[2],
+        true,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E02")),
+        "filed as E02: {names:?}"
+    );
+    assert_eq!(
+        e01.as_deref(),
+        Some(&b"the real e01"[..]),
+        "the stray never replaced E01"
+    );
+}
+
+#[tokio::test]
+async fn run_once_reads_an_unnumbered_titles_list_in_the_series_numbering() {
+    // The same grab recorded after the split (`[6]`) with only its own
+    // `- 07`: the file is episode 6, the list's own number.
+    let (state, names, _) = import_numbered_file(
+        SequelShape {
+            title: Some("[Group] Steel Ball Run [1080p]"),
+            video: Some("[Group] Steel Ball Run - 07 (1080p).mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        7,
+        &[6],
+        false,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E06")),
+        "filed as E06: {names:?}"
+    );
+}
+
+#[tokio::test]
 async fn run_once_reads_a_lone_unnumbered_file_by_the_claim_rule_under_either() {
     // A TV sequel (offset 47) whose one video names no episode takes
     // its span from the grab list; a list holding the title's absolute

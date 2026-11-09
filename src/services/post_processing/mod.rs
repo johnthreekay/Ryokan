@@ -2012,14 +2012,18 @@ async fn import_torrent(
         // and only that one counts: with both, a grab for `[6]` (`- 07`)
         // also claimed a stray `- 06` beside it (episode 5) and replaced
         // the library's E05 with it. A title naming no episode cannot
-        // say, and both count, as before.
+        // say: both count while the download holds this one video (a
+        // click on episode 7 before the split was stored, `[7]`, still
+        // owns its `- 07`), and only the series' reading once it holds
+        // more, where a raw number could claim a neighbor.
         let (raw_counts, resolved_counts) = {
             use crate::services::grab_commit::ListNumbering;
             let absolute_only =
                 ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute;
             match grab_list_numbering(&ctx.series) {
-                ListNumbering::Series if absolute_only => (false, true),
                 ListNumbering::TitlesOwn => (true, false),
+                ListNumbering::Undecided if video_files.len() == 1 => (true, true),
+                ListNumbering::Series | ListNumbering::Undecided if absolute_only => (false, true),
                 ListNumbering::Series | ListNumbering::Undecided => (true, true),
             }
         };
