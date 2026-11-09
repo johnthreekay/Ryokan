@@ -725,6 +725,25 @@ pub async fn series_detail(
         .as_ref()
         .map(|s| s.alternate_titles.clone())
         .unwrap_or_default();
+    let episode_numbering = db_series
+        .as_ref()
+        .map(|s| {
+            crate::services::numbering::NumberingSetting::from_str(&s.episode_numbering)
+                .as_str()
+                .to_string()
+        })
+        .unwrap_or_default();
+    let episode_numbering_hint = db_series
+        .as_ref()
+        .map(|s| {
+            use crate::services::numbering::{self, NumberingSetting, OffsetSource};
+            numbering::setting_hint(
+                s.cumulative_prior_episodes,
+                OffsetSource::from_str(&s.cumulative_offset_source),
+                NumberingSetting::from_str(&s.episode_numbering),
+            )
+        })
+        .unwrap_or_default();
     let default_custom_query_tokens = cfg
         .as_ref()
         .map(|c| c.default_custom_query_tokens.clone())
@@ -779,6 +798,8 @@ pub async fn series_detail(
         custom_query_tokens,
         restrict_to_uploader,
         alternate_titles,
+        episode_numbering,
+        episode_numbering_hint,
         default_custom_query_tokens,
         default_restrict_to_uploader,
         post_processing_enabled,

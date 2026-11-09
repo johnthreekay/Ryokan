@@ -1641,9 +1641,16 @@ async fn main() {
     .await;
 
     // Pre-load anibridge mappings so the first Seerr request doesn't block on download.
-    tokio::spawn(async {
-        services::anibridge::ensure_loaded().await;
-    });
+    // #303 — Once they are in, store the split offset of any library
+    // series that continues its MAL entry (a cache-only pass).
+    {
+        let db = db.clone();
+        tokio::spawn(async move {
+            if services::anibridge::ensure_loaded().await {
+                services::metadata_sync::apply_split_offsets(&db).await;
+            }
+        });
+    }
 
     // Log startup to the database.
     services::logger::info(

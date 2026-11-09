@@ -36,6 +36,7 @@ use crate::services::auto_expand::{self, AutoExpandGrabContext};
 use crate::services::auto_search;
 use crate::services::logger;
 use crate::services::notifications;
+use crate::services::numbering::{self, Numbering, Reading};
 use crate::services::release_title::{self, SeriesAnchors};
 use crate::services::source::ClassificationResult;
 use crate::services::{media, post_processing};
@@ -273,7 +274,7 @@ pub(crate) fn episode_numbers_for_commit(
     filenames: &[String],
     series: &GrabSeries,
 ) -> Vec<i32> {
-    let cumulative_prior_episodes = series.cumulative_prior_episodes;
+    let numbering = series.numbering;
     let mut any_parsed = false;
     let mut eps: Vec<i32> = Vec::new();
     for name in filenames
@@ -292,7 +293,7 @@ pub(crate) fn episode_numbers_for_commit(
         if span.special {
             continue;
         }
-        eps.extend(file_slot_episodes(span, cumulative_prior_episodes));
+        eps.extend(file_slot_episodes(span, numbering));
     }
     if eps.is_empty() && !any_parsed {
         eps = relative_title_episodes(release_title, series, None);
@@ -304,11 +305,12 @@ pub(crate) fn episode_numbers_for_commit(
 
 /// The series a grab records its episode list for: its names (so a bare
 /// number right after one is read, a number inside one never is), its
-/// format, its absolute-numbering offset and its episode count.
+/// format, its numbering (#303: the absolute offset and which reading
+/// counts) and its episode count.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct GrabSeries {
     anchors: SeriesAnchors,
-    cumulative_prior_episodes: i32,
+    numbering: Numbering,
     episode_count: Option<i32>,
 }
 
@@ -330,7 +332,7 @@ impl GrabSeries {
     pub(crate) fn from_row(row: &Series) -> Self {
         Self {
             anchors: series_anchors(row),
-            cumulative_prior_episodes: row.cumulative_prior_episodes,
+            numbering: row.numbering(),
             episode_count: row.episodes,
         }
     }
@@ -395,6 +397,11 @@ pub(crate) fn relative_title_episodes(
 /// read with no claim, so for a pack only the tag counts. Otherwise a run
 /// past `cumulative_prior_episodes` is absolute, judged on its first
 /// number (`fallback_ep_offset`), unless `searched` shows the numbering.
+///
+/// That is `Reading::Either`. A series with one reading (#303) reads
+/// every bare run that way, tags aside: a split part's `- 07` is its
+/// episode 6 whatever was searched, and `01-12` is `1-11` with 1st
+/// STAGE's `01` dropped.
 fn relative_episodes(
     parsed: &release_title::ParsedTitle,
     series: &GrabSeries,
@@ -410,18 +417,22 @@ fn relative_episodes(
     let (Some(&first), Some(&last)) = (raw.first(), raw.last()) else {
         return raw;
     };
-    let cumulative = series.cumulative_prior_episodes;
+    let cumulative = series.numbering.offset;
     let claim = parsed.episodes.as_ref();
-    let tagged =
-        claim.is_some_and(|c| c.rule == release_title::ClaimRule::Tag && c.season.is_some());
+    let tagged = numbering::is_season_tag(parsed);
     let bound_and_fits = !pack
         && claim.is_some_and(|c| c.season.is_some())
         && series.episode_count.is_some_and(|n| last <= n);
-    let offset = match searched {
-        _ if tagged || bound_and_fits => 0,
-        Some(ep) if raw.contains(&ep) => 0,
-        Some(ep) if cumulative > 0 && raw.contains(&(ep + cumulative)) => cumulative,
-        _ => post_processing::fallback_ep_offset(first, cumulative),
+    let offset = match series.numbering.reading {
+        _ if tagged => 0,
+        Reading::Relative => 0,
+        Reading::Absolute => cumulative,
+        Reading::Either => match searched {
+            _ if bound_and_fits => 0,
+            Some(ep) if raw.contains(&ep) => 0,
+            Some(ep) if cumulative > 0 && raw.contains(&(ep + cumulative)) => cumulative,
+            _ => post_processing::fallback_ep_offset(first, cumulative),
+        },
     };
     raw.into_iter()
         .map(|n| n - offset)
@@ -483,15 +494,17 @@ pub(crate) fn grab_episode_list(
 
 /// The library slots a file's parsed span lands in: the import's own
 /// rule (`resolve_episode`), a `SxxExx` name is already relative and a
-/// bare number past `cumulative_prior_episodes` is absolute.
+/// bare number is read the way the series' numbering says (#303; a
+/// bare offset reads as #30's rule: past `cumulative_prior_episodes` is
+/// absolute).
 pub(crate) fn file_slot_episodes(
     span: crate::services::media::EpisodeSpan,
-    cumulative_prior_episodes: i32,
+    numbering: impl Into<Numbering>,
 ) -> impl Iterator<Item = i32> {
     let offset = if span.season.is_some() {
         0
     } else {
-        crate::services::post_processing::fallback_ep_offset(span.first, cumulative_prior_episodes)
+        numbering.into().run_offset(span.first)
     };
     (span.first - offset..=span.last - offset).filter(|e| *e > 0)
 }
@@ -610,7 +623,7 @@ mod tests {
     /// A series known only by its absolute-numbering offset.
     fn offset(cumulative_prior_episodes: i32) -> GrabSeries {
         GrabSeries {
-            cumulative_prior_episodes,
+            numbering: Numbering::either(cumulative_prior_episodes),
             ..GrabSeries::default()
         }
     }
@@ -914,9 +927,99 @@ mod tests {
     ) -> GrabSeries {
         GrabSeries {
             anchors: SeriesAnchors::new(&[name]),
-            cumulative_prior_episodes,
+            numbering: Numbering::either(cumulative_prior_episodes),
             episode_count,
         }
+    }
+
+    /// #303: Steel Ball Run 2nd - 3rd STAGE, offset 1 from its split,
+    /// reads every bare number absolute only.
+    fn split_part() -> GrabSeries {
+        GrabSeries {
+            anchors: SeriesAnchors::new(&["Steel Ball Run"]),
+            numbering: Numbering::resolve(
+                1,
+                numbering::OffsetSource::Split,
+                numbering::NumberingSetting::Automatic,
+            ),
+            episode_count: Some(11),
+        }
+    }
+
+    #[test]
+    fn a_split_part_records_the_absolute_reading_only() {
+        let sbr = split_part();
+        let title =
+            |n: &str| format!("[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - {n} [1080p]");
+        // Searched for episode 6, `- 07` is episode 6.
+        assert_eq!(
+            grab_episode_list(&title("07"), &sbr, GrabFor::Episode(6), false),
+            vec![6]
+        );
+        // Linked after the fact (Search page, RSS), the same.
+        assert_eq!(
+            grab_episode_list(&title("07"), &sbr, GrabFor::Whole, false),
+            vec![6]
+        );
+        // A pack is 1-11; 1st STAGE's `01` is no episode of this series.
+        assert_eq!(
+            grab_episode_list(&title("01-12"), &sbr, GrabFor::Whole, true),
+            (1..=11).collect::<Vec<_>>()
+        );
+        // A season tag stays the tag's own number.
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Steel Ball Run S01E06 [1080p]",
+                &sbr,
+                GrabFor::Whole,
+                false
+            ),
+            vec![6]
+        );
+        // The picker's file reading agrees with the import's.
+        let span = |n: i32| crate::services::media::EpisodeSpan::single(None, n);
+        assert_eq!(
+            file_slot_episodes(span(7), sbr.numbering).collect::<Vec<_>>(),
+            vec![6]
+        );
+        assert!(file_slot_episodes(span(1), sbr.numbering).next().is_none());
+        assert_eq!(
+            file_slot_episodes(
+                crate::services::media::EpisodeSpan::single(Some(1), 6),
+                sbr.numbering
+            )
+            .collect::<Vec<_>>(),
+            vec![6]
+        );
+    }
+
+    #[test]
+    fn anilist_numbering_never_subtracts_the_offset() {
+        let jjk = GrabSeries {
+            anchors: SeriesAnchors::new(&["Jujutsu Kaisen"]),
+            numbering: Numbering::resolve(
+                47,
+                numbering::OffsetSource::Walk,
+                numbering::NumberingSetting::AniList,
+            ),
+            episode_count: Some(12),
+        };
+        assert_eq!(
+            grab_episode_list(
+                "[SubsPlease] Jujutsu Kaisen - 05 (1080p)",
+                &jjk,
+                GrabFor::Whole,
+                false
+            ),
+            vec![5]
+        );
+        assert!(
+            file_slot_episodes(
+                crate::services::media::EpisodeSpan::single(None, 52),
+                jjk.numbering
+            )
+            .eq([52])
+        );
     }
 
     #[test]
@@ -1098,7 +1201,7 @@ mod tests {
         // An OVA entry's own pack is its episodes.
         let ova = GrabSeries {
             anchors: SeriesAnchors::new(&["Hellsing Ultimate"]).with_specials_as_episodes(true),
-            cumulative_prior_episodes: 0,
+            numbering: Numbering::relative(),
             episode_count: Some(10),
         };
         assert_eq!(

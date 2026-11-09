@@ -957,7 +957,11 @@ pub async fn set_search_overrides(
     HxRequest(is_htmx): HxRequest,
     Form(form): Form<SetSearchOverridesForm>,
 ) -> Result<Response, (StatusCode, String)> {
-    let result = series::update_search_overrides(
+    let numbering = form
+        .episode_numbering
+        .as_deref()
+        .map(crate::services::numbering::NumberingSetting::from_str);
+    let mut result = series::update_search_overrides(
         &state.db,
         form.series_id,
         &form.custom_query_tokens,
@@ -965,6 +969,26 @@ pub async fn set_search_overrides(
         &form.alternate_titles,
     )
     .await;
+    if let (Ok(()), Some(setting)) = (&result, numbering) {
+        result = series::update_episode_numbering(&state.db, form.series_id, setting).await;
+    }
+    // The next interactive search reads the new aliases and numbering,
+    // not five minutes of the old list.
+    if result.is_ok() {
+        let anilist_id = series::get_by_id(&state.db, form.series_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| s.anilist_id);
+        crate::services::interactive_search_cache::forget_series(
+            &state.interactive_search_cache,
+            &[Some(form.series_id), anilist_id]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
+    }
+    let numbering_log = numbering.map(|n| n.as_str()).unwrap_or("unchanged");
 
     // HTMX inline-result swap — per templates/CLAUDE.md, always-200
     // so the partial replaces the status-pill slot regardless of
@@ -985,9 +1009,10 @@ pub async fn set_search_overrides(
             LogCategory::Library,
             &format!("Search overrides updated for series {}", form.series_id),
             &format!(
-                "tokens={:?} restrict_to={:?}",
+                "tokens={:?} restrict_to={:?} episode_numbering={:?}",
                 form.custom_query_tokens.trim(),
                 form.restrict_to_uploader.trim(),
+                numbering_log,
             ),
         )
         .await;
@@ -1006,9 +1031,10 @@ pub async fn set_search_overrides(
         LogCategory::Library,
         &format!("Search overrides updated for series {}", form.series_id),
         &format!(
-            "tokens={:?} restrict_to={:?}",
+            "tokens={:?} restrict_to={:?} episode_numbering={:?}",
             form.custom_query_tokens.trim(),
             form.restrict_to_uploader.trim(),
+            numbering_log,
         ),
     )
     .await;
@@ -1018,6 +1044,7 @@ pub async fn set_search_overrides(
         "custom_query_tokens": form.custom_query_tokens.trim(),
         "alternate_titles": series::normalize_alternate_titles(&form.alternate_titles),
         "restrict_to_uploader": form.restrict_to_uploader.trim(),
+        "episode_numbering": numbering_log,
     }))
     .into_response())
 }

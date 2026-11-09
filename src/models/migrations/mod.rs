@@ -3064,6 +3064,12 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         // sweep's move-mode rule never applies to a row imported by
         // hardlink because the mode was switched later.
         "ALTER TABLE grabbed_torrents ADD COLUMN import_mode TEXT",
+        // #303: where `cumulative_prior_episodes` came from (`rule`,
+        // `split`, `walk`; empty until the next refresh writes it) and
+        // the user's episode numbering choice (empty = automatic,
+        // `anilist`, `absolute`). See `services::numbering`.
+        "ALTER TABLE series ADD COLUMN cumulative_offset_source TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE series ADD COLUMN episode_numbering TEXT NOT NULL DEFAULT ''",
     ] {
         sqlx::query(sql).execute(db).await.ok();
     }

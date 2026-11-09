@@ -12,7 +12,7 @@ use crate::{
     models::{config, episode_tags, monitoring, rss, series},
     services::source::{self, ClassificationResult, Resolution, Source},
     services::{
-        auto_search, identify, logger, media, monitoring as monitoring_service, quality,
+        auto_search, identify, logger, media, monitoring as monitoring_service, numbering, quality,
         release_title,
     },
 };
@@ -2666,10 +2666,19 @@ fn resolve_episode_numbers(
             (HashSet::new(), "season_hint_abs_miss")
         };
     }
-    let offset = if meta.series.cumulative_prior_episodes > 0 {
-        meta.series.cumulative_prior_episodes
+    // #303 — The series' own offset reads the way its numbering says:
+    // AniList numbering never maps, and a split part (absolute only)
+    // takes no bare number at or below its offset, the way a season-
+    // named sequel never has.
+    let numbering = meta.series.numbering();
+    let (offset, absolute_only) = if meta.series.cumulative_prior_episodes > 0 {
+        match numbering.reading {
+            numbering::Reading::Relative => (0, false),
+            numbering::Reading::Absolute => (numbering.offset, true),
+            numbering::Reading::Either => (numbering.offset, false),
+        }
     } else {
-        family_offset_for(meta, family)
+        (family_offset_for(meta, family), false)
     };
     if offset > 0 && first > offset {
         let mapped: HashSet<i32> = reading.iter().map(|n| n - offset).collect();
@@ -2679,7 +2688,7 @@ fn resolve_episode_numbers(
             (HashSet::new(), "absolute_miss")
         };
     }
-    if offset > 0 && meta.season_num.is_some_and(|s| s > 1) {
+    if offset > 0 && (absolute_only || meta.season_num.is_some_and(|s| s > 1)) {
         return (HashSet::new(), "absolute_miss");
     }
     if fits(reading) {

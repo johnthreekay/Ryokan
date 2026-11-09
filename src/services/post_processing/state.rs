@@ -12,6 +12,7 @@ use std::path::Path;
 use crate::AppState;
 use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, grabbed_torrents, series};
+use crate::services::numbering::{Numbering, Reading};
 use crate::services::source::{self, SeriesContext};
 use crate::services::{logger, media};
 
@@ -46,12 +47,25 @@ pub fn grab_is_stale(grabbed_at: &str, max_age_secs: i64) -> bool {
 /// count) records the title's own number, so `- 60` after 59 prior
 /// episodes is claimed as `[60]` and would otherwise land as E60 of a
 /// 12-episode sequel. An unknown count keeps the absolute rule (#30).
+///
+/// That is `Reading::Either`. A series with one reading (#303) needs no
+/// claim to settle anything: a split part reads every bare number as
+/// absolute (its `- 01` comes out as episode 0, an earlier part's), and
+/// AniList numbering never subtracts. A grab row written before the
+/// reading existed (`- 06` claimed as `[6]` for a split part) is filed
+/// where the number really belongs.
 pub(crate) fn claimed_ep_offset(
     raw_ep_num: i32,
-    cumulative_prior_episodes: i32,
+    numbering: impl Into<Numbering>,
     claimed: &[i32],
     episode_count: i32,
 ) -> i32 {
+    let numbering = numbering.into();
+    let cumulative_prior_episodes = match numbering.reading {
+        Reading::Relative => return 0,
+        Reading::Absolute => return numbering.offset,
+        Reading::Either => numbering.offset,
+    };
     let absolute = fallback_ep_offset(raw_ep_num, cumulative_prior_episodes);
     if absolute > 0
         && raw_ep_num <= episode_count

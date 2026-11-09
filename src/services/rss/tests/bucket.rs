@@ -33,6 +33,8 @@ fn series_named(title: &str) -> series::Series {
         restrict_to_uploader: String::new(),
         alternate_titles: String::new(),
         cumulative_prior_episodes: 0,
+        cumulative_offset_source: String::new(),
+        episode_numbering: String::new(),
         monitor_mode_manual_override: false,
         user_score: None,
         added_at: String::new(),

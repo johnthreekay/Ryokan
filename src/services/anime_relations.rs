@@ -41,6 +41,7 @@ use std::sync::LazyLock;
 use sqlx::SqlitePool;
 
 use crate::models::{local_metadata, metadata_cache};
+use crate::services::{anibridge, numbering};
 
 /// The vendored rule file. Public so the Credits tab and tests can
 /// read the snapshot's own `last_modified` line.
@@ -315,25 +316,76 @@ pub fn snapshot_date() -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OffsetSource {
     Rule(Offset),
+    /// Entries AniList split out of the series' own MAL entry before it
+    /// (#303), confirmed by the TVDB mapping.
+    Split,
     Walk,
 }
 
-/// The offset to store on `series.cumulative_prior_episodes`: the
-/// curated rule when one exists, else the PREQUEL-chain walk. This is
-/// the single decision point both writers (the metadata refresh and the
-/// grab-time hydration) go through, so they can never disagree.
+impl OffsetSource {
+    /// The form `series.cumulative_offset_source` stores.
+    pub fn stored(&self) -> numbering::OffsetSource {
+        match self {
+            OffsetSource::Rule(_) => numbering::OffsetSource::Rule,
+            OffsetSource::Split => numbering::OffsetSource::Split,
+            OffsetSource::Walk => numbering::OffsetSource::Walk,
+        }
+    }
+}
+
+/// The offset to store on `series.cumulative_prior_episodes`, and where
+/// it came from. This is the single decision point both writers (the
+/// metadata refresh and the grab-time hydration) go through, so they can
+/// never disagree. In order:
+///
+/// 1. A curated anime-relations rule (#206).
+/// 2. A split (#303): the series shares its MAL id with entries before
+///    it on its PREQUEL chain (`local_metadata::split_prior_episodes`),
+///    and the TVDB mapping places it that many episodes into its season.
+///    Two sources have to agree because the split alone does not say how
+///    groups number the entry: every group numbers Steel Ball Run 2nd -
+///    3rd STAGE from 1st STAGE (MAL 61469 and TVDB S06 both put it at
+///    offset 1), but Throne of Seal 3 shares MAL 52684 with Throne of
+///    Seal 2 and its one measured group counts from the first season
+///    instead, and anibridge has no placement for it.
+/// 3. The TV PREQUEL walk.
+///
+/// `None` when a split is found but the mappings are not loaded yet: the
+/// writer keeps what is stored rather than drop a confirmed split to the
+/// walk's answer for one refresh.
 pub async fn cumulative_prior_episodes(
     db: &SqlitePool,
     anilist_id: i64,
     mal_id: Option<i64>,
-) -> (i32, OffsetSource) {
+) -> Option<(i32, OffsetSource)> {
     if let Some(rule) = offset_for(anilist_id, mal_id) {
-        return (rule.episodes, OffsetSource::Rule(rule));
+        return Some((rule.episodes, OffsetSource::Rule(rule)));
     }
-    (
+    if let Some(split) = confirmed_split(db, anilist_id, mal_id).await? {
+        return Some((split, OffsetSource::Split));
+    }
+    Some((
         local_metadata::compute_cumulative_prior_episodes(db, anilist_id).await,
         OffsetSource::Walk,
-    )
+    ))
+}
+
+/// The split offset of [`cumulative_prior_episodes`]'s second step on its
+/// own: `Some(Some(n))` when the entry continues its MAL entry `n`
+/// episodes in and the TVDB mapping agrees, `Some(None)` when it does
+/// not, `None` when a split was found but the mappings are not loaded.
+pub async fn confirmed_split(
+    db: &SqlitePool,
+    anilist_id: i64,
+    mal_id: Option<i64>,
+) -> Option<Option<i32>> {
+    let Some(split) = local_metadata::split_prior_episodes(db, anilist_id, mal_id).await else {
+        return Some(None);
+    };
+    match anibridge::places_at_offset(anilist_id, split).await? {
+        true => Some(Some(split)),
+        false => Some(None),
+    }
 }
 
 /// Titles of a rule's source entry, read from `provider_metadata_cache`
@@ -629,7 +681,7 @@ mod tests {
         let db = test_pool().await;
         // A cached PREQUEL chain that disagrees with the rule for AoT S2.
         insert_prequel(&db, 20958, 16498, 26).await;
-        let (offset, source) = cumulative_prior_episodes(&db, 20958, None).await;
+        let (offset, source) = cumulative_prior_episodes(&db, 20958, None).await.unwrap();
         assert_eq!(offset, 25);
         assert!(matches!(source, OffsetSource::Rule(o) if o.episodes == 25));
 
@@ -638,11 +690,119 @@ mod tests {
         insert_prequel(&db, 2, 1, 24).await;
         assert_eq!(
             cumulative_prior_episodes(&db, 3, None).await,
-            (47, OffsetSource::Walk)
+            Some((47, OffsetSource::Walk))
         );
         assert_eq!(
             cumulative_prior_episodes(&db, 1, None).await,
-            (0, OffsetSource::Walk)
+            Some((0, OffsetSource::Walk))
+        );
+    }
+
+    async fn insert_split_prequel(
+        db: &SqlitePool,
+        provider_id: i64,
+        related_id: i64,
+        related_mal: i64,
+        format: &str,
+        episodes: Option<i32>,
+    ) {
+        sqlx::query(
+            "INSERT INTO provider_relations_cache \
+             (provider_id, related_provider_id, related_mal_id, episodes, format, relation_type, media_type) \
+             VALUES (?, ?, ?, ?, ?, 'PREQUEL', 'ANIME')",
+        )
+        .bind(provider_id)
+        .bind(related_id)
+        .bind(related_mal)
+        .bind(episodes)
+        .bind(format)
+        .execute(db)
+        .await
+        .expect("insert split prequel");
+    }
+
+    /// #303: Steel Ball Run 2nd - 3rd STAGE (210482) shares MAL 61469 with
+    /// its ONA prequel 1st STAGE (190327, one episode), and anibridge puts
+    /// it at TVDB S06 offset 1. The TV walk sees nothing; the split is 1.
+    #[tokio::test]
+    async fn a_split_confirmed_by_tvdb_takes_the_split_offset() {
+        let db = test_pool().await;
+        insert_split_prequel(&db, 210482, 190327, 61469, "ONA", Some(1)).await;
+        insert_split_prequel(&db, 190327, 146722, 51367, "ONA", Some(26)).await;
+        anibridge::seed_tvdb_placements_for_tests(&[
+            (190327, 262954, 6, Some(0)),
+            (210482, 262954, 6, Some(1)),
+        ])
+        .await;
+        assert_eq!(
+            cumulative_prior_episodes(&db, 210482, Some(61469)).await,
+            Some((1, OffsetSource::Split))
+        );
+        // The first part has no prequel inside the split: the walk (0).
+        assert_eq!(
+            cumulative_prior_episodes(&db, 190327, Some(61469)).await,
+            Some((0, OffsetSource::Walk))
+        );
+        // A MAL-fallback row has no AniList relations to walk.
+        assert_eq!(
+            cumulative_prior_episodes(&db, -61469, Some(61469)).await,
+            Some((0, OffsetSource::Walk))
+        );
+    }
+
+    /// Throne of Seal 3 shares MAL 52684 with Throne of Seal 2, but the
+    /// mappings place it nowhere: no split, and today's walk stands.
+    #[tokio::test]
+    async fn a_split_the_tvdb_mapping_does_not_confirm_is_ignored() {
+        let db = test_pool().await;
+        insert_split_prequel(&db, 185729, 153499, 52684, "ONA", Some(130)).await;
+        anibridge::seed_tvdb_placements_for_tests(&[(210482, 262954, 6, Some(1))]).await;
+        assert_eq!(
+            cumulative_prior_episodes(&db, 185729, Some(52684)).await,
+            Some((0, OffsetSource::Walk))
+        );
+        // A placement at another offset is no confirmation either.
+        anibridge::seed_tvdb_placements_for_tests(&[(185729, 1, 3, Some(26))]).await;
+        assert_eq!(
+            cumulative_prior_episodes(&db, 185729, Some(52684)).await,
+            Some((0, OffsetSource::Walk))
+        );
+    }
+
+    /// Mappings not loaded yet: the writer keeps what it stored.
+    #[tokio::test]
+    async fn a_split_without_mappings_is_undecided() {
+        let db = test_pool().await;
+        insert_split_prequel(&db, 210482, 190327, 61469, "ONA", Some(1)).await;
+        anibridge::clear_cache_for_tests().await;
+        assert_eq!(
+            cumulative_prior_episodes(&db, 210482, Some(61469)).await,
+            None
+        );
+    }
+
+    /// A prequel whose count is unknown gives no split: a guessed offset
+    /// would misnumber every release.
+    #[tokio::test]
+    async fn a_split_with_an_unknown_count_is_no_split() {
+        let db = test_pool().await;
+        insert_split_prequel(&db, 210482, 190327, 61469, "ONA", None).await;
+        assert_eq!(
+            local_metadata::split_prior_episodes(&db, 210482, Some(61469)).await,
+            None
+        );
+        // Every part before it counts, whatever its format.
+        let db = test_pool().await;
+        insert_split_prequel(&db, 3, 2, 7, "ONA", Some(1)).await;
+        insert_split_prequel(&db, 2, 1, 7, "SPECIAL", Some(2)).await;
+        insert_split_prequel(&db, 1, 9, 8, "TV", Some(12)).await;
+        assert_eq!(
+            local_metadata::split_prior_episodes(&db, 3, Some(7)).await,
+            Some(3)
+        );
+        assert_eq!(
+            local_metadata::split_prior_episodes(&db, 3, None).await,
+            None
         );
     }
 

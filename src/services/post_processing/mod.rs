@@ -8,6 +8,7 @@ use crate::models::{
     config, episode_tags, grabbed_torrents, local_metadata, metadata_cache, series,
 };
 use crate::services::download_client::DownloadClient;
+use crate::services::numbering::Numbering;
 use crate::services::recycle::{self, RecycleKind};
 use crate::services::source::{self, SeriesContext};
 use crate::services::{logger, media, naming, nfo};
@@ -139,11 +140,13 @@ impl ResolvedEpisode {
 /// `claimed` is the grab's episode list for this series, or `&[]` when
 /// there is none to go by (a pack's preflight, a routed sibling), and
 /// `episode_count` the series' known episode count (0 = unknown); see
-/// [`claimed_ep_offset`].
+/// [`claimed_ep_offset`]. `numbering` is the target series' (#303): a
+/// split part's bare `- 01` resolves to episode 0, an error, so the
+/// file is skipped as an earlier entry's.
 fn resolve_episode(
     span: media::EpisodeSpan,
     route_offset: Option<i32>,
-    cumulative_prior_episodes: i32,
+    numbering: Numbering,
     claimed: &[i32],
     episode_count: i32,
 ) -> Result<ResolvedEpisode, String> {
@@ -151,12 +154,7 @@ fn resolve_episode(
         if span.season.is_some() {
             0
         } else {
-            claimed_ep_offset(
-                span.first,
-                cumulative_prior_episodes,
-                claimed,
-                episode_count,
-            )
+            claimed_ep_offset(span.first, numbering, claimed, episode_count)
         }
     });
     let episode = span.first - episode_offset;
@@ -244,8 +242,8 @@ pub(crate) struct BatchPlan {
 /// TV (`media::is_tv_format`): only for those does a special marker in
 /// a file name mean "special" rather than the series' own numbering.
 #[cfg(test)]
-pub(crate) fn validate_batch_episode_map(
-    files: &[(usize, i64, Option<i32>, i32, String)],
+pub(crate) fn validate_batch_episode_map<N: Into<Numbering> + Copy>(
+    files: &[(usize, i64, Option<i32>, N, String)],
     tv_series: &HashSet<i64>,
 ) -> Result<BatchPlan, String> {
     validate_batch_episode_map_with_anchors(files, tv_series, &HashMap::new())
@@ -254,8 +252,8 @@ pub(crate) fn validate_batch_episode_map(
 /// [`validate_batch_episode_map`] reading each file with its target
 /// series' names (`anchors`), so a number the name holds is never a
 /// file's episode (`Mob Psycho 100 (BD).mkv`).
-pub(crate) fn validate_batch_episode_map_with_anchors(
-    files: &[(usize, i64, Option<i32>, i32, String)],
+pub(crate) fn validate_batch_episode_map_with_anchors<N: Into<Numbering> + Copy>(
+    files: &[(usize, i64, Option<i32>, N, String)],
     tv_series: &HashSet<i64>,
     anchors: &HashMap<i64, crate::services::release_title::SeriesAnchors>,
 ) -> Result<BatchPlan, String> {
@@ -270,7 +268,7 @@ pub(crate) fn validate_batch_episode_map_with_anchors(
     let mut entries: Vec<Entry<'_>> = Vec::new();
     let mut specials: HashSet<usize> = HashSet::new();
 
-    for (file_idx, series_id, route_offset, cumulative_prior_episodes, name) in files {
+    for (file_idx, series_id, route_offset, numbering, name) in files {
         let filename = Path::new(name)
             .file_name()
             .and_then(|n| n.to_str())
@@ -301,8 +299,7 @@ pub(crate) fn validate_batch_episode_map_with_anchors(
         let Some(span) = parsed else {
             continue;
         };
-        let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes, &[], 0)
-        else {
+        let Ok(resolved) = resolve_episode(span, *route_offset, (*numbering).into(), &[], 0) else {
             continue;
         };
         // No version token reads as v1 so `E05` + `E05v2` compare 1 vs 2.
@@ -1538,7 +1535,7 @@ async fn import_torrent(
     // multi-video import through the single-file path would reintroduce the
     // duplicate-destination overwrite that this preflight prevents.
     let batch_episode_plan = if requires_episode_map_preflight(grab.is_batch, video_files.len()) {
-        let mut cumulative_by_series = HashMap::new();
+        let mut numbering_by_series = HashMap::new();
         let mut anchors_by_series = HashMap::new();
         let mut tv_series: HashSet<i64> = HashSet::new();
         let mut batch_files = Vec::with_capacity(video_files.len());
@@ -1547,8 +1544,8 @@ async fn import_torrent(
             let target_series_id = route
                 .map(|(series_id, _)| series_id)
                 .unwrap_or(grab.series_id);
-            let cumulative_prior_episodes =
-                if let Some(value) = cumulative_by_series.get(&target_series_id) {
+            let numbering: Numbering =
+                if let Some(value) = numbering_by_series.get(&target_series_id) {
                     *value
                 } else {
                     let row = series::get_by_id(&state.db, target_series_id)
@@ -1562,15 +1559,15 @@ async fn import_torrent(
                         target_series_id,
                         crate::services::grab_commit::series_anchors(&row),
                     );
-                    let value = row.cumulative_prior_episodes;
-                    cumulative_by_series.insert(target_series_id, value);
+                    let value = row.numbering();
+                    numbering_by_series.insert(target_series_id, value);
                     value
                 };
             batch_files.push((
                 *file_idx,
                 target_series_id,
                 route.map(|(_, offset)| offset),
-                cumulative_prior_episodes,
+                numbering,
                 file.name.clone(),
             ));
         }
@@ -1893,6 +1890,9 @@ async fn import_torrent(
             } else {
                 None
             };
+            // A span taken from the grab's own list is series-relative
+            // already: no offset comes off it a second time.
+            let from_grab_list = parsed.is_none() && fallback.is_some();
             let Some(span) = parsed.or(fallback) else {
                 logger::warn(
                     &state.db,
@@ -1910,10 +1910,15 @@ async fn import_torrent(
             } else {
                 &[]
             };
+            let route_offset = if from_grab_list {
+                Some(0)
+            } else {
+                routes_by_file.get(file_idx).map(|(_, offset)| *offset)
+            };
             match resolve_episode(
                 span,
-                routes_by_file.get(file_idx).map(|(_, offset)| *offset),
-                ctx.series.cumulative_prior_episodes,
+                route_offset,
+                ctx.series.numbering(),
                 claimed,
                 ctx.known_episode_count(),
             ) {
@@ -1947,14 +1952,24 @@ async fn import_torrent(
         // own numbering when it was read off a title, so an
         // absolute-numbered file (`- 56` for episode 9 after 47 prior
         // episodes) matches by either.
-        let claims_this_episode = resolved.raw_episodes().chain(resolved.episodes()).any(|n| {
-            grab_claims_episode(
-                grab.is_batch,
-                routes_by_file.contains_key(file_idx),
-                &grab.episode_numbers,
-                n,
-            )
-        });
+        // The file's own number counts too, for grab rows that recorded
+        // a title's number as it was; under a single absolute reading
+        // (#303) every writer records the resolved episode, and a row
+        // from before that (`- 06` claimed as episode 6 of a split part,
+        // really its episode 5) must not take over the slot it names.
+        let raw_counts =
+            ctx.series.numbering().reading != crate::services::numbering::Reading::Absolute;
+        let claims_this_episode = resolved
+            .episodes()
+            .chain(resolved.raw_episodes().filter(|_| raw_counts))
+            .any(|n| {
+                grab_claims_episode(
+                    grab.is_batch,
+                    routes_by_file.contains_key(file_idx),
+                    &grab.episode_numbers,
+                    n,
+                )
+            });
         if !claims_this_episode {
             logger::debug(
                 &state.db,

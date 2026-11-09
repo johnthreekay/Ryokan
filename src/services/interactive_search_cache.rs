@@ -70,9 +70,41 @@ pub fn insert(cache: &InteractiveSearchCache, key: Key, results: Vec<SearchResul
     guard.insert(key, (Instant::now(), Arc::new(results)));
 }
 
+impl Key {
+    fn request_id(&self) -> i64 {
+        match self {
+            Key::Episode(id, _) | Key::Batch(id) | Key::EpisodeSet(id, _) => *id,
+        }
+    }
+}
+
+/// Drop every entry for a series, under any of the ids a request may
+/// have named it by (its library id, its AniList id). The series page's
+/// search overrides call it on save: alternate titles and the episode
+/// numbering (#303) change what the gate admits, and five minutes of
+/// the old list would read as "the setting did nothing".
+pub fn forget_series(cache: &InteractiveSearchCache, request_ids: &[i64]) {
+    let mut guard = cache.lock().unwrap_or_else(|p| p.into_inner());
+    guard.retain(|key, _| !request_ids.contains(&key.request_id()));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forget_series_drops_every_entry_of_the_series_only() {
+        let cache = new();
+        insert(&cache, Key::Episode(2, 6), Vec::new());
+        insert(&cache, Key::Batch(210482), Vec::new());
+        insert(&cache, Key::EpisodeSet(2, vec![6, 7]), Vec::new());
+        insert(&cache, Key::Episode(1, 1), Vec::new());
+        forget_series(&cache, &[2, 210482]);
+        assert!(get(&cache, Key::Episode(2, 6)).is_none());
+        assert!(get(&cache, Key::Batch(210482)).is_none());
+        assert!(get(&cache, Key::EpisodeSet(2, vec![6, 7])).is_none());
+        assert!(get(&cache, Key::Episode(1, 1)).is_some());
+    }
 
     fn sample() -> Vec<SearchResult> {
         Vec::new()

@@ -3172,6 +3172,50 @@ async fn import_sequel_number(
     claimed: &[i32],
     real_e01: bool,
 ) -> (String, Vec<String>, Option<Vec<u8>>) {
+    import_numbered_file(
+        SequelShape {
+            name: "Long Sequel",
+            format: "TV",
+            title_prefix: "[Group] Long Sequel 2nd Season",
+            offset_source: "",
+        },
+        cumulative,
+        episodes,
+        raw,
+        claimed,
+        real_e01,
+    )
+    .await
+}
+
+/// The series [`import_numbered_file`] imports into: its name (and
+/// folder), AniList format, the release's title up to its number, and
+/// where its offset came from (`series.cumulative_offset_source`).
+struct SequelShape {
+    name: &'static str,
+    format: &'static str,
+    title_prefix: &'static str,
+    offset_source: &'static str,
+}
+
+/// One finished single-file grab `<title_prefix> - <raw> (1080p)`
+/// claimed as `claimed`, run through `run_once`. Returns the grab's
+/// final state, the season folder's file names, and the bytes of a
+/// pre-existing E01 when `real_e01` put one there.
+async fn import_numbered_file(
+    shape: SequelShape,
+    cumulative: i32,
+    episodes: Option<i32>,
+    raw: i32,
+    claimed: &[i32],
+    real_e01: bool,
+) -> (String, Vec<String>, Option<Vec<u8>>) {
+    let SequelShape {
+        name,
+        format,
+        title_prefix,
+        offset_source,
+    } = shape;
     let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
     let media_root = tempfile::TempDir::new().expect("media_root tempdir");
     let source_dir = tempfile::TempDir::new().expect("source tempdir");
@@ -3186,25 +3230,27 @@ async fn import_sequel_number(
     .execute(&db)
     .await
     .expect("seed config row");
-    let series_id = seed_series(&db, 1, "Long Sequel").await;
+    let series_id = seed_series(&db, 1, name).await;
     sqlx::query(
-        "UPDATE series SET format = 'TV', cumulative_prior_episodes = ?, episodes = ? \
-         WHERE id = ?",
+        "UPDATE series SET format = ?, cumulative_prior_episodes = ?, episodes = ?, \
+         cumulative_offset_source = ? WHERE id = ?",
     )
+    .bind(format)
     .bind(cumulative)
     .bind(episodes)
+    .bind(offset_source)
     .bind(series_id)
     .execute(&db)
     .await
     .unwrap();
-    let season_dir = media_root.path().join("Long Sequel").join("Season 01");
+    let season_dir = media_root.path().join(name).join("Season 01");
     std::fs::create_dir_all(&season_dir).unwrap();
-    let existing_e01 = season_dir.join("Long Sequel - S01E01.mkv");
+    let existing_e01 = season_dir.join(format!("{name} - S01E01.mkv"));
     if real_e01 {
         std::fs::write(&existing_e01, b"the real e01").unwrap();
     }
 
-    let title = format!("[Group] Long Sequel 2nd Season - {raw} (1080p)");
+    let title = format!("{title_prefix} - {raw} (1080p)");
     let video = format!("{title}.mkv");
     std::fs::write(source_dir.path().join(&video), b"new").unwrap();
     let g = grabbed_torrents::record_grab(&db, "seq12", &title, series_id, claimed, false)
@@ -3288,6 +3334,53 @@ async fn run_once_files_an_ambiguous_sequel_number_where_the_grab_put_it() {
         e01.as_deref(),
         Some(&b"the real e01"[..]),
         "E01 is untouched"
+    );
+}
+
+/// #303: Steel Ball Run 2nd - 3rd STAGE, offset 1 from its split, ONA.
+fn split_part() -> SequelShape {
+    SequelShape {
+        name: "Steel Ball Run",
+        format: "ONA",
+        title_prefix: "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run",
+        offset_source: "split",
+    }
+}
+
+#[tokio::test]
+async fn run_once_files_a_split_part_number_absolute_only() {
+    // `- 07` grabbed for episode 6 is its episode 6; E01 is untouched.
+    let (state, names, e01) = import_numbered_file(split_part(), 1, Some(11), 7, &[6], true).await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E06")),
+        "filed as E06: {names:?}"
+    );
+    assert!(!names.iter().any(|n| n.contains("S01E07")), "{names:?}");
+    assert_eq!(e01.as_deref(), Some(&b"the real e01"[..]));
+}
+
+#[tokio::test]
+async fn run_once_never_files_an_earlier_part_number_into_a_split_part() {
+    // `- 01` is 1st STAGE's: no slot, the real E01 stays.
+    let (state, names, e01) = import_numbered_file(split_part(), 1, Some(11), 1, &[1], true).await;
+    assert_ne!(state, "imported");
+    assert_eq!(e01.as_deref(), Some(&b"the real e01"[..]));
+    assert_eq!(names.len(), 1, "{names:?}");
+}
+
+#[tokio::test]
+async fn run_once_holds_a_grab_row_written_before_the_split_reading() {
+    // A row from before #303 claims `- 06` as episode 6. It is episode
+    // 5, which this grab never claimed: the file is a stranger, not an
+    // unjudged replacement of E05.
+    let (state, names, _) = import_numbered_file(split_part(), 1, Some(11), 6, &[6], false).await;
+    assert_ne!(state, "imported");
+    assert!(
+        !names
+            .iter()
+            .any(|n| n.contains("S01E05") || n.contains("S01E06")),
+        "{names:?}"
     );
 }
 

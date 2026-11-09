@@ -443,6 +443,25 @@ pub async fn tvdb_placements(anilist_id: i64) -> Vec<TvdbPlacement> {
         .unwrap_or_default()
 }
 
+/// Whether the mappings place `anilist_id` `offset` episodes into one of
+/// its TVDB seasons (AniList episode 1 is that season's episode
+/// `offset + 1`). `None` when the mappings are not loaded, so a caller
+/// can tell "no" from "can't say yet". Season 0 (Specials) never counts.
+/// The split-offset check in `anime_relations::cumulative_prior_episodes`
+/// uses it as the second source that has to agree (#303).
+pub async fn places_at_offset(anilist_id: i64, offset: i32) -> Option<bool> {
+    let cache = CACHE.read().await;
+    let data = &cache.as_ref()?.data;
+    Some(
+        data.anilist_tvdb_placements
+            .get(&anilist_id)
+            .is_some_and(|list| {
+                list.iter()
+                    .any(|p| p.season > 0 && p.episode_offset == Some(offset))
+            }),
+    )
+}
+
 /// The AniList entries the mappings pair AniDB anime `aid` with,
 /// ascending; empty when none or the mappings are not loaded.
 pub async fn anilist_ids_for_anidb(aid: i64) -> Vec<i64> {
@@ -690,6 +709,38 @@ pub async fn seed_tmdb_episode_spans_for_tests(spans: &[(i64, i32, i32, i32, i64
         anilist_to_tvdb: HashMap::new(),
         mal_to_tvdb: HashMap::new(),
         anilist_tvdb_placements: HashMap::new(),
+        anidb_to_anilist: HashMap::new(),
+    };
+    let mut w = CACHE.write().await;
+    *w = Some(CacheState { data });
+}
+
+/// Test seeding for TVDB placements: `(anilist_id, tvdb_id, season,
+/// episode_offset)`. Every other table is left empty, so a test that
+/// reads anything else seeds that separately.
+#[cfg(any(test, feature = "test-support"))]
+pub async fn seed_tvdb_placements_for_tests(placements: &[(i64, i64, i32, Option<i32>)]) {
+    let mut anilist_tvdb_placements: HashMap<i64, Vec<TvdbPlacement>> = HashMap::new();
+    for &(anilist_id, tvdb_id, season, episode_offset) in placements {
+        anilist_tvdb_placements
+            .entry(anilist_id)
+            .or_default()
+            .push(TvdbPlacement {
+                tvdb_id,
+                season,
+                episode_offset,
+            });
+    }
+    let data = MappingCache {
+        tmdb_to_anime: HashMap::new(),
+        tvdb_to_anime: HashMap::new(),
+        anilist_to_tmdb: HashMap::new(),
+        mal_to_tmdb: HashMap::new(),
+        mal_to_anilist: HashMap::new(),
+        tmdb_episode_spans: HashMap::new(),
+        anilist_to_tvdb: HashMap::new(),
+        mal_to_tvdb: HashMap::new(),
+        anilist_tvdb_placements,
         anidb_to_anilist: HashMap::new(),
     };
     let mut w = CACHE.write().await;

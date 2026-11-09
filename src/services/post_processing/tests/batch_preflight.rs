@@ -617,3 +617,41 @@ fn a_number_in_the_series_name_takes_no_slot() {
     assert!(with.slots.contains_key(&1));
     assert!(!with.slots.contains_key(&2));
 }
+
+/// #303: a Steel Ball Run pack numbered from 1st STAGE (`01`-`12`) for
+/// 2nd - 3rd STAGE (offset 1 from its split). Under the single absolute
+/// reading `02`-`12` are its episodes 1-11 and `01` is skipped as 1st
+/// STAGE's; with the bare offset `01` and `02` both read as episode 1
+/// and the pack fails closed.
+#[test]
+fn a_split_part_pack_skips_the_earlier_part_and_imports_the_rest() {
+    use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+    let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic);
+    let files: Vec<(usize, i64, Option<i32>, Numbering, String)> = (1..=12)
+        .map(|n| {
+            (
+                n as usize,
+                7,
+                None,
+                sbr,
+                format!(
+                    "[Erai-raws] JoJo no Kimyou na Bouken - Steel Ball Run - {n:02} [1080p].mkv"
+                ),
+            )
+        })
+        .collect();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).expect("pack plans");
+    assert!(!plan.slots.contains_key(&1), "1st STAGE's 01 takes no slot");
+    for n in 2..=12usize {
+        assert_eq!(
+            plan.slots.get(&n).map(|r| r.episode),
+            Some(n as i32 - 1),
+            "file {n}"
+        );
+    }
+    let either: Vec<(usize, i64, Option<i32>, i32, String)> = files
+        .iter()
+        .map(|(i, s, r, _, name)| (*i, *s, *r, 1, name.clone()))
+        .collect();
+    assert!(validate_batch_episode_map(&either, &HashSet::new()).is_err());
+}

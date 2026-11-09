@@ -14,6 +14,7 @@ use regex_lite::Regex;
 use crate::services::anilist::AnimeDetail;
 use crate::services::identify::{self, Franchise};
 use crate::services::media;
+use crate::services::numbering::Numbering;
 use crate::services::release_title::{self, SeriesAnchors};
 
 use super::pack_detection::is_pack_candidate_relation;
@@ -1215,7 +1216,7 @@ pub fn classify_match_detailed(
     target: &SearchTarget,
     expected_season: i32,
     allow_batch_episode: bool,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
 ) -> MatchOutcome {
     let normalized_title = normalize_title(title);
     let title_tokens = token_set(&normalized_title);
@@ -1249,9 +1250,13 @@ pub fn classify_match_detailed(
             return MatchOutcome::NoMatch;
         }
         // #30 — Accept either the relative (AL-own) or the absolute
-        // (SubsPlease-style) episode number. See `episode_match`
-        // for the details.
-        if !episode_match(&parsed, *target_ep, absolute_offset) {
+        // (SubsPlease-style) episode number; #303 — or only the one the
+        // series' numbering reads, a season tag staying relative. See
+        // `episode_match` for the details.
+        let reading = numbering
+            .into()
+            .for_tag(crate::services::numbering::is_season_tag(parsed_title));
+        if !episode_match(&parsed, *target_ep, reading) {
             return MatchOutcome::NoMatch;
         }
     }
@@ -1274,7 +1279,7 @@ pub fn classify_match(
     target: &SearchTarget,
     expected_season: i32,
     allow_batch_episode: bool,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
 ) -> Option<AliasMatch> {
     match classify_match_detailed(
         title,
@@ -1283,7 +1288,7 @@ pub fn classify_match(
         target,
         expected_season,
         allow_batch_episode,
-        absolute_offset,
+        numbering,
     ) {
         MatchOutcome::Matched(m, _) => Some(m),
         MatchOutcome::Rival(..) | MatchOutcome::NoMatch => None,
@@ -1299,7 +1304,7 @@ pub fn matches_target(
     target: &SearchTarget,
     expected_season: i32,
     allow_batch_episode: bool,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
 ) -> bool {
     classify_match(
         title,
@@ -1308,7 +1313,7 @@ pub fn matches_target(
         target,
         expected_season,
         allow_batch_episode,
-        absolute_offset,
+        numbering,
     )
     .is_some()
 }
@@ -1724,6 +1729,56 @@ mod tests {
             3,
             false,
             47,
+        ));
+    }
+
+    /// #303: Steel Ball Run 2nd - 3rd STAGE, offset 1 from its split,
+    /// reads one number per episode. Every group numbers it from 1st
+    /// STAGE, so `- 07` is episode 6 and `- 06` is episode 5.
+    #[test]
+    fn a_split_part_accepts_only_the_absolute_number() {
+        use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+        let own = vec!["Steel Ball Run".to_string()];
+        let gate = GatePrecompute::build(&own).with_series_format("ONA");
+        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic);
+        let accepts = |title: &str, episode: i32| {
+            matches_target(
+                title,
+                &own,
+                &gate,
+                &SearchTarget::Episode(episode),
+                1,
+                false,
+                sbr,
+            )
+        };
+        let erai = |n: &str| {
+            format!(
+                "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - {n} [1080p NF WEB-DL AVC AAC][MultiSub]"
+            )
+        };
+        assert!(accepts(&erai("07"), 6));
+        assert!(!accepts(&erai("06"), 6), "- 06 is episode 5");
+        assert!(accepts(&erai("06"), 5));
+        assert!(!accepts(&erai("01"), 1), "- 01 is 1st STAGE's");
+        assert!(accepts(&erai("02"), 1));
+        // A bracketed number reads the same way.
+        assert!(accepts(
+            "[桜都字幕组] 飙马野郎 JOJO的奇妙冒险 / Steel Ball Run： JoJo no Kimyou na Bouken [07][1080P][简体内嵌]",
+            6
+        ));
+        // A season tag counts within its season.
+        assert!(accepts("[Group] Steel Ball Run S01E06 [1080p]", 6));
+        assert!(!accepts("[Group] Steel Ball Run S01E07 [1080p]", 6));
+        // The same releases under a bare offset (#30) read both ways.
+        assert!(matches_target(
+            &erai("06"),
+            &own,
+            &gate,
+            &SearchTarget::Episode(6),
+            1,
+            false,
+            1,
         ));
     }
 

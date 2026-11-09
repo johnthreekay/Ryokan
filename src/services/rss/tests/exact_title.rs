@@ -34,6 +34,8 @@ fn series_named_with_id(id: i64, title: &str, alternate_titles: &str) -> series:
         restrict_to_uploader: String::new(),
         alternate_titles: alternate_titles.to_string(),
         cumulative_prior_episodes: 0,
+        cumulative_offset_source: String::new(),
+        episode_numbering: String::new(),
         monitor_mode_manual_override: false,
         user_score: None,
         added_at: String::new(),

@@ -132,10 +132,12 @@ pub(crate) fn file_episodes(name: &str, cumulative_prior_episodes: i32) -> Vec<i
 }
 
 /// [`file_episodes`] for a known series: a number its own name holds is
-/// never a file's episode (`Mob Psycho 100 (BD).mkv`).
+/// never a file's episode (`Mob Psycho 100 (BD).mkv`), and a bare number
+/// reads the way the series' numbering says (#303: a split part's
+/// `- 07` is its episode 6, its `- 01` none).
 pub(crate) fn file_episodes_for(
     name: &str,
-    cumulative_prior_episodes: i32,
+    numbering: impl Into<crate::services::numbering::Numbering>,
     anchors: &crate::services::release_title::SeriesAnchors,
 ) -> Vec<i32> {
     if !crate::services::auto_search::is_media_filename(name) {
@@ -143,8 +145,7 @@ pub(crate) fn file_episodes_for(
     }
     match crate::services::media::parse_file_path_for(name, anchors) {
         Some(span) if !span.special => {
-            crate::services::grab_commit::file_slot_episodes(span, cumulative_prior_episodes)
-                .collect()
+            crate::services::grab_commit::file_slot_episodes(span, numbering).collect()
         }
         _ => Vec::new(),
     }
@@ -598,10 +599,10 @@ pub async fn grab_preview_status(
             .flatten(),
         None => None,
     };
-    let cumulative_prior_episodes = series_row
+    let numbering = series_row
         .as_ref()
-        .map(|s| s.cumulative_prior_episodes)
-        .unwrap_or(0);
+        .map(crate::models::series::Series::numbering)
+        .unwrap_or_default();
     let anchors = series_row
         .as_ref()
         .map(crate::services::grab_commit::series_anchors)
@@ -610,7 +611,7 @@ pub async fn grab_preview_status(
     // hundreds, so keep it off the async worker.
     let file_list = tokio::task::spawn_blocking(move || {
         for f in &mut file_list {
-            f.episodes = file_episodes_for(&f.name, cumulative_prior_episodes, &anchors);
+            f.episodes = file_episodes_for(&f.name, numbering, &anchors);
         }
         file_list
     })

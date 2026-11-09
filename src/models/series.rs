@@ -66,6 +66,15 @@ pub struct Series {
     /// relative target (AL's own numbering) OR `target + offset` (the
     /// absolute number a SubsPlease-style release would use).
     pub cumulative_prior_episodes: i32,
+    /// #303 — Where `cumulative_prior_episodes` came from
+    /// (`numbering::OffsetSource::as_str`: `rule`, `split`, `walk`, or
+    /// empty for a row written before the source was recorded). Written
+    /// with the offset by [`update_cumulative_prior_episodes`] only.
+    pub cumulative_offset_source: String,
+    /// #303 — The user's episode numbering choice from the series page
+    /// (`numbering::NumberingSetting::as_str`: empty for automatic,
+    /// `anilist`, `absolute`). See [`Series::numbering`].
+    pub episode_numbering: String,
     /// #62 — `1` when the user has manually pinned this series's
     /// `monitor_mode` through the per-series UI. The watch-list sync
     /// skips both the merge-step monitor_mode update and the removal-
@@ -94,6 +103,19 @@ pub struct Series {
 impl Series {
     pub fn monitor_mode_enum(&self) -> MonitorMode {
         MonitorMode::from_str(&self.monitor_mode)
+    }
+
+    /// #303 — How this series' release numbers map onto its episodes:
+    /// the stored offset read the way its source and the user's choice
+    /// say. Every reader of a release title or download file name goes
+    /// through this, never through `cumulative_prior_episodes` alone.
+    pub fn numbering(&self) -> crate::services::numbering::Numbering {
+        use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+        Numbering::resolve(
+            self.cumulative_prior_episodes,
+            OffsetSource::from_str(&self.cumulative_offset_source),
+            NumberingSetting::from_str(&self.episode_numbering),
+        )
     }
 
     /// #62 — render the "You: X" badge for this series using
@@ -156,6 +178,8 @@ fn map_series_row(row: sqlx::sqlite::SqliteRow) -> Series {
         cumulative_prior_episodes: row
             .try_get::<i32, _>("cumulative_prior_episodes")
             .unwrap_or(0),
+        cumulative_offset_source: row.try_get("cumulative_offset_source").unwrap_or_default(),
+        episode_numbering: row.try_get("episode_numbering").unwrap_or_default(),
         monitor_mode_manual_override: row
             .try_get::<i64, _>("monitor_mode_manual_override")
             .map(|v| v != 0)
@@ -168,7 +192,7 @@ fn map_series_row(row: sqlx::sqlite::SqliteRow) -> Series {
 /// Get all tracked series, ordered by most recently added.
 pub async fn get_all(db: &SqlitePool) -> Result<Vec<Series>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series ORDER BY added_at DESC",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, cumulative_offset_source, episode_numbering, monitor_mode_manual_override, user_score, is_adult, added_at FROM series ORDER BY added_at DESC",
     )
     .fetch_all(db)
     .await?;
@@ -178,7 +202,7 @@ pub async fn get_all(db: &SqlitePool) -> Result<Vec<Series>, sqlx::Error> {
 
 pub async fn get_by_id(db: &SqlitePool, id: i64) -> Result<Option<Series>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE id = ?",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, cumulative_offset_source, episode_numbering, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(db)
@@ -192,7 +216,7 @@ pub async fn get_by_anilist_id(
     anilist_id: i64,
 ) -> Result<Option<Series>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id = ?",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, cumulative_offset_source, episode_numbering, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id = ?",
     )
     .bind(anilist_id)
     .fetch_optional(db)
@@ -215,7 +239,7 @@ pub async fn get_by_anilist_ids(
     }
     let placeholders = vec!["?"; anilist_ids.len()].join(",");
     let sql = format!(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id IN ({placeholders})"
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, cumulative_offset_source, episode_numbering, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE anilist_id IN ({placeholders})"
     );
     let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
     for id in anilist_ids {
@@ -246,7 +270,7 @@ pub async fn get_all_by_mal_id(db: &SqlitePool, mal_id: i64) -> Result<Vec<Serie
         return Ok(Vec::new());
     }
     let rows = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ? ORDER BY id",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, cumulative_offset_source, episode_numbering, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ? ORDER BY id",
     )
     .bind(mal_id)
     .fetch_all(db)
@@ -285,7 +309,7 @@ pub async fn get_by_mal_id_for_entry(
         return Ok(None);
     }
     let row = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ? AND (? <= 0 OR anilist_id < 0) ORDER BY id LIMIT 1",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, cumulative_offset_source, episode_numbering, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id = ? AND (? <= 0 OR anilist_id < 0) ORDER BY id LIMIT 1",
     )
     .bind(mal_id)
     .bind(anilist_id)
@@ -708,7 +732,7 @@ pub async fn refresh_core_metadata(
 
 pub async fn get_unreconciled_fallbacks(db: &SqlitePool) -> Result<Vec<Series>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id IS NOT NULL AND anilist_id < 0 ORDER BY added_at DESC",
+        "SELECT id, anilist_id, mal_id, title, title_romaji, title_english, title_native, cover_url, format, status, episodes, season_year, end_year, folder_name, monitor_mode, allow_upgrades, allow_pt_upgrades, custom_query_tokens, restrict_to_uploader, alternate_titles, cumulative_prior_episodes, cumulative_offset_source, episode_numbering, monitor_mode_manual_override, user_score, is_adult, added_at FROM series WHERE mal_id IS NOT NULL AND anilist_id < 0 ORDER BY added_at DESC",
     )
     .fetch_all(db)
     .await?;
@@ -892,11 +916,11 @@ pub async fn update_allow_pt_upgrades(
     Ok(())
 }
 
-/// #30 — Store the cumulative-prior-episodes offset computed from the
-/// cached PREQUEL chain. Called by `metadata_sync::refresh_series_metadata`
-/// after relations are cached, and by `handlers/library::add_series` so
-/// the first interactive search works without waiting on the next
-/// refresh sweep.
+/// #30 — Store the cumulative-prior-episodes offset and where it came
+/// from (#303), as `anime_relations::cumulative_prior_episodes` decided
+/// them. Called by `metadata_sync::refresh_series_metadata` after
+/// relations are cached, and by the grab-time hydration in
+/// `handlers::library::reconcile`.
 ///
 /// `known` says the value came from a curated rule or an authoritative
 /// AniList detail (not a MAL / Kitsu fallback whose relations the walk
@@ -906,18 +930,36 @@ pub async fn update_cumulative_prior_episodes(
     db: &SqlitePool,
     id: i64,
     offset: i32,
+    source: crate::services::numbering::OffsetSource,
     known: bool,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "UPDATE series SET cumulative_prior_episodes = ?, \
+        "UPDATE series SET cumulative_prior_episodes = ?, cumulative_offset_source = ?, \
          cumulative_offset_known = CASE WHEN ? THEN 1 ELSE cumulative_offset_known END \
          WHERE id = ?",
     )
     .bind(offset)
+    .bind(source.as_str())
     .bind(known)
     .bind(id)
     .execute(db)
     .await?;
+    Ok(())
+}
+
+/// #303 — Store the user's episode numbering choice from the series
+/// page. Unknown values store as automatic (empty), the way
+/// `NumberingSetting::from_str` reads them.
+pub async fn update_episode_numbering(
+    db: &SqlitePool,
+    id: i64,
+    setting: crate::services::numbering::NumberingSetting,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE series SET episode_numbering = ? WHERE id = ?")
+        .bind(setting.as_str())
+        .bind(id)
+        .execute(db)
+        .await?;
     Ok(())
 }
 
@@ -1270,6 +1312,7 @@ mod tests {
 #[cfg(test)]
 mod absolute_offset_tests {
     use super::*;
+    use crate::services::numbering::{NumberingSetting, OffsetSource, Reading};
     use crate::test_support::{in_memory_pool, seed_series};
 
     #[tokio::test]
@@ -1279,23 +1322,53 @@ mod absolute_offset_tests {
         assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), None);
         // A degraded write (MAL fallback, no relations seen) stores the
         // number but does not make it known.
-        update_cumulative_prior_episodes(&db, id, 0, false)
+        update_cumulative_prior_episodes(&db, id, 0, OffsetSource::Walk, false)
             .await
             .unwrap();
         assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), None);
-        update_cumulative_prior_episodes(&db, id, 0, true)
+        update_cumulative_prior_episodes(&db, id, 0, OffsetSource::Walk, true)
             .await
             .unwrap();
         assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), Some(0));
-        update_cumulative_prior_episodes(&db, id, 12, true)
+        update_cumulative_prior_episodes(&db, id, 12, OffsetSource::Walk, true)
             .await
             .unwrap();
         assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), Some(12));
         // Known never flips back off.
-        update_cumulative_prior_episodes(&db, id, 12, false)
+        update_cumulative_prior_episodes(&db, id, 12, OffsetSource::Walk, false)
             .await
             .unwrap();
         assert_eq!(absolute_offset_if_known(&db, id).await.unwrap(), Some(12));
         assert_eq!(absolute_offset_if_known(&db, id + 1).await.unwrap(), None);
+    }
+
+    /// #303: the offset's source and the user's choice round-trip
+    /// through the row and resolve into one reading.
+    #[tokio::test]
+    async fn numbering_round_trips_through_the_row() {
+        let db = in_memory_pool().await;
+        let id = seed_series(&db, 210482, "STEEL BALL RUN 2nd - 3rd STAGE").await;
+        let row = get_by_id(&db, id).await.unwrap().unwrap();
+        assert_eq!(row.numbering().reading, Reading::Relative);
+
+        update_cumulative_prior_episodes(&db, id, 1, OffsetSource::Split, true)
+            .await
+            .unwrap();
+        let row = get_by_id(&db, id).await.unwrap().unwrap();
+        assert_eq!(row.cumulative_offset_source, "split");
+        assert_eq!(row.numbering().offset, 1);
+        assert_eq!(row.numbering().reading, Reading::Absolute);
+
+        update_episode_numbering(&db, id, NumberingSetting::AniList)
+            .await
+            .unwrap();
+        let row = get_by_id(&db, id).await.unwrap().unwrap();
+        assert_eq!(row.episode_numbering, "anilist");
+        assert_eq!(row.numbering().reading, Reading::Relative);
+
+        // Every list read carries the new columns too.
+        let all = get_all(&db).await.unwrap();
+        assert_eq!(all[0].episode_numbering, "anilist");
+        assert_eq!(all[0].cumulative_offset_source, "split");
     }
 }

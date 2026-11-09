@@ -608,6 +608,7 @@ mod crud_ci {
             restrict_to_uploader: "TrustedUser".to_string(),
 
             alternate_titles: String::new(),
+            episode_numbering: None,
         };
         let resp =
             set_search_overrides(State(state), axum_htmx::HxRequest(false), axum::Form(form))
@@ -629,6 +630,71 @@ mod crud_ci {
         assert_eq!(uploader, "TrustedUser");
     }
 
+    /// #303: the Episode numbering select saves with the other overrides,
+    /// an unknown value saves as automatic, and a form without the field
+    /// leaves the stored choice alone.
+    #[tokio::test]
+    async fn set_search_overrides_saves_the_episode_numbering() {
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 52, "Show").await;
+        let state = build_test_app_state(db.clone(), None);
+        crate::services::interactive_search_cache::insert(
+            &state.interactive_search_cache,
+            crate::services::interactive_search_cache::Key::Episode(series_id, 6),
+            Vec::new(),
+        );
+        let save = |numbering: Option<&str>| super::super::SetSearchOverridesForm {
+            series_id,
+            custom_query_tokens: String::new(),
+            restrict_to_uploader: String::new(),
+            alternate_titles: String::new(),
+            episode_numbering: numbering.map(str::to_string),
+        };
+        let stored = || async {
+            sqlx::query_scalar::<_, String>("SELECT episode_numbering FROM series WHERE id = ?")
+                .bind(series_id)
+                .fetch_one(&db)
+                .await
+                .unwrap()
+        };
+
+        let resp = set_search_overrides(
+            State(state.clone()),
+            axum_htmx::HxRequest(false),
+            axum::Form(save(Some("absolute"))),
+        )
+        .await
+        .expect("saved");
+        assert_eq!(response_json(resp).await["episode_numbering"], "absolute");
+        assert_eq!(stored().await, "absolute");
+        // The series' cached interactive results are dropped.
+        assert!(
+            crate::services::interactive_search_cache::get(
+                &state.interactive_search_cache,
+                crate::services::interactive_search_cache::Key::Episode(series_id, 6),
+            )
+            .is_none()
+        );
+
+        let _ = set_search_overrides(
+            State(state.clone()),
+            axum_htmx::HxRequest(false),
+            axum::Form(save(None)),
+        )
+        .await
+        .expect("saved");
+        assert_eq!(stored().await, "absolute", "absent field keeps the choice");
+
+        let _ = set_search_overrides(
+            State(state.clone()),
+            axum_htmx::HxRequest(false),
+            axum::Form(save(Some("tvdb"))),
+        )
+        .await
+        .expect("saved");
+        assert_eq!(stored().await, "", "unknown saves as automatic");
+    }
+
     #[tokio::test]
     async fn set_search_overrides_clears_on_empty_strings() {
         let db = in_memory_pool().await;
@@ -644,6 +710,7 @@ mod crud_ci {
                 restrict_to_uploader: "User".to_string(),
 
                 alternate_titles: String::new(),
+                episode_numbering: None,
             }),
         )
         .await
@@ -659,6 +726,7 @@ mod crud_ci {
                 restrict_to_uploader: String::new(),
 
                 alternate_titles: String::new(),
+                episode_numbering: None,
             }),
         )
         .await
@@ -688,6 +756,7 @@ mod crud_ci {
                 restrict_to_uploader: String::new(),
 
                 alternate_titles: String::new(),
+                episode_numbering: None,
             }),
         )
         .await

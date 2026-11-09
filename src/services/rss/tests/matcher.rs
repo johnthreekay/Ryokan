@@ -29,6 +29,8 @@ fn series(id: i64, title: &str, episodes: i32, cumulative_prior_episodes: i32) -
         restrict_to_uploader: String::new(),
         alternate_titles: String::new(),
         cumulative_prior_episodes,
+        cumulative_offset_source: String::new(),
+        episode_numbering: String::new(),
         monitor_mode_manual_override: false,
         user_score: None,
         added_at: String::new(),
@@ -171,4 +173,43 @@ fn a_bracket_only_item_matches_no_series_by_its_empty_name() {
         best_series_match(&item("[SubsPlease] Kaiju No. 8 - 05 (1080p)"), &meta)
             .is_some_and(|found| found.series.id == 2)
     );
+}
+
+/// #303: Steel Ball Run 2nd - 3rd STAGE (offset 1 from its split) reads
+/// every bare number absolute only, and 1st STAGE takes its own `- 01`.
+#[test]
+fn a_split_part_reads_feed_numbers_absolute_only() {
+    let mut second = series(2, "Steel Ball Run", 11, 1);
+    second.cumulative_offset_source = "split".to_string();
+    let first = series(1, "Steel Ball Run", 1, 0);
+    let title = |n: &str| format!("[Erai-raws] Steel Ball Run - {n} [1080p NF WEB-DL AVC AAC]");
+
+    let found = best_series_match(&item(&title("07")), &[SeriesMeta::from_series(&second)])
+        .expect("- 07 matches 2nd - 3rd STAGE");
+    assert_eq!(resolved(&found), vec![6]);
+    assert_eq!(found.resolution_mode, "absolute_mapped");
+
+    // `- 01` is no episode of the split part.
+    let alone = best_series_match(&item(&title("01")), &[SeriesMeta::from_series(&second)]);
+    assert!(
+        alone.as_ref().is_none_or(|m| m.resolved_eps.is_empty()),
+        "{:?}",
+        alone.as_ref().map(|m| m.resolution_mode)
+    );
+    // With 1st STAGE tracked too, it is 1st STAGE's episode 1.
+    let both = [
+        SeriesMeta::from_series(&second),
+        SeriesMeta::from_series(&first),
+    ];
+    let found = best_series_match(&item(&title("01")), &both).expect("1st STAGE takes - 01");
+    assert_eq!(found.series.id, 1);
+    assert_eq!(resolved(&found), vec![1]);
+
+    // AniList numbering chosen on the series page: the offset is never
+    // applied.
+    let mut anilist = second.clone();
+    anilist.episode_numbering = "anilist".to_string();
+    let found = best_series_match(&item(&title("07")), &[SeriesMeta::from_series(&anilist)])
+        .expect("- 07 matches");
+    assert_eq!(resolved(&found), vec![7]);
 }
