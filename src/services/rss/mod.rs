@@ -2195,7 +2195,7 @@ fn is_finished_status(status: &str) -> bool {
 }
 
 /// Tie-break between equal match scores: exact alias, the item's own
-/// season, placed episodes, then the oldest row.
+/// season, episodes within the series' known count, then the oldest row.
 type MatchTie = (bool, bool, bool, std::cmp::Reverse<i64>);
 
 fn best_series_match(item: &RssItem, all_meta: &[SeriesMeta]) -> Option<MatchResult> {
@@ -2299,11 +2299,19 @@ fn match_against(
     }
     // Ties: an exact alias, then the item's own season, then episodes
     // this series can place, then the oldest row. List order used to
-    // decide.
+    // decide. An explicit season tag is taken as written, so a number
+    // past the series' known count (`S01E06` for one-episode Steel Ball
+    // Run 1st STAGE, #303) places nothing: the row that shares the alias
+    // and holds that episode wins the tie.
+    let placed = !resolved_eps.is_empty()
+        && meta
+            .series
+            .episodes
+            .is_none_or(|total| resolved_eps.iter().all(|n| (1..=total).contains(n)));
     let tie = (
         alias_score >= 1.0,
         parsed.season_hint.is_some_and(own_season),
-        !resolved_eps.is_empty(),
+        placed,
         std::cmp::Reverse(meta.series.id),
     );
     let result = MatchResult {

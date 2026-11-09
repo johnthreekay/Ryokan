@@ -257,6 +257,19 @@ impl Numbering {
         }
     }
 
+    /// [`Numbering::accepts`] for a pack. The import reads a pack's
+    /// files one at a time and skips an earlier part's (`01` in Steel
+    /// Ball Run's `01-12`), so a run reaching back past the offset still
+    /// holds this part's episodes; only a single file is refused for it.
+    pub fn pack_accepts(&self, parsed: &HashSet<i32>, episode: i32) -> bool {
+        match self.reading {
+            Reading::Absolute => {
+                self.offset > 0 && parsed.contains(&episode.saturating_add(self.offset))
+            }
+            Reading::Either | Reading::Relative => self.accepts(parsed, episode),
+        }
+    }
+
     /// True when a release whose seasons `parsed` reads may be this
     /// series under the season gate: its own `expected` season, or the
     /// TVDB season its split counts in (`S06E07` for Steel Ball Run 2nd -
@@ -432,6 +445,12 @@ mod tests {
         assert!(n.accepts(&set(&[2, 3]), 1));
         // Either never had the rule.
         assert!(Numbering::either(1).accepts(&set(&[1, 2]), 1));
+        // A pack's files are imported one at a time, 1st STAGE's skipped.
+        let pack: Vec<i32> = (1..=12).collect();
+        assert!(n.pack_accepts(&set(&pack), 1));
+        assert!(n.pack_accepts(&set(&pack), 11));
+        assert!(!n.pack_accepts(&set(&pack), 12));
+        assert!(Numbering::either(1).pack_accepts(&set(&pack), 12));
     }
 
     #[test]

@@ -2242,6 +2242,7 @@ mod episode_span_tests {
 
     #[tokio::test]
     async fn seeded_spans_are_served_by_the_async_lookup() {
+        let _cache = TEST_CACHE_LOCK.lock().await;
         seed_tmdb_episode_spans_for_tests(&[(9, 2, 1, 12, 55, 13), (9, 2, 13, 24, 56, 1)]).await;
         let s = tmdb_episode_spans(9, 2).await;
         assert_eq!(s.len(), 2);

@@ -435,6 +435,13 @@ fn relative_episodes(
             _ => post_processing::fallback_ep_offset(first, cumulative),
         },
     };
+    // A single release whose run reaches back past the offset (`- 01-02`
+    // for a split part) is one file the import refuses
+    // (`resolve_episode`: its first episode is no slot), so it records
+    // nothing; a pack only loses the earlier part's numbers.
+    if series.numbering.reading == Reading::Absolute && !pack && first - offset <= 0 {
+        return Vec::new();
+    }
     raw.into_iter()
         .map(|n| n - offset)
         .filter(|n| *n > 0)
@@ -493,6 +500,43 @@ pub(crate) fn grab_episode_list(
     }
 }
 
+/// #303: true when a grab's recorded `list` is its title's own numbers
+/// rather than the series' current reading of them. A Search-page grab
+/// that auto-adds a split part records `- 07` as `[7]` before the
+/// detached refresh stores the offset; the series now reads that title
+/// as `[6]`. Only the single absolute reading can tell the two apart:
+/// under [`Reading::Either`] a list may hold either numbering and the
+/// import's claim rule reads both, as it did before #303. A list that
+/// neither reading of the title reproduces (an episode endpoint's pick,
+/// the picker's files) was written in the series' numbering.
+pub(crate) fn list_is_titles_own_numbers(
+    title: &str,
+    list: &[i32],
+    series: &GrabSeries,
+    is_batch: bool,
+) -> bool {
+    if series.numbering.reading != Reading::Absolute || list.is_empty() {
+        return false;
+    }
+    let mut recorded = list.to_vec();
+    recorded.sort_unstable();
+    recorded.dedup();
+    let read = |series: &GrabSeries| {
+        let mut eps = grab_episode_list(title, series, GrabFor::Whole, is_batch);
+        eps.sort_unstable();
+        eps.dedup();
+        eps
+    };
+    if read(series) == recorded {
+        return false;
+    }
+    let before = GrabSeries {
+        numbering: Numbering::relative(),
+        ..series.clone()
+    };
+    read(&before) == recorded
+}
+
 /// The library slots a file's parsed span lands in: the import's own
 /// rule (`resolve_episode`), a `SxxExx` name is already relative and a
 /// bare number is read the way the series' numbering says (#303; a
@@ -503,7 +547,11 @@ pub(crate) fn file_slot_episodes(
     numbering: impl Into<Numbering>,
 ) -> impl Iterator<Item = i32> {
     let offset = numbering.into().file_offset(span.season, span.first);
-    (span.first - offset..=span.last - offset).filter(|e| *e > 0)
+    // The import gives a span whose first episode is no slot nothing at
+    // all (`resolve_episode`), a split part's `01-02` included.
+    let first = span.first - offset;
+    let last = if first > 0 { span.last - offset } else { 0 };
+    first.max(1)..=last
 }
 
 /// The `group` the picker stored in the pending row's release
@@ -1024,6 +1072,85 @@ mod tests {
                 .next()
                 .is_none()
         );
+    }
+
+    /// #303: a single file reaching back into 1st STAGE (`01-02`) is one
+    /// the import refuses, so the picker, the commit and the title list
+    /// record nothing for it; a pack only loses 1st STAGE's number.
+    #[test]
+    fn a_split_part_records_nothing_for_a_straddling_file() {
+        let sbr = split_part();
+        let multi = crate::services::media::EpisodeSpan {
+            season: None,
+            first: 1,
+            last: 2,
+            special: false,
+        };
+        assert!(file_slot_episodes(multi, sbr.numbering).next().is_none());
+        assert_eq!(
+            file_slot_episodes(
+                crate::services::media::EpisodeSpan {
+                    first: 2,
+                    last: 3,
+                    ..multi
+                },
+                sbr.numbering
+            )
+            .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Steel Ball Run - 01-02 [1080p].mkv",
+                &sbr,
+                GrabFor::Whole,
+                false
+            ),
+            Vec::<i32>::new()
+        );
+        assert_eq!(
+            grab_episode_list(
+                "[Group] Steel Ball Run 01-12 [BD 1080p]",
+                &sbr,
+                GrabFor::Whole,
+                true
+            ),
+            (1..=11).collect::<Vec<_>>()
+        );
+        // Either never had the rule: a bare offset keeps #30's reading.
+        let either = GrabSeries {
+            numbering: Numbering::either(1),
+            ..sbr.clone()
+        };
+        assert_eq!(
+            file_slot_episodes(multi, either.numbering).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+    }
+
+    /// #303: a list recorded before a split part's offset was stored holds
+    /// its title's own numbers; one recorded since, the series' reading.
+    #[test]
+    fn a_raw_list_is_told_apart_from_the_series_reading() {
+        let sbr = split_part();
+        let title = "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 07 [1080p]";
+        assert!(list_is_titles_own_numbers(title, &[7], &sbr, false));
+        assert!(!list_is_titles_own_numbers(title, &[6], &sbr, false));
+        // A list neither reading of the title gives (an episode endpoint's
+        // pick of an unnumbered release) is the series' own.
+        assert!(!list_is_titles_own_numbers(
+            "[Group] Steel Ball Run [1080p]",
+            &[6],
+            &sbr,
+            false
+        ));
+        // Only the single absolute reading can tell them apart.
+        let either = GrabSeries {
+            numbering: Numbering::either(1),
+            ..sbr.clone()
+        };
+        assert!(!list_is_titles_own_numbers(title, &[7], &either, false));
+        assert!(!list_is_titles_own_numbers(title, &[], &sbr, false));
     }
 
     #[test]

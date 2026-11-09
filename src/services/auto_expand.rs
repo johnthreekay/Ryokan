@@ -552,7 +552,9 @@ pub async fn expand_from_files(
             matched_subtitle: String::new(),
             // Parent-route files use their own arc-local numbering, no
             // offset; a split part's are numbered on from the earlier
-            // parts (#303), the way its coverage above was read.
+            // parts (#303). The import reads a split part's own route
+            // with its numbering, not this offset, so a tag counts the
+            // way the coverage above was read (`route_offset_for`).
             episode_offset: match parent_numbering.reading {
                 crate::services::numbering::Reading::Absolute => parent_numbering.offset,
                 _ => 0,

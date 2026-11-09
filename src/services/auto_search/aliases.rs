@@ -19,7 +19,7 @@ use crate::services::release_title::{self, SeriesAnchors};
 
 use super::pack_detection::is_pack_candidate_relation;
 use super::provenance::{AliasMatch, IdentityNote, MatchKind};
-use super::{SearchTarget, episode_match};
+use super::{SearchTarget, episode_match, pack_episode_match};
 
 pub fn normalize_title(input: &str) -> String {
     // A name that is wholly one bracket group (AniList's English
@@ -1256,8 +1256,16 @@ pub fn classify_match_detailed(
         // (SubsPlease-style) episode number; #303 — or only the one the
         // series' numbering reads, a season tag staying relative. See
         // `episode_match` for the details.
+        // A pack's run may reach back into an earlier part: its files
+        // are imported one at a time (`pack_episode_match`). Two numbers
+        // (`- 01-02`) may be one file, which the import refuses.
         let reading = numbering.for_tag(crate::services::numbering::season_tag(parsed_title));
-        if !episode_match(&parsed, *target_ep, reading) {
+        let matched = if parsed.len() > 2 && parsed_title.is_batch() {
+            pack_episode_match(&parsed, *target_ep, reading)
+        } else {
+            episode_match(&parsed, *target_ep, reading)
+        };
+        if !matched {
             return MatchOutcome::NoMatch;
         }
     }
@@ -1796,6 +1804,40 @@ mod tests {
             1,
             false,
             1,
+        ));
+    }
+
+    /// #303: the upgrade sweep matches packs to episode targets. A pack's
+    /// run reaching into 1st STAGE (`01-12`, `S06E01-S06E12`) still holds
+    /// 2nd - 3rd STAGE's episodes: the import skips the `01` file.
+    #[test]
+    fn a_split_parts_pack_matches_its_episodes_in_the_upgrade_sweep() {
+        use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+        let own = vec!["Steel Ball Run".to_string()];
+        let gate = GatePrecompute::build(&own).with_series_format("ONA");
+        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+            .with_tag_season(Some(6));
+        let sweep = |title: &str, episode: i32| {
+            matches_target(
+                title,
+                &own,
+                &gate,
+                &SearchTarget::Episode(episode),
+                1,
+                true,
+                sbr,
+            )
+        };
+        let bare = "[Group] Steel Ball Run 01-12 [BD 1080p]";
+        let tagged = "[Group] Steel Ball Run S06E01-S06E12 [BD 1080p]";
+        assert!(sweep(bare, 6));
+        assert!(sweep(bare, 11));
+        assert!(sweep(tagged, 6));
+        assert!(!sweep(bare, 12), "12 + 1 is past the pack");
+        // A single multi-episode file reaching back is still refused.
+        assert!(!sweep(
+            "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 01-02 [1080p]",
+            1
         ));
     }
 

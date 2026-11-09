@@ -231,6 +231,18 @@ fn a_split_part_reads_feed_numbers_absolute_only() {
         assert_eq!(resolved(&found), eps, "{title}");
     }
 
+    // With 1st STAGE tracked under the same alias, a season-1-shaped
+    // title still goes to the part that holds the episode: 1st STAGE has
+    // one episode, so its explicit `S01E06` places nothing.
+    for (title, eps) in [
+        ("[Group] Steel Ball Run S1 - 07 [1080p]", vec![6]),
+        ("[Group] Steel Ball Run S01E06 [1080p]", vec![6]),
+    ] {
+        let found = best_series_match(&item(title), &both).expect(title);
+        assert_eq!(found.series.id, 2, "{title}");
+        assert_eq!(resolved(&found), eps, "{title}");
+    }
+
     // AniList numbering chosen on the series page: the offset is never
     // applied.
     let mut anilist = second.clone();

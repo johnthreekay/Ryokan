@@ -690,3 +690,39 @@ fn a_split_part_reads_its_tvdb_season_tags_absolute() {
     let other = validate_batch_episode_map(&files[12..], &HashSet::new()).expect("plans");
     assert_eq!(other.slots.get(&13).map(|r| r.episode), Some(11));
 }
+
+/// #303: auto-expand's parent route for a split part carries its offset,
+/// but the import reads the part's own routed files with its numbering,
+/// so a tag counts the way the coverage rows were read: `S01E05` within
+/// season 1, `S06E07` on from 1st STAGE, a bare `- 09` absolute. A
+/// sibling's route keeps its fixed offset, and so does an either-reading
+/// parent's.
+#[test]
+fn a_split_parts_own_route_reads_tags_like_its_coverage() {
+    use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+    use crate::services::post_processing::route_offset_for;
+    let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+        .with_tag_season(Some(6));
+    assert_eq!(route_offset_for(Some((7, 1)), 7, sbr), None);
+    assert_eq!(route_offset_for(Some((8, 3)), 7, sbr), Some(3));
+    assert_eq!(route_offset_for(None, 7, sbr), None);
+    assert_eq!(
+        route_offset_for(Some((7, 0)), 7, Numbering::either(47)),
+        Some(0)
+    );
+    let offset = route_offset_for(Some((7, 1)), 7, sbr);
+    let files: Vec<(usize, i64, Option<i32>, Numbering, String)> = [
+        "[Group] Steel Ball Run S01E05 [1080p].mkv",
+        "[Group] Steel Ball Run S06E07 [1080p].mkv",
+        "[Group] Steel Ball Run - 09 [1080p].mkv",
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, name)| (i, 7, offset, sbr, name.to_string()))
+    .collect();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).expect("plans");
+    let slot = |i: usize| plan.slots.get(&i).map(|r| r.episode);
+    assert_eq!(slot(0), Some(5));
+    assert_eq!(slot(1), Some(6));
+    assert_eq!(slot(2), Some(8));
+}

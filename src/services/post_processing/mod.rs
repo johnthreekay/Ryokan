@@ -170,6 +170,27 @@ fn resolve_episode(
     })
 }
 
+/// The offset a routed file is read with (`resolve_episode`'s
+/// `route_offset`). A route to the grab's own series under the single
+/// absolute reading (#303, the parent route auto-expand writes for a
+/// split part) is read with the series' numbering rather than the
+/// route's fixed offset, so a tag counts the way auto-expand's coverage
+/// rows read it: `S01E06` within season 1, `S06E07` on from 1st STAGE.
+pub(crate) fn route_offset_for(
+    route: Option<(i64, i32)>,
+    grab_series_id: i64,
+    numbering: Numbering,
+) -> Option<i32> {
+    let (series_id, offset) = route?;
+    if series_id == grab_series_id
+        && numbering.reading == crate::services::numbering::Reading::Absolute
+    {
+        None
+    } else {
+        Some(offset)
+    }
+}
+
 /// The slot a lone video with an unparseable name takes from the grab
 /// row's own episode list (issue #246): a contiguous list of at most
 /// `MAX_FILE_SPAN` episodes is the file's span, anything else narrows
@@ -1565,7 +1586,7 @@ async fn import_torrent(
             batch_files.push((
                 *file_idx,
                 target_series_id,
-                route.map(|(_, offset)| offset),
+                route_offset_for(route, grab.series_id, numbering),
                 numbering,
                 file.name.clone(),
             ));
@@ -1645,6 +1666,23 @@ async fn import_torrent(
     // after the file loop.
     let mut grabs_to_mark_replaced: std::collections::HashSet<i64> =
         std::collections::HashSet::new();
+
+    // #303: whether the grab's own list holds its title's numbers from
+    // before its series' absolute reading was stored
+    // (`grab_commit::list_is_titles_own_numbers`). Read once, for the
+    // grab's own series only: a routed sibling never takes the list.
+    let own_list_is_raw = std::sync::OnceLock::new();
+    let grab_list_is_raw = |series: &series::Series| -> bool {
+        series.id == grab.series_id
+            && *own_list_is_raw.get_or_init(|| {
+                crate::services::grab_commit::list_is_titles_own_numbers(
+                    &grab.torrent_name,
+                    &grab.episode_numbers,
+                    &crate::services::grab_commit::GrabSeries::from_row(series),
+                    grab.is_batch,
+                )
+            })
+    };
 
     for (file_idx, file) in &video_files {
         debug_assert!(!unsafe_video_indices.contains(file_idx));
@@ -1892,12 +1930,14 @@ async fn import_torrent(
             // A span taken from the grab's own list is series-relative
             // already under the single absolute reading (#303: every
             // writer records the resolved episode for it), so no offset
-            // comes off it a second time. Under the either-reading a list
-            // can still hold a title's own absolute number, which the
-            // claim rule below settles as it always has.
+            // comes off it a second time, unless the list predates the
+            // reading and holds the title's own numbers. Under the
+            // either-reading a list can still hold a title's own absolute
+            // number, which the claim rule below settles as it always has.
             let from_grab_list = parsed.is_none()
                 && fallback.is_some()
-                && ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute;
+                && ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute
+                && !grab_list_is_raw(&ctx.series);
             let Some(span) = parsed.or(fallback) else {
                 logger::warn(
                     &state.db,
@@ -1918,7 +1958,11 @@ async fn import_torrent(
             let route_offset = if from_grab_list {
                 Some(0)
             } else {
-                routes_by_file.get(file_idx).map(|(_, offset)| *offset)
+                route_offset_for(
+                    routes_by_file.get(file_idx).copied(),
+                    grab.series_id,
+                    ctx.series.numbering(),
+                )
             };
             match resolve_episode(
                 span,
@@ -1959,9 +2003,19 @@ async fn import_torrent(
         // episodes) matches by either.
         // The file's own number counts too, for grab rows that recorded a
         // title's number as it was: a Search-page grab that auto-added the
-        // series before its offset was stored, and (#303) a split part's
-        // rows from before its offset was (`- 07` claimed as `[7]`).
-        let claims_this_episode = resolved.raw_episodes().chain(resolved.episodes()).any(|n| {
+        // series before its offset was stored. Under the single absolute
+        // reading (#303) the list is one numbering or the other, never
+        // both, so only that one counts: with both, a grab for `[6]`
+        // (`- 07`) also claimed a stray `- 06` beside it (episode 5) and
+        // replaced the library's E05 with it.
+        let absolute_only =
+            ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute;
+        let raw_list = absolute_only && grab_list_is_raw(&ctx.series);
+        let mut claim_numbers = resolved
+            .raw_episodes()
+            .filter(|_| !absolute_only || raw_list)
+            .chain(resolved.episodes().filter(|_| !raw_list));
+        let claims_this_episode = claim_numbers.any(|n| {
             grab_claims_episode(
                 grab.is_batch,
                 routes_by_file.contains_key(file_idx),

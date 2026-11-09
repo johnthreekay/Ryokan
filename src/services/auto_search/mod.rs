@@ -2147,6 +2147,16 @@ pub(super) fn episode_match(
     numbering.into().accepts(parsed, target_ep)
 }
 
+/// [`episode_match`] for a pack (`Numbering::pack_accepts`): the upgrade
+/// sweep's batch-to-episode matching, and scoring a batch.
+pub(super) fn pack_episode_match(
+    parsed: &HashSet<i32>,
+    target_ep: i32,
+    numbering: impl Into<Numbering>,
+) -> bool {
+    numbering.into().pack_accepts(parsed, target_ep)
+}
+
 /// The target a search query names: under `Reading::Absolute` an
 /// episode target carries the absolute number (#303: Steel Ball Run
 /// 2nd - 3rd STAGE's episode 6 is queried as `07`, or the release is
