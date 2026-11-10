@@ -3220,6 +3220,24 @@ async fn import_numbered_file(
     claimed: &[i32],
     real_e01: bool,
 ) -> (String, Vec<String>, Option<Vec<u8>>) {
+    let (state, names, e01, _) =
+        import_numbered_file_with_tags(shape, cumulative, episodes, raw, claimed, real_e01, false)
+            .await;
+    (state, names, e01)
+}
+
+/// [`import_numbered_file`], optionally writing the `grabbed` tag row a
+/// grab path writes for each claimed episode. The fourth value is the
+/// episodes whose tag row is still `grabbed` after the import.
+async fn import_numbered_file_with_tags(
+    shape: SequelShape,
+    cumulative: i32,
+    episodes: Option<i32>,
+    raw: i32,
+    claimed: &[i32],
+    real_e01: bool,
+    write_tags: bool,
+) -> (String, Vec<String>, Option<Vec<u8>>, Vec<i32>) {
     let SequelShape {
         name,
         format,
@@ -3274,6 +3292,23 @@ async fn import_numbered_file(
         .await
         .unwrap()
         .unwrap();
+    if write_tags {
+        let class = crate::services::source::classify_release_sync(&title, Some("1080p"));
+        for ep in claimed {
+            crate::models::episode_tags::record_grab(
+                &db,
+                series_id,
+                *ep,
+                &class,
+                &title,
+                "Erai-raws",
+                3,
+                false,
+            )
+            .await
+            .unwrap();
+        }
+    }
     grabbed_torrents::set_download_client(&db, g, Some(1))
         .await
         .unwrap();
@@ -3340,7 +3375,20 @@ async fn import_numbered_file(
         .filter_map(|e| e.ok())
         .filter_map(|e| e.file_name().into_string().ok())
         .collect();
-    (final_state, names, std::fs::read(&existing_e01).ok())
+    let still_grabbed: Vec<i32> = sqlx::query_scalar(
+        "SELECT episode_number FROM episode_quality_tags \
+         WHERE series_id = ? AND state = 'grabbed' ORDER BY episode_number",
+    )
+    .bind(series_id)
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    (
+        final_state,
+        names,
+        std::fs::read(&existing_e01).ok(),
+        still_grabbed,
+    )
 }
 
 #[tokio::test]
@@ -3409,6 +3457,24 @@ async fn run_once_imports_a_split_part_grab_recorded_before_its_offset() {
         names.iter().any(|n| n.contains("S01E06")),
         "filed as E06: {names:?}"
     );
+}
+
+#[tokio::test]
+async fn run_once_clears_the_tag_a_pre_split_grab_wrote_for_the_titles_number() {
+    // The same grab wrote a `grabbed` tag row for episode 7. The file is
+    // episode 6, so nothing fills that row; left alone it kept the real
+    // episode 7 off the Wanted page as "downloading" for good.
+    let (state, names, _, still_grabbed) =
+        import_numbered_file_with_tags(split_part(), 1, Some(11), 7, &[7], false, true).await;
+    assert_eq!(state, "imported");
+    assert!(names.iter().any(|n| n.contains("S01E06")), "{names:?}");
+    assert!(still_grabbed.is_empty(), "stale rows: {still_grabbed:?}");
+
+    // A list in the series' own numbering is filled, not cleared.
+    let (state, _, _, still_grabbed) =
+        import_numbered_file_with_tags(split_part(), 1, Some(11), 7, &[6], false, true).await;
+    assert_eq!(state, "imported");
+    assert!(still_grabbed.is_empty(), "{still_grabbed:?}");
 }
 
 #[tokio::test]

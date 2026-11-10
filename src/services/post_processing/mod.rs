@@ -2052,6 +2052,20 @@ async fn import_torrent(
             .await;
             continue;
         }
+        // #303 — A list recorded before the split was stored names the
+        // title's own number (`- 07` as `[7]`), and so does the `grabbed`
+        // tag row the grab wrote. The file lands one slot lower (E06), so
+        // nothing would ever fill or clear the row for 7: the Wanted page
+        // dropped the episode as downloading for good. The cleanup after
+        // the loop clears what this pass did not import.
+        if !grab.is_batch
+            && !routes_by_file.contains_key(file_idx)
+            && resolved
+                .episodes()
+                .any(|n| !grab.episode_numbers.contains(&n))
+        {
+            special_claims.push(grab.episode_numbers.clone());
+        }
 
         let title_for = |ep: i32| -> String {
             ctx.ep_meta
@@ -2879,7 +2893,9 @@ async fn import_torrent(
 
     // The picker (and auto-expand's backfill) wrote `grabbed` tag rows
     // for the episodes the grab claimed; a file that landed as a
-    // special never fills them, and nothing else would clear them.
+    // special, or in another slot than the list named (#303, a list
+    // recorded before a split offset was stored), never fills them, and
+    // nothing else would clear them.
     if !special_claims.is_empty() {
         let imported: HashSet<i32> = imported_eps_by_series
             .get(&grab.series_id)
