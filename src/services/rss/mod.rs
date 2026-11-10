@@ -212,8 +212,8 @@ struct SeriesMeta {
     /// The season the row's own names give with a season word, ordinal,
     /// tag or Roman numeral (`season_num` unless that came only from a
     /// `Part N` / `Cour N`): a release naming this season may be named by
-    /// less of an alias (`AliasSet::own_season_words`). Never the TVDB
-    /// season a split part counts in.
+    /// less of an alias (`AliasSet::own_season_words`). A split part's
+    /// TVDB season opens the same rule (`own_season_words_for`).
     named_season: Option<i32>,
     /// What an alias may hold beyond a release's name when the release
     /// names `named_season`: every word of the entry's own names
@@ -403,6 +403,19 @@ impl SeriesMeta {
             franchise_glued: HashSet::new(),
             franchise: None,
         }
+    }
+
+    /// `own_season_words` when a release's season is the series' own:
+    /// the season its names give, or (#303) the TVDB season a split part
+    /// counts in. "JoJo's Bizarre Adventure - S06E08" is Steel Ball Run
+    /// 2nd - 3rd STAGE by its tag alone, the way `Mushoku Tensei -
+    /// S03E11` is the third season.
+    fn own_season_words_for(&self, season_hint: Option<i32>) -> Option<&HashSet<String>> {
+        let season = season_hint?;
+        let numbering = self.series.numbering();
+        let split_season = numbering.reading == numbering::Reading::Absolute
+            && numbering.tag_season == Some(season);
+        (self.named_season == Some(season) || split_season).then_some(&self.own_season_words)
     }
 
     /// The entry's own names and its franchise's words, read off its
@@ -2517,10 +2530,7 @@ fn match_against(
         collapsed_aliases: &meta.collapsed_aliases,
         collapsed_core_aliases: &meta.collapsed_core_aliases,
         franchise_words: &meta.franchise_words,
-        own_season_words: parsed
-            .season_hint
-            .is_some_and(|season| meta.named_season == Some(season))
-            .then_some(&meta.own_season_words),
+        own_season_words: meta.own_season_words_for(parsed.season_hint),
     };
     let mut alias_score = score_alias_overlap(item_view, &alias_set);
     // A real alias wins a tie over an entry name.
@@ -2898,8 +2908,9 @@ fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
 /// may be left over too: "Jujutsu Kaisen - S03E08" is inside "JUJUTSU
 /// KAISEN Season 3: The Culling Game Part 1", "Mairimashita! Iruma-kun -
 /// S04E23" inside "Mairimashita! Iruma-kun 4". A split part's TVDB season
-/// never opens this: "JoJos Bizarre Adventure S06E08" names the
-/// franchise, not Steel Ball Run.
+/// (#303) opens it as well: "JoJos Bizarre Adventure S06E08" is Steel
+/// Ball Run 2nd - 3rd STAGE's episode 7. Without a season the franchise
+/// name names no entry.
 ///
 /// The words are walked only for an alias form whose collapsed text
 /// contains the item's: this runs for every feed item and history title

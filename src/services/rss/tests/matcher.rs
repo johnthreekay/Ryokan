@@ -441,11 +441,20 @@ fn steel_ball_run_feed_titles_go_to_the_part_that_holds_them() {
             "[Judas] JoJo no Kimyou na Bouken - Steel Ball Run - S01E09 [1080p]",
             Some((2, vec![9])),
         ),
-        // The franchise alone names no entry of it.
+        // The franchise name with TVDB's season 6 tag is the split part
+        // that counts in that season.
         (
             "[Feibanyama] JoJos Bizarre Adventure S06E08 [NF WebRip 1080p H265]",
-            None,
+            Some((2, vec![7])),
         ),
+        (
+            "[Judas] JoJo's Bizarre Adventure (JoJo no Kimyou na Bouken) - S06E04 [1080p]",
+            Some((2, vec![3])),
+        ),
+        // Without the season it names no entry of the franchise, and
+        // another season's tag is another part's.
+        ("[Group] JoJo's Bizarre Adventure - 08 [1080p]", None),
+        ("[Group] JoJo's Bizarre Adventure - S05E08 [1080p]", None),
     ] {
         assert_eq!(sweep_takes(title, &metas), wanted, "{title}");
     }
@@ -699,10 +708,7 @@ fn alias_score(title: &str, meta: &SeriesMeta) -> f32 {
             collapsed_aliases: &meta.collapsed_aliases,
             collapsed_core_aliases: &meta.collapsed_core_aliases,
             franchise_words: &meta.franchise_words,
-            own_season_words: parsed
-                .season_hint
-                .is_some_and(|season| meta.named_season == Some(season))
-                .then_some(&meta.own_season_words),
+            own_season_words: meta.own_season_words_for(parsed.season_hint),
         },
     )
 }
@@ -747,7 +753,7 @@ fn a_franchise_name_alone_is_not_inside_an_entry_alias() {
     for meta in &metas {
         assert!(
             alias_score(
-                "[Feibanyama] JoJos Bizarre Adventure S06E08 [NF WebRip 1080p H265]",
+                "[Feibanyama] JoJos Bizarre Adventure S05E08 [NF WebRip 1080p H265]",
                 meta
             ) < 0.82,
             "{}",
@@ -862,10 +868,11 @@ fn a_season_the_series_names_lets_an_alias_hold_its_number() {
 }
 
 /// A season read only from `Part N` / `Cour N` is no season the series
-/// names (a movie's second part, a split cour), and a split part's TVDB
-/// season is not one either: neither lets an alias hold more.
+/// names (a movie's second part, a split cour) and lets an alias hold no
+/// more. A split part's TVDB season is not in its names either, but a
+/// release tagged with it is the part's (#303).
 #[test]
-fn a_part_or_a_tvdb_season_is_no_season_the_series_names() {
+fn a_part_is_no_season_the_series_names_and_a_split_season_tag_is() {
     assert_eq!(
         named_season_marker("Made in Abyss: Mezameru Shinpi Part 2"),
         None
@@ -895,11 +902,16 @@ fn a_part_or_a_tvdb_season_is_no_season_the_series_names() {
     );
 
     // Steel Ball Run 2nd - 3rd STAGE counts in TVDB's season 6, which
-    // its names never say: "JoJos Bizarre Adventure S06E08" names the
-    // franchise only (`a_franchise_name_alone_is_not_inside_an_entry_alias`).
+    // its names never say. The tag opens the rule for that part alone.
     let metas = sbr_metas(&jojo_graph(), true);
     assert_eq!(metas[1].series.numbering().tag_season, Some(6));
     assert_eq!(metas[1].named_season, None);
+    let tagged = "[Feibanyama] JoJos Bizarre Adventure S06E08 [NF WebRip 1080p H265]";
+    assert!(alias_score(tagged, &metas[1]) >= 1.0);
+    assert!(alias_score(tagged, &metas[0]) < 0.82);
+    // The AniList titles alone hold it too, before the MAL titles are stored.
+    let anilist_only = sbr_metas(&jojo_graph(), false);
+    assert!(alias_score(tagged, &anilist_only[1]) >= 1.0);
 }
 
 /// "Part 1 & 2" in a series' own title leaves its core whole: the
