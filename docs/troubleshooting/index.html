@@ -24,7 +24,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.71">
+      <meta name="generator" content="zensical-0.0.73">
     
     
       
@@ -35,7 +35,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.e442bf79.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ab2de0c.min.css">
       
         
           
@@ -99,9 +99,10 @@
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
 
     </a>
-    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+    <label class="md-header__button md-icon" for="__drawer">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+      <span class="md-visually-hidden">Navigation</span>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -153,9 +154,10 @@
     
       
       
-        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+        <label class="md-header__button md-icon" for="__search">
           
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+          <span class="md-visually-hidden">Search</span>
         </label>
         <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
   <button type="button" class="md-search__button">
@@ -1100,6 +1102,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rss-skipped-a-release-it-used-to-grab" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        RSS skipped a release it used to grab
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ryokan-removed-a-download-it-decided-was-the-wrong-series" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1339,6 +1352,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rss-skipped-a-release-it-used-to-grab" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        RSS skipped a release it used to grab
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ryokan-removed-a-download-it-decided-was-the-wrong-series" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1459,6 +1483,8 @@
 </ol>
 <h2 id="auto-search-saw-releases-but-grabbed-none">Auto search saw releases but grabbed none<a class="headerlink" href="#auto-search-saw-releases-but-grabbed-none" title="Anchor link">&para;</a></h2>
 <p>Automatic search only takes a release whose name contains one of the series' titles as written, or an alternate title you added, and names nothing beyond it, so a sequel titled by subtitle ("Dr. Stone New World") is not mistaken for the first season. When the only releases on offer name the show some other way, the search toast reads "looked close but none named the series exactly" and lists examples, and System → Logs has the full list. If one of those is the right show, add that name on the series page under <strong>Advanced search overrides</strong>, <strong>Alternate titles</strong>, and search again. See <a href="../scoring/#what-automatic-search-will-and-will-not-grab">How releases are scored</a>.</p>
+<h2 id="rss-skipped-a-release-it-used-to-grab">RSS skipped a release it used to grab<a class="headerlink" href="#rss-skipped-a-release-it-used-to-grab" title="Anchor link">&para;</a></h2>
+<p>Since 2.3.0, RSS takes a release named by a shortened title only when the short name lines up with whole words of one of the series' titles, and the words left over are a season or part marker. Before, any run of letters inside a title counted, which sent releases to unrelated shows. Two kinds of names are affected. One is a short name for a long single title ("Ano Hana", "Mugen Gacha"). The other is a first season tagged <code>S01</code> when the series' titles name no season. System → RSS lists such a release as "No tracked series match". Add the name the release uses on the series page under <strong>Advanced search overrides</strong>, <strong>Alternate titles</strong>, and the next sync will take it.</p>
 <h2 id="ryokan-removed-a-download-it-decided-was-the-wrong-series">Ryokan removed a download it decided was the wrong series<a class="headerlink" href="#ryokan-removed-a-download-it-decided-was-the-wrong-series" title="Anchor link">&para;</a></h2>
 <p>Ryokan compares the files inside every download with the series it was grabbed for. When the file names clearly belong to a different show, it removes the download, blocklists the release, and searches again. Open System, Misgrabs to see what was caught and why: the row shows the file names Ryokan looked at.</p>
 <p>If the release was actually correct, click <strong>Restore</strong>. Ryokan adds it back to the download client and never flags that release again. If a series keeps producing misgrabs, its AniList titles probably do not match how groups name it; check the series page's title and any synonyms, and check which indexers you have configured, since any-word search on some indexers returns unrelated releases.</p>
@@ -1532,7 +1558,7 @@
       <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.a2388154.min.js"></script>
+      <script src="../assets/javascripts/bundle.77dd0ce9.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       
