@@ -13,6 +13,7 @@ pub mod indexers;
 pub mod local_metadata;
 pub mod log;
 pub mod login_device;
+pub mod mal_entry_titles;
 pub mod media_probe_cache;
 pub mod metadata_cache;
 pub mod monitoring;

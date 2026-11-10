@@ -56,7 +56,8 @@ pub use graph::{
     EntryCard, Franchise, FranchiseGraph, GraphEdge, GraphNode, OffsetRow, Relation, TvdbRow,
 };
 pub use load::{
-    GraphIndex, MAX_CHAIN, load_franchise, load_franchises_for_series, load_graph, tracked_entries,
+    GraphIndex, MAX_CHAIN, cached_series_details, load_franchise, load_franchises_for_details,
+    load_franchises_for_series, load_graph, tracked_entries,
 };
 
 use crate::services::release_title::{self, ParsedTitle};

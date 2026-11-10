@@ -12,6 +12,7 @@ pub mod jikan;
 pub mod kitsu;
 pub mod mal;
 pub mod media;
+pub mod numbering;
 pub mod nyaa;
 pub mod oauth_state;
 pub mod paths;

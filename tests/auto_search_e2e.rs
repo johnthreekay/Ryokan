@@ -2541,3 +2541,82 @@ async fn find_all_for_target_labels_a_rival_and_drops_one_its_names_give_away() 
 
     unset_nyaa_base();
 }
+
+/// #303: a split part (Steel Ball Run 2nd - 3rd STAGE, offset 1 from 1st
+/// STAGE, absolute only) queries the number its releases carry, and the
+/// list keeps only the release that is really the episode. Every pass
+/// that names an episode has to use it: `Steel Ball Run 06` would fetch
+/// episode 5's release, and episode 6's would never be on the page.
+#[tokio::test]
+async fn find_all_for_target_queries_a_split_part_by_its_absolute_number() {
+    let _gate = ENV_LOCK.lock().await;
+    let server = MockServer::start().await;
+    let rows = [
+        nyaa_row(
+            "1111111111111111111111111111111111111111",
+            7007,
+            "[Erai-raws] Steel Ball Run - 07 [1080p NF WEB-DL AVC AAC]",
+            "1.3 GiB",
+            50,
+        ),
+        nyaa_row(
+            "2222222222222222222222222222222222222222",
+            6006,
+            "[Erai-raws] Steel Ball Run - 06 [1080p NF WEB-DL AVC AAC]",
+            "1.3 GiB",
+            50,
+        ),
+    ]
+    .concat();
+    Mock::given(method("GET"))
+        .and(query_param("q", "Steel Ball Run 07"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page(&rows)))
+        .expect(1..)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(query_param("q", "Steel Ball Run 06"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page(&rows)))
+        .expect(0)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page("")))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, 210482, "Steel Ball Run").await;
+    sqlx::query(
+        "UPDATE series SET format = 'ONA', episodes = 11, cumulative_prior_episodes = 1, \
+         cumulative_offset_source = 'split', cumulative_offset_season = 6 WHERE id = ?",
+    )
+    .bind(series_id)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let mut detail = detail_for(210482, "Steel Ball Run");
+    detail.format = "ONA".into();
+    detail.episodes = Some(11);
+    let cfs: Vec<ryokan::services::custom_formats::CompiledCustomFormat> = vec![];
+    let results = find_all_for_target(
+        &state.db,
+        &detail,
+        &default_config(),
+        &SearchTarget::Episode(6),
+        true,
+        &cfs,
+        &state.indexers,
+    )
+    .await;
+    let titles: Vec<&str> = results.iter().map(|r| r.title.as_str()).collect();
+    assert_eq!(
+        titles,
+        vec!["[Erai-raws] Steel Ball Run - 07 [1080p NF WEB-DL AVC AAC]"],
+        "{titles:?}"
+    );
+
+    unset_nyaa_base();
+}

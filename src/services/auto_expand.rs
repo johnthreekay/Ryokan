@@ -443,10 +443,10 @@ pub async fn expand_from_files(
     // names are the import's own (`series_anchors`: the row's title and
     // alternate titles too), so both read a file alike.
     let parent_row = series::get_by_id(db, parent_series_id).await.ok().flatten();
-    let parent_cumulative = parent_row
+    let parent_numbering = parent_row
         .as_ref()
-        .map(|s| s.cumulative_prior_episodes)
-        .unwrap_or(0);
+        .map(series::Series::numbering)
+        .unwrap_or_default();
     let parent_anchors = match &parent_row {
         Some(row) => crate::services::grab_commit::series_anchors(row),
         None => SeriesAnchors::new(&auto_search::collect_aliases(parent_detail))
@@ -466,7 +466,7 @@ pub async fn expand_from_files(
             continue;
         }
         // Every episode a multi-episode file holds (issue #246).
-        for raw_ep in crate::services::grab_commit::file_slot_episodes(span, parent_cumulative) {
+        for raw_ep in crate::services::grab_commit::file_slot_episodes(span, parent_numbering) {
             if raw_ep <= 0 {
                 continue;
             }
@@ -550,9 +550,15 @@ pub async fn expand_from_files(
             file_indices: parent_file_indices,
             episode_numbers: parent_episode_numbers.to_vec(),
             matched_subtitle: String::new(),
-            // Parent-route files always use their own arc-local
-            // numbering — no offset ever needed here.
-            episode_offset: 0,
+            // Parent-route files use their own arc-local numbering, no
+            // offset; a split part's are numbered on from the earlier
+            // parts (#303). The import reads a split part's own route
+            // with its numbering, not this offset, so a tag counts the
+            // way the coverage above was read (`route_offset_for`).
+            episode_offset: match parent_numbering.reading {
+                crate::services::numbering::Reading::Absolute => parent_numbering.offset,
+                _ => 0,
+            },
         });
     }
 

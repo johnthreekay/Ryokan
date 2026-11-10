@@ -71,10 +71,11 @@ static HYDRATED_CUMULATIVE: LazyLock<Mutex<HashSet<i64>>> =
 /// for.
 ///
 /// Gate: fires only when the stored cumulative is 0 AND the cached
-/// detail advertises a TV PREQUEL edge. First-cour series with no TV
-/// prequel (Attack on Titan S1, JJK S1 — whose only prequel is the
-/// movie JJK 0, which the TV filter excludes) skip the walk since
-/// cumulative=0 is already the correct answer.
+/// detail advertises a TV PREQUEL edge, or (#303) a PREQUEL that shares
+/// the series' MAL id. First-cour series with no such prequel (Attack
+/// on Titan S1, JJK S1 — whose only prequel is the movie JJK 0, which
+/// the TV filter excludes) skip the walk since cumulative=0 is already
+/// the correct answer.
 ///
 /// Memoization: a process-local set ensures one hydration attempt per
 /// series per process. Persistent AL rate-limit or a legitimately
@@ -95,7 +96,16 @@ pub(super) async fn maybe_hydrate_cumulative_offset(
     // prequel (that gap is what the rules are for). The rule's source
     // entry is cached so the search can read franchise aliases.
     if let Some(rule) = anime_relations::offset_for(t.anilist_id, t.mal_id) {
-        return match series::update_cumulative_prior_episodes(db, t.id, rule.episodes, true).await {
+        return match series::update_cumulative_prior_episodes(
+            db,
+            t.id,
+            rule.episodes,
+            crate::services::numbering::OffsetSource::Rule,
+            None,
+            true,
+        )
+        .await
+        {
             Ok(()) => {
                 metadata_sync::log_rule_offset(db, &t, &rule).await;
                 let force_kitsu = force_kitsu_fallback_enabled(db).await;
@@ -112,11 +122,18 @@ pub(super) async fn maybe_hydrate_cumulative_offset(
             }
         };
     }
-    let has_tv_prequel = detail
-        .relations
-        .iter()
-        .any(|r| r.relation_type == "PREQUEL" && r.media_type == "ANIME" && r.format == "TV");
-    if !has_tv_prequel {
+    // #303 — A prequel AniList split out of the same MAL entry (Steel
+    // Ball Run 1st STAGE for 2nd - 3rd STAGE, both ONA) can set the
+    // offset too; the refresh's decision point checks it.
+    let has_offset_prequel = detail.relations.iter().any(|r| {
+        r.relation_type == "PREQUEL"
+            && r.media_type == "ANIME"
+            && (r.format == "TV"
+                || (r.id > 0
+                    && r.id != t.anilist_id
+                    && t.mal_id.is_some_and(|m| m > 0 && r.id_mal == Some(m))))
+    });
+    if !has_offset_prequel {
         return Some(t);
     }
     {

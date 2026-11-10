@@ -617,3 +617,112 @@ fn a_number_in_the_series_name_takes_no_slot() {
     assert!(with.slots.contains_key(&1));
     assert!(!with.slots.contains_key(&2));
 }
+
+/// #303: a Steel Ball Run pack numbered from 1st STAGE (`01`-`12`) for
+/// 2nd - 3rd STAGE (offset 1 from its split). Under the single absolute
+/// reading `02`-`12` are its episodes 1-11 and `01` is skipped as 1st
+/// STAGE's; with the bare offset `01` and `02` both read as episode 1
+/// and the pack fails closed.
+#[test]
+fn a_split_part_pack_skips_the_earlier_part_and_imports_the_rest() {
+    use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+    let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic);
+    let files: Vec<(usize, i64, Option<i32>, Numbering, String)> = (1..=12)
+        .map(|n| {
+            (
+                n as usize,
+                7,
+                None,
+                sbr,
+                format!(
+                    "[Erai-raws] JoJo no Kimyou na Bouken - Steel Ball Run - {n:02} [1080p].mkv"
+                ),
+            )
+        })
+        .collect();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).expect("pack plans");
+    assert!(!plan.slots.contains_key(&1), "1st STAGE's 01 takes no slot");
+    for n in 2..=12usize {
+        assert_eq!(
+            plan.slots.get(&n).map(|r| r.episode),
+            Some(n as i32 - 1),
+            "file {n}"
+        );
+    }
+    let either: Vec<(usize, i64, Option<i32>, i32, String)> = files
+        .iter()
+        .map(|(i, s, r, _, name)| (*i, *s, *r, 1, name.clone()))
+        .collect();
+    assert!(validate_batch_episode_map(&either, &HashSet::new()).is_err());
+}
+
+/// #303: the same pack tagged the way TVDB numbers the show (season 6,
+/// 1st STAGE as `S06E01`), for a split confirmed in TVDB season 6: the
+/// tags count on from 1st STAGE too. A tag of another season counts
+/// within it.
+#[test]
+fn a_split_part_reads_its_tvdb_season_tags_absolute() {
+    use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+    let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+        .with_tag_season(Some(6));
+    let files: Vec<(usize, i64, Option<i32>, Numbering, String)> = (1..=12)
+        .map(|n| {
+            (
+                n as usize,
+                7,
+                None,
+                sbr,
+                format!("[Trix] JoJos Bizarre Adventure (2012) S06E{n:02} 1080p NF WEB-DL.mkv"),
+            )
+        })
+        .chain(std::iter::once((
+            13,
+            7,
+            None,
+            sbr,
+            "[Other] Steel Ball Run S01E11 [1080p].mkv".to_string(),
+        )))
+        .collect();
+    let plan = validate_batch_episode_map(&files[..12], &HashSet::new()).expect("pack plans");
+    assert!(!plan.slots.contains_key(&1), "S06E01 is 1st STAGE's");
+    assert_eq!(plan.slots.get(&7).map(|r| r.episode), Some(6));
+    assert_eq!(plan.slots.get(&12).map(|r| r.episode), Some(11));
+    let other = validate_batch_episode_map(&files[12..], &HashSet::new()).expect("plans");
+    assert_eq!(other.slots.get(&13).map(|r| r.episode), Some(11));
+}
+
+/// #303: auto-expand's parent route for a split part carries its offset,
+/// but the import reads the part's own routed files with its numbering,
+/// so a tag counts the way the coverage rows were read: `S01E05` within
+/// season 1, `S06E07` on from 1st STAGE, a bare `- 09` absolute. A
+/// sibling's route keeps its fixed offset, and so does an either-reading
+/// parent's.
+#[test]
+fn a_split_parts_own_route_reads_tags_like_its_coverage() {
+    use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+    use crate::services::post_processing::route_offset_for;
+    let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+        .with_tag_season(Some(6));
+    assert_eq!(route_offset_for(Some((7, 1)), 7, sbr), None);
+    assert_eq!(route_offset_for(Some((8, 3)), 7, sbr), Some(3));
+    assert_eq!(route_offset_for(None, 7, sbr), None);
+    assert_eq!(
+        route_offset_for(Some((7, 0)), 7, Numbering::either(47)),
+        Some(0)
+    );
+    let offset = route_offset_for(Some((7, 1)), 7, sbr);
+    let files: Vec<(usize, i64, Option<i32>, Numbering, String)> = [
+        "[Group] Steel Ball Run S01E05 [1080p].mkv",
+        "[Group] Steel Ball Run S06E07 [1080p].mkv",
+        "[Group] Steel Ball Run - 09 [1080p].mkv",
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, name)| (i, 7, offset, sbr, name.to_string()))
+    .collect();
+    let plan = validate_batch_episode_map(&files, &HashSet::new()).expect("plans");
+    let slot = |i: usize| plan.slots.get(&i).map(|r| r.episode);
+    assert_eq!(slot(0), Some(5));
+    assert_eq!(slot(1), Some(6));
+    assert_eq!(slot(2), Some(8));
+}

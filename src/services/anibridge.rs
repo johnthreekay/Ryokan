@@ -443,6 +443,28 @@ pub async fn tvdb_placements(anilist_id: i64) -> Vec<TvdbPlacement> {
         .unwrap_or_default()
 }
 
+/// The TVDB season the mappings place `anilist_id` `offset` episodes
+/// into (AniList episode 1 is that season's episode `offset + 1`):
+/// `Some(Some(season))` when there is one, `Some(None)` when not, `None`
+/// when the mappings are not loaded, so a caller can tell "no" from
+/// "can't say yet". Season 0 (Specials) never counts. The split-offset
+/// check in `anime_relations::cumulative_prior_episodes` uses it as the
+/// second source that has to agree (#303), and the season it names is
+/// the one whose tags count on from the earlier parts.
+pub async fn season_at_offset(anilist_id: i64, offset: i32) -> Option<Option<i32>> {
+    let cache = CACHE.read().await;
+    let data = &cache.as_ref()?.data;
+    Some(
+        data.anilist_tvdb_placements
+            .get(&anilist_id)
+            .and_then(|list| {
+                list.iter()
+                    .find(|p| p.season > 0 && p.episode_offset == Some(offset))
+            })
+            .map(|p| p.season),
+    )
+}
+
 /// The AniList entries the mappings pair AniDB anime `aid` with,
 /// ascending; empty when none or the mappings are not loaded.
 pub async fn anilist_ids_for_anidb(aid: i64) -> Vec<i64> {
@@ -690,6 +712,45 @@ pub async fn seed_tmdb_episode_spans_for_tests(spans: &[(i64, i32, i32, i32, i64
         anilist_to_tvdb: HashMap::new(),
         mal_to_tvdb: HashMap::new(),
         anilist_tvdb_placements: HashMap::new(),
+        anidb_to_anilist: HashMap::new(),
+    };
+    let mut w = CACHE.write().await;
+    *w = Some(CacheState { data });
+}
+
+/// Serializes tests that replace the process-wide mappings cache. Under
+/// nextest each test has its own process; plain `cargo test` runs a
+/// binary's tests on threads, where two seeders would read each other's
+/// mappings. Hold it from the seed to the last read.
+#[cfg(any(test, feature = "test-support"))]
+pub static TEST_CACHE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Test seeding for TVDB placements: `(anilist_id, tvdb_id, season,
+/// episode_offset)`. Every other table is left empty, so a test that
+/// reads anything else seeds that separately.
+#[cfg(any(test, feature = "test-support"))]
+pub async fn seed_tvdb_placements_for_tests(placements: &[(i64, i64, i32, Option<i32>)]) {
+    let mut anilist_tvdb_placements: HashMap<i64, Vec<TvdbPlacement>> = HashMap::new();
+    for &(anilist_id, tvdb_id, season, episode_offset) in placements {
+        anilist_tvdb_placements
+            .entry(anilist_id)
+            .or_default()
+            .push(TvdbPlacement {
+                tvdb_id,
+                season,
+                episode_offset,
+            });
+    }
+    let data = MappingCache {
+        tmdb_to_anime: HashMap::new(),
+        tvdb_to_anime: HashMap::new(),
+        anilist_to_tmdb: HashMap::new(),
+        mal_to_tmdb: HashMap::new(),
+        mal_to_anilist: HashMap::new(),
+        tmdb_episode_spans: HashMap::new(),
+        anilist_to_tvdb: HashMap::new(),
+        mal_to_tvdb: HashMap::new(),
+        anilist_tvdb_placements,
         anidb_to_anilist: HashMap::new(),
     };
     let mut w = CACHE.write().await;
@@ -2181,6 +2242,7 @@ mod episode_span_tests {
 
     #[tokio::test]
     async fn seeded_spans_are_served_by_the_async_lookup() {
+        let _cache = TEST_CACHE_LOCK.lock().await;
         seed_tmdb_episode_spans_for_tests(&[(9, 2, 1, 12, 55, 13), (9, 2, 13, 24, 56, 1)]).await;
         let s = tmdb_episode_spans(9, 2).await;
         assert_eq!(s.len(), 2);

@@ -14,11 +14,12 @@ use regex_lite::Regex;
 use crate::services::anilist::AnimeDetail;
 use crate::services::identify::{self, Franchise};
 use crate::services::media;
+use crate::services::numbering::Numbering;
 use crate::services::release_title::{self, SeriesAnchors};
 
 use super::pack_detection::is_pack_candidate_relation;
 use super::provenance::{AliasMatch, IdentityNote, MatchKind};
-use super::{SearchTarget, episode_match};
+use super::{SearchTarget, episode_match, pack_episode_match};
 
 pub fn normalize_title(input: &str) -> String {
     // A name that is wholly one bracket group (AniList's English
@@ -614,18 +615,10 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
     // (e.g. "Steel Ball Run" from "JoJo's Bizarre Adventure: Part 7–Steel Ball Run").
     // A franchise name ("JoJo's Bizarre Adventure" there) is left out:
     // see `franchise_names`.
-    let franchise: HashSet<String> = franchise_names(detail)
-        .iter()
-        .map(|h| normalize_title(h))
-        .collect();
+    let franchise = normalized_franchise_names(detail);
     let all_titles: Vec<String> = primary.iter().chain(extra.iter()).cloned().collect();
-    for title in &all_titles {
-        for segment in split_title_segments(title, &related) {
-            if !franchise.contains(&normalize_title(&segment)) {
-                extra.push(segment);
-            }
-        }
-    }
+    let segments = own_name_segments(&all_titles, &related, &franchise);
+    extra.extend(segments);
 
     // Return only the NEW aliases (not already in primary).
     let primary_lower: HashSet<String> = primary.iter().map(|s| s.to_lowercase()).collect();
@@ -633,6 +626,50 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
         .into_iter()
         .filter(|s| !primary_lower.contains(&s.to_lowercase()))
         .collect()
+}
+
+/// The entry's own names inside its compound primary titles (romaji,
+/// English, native; never the AniList synonyms): the segments
+/// `split_title_segments` yields, minus its franchise names
+/// (`franchise_names`). "Steel Ball Run" and "2nd & 3rd STAGE" for
+/// "JoJo no Kimyou na Bouken: Steel Ball Run - 2nd & 3rd STAGE". RSS
+/// reads a release named by one of these plus franchise words as the
+/// entry's (`rss::SeriesMeta`), so the caller decides which segments
+/// are distinctive enough to count.
+pub fn entry_name_segments(detail: &AnimeDetail) -> Vec<String> {
+    let related = related_anime_titles(detail);
+    let franchise = normalized_franchise_names(detail);
+    dedupe_strings(own_name_segments(
+        &collect_aliases(detail),
+        &related,
+        &franchise,
+    ))
+}
+
+/// `franchise_names`, normalized: the form segments are compared in.
+fn normalized_franchise_names(detail: &AnimeDetail) -> HashSet<String> {
+    franchise_names(detail)
+        .iter()
+        .map(|h| normalize_title(h))
+        .collect()
+}
+
+/// Every `split_title_segments` segment of `titles`, in order, that is
+/// not one of the (normalized) `franchise` names.
+fn own_name_segments(
+    titles: &[String],
+    related: &HashSet<String>,
+    franchise: &HashSet<String>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for title in titles {
+        for segment in split_title_segments(title, related) {
+            if !franchise.contains(&normalize_title(&segment)) {
+                out.push(segment);
+            }
+        }
+    }
+    out
 }
 
 /// Issue #300. The segments of this series' compound titles that name
@@ -1151,8 +1188,9 @@ pub fn names_more_than_the_series(title: &str, aliases: &[String]) -> bool {
 
 /// Words that mark a season, part, or arc when they follow a series
 /// title: the difference between an episode title and a sequel's
-/// subtitle in the `Title - X - 05` position.
-fn is_season_marker_token(token: &str) -> bool {
+/// subtitle in the `Title - X - 05` position. Also what RSS lets an
+/// alias hold beyond a release's name (`rss::score_alias_overlap`).
+pub(crate) fn is_season_marker_token(token: &str) -> bool {
     if matches!(
         token,
         "season"
@@ -1215,7 +1253,7 @@ pub fn classify_match_detailed(
     target: &SearchTarget,
     expected_season: i32,
     allow_batch_episode: bool,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
 ) -> MatchOutcome {
     let normalized_title = normalize_title(title);
     let title_tokens = token_set(&normalized_title);
@@ -1233,7 +1271,10 @@ pub fn classify_match_detailed(
     if let SearchTarget::Episode(target_ep) = target {
         // Season check: reject if release has an explicit season that doesn't match
         let parsed_title = release.insert(release_title::parse(title));
-        if parsed_title.conflicts_with_season(expected_season) {
+        let numbering = numbering.into();
+        // #303 — A split part also answers to the TVDB season its offset
+        // counts in (`S06E07` for Steel Ball Run 2nd - 3rd STAGE).
+        if !numbering.season_allowed(parsed_title, expected_season) {
             return MatchOutcome::NoMatch;
         }
 
@@ -1249,9 +1290,19 @@ pub fn classify_match_detailed(
             return MatchOutcome::NoMatch;
         }
         // #30 — Accept either the relative (AL-own) or the absolute
-        // (SubsPlease-style) episode number. See `episode_match`
-        // for the details.
-        if !episode_match(&parsed, *target_ep, absolute_offset) {
+        // (SubsPlease-style) episode number; #303 — or only the one the
+        // series' numbering reads, a season tag staying relative. See
+        // `episode_match` for the details.
+        // A pack's run may reach back into an earlier part: its files
+        // are imported one at a time (`pack_episode_match`). Two numbers
+        // (`- 01-02`) may be one file, which the import refuses.
+        let reading = numbering.for_tag(crate::services::numbering::season_tag(parsed_title));
+        let matched = if parsed.len() > 2 && parsed_title.is_batch() {
+            pack_episode_match(&parsed, *target_ep, reading)
+        } else {
+            episode_match(&parsed, *target_ep, reading)
+        };
+        if !matched {
             return MatchOutcome::NoMatch;
         }
     }
@@ -1274,7 +1325,7 @@ pub fn classify_match(
     target: &SearchTarget,
     expected_season: i32,
     allow_batch_episode: bool,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
 ) -> Option<AliasMatch> {
     match classify_match_detailed(
         title,
@@ -1283,7 +1334,7 @@ pub fn classify_match(
         target,
         expected_season,
         allow_batch_episode,
-        absolute_offset,
+        numbering,
     ) {
         MatchOutcome::Matched(m, _) => Some(m),
         MatchOutcome::Rival(..) | MatchOutcome::NoMatch => None,
@@ -1299,7 +1350,7 @@ pub fn matches_target(
     target: &SearchTarget,
     expected_season: i32,
     allow_batch_episode: bool,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
 ) -> bool {
     classify_match(
         title,
@@ -1308,7 +1359,7 @@ pub fn matches_target(
         target,
         expected_season,
         allow_batch_episode,
-        absolute_offset,
+        numbering,
     )
     .is_some()
 }
@@ -1724,6 +1775,106 @@ mod tests {
             3,
             false,
             47,
+        ));
+    }
+
+    /// #303: Steel Ball Run 2nd - 3rd STAGE, offset 1 from its split,
+    /// reads one number per episode. Every group numbers it from 1st
+    /// STAGE, so `- 07` is episode 6 and `- 06` is episode 5.
+    #[test]
+    fn a_split_part_accepts_only_the_absolute_number() {
+        use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+        let own = vec!["Steel Ball Run".to_string()];
+        let gate = GatePrecompute::build(&own).with_series_format("ONA");
+        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+            .with_tag_season(Some(6));
+        let accepts = |title: &str, episode: i32| {
+            matches_target(
+                title,
+                &own,
+                &gate,
+                &SearchTarget::Episode(episode),
+                1,
+                false,
+                sbr,
+            )
+        };
+        let erai = |n: &str| {
+            format!(
+                "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - {n} [1080p NF WEB-DL AVC AAC][MultiSub]"
+            )
+        };
+        assert!(accepts(&erai("07"), 6));
+        assert!(!accepts(&erai("06"), 6), "- 06 is episode 5");
+        assert!(accepts(&erai("06"), 5));
+        assert!(!accepts(&erai("01"), 1), "- 01 is 1st STAGE's");
+        assert!(accepts(&erai("02"), 1));
+        // A bracketed number reads the same way.
+        assert!(accepts(
+            "[桜都字幕组] 飙马野郎 JOJO的奇妙冒险 / Steel Ball Run： JoJo no Kimyou na Bouken [07][1080P][简体内嵌]",
+            6
+        ));
+        // A season tag counts within its season...
+        assert!(accepts("[Group] Steel Ball Run S01E06 [1080p]", 6));
+        assert!(!accepts("[Group] Steel Ball Run S01E07 [1080p]", 6));
+        // ...except TVDB's season 6, where 1st STAGE is S06E01: the
+        // season gate lets it through and it reads like a bare number.
+        let dkb =
+            |n: &str| format!("[DKB] Steel Ball Run: JoJo no Kimyou na Bouken - S06E{n} [1080p]");
+        assert!(accepts(&dkb("07"), 6));
+        assert!(!accepts(&dkb("06"), 6), "S06E06 is episode 5");
+        assert!(!accepts(&dkb("01"), 1), "S06E01 is 1st STAGE's");
+        assert!(
+            !accepts("[Group] Steel Ball Run S05E07 [1080p]", 6),
+            "another season"
+        );
+        // A season marker before a bare number is a bare number.
+        assert!(accepts("[Group] Steel Ball Run S1 - 07 [1080p]", 6));
+        // A run reaching into 1st STAGE is none of this part's.
+        assert!(!accepts(&erai("01-02"), 1));
+        // The same releases under a bare offset (#30) read both ways.
+        assert!(matches_target(
+            &erai("06"),
+            &own,
+            &gate,
+            &SearchTarget::Episode(6),
+            1,
+            false,
+            1,
+        ));
+    }
+
+    /// #303: the upgrade sweep matches packs to episode targets. A pack's
+    /// run reaching into 1st STAGE (`01-12`, `S06E01-S06E12`) still holds
+    /// 2nd - 3rd STAGE's episodes: the import skips the `01` file.
+    #[test]
+    fn a_split_parts_pack_matches_its_episodes_in_the_upgrade_sweep() {
+        use crate::services::numbering::{Numbering, NumberingSetting, OffsetSource};
+        let own = vec!["Steel Ball Run".to_string()];
+        let gate = GatePrecompute::build(&own).with_series_format("ONA");
+        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+            .with_tag_season(Some(6));
+        let sweep = |title: &str, episode: i32| {
+            matches_target(
+                title,
+                &own,
+                &gate,
+                &SearchTarget::Episode(episode),
+                1,
+                true,
+                sbr,
+            )
+        };
+        let bare = "[Group] Steel Ball Run 01-12 [BD 1080p]";
+        let tagged = "[Group] Steel Ball Run S06E01-S06E12 [BD 1080p]";
+        assert!(sweep(bare, 6));
+        assert!(sweep(bare, 11));
+        assert!(sweep(tagged, 6));
+        assert!(!sweep(bare, 12), "12 + 1 is past the pack");
+        // A single multi-episode file reaching back is still refused.
+        assert!(!sweep(
+            "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 01-02 [1080p]",
+            1
         ));
     }
 

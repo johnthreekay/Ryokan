@@ -13,6 +13,7 @@ use std::collections::HashSet;
 
 use crate::models::config::Config;
 use crate::services::custom_formats::{self, CompiledCustomFormat, EvalContext};
+use crate::services::numbering::Numbering;
 use crate::services::nyaa::SearchResult;
 use crate::services::quality;
 use crate::services::scoring::ScoreComponent;
@@ -210,7 +211,7 @@ pub(super) fn rescore_for_auto_search(
     preferred_resolution: Resolution,
     cutoff_source: Source,
     cutoff_resolution: Resolution,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
 ) -> i32 {
     rescore_for_auto_search_with_breakdown(
         result,
@@ -226,7 +227,7 @@ pub(super) fn rescore_for_auto_search(
         preferred_resolution,
         cutoff_source,
         cutoff_resolution,
-        absolute_offset,
+        numbering,
         false, // batch_search_mode — non-batch callers
     )
     .0
@@ -259,9 +260,11 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
     preferred_resolution: Resolution,
     cutoff_source: Source,
     cutoff_resolution: Resolution,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
     batch_search_mode: bool,
 ) -> (i32, Vec<ScoreComponent>) {
+    let numbering = numbering.into();
+    let absolute_offset = numbering.absolute_offset();
     let mut score = result.score;
     let mut parts: Vec<ScoreComponent> = Vec::new();
     let mut add =
@@ -339,9 +342,11 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
         }
     }
 
-    // Season mismatch penalty (explicit season markers like S03, "3rd Season")
+    // Season mismatch penalty (explicit season markers like S03, "3rd Season").
+    // #303: the TVDB season a split counts in is no mismatch, the same
+    // `season_allowed` rule the gate and the interactive filter apply.
     let release = release_title::parse(&result.title);
-    if release.conflicts_with_season(expected_season) {
+    if !numbering.season_allowed(&release, expected_season) {
         add(
             &mut parts,
             "Season Mismatch",
@@ -390,16 +395,28 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
                 add(&mut parts, "Single-Episode Target", 10, None);
             }
             let parsed = release.for_series(anchors).episodes;
-            let relative_match = parsed.contains(ep);
-            let absolute_match =
-                absolute_offset > 0 && parsed.contains(&ep.saturating_add(absolute_offset));
-            if relative_match || absolute_match {
-                add(
-                    &mut parts,
-                    "Episode Number Match",
-                    40,
-                    Some(format!("release covers episode {ep}")),
-                );
+            // #303 — The number the series' numbering reads as the
+            // target; a split part's `- 06` is its episode 5 and gets
+            // no match here. The detail says which number it was.
+            let reading = numbering.for_tag(crate::services::numbering::season_tag(&release));
+            // A pack's run may reach back into an earlier part, as the
+            // gate reads it (`pack_episode_match`).
+            let matched = if result.is_batch && parsed.len() > 2 {
+                reading.pack_accepts(&parsed, *ep)
+            } else {
+                reading.accepts(&parsed, *ep)
+            };
+            if matched {
+                let detail = match reading.reading {
+                    crate::services::numbering::Reading::Absolute => {
+                        format!(
+                            "release covers episode {ep} (numbered {})",
+                            ep.saturating_add(reading.offset)
+                        )
+                    }
+                    _ => format!("release covers episode {ep}"),
+                };
+                add(&mut parts, "Episode Number Match", 40, Some(detail));
             } else if absolute_offset > 0 && !parsed.is_empty() {
                 // #30 — franchise-alias fallback surfaces candidates
                 // whose parsed number matches neither target. Bury them.
@@ -614,7 +631,7 @@ mod tests {
         target: &SearchTarget,
         is_finished: bool,
         finished_mode: quality::FinishedSeriesMode,
-        absolute_offset: i32,
+        absolute_offset: impl Into<Numbering>,
         batch_search_mode: bool,
     ) -> (i32, Vec<ScoreComponent>) {
         rescore_for_auto_search_with_breakdown(
@@ -634,6 +651,91 @@ mod tests {
             absolute_offset,
             batch_search_mode,
         )
+    }
+
+    /// #303: a split part's `- 06` is its episode 5: no match for
+    /// episode 6, and `- 07` earns it with the number it was released as.
+    #[test]
+    fn rescore_matches_a_split_part_on_its_absolute_number_only() {
+        use crate::services::numbering::{NumberingSetting, OffsetSource};
+        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic);
+        let c = cls(Source::Web, Resolution::R1080p);
+        let parts = |title: &str| {
+            let mut r = candidate(title, "h1");
+            r.is_batch = false;
+            rescore(
+                &r,
+                &c,
+                &SearchTarget::Episode(6),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                sbr,
+                false,
+            )
+            .1
+        };
+        let seven = parts("[Erai-raws] Show - 07 [1080p].mkv");
+        let matched = seven
+            .iter()
+            .find(|p| p.label == "Episode Number Match")
+            .expect("- 07 is episode 6");
+        assert_eq!(
+            matched.detail.as_deref(),
+            Some("release covers episode 6 (numbered 7)")
+        );
+        let six = parts("[Erai-raws] Show - 06 [1080p].mkv");
+        assert!(
+            six.iter().all(|p| p.label != "Episode Number Match"),
+            "{six:?}"
+        );
+        assert!(
+            six.iter().any(|p| p.label == "Wrong Episode Number"),
+            "{six:?}"
+        );
+    }
+
+    /// #303: the gate admits `S06E07` for Steel Ball Run 2nd - 3rd STAGE
+    /// (TVDB season 6, its split confirmed there), so scoring must not
+    /// dock it as a Season Mismatch; a tag of any other season still is.
+    #[test]
+    fn rescore_does_not_dock_the_split_seasons_tag() {
+        use crate::services::numbering::{NumberingSetting, OffsetSource};
+        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+            .with_tag_season(Some(6));
+        let c = cls(Source::Web, Resolution::R1080p);
+        let labels = |title: &str, numbering: Numbering| -> Vec<String> {
+            let mut r = candidate(title, "h1");
+            r.is_batch = false;
+            rescore(
+                &r,
+                &c,
+                &SearchTarget::Episode(6),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                numbering,
+                false,
+            )
+            .1
+            .into_iter()
+            .map(|p| p.label)
+            .collect()
+        };
+        let tagged = labels("[DKB] Show - S06E07 [1080p].mkv", sbr);
+        assert!(
+            !tagged.contains(&"Season Mismatch".to_string()),
+            "{tagged:?}"
+        );
+        assert!(
+            tagged.contains(&"Episode Number Match".to_string()),
+            "{tagged:?}"
+        );
+        let other = labels("[DKB] Show - S05E07 [1080p].mkv", sbr);
+        assert!(other.contains(&"Season Mismatch".to_string()), "{other:?}");
+        let unconfirmed = labels("[DKB] Show - S06E07 [1080p].mkv", sbr.with_tag_season(None));
+        assert!(
+            unconfirmed.contains(&"Season Mismatch".to_string()),
+            "{unconfirmed:?}"
+        );
     }
 
     #[test]
