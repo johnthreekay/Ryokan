@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use sqlx::SqlitePool;
 
 use crate::models::log::LogCategory;
-use crate::models::{config, local_metadata, metadata_cache, series};
+use crate::models::{config, local_metadata, mal_entry_titles, metadata_cache, series};
 use crate::services::{anilist, anime_relations, artwork, jikan, kitsu, logger, numbering};
 
 const MAX_RELATION_TREE_NODES: usize = 64;
@@ -431,6 +431,89 @@ pub(crate) async fn mal_entry_split(db: &SqlitePool, anilist_id: i64, mal_id: Op
             row.cumulative_prior_episodes.max(0)
         }
         _ => 0,
+    }
+}
+
+/// #303 — How long a split MAL entry's stored titles stand before a
+/// refresh asks MAL again: the parts of one entry share the row, and the
+/// 12h refresh would otherwise fetch it twice a day per part.
+const MAL_ENTRY_TITLES_MAX_AGE_SECS: i64 = 7 * 24 * 60 * 60;
+
+/// The titles a MAL entry's detail carries that are stored, in order:
+/// its romaji title and its English title. Never its synonyms: RSS reads
+/// each stored title as a full alias, and a short synonym ("SBR") inside
+/// any collapsed release title would match it, where AniList's synonyms
+/// only enter the auto-search's extended pass.
+fn mal_entry_title_list(detail: &anilist::AnimeDetail) -> Vec<String> {
+    vec![detail.title_romaji.clone(), detail.title_english.clone()]
+}
+
+/// #303 — When AniList split the series' MAL entry into several entries
+/// (`mal_entry_titles::is_split_member`, read from the relations the
+/// refresh has just written), store that MAL entry's own titles: release
+/// groups follow the MAL entry, and no AniList part carries its names.
+///
+/// - A MAL (Jikan) detail of the entry is its titles already, so they
+///   are stored without a fetch. Such a refresh has replaced the AniList
+///   relations with MAL's, which name no AniList entry, so a row an
+///   earlier AniList refresh stored stands as the proof of the split.
+/// - An AniList detail fetches the MAL entry's titles
+///   (`jikan::get_anime_titles`: the detail cache, else one request)
+///   unless the stored row is younger than
+///   [`MAL_ENTRY_TITLES_MAX_AGE_SECS`].
+/// - Any other detail (Kitsu) means MAL failed moments ago: nothing is
+///   fetched and the stored row stands.
+///
+/// Soft throughout: a failed fetch or write is a debug line and the
+/// stored titles stay.
+async fn store_split_mal_entry_titles(
+    db: &SqlitePool,
+    anilist_id: i64,
+    mal_id: Option<i64>,
+    detail: &anilist::AnimeDetail,
+    authoritative_detail: bool,
+) {
+    let Some(mal_id) = mal_id.filter(|m| *m > 0) else {
+        return;
+    };
+    if anilist_id <= 0 {
+        return;
+    }
+    let stored_age = mal_entry_titles::age_secs(db, mal_id).await;
+    let in_hand = detail.id < 0 && detail.id_mal == Some(mal_id);
+    let member = mal_entry_titles::is_split_member(db, anilist_id, Some(mal_id)).await
+        || (in_hand && stored_age.is_some());
+    if !member {
+        return;
+    }
+    let titles = if in_hand {
+        mal_entry_title_list(detail)
+    } else {
+        if !authoritative_detail
+            || stored_age.is_some_and(|age| age < MAL_ENTRY_TITLES_MAX_AGE_SECS)
+        {
+            return;
+        }
+        match jikan::get_anime_titles(mal_id).await {
+            Ok((romaji, english)) => vec![romaji, english],
+            Err(e) => {
+                tracing::debug!(
+                    target: "ryokan::metadata_sync",
+                    anilist_id,
+                    mal_id,
+                    "MAL titles for a split entry not fetched: {e}"
+                );
+                return;
+            }
+        }
+    };
+    if let Err(e) = mal_entry_titles::set(db, mal_id, &titles).await {
+        tracing::debug!(
+            target: "ryokan::metadata_sync",
+            anilist_id,
+            mal_id,
+            "MAL titles for a split entry not stored: {e}"
+        );
     }
 }
 
@@ -1056,6 +1139,18 @@ async fn refresh_series_metadata_inner(
             }
         }
 
+        // #303 — A part of a split MAL entry keeps that entry's titles,
+        // the names release groups use. After the relations writes
+        // above, which `is_split_member` reads.
+        store_split_mal_entry_titles(
+            db,
+            stored_anilist_id,
+            detail.id_mal.or(tracked.mal_id),
+            &detail,
+            authoritative_detail,
+        )
+        .await;
+
         if !authoritative_detail {
             logger::info(
                 db,
@@ -1505,6 +1600,104 @@ mod tests {
         assert_eq!(row.cumulative_prior_episodes, 0);
         // A second pass has nothing left to do.
         assert_eq!(apply_split_offsets(&db).await, 0);
+    }
+
+    /// #303: a split part stores its MAL entry's romaji and English
+    /// titles, never its synonyms. An AniList refresh fetches them (here
+    /// from the seeded Jikan detail cache, so nothing reaches the network)
+    /// at most once a week; a MAL detail is stored as it is; a Kitsu
+    /// detail fetches nothing.
+    #[tokio::test]
+    async fn a_split_part_stores_its_mal_entry_titles() {
+        // A MAL id no other test seeds: the Jikan detail cache is global.
+        const MAL: i64 = 961_469;
+        let db = crate::test_support::in_memory_pool().await;
+        let mal_detail = |romaji: &str, english: &str, synonyms: &[&str]| {
+            let mut d = detail_fixture(-MAL);
+            d.id_mal = Some(MAL);
+            d.title_romaji = romaji.into();
+            d.title_english = english.into();
+            d.synonyms = synonyms.iter().map(|s| s.to_string()).collect();
+            d
+        };
+        let mut al_detail = detail_fixture(910_002);
+        al_detail.id_mal = Some(MAL);
+        al_detail.title_romaji = "SBR 2nd - 3rd STAGE".into();
+        jikan::seed_detail_cache_for_tests(
+            MAL,
+            mal_detail(
+                "Steel Ball Run: JoJo no Kimyou na Bouken",
+                "STEEL BALL RUN JoJo's Bizarre Adventure",
+                &["SBR"],
+            ),
+        )
+        .await;
+
+        // No split in the relations: nothing is stored.
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &al_detail, true).await;
+        assert!(mal_entry_titles::all(&db).await.is_empty());
+
+        sqlx::query(
+            "INSERT INTO provider_relations_cache \
+             (provider_id, related_provider_id, related_mal_id, episodes, format, relation_type, media_type) \
+             VALUES (910002, 910001, ?, 1, 'ONA', 'PREQUEL', 'ANIME')",
+        )
+        .bind(MAL)
+        .execute(&db)
+        .await
+        .unwrap();
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &al_detail, true).await;
+        let pool = &db;
+        let stored = move || async move { mal_entry_titles::all(pool).await.remove(&MAL) };
+        assert_eq!(
+            stored().await.unwrap(),
+            [
+                "Steel Ball Run: JoJo no Kimyou na Bouken",
+                "STEEL BALL RUN JoJo's Bizarre Adventure",
+            ],
+            "the synonym SBR is never stored"
+        );
+
+        // A fresh row is not fetched again; a week-old one is.
+        jikan::seed_detail_cache_for_tests(MAL, mal_detail("Renamed", "", &[])).await;
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &al_detail, true).await;
+        assert_eq!(stored().await.unwrap().len(), 2);
+        sqlx::query("UPDATE mal_entry_titles SET cached_at = datetime('now', '-8 days')")
+            .execute(&db)
+            .await
+            .unwrap();
+        // A Kitsu detail (MAL just failed) fetches nothing, stale or not.
+        let kitsu = detail_fixture(4242);
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &kitsu, false).await;
+        assert_eq!(stored().await.unwrap().len(), 2);
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &al_detail, true).await;
+        assert_eq!(stored().await.unwrap(), ["Renamed"]);
+
+        // A MAL fallback refresh replaced the AniList relations with
+        // MAL's; the stored row still marks the split, and the titles in
+        // hand are stored without a fetch.
+        sqlx::query("DELETE FROM provider_relations_cache")
+            .execute(&db)
+            .await
+            .unwrap();
+        let in_hand = mal_detail("Steel Ball Run", "STEEL BALL RUN JoJo", &["SBR"]);
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &in_hand, false).await;
+        assert_eq!(
+            stored().await.unwrap(),
+            ["Steel Ball Run", "STEEL BALL RUN JoJo"]
+        );
+        // With no row and no split relation, a MAL detail proves nothing.
+        sqlx::query("DELETE FROM mal_entry_titles")
+            .execute(&db)
+            .await
+            .unwrap();
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &in_hand, false).await;
+        assert!(stored().await.is_none());
+        // A MAL-fallback row is never a split part.
+        store_split_mal_entry_titles(&db, -MAL, Some(MAL), &in_hand, true).await;
+        assert!(stored().await.is_none());
+
+        jikan::clear_detail_cache_entry_for_tests(MAL).await;
     }
 
     /// #303: a split part reads the MAL entry's episode `e + split` as

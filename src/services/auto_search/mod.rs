@@ -25,12 +25,13 @@ mod seadex_lookup;
 mod search_target;
 
 use aliases::GatePrecompute;
+pub(crate) use aliases::is_season_marker_token;
 pub use aliases::{
     MatchOutcome, classify_match, classify_match_detailed, collect_aliases,
     collect_extended_aliases, collect_sibling_aliases, dedupe_strings, distinctive_overlap_ratio,
-    franchise_names, is_generic_title_token, matches_target, names_more_than_the_series,
-    normalize_title, sequel_variant_aliases, sole_bracket_group, token_overlap_ratio, token_set,
-    with_alternate_titles,
+    entry_name_segments, franchise_names, is_generic_title_token, matches_target,
+    names_more_than_the_series, normalize_title, sequel_variant_aliases, sole_bracket_group,
+    token_overlap_ratio, token_set, with_alternate_titles,
 };
 pub use pack_detection::{
     TRANSITIVE_WALK_MAX_FETCHES, detect_sibling_entries_in_pack,
@@ -3709,6 +3710,36 @@ mod tests {
         // franchise; it is the entry's own name, never a franchise name.
         let names = franchise_names(&steel_ball_run_stage_2());
         assert!(!names.iter().any(|n| n == "Steel Ball Run"), "{names:?}");
+    }
+
+    #[test]
+    fn entry_name_segments_are_the_primary_titles_minus_the_franchise() {
+        let d = steel_ball_run_stage_2();
+        let segments = entry_name_segments(&d);
+        assert!(
+            segments.iter().any(|s| s == "Steel Ball Run"),
+            "{segments:?}"
+        );
+        assert!(
+            segments.iter().any(|s| s == "2nd & 3rd STAGE"),
+            "{segments:?}"
+        );
+        // Never the franchise's name, and never a segment of a synonym:
+        // "Part 7" is one only in "JoJo's Bizarre Adventure: Part
+        // 7–Steel Ball Run".
+        for name in franchise_names(&d) {
+            assert!(!segments.contains(&name), "{name}: {segments:?}");
+        }
+        assert!(!segments.iter().any(|s| s == "Part 7"), "{segments:?}");
+        // Each once, though the romaji and English titles both hold it.
+        let mut deduped = segments.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(deduped.len(), segments.len(), "{segments:?}");
+
+        // A title with no delimiter has no segments.
+        let plain = detail(1, "Cowboy Bebop", "Cowboy Bebop", "");
+        assert!(entry_name_segments(&plain).is_empty());
     }
 
     #[test]

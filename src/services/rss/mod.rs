@@ -9,7 +9,7 @@ use regex_lite::Regex;
 use crate::{
     AppState,
     models::log::LogCategory,
-    models::{config, episode_tags, monitoring, rss, series},
+    models::{config, episode_tags, mal_entry_titles, monitoring, rss, series},
     services::source::{self, ClassificationResult, Resolution, Source},
     services::{
         auto_search, identify, logger, media, monitoring as monitoring_service, numbering, quality,
@@ -83,6 +83,12 @@ static RSS_SYNC_LOCK: LazyLock<tokio::sync::Mutex<()>> =
 static RE_CORE_TITLE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:season\s*\d+|\d+(?:st|nd|rd|th)\s+season|s\d{1,2}(?:e\d{1,4})?|part\s*\d+|cour\s*\d+|final|end(?:ing)?s?)\b").unwrap()
 });
+// A list of parts in a series' own title ("4th Season Part 1 & 2",
+// normalized "part 1 2"), cut whole from its core: `RE_CORE_TITLE` alone
+// leaves the "2". Aliases only: in a release title the number after a
+// part is its episode (`Part 2 - 05`).
+static RE_ALIAS_PART_LIST: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\bpart\s*\d+(?:\s+(?:and\s+)?\d+)+\b").unwrap());
 
 /// Multi-RSS — provenance attribution for each item the sync
 /// loop sees. Carried alongside the item through dedup, scoring, and
@@ -160,6 +166,12 @@ struct ParsedRelease {
     /// The title as `release_title` reads it, the reading every other
     /// path uses; episodes come from it per series (`for_series`).
     title: release_title::ParsedTitle,
+    /// The release's own show name (`title.series_title`), normalized,
+    /// and its words in order: what an entry name has to fill
+    /// (`SeriesMeta::named_by_entry_name`). Empty when the parser read
+    /// no series title.
+    series_title_normalized: String,
+    series_title_words: Vec<String>,
     season_hint: Option<i32>,
     /// The episode claim is bound to a season (`S02E05`, `S2 - 05`).
     season_bound: bool,
@@ -187,22 +199,106 @@ struct CandidateDecision {
 struct SeriesMeta {
     series: series::Series,
     /// Every alias form (titles, their normalized and core forms, the
-    /// season variants), each normalized once with its token set: the
-    /// sweep matches every feed item and about 5,000 history titles
-    /// against every row.
-    alias_forms: Vec<(String, HashSet<String>)>,
+    /// season variants), each normalized once with its token set, words
+    /// and collapsed form: the sweep matches every feed item and about
+    /// 5,000 history titles against every row.
+    alias_forms: Vec<AliasForm>,
     core_aliases: Vec<String>,
     /// Token sets of `core_aliases`, index for index.
     core_tokens: Vec<HashSet<String>>,
     collapsed_aliases: Vec<String>,
     collapsed_core_aliases: Vec<String>,
     season_num: Option<i32>,
-    /// The series' own names for `release_title`'s series-aware reading.
+    /// The season the row's own names give with a season word, ordinal,
+    /// tag or Roman numeral (`season_num` unless that came only from a
+    /// `Part N` / `Cour N`): a release naming this season may be named by
+    /// less of an alias (`AliasSet::own_season_words`). Never the TVDB
+    /// season a split part counts in.
+    named_season: Option<i32>,
+    /// What an alias may hold beyond a release's name when the release
+    /// names `named_season`: every word of the entry's own names
+    /// (`auto_search::entry_name_segments`, from the cached detail) and
+    /// the season's number. "Jujutsu Kaisen - S03E08" is inside
+    /// "JUJUTSU KAISEN Season 3: The Culling Game Part 1".
+    own_season_words: HashSet<String>,
+    /// The aliases every form above was built from.
+    aliases: Vec<String>,
+    /// The series' own names for `release_title`'s series-aware reading:
+    /// its aliases, and with a cached detail its entry names and
+    /// franchise names too (`with_detail`).
     anchors: release_title::SeriesAnchors,
-    /// The series' franchise (`identify::load_franchises_for_series`),
+    /// The entry's own names inside its compound titles
+    /// (`auto_search::entry_name_segments`) that are distinctive enough to
+    /// name it (`EntryName::qualifying`): "Steel Ball Run" for "JoJo no
+    /// Kimyou na Bouken: Steel Ball Run - 2nd & 3rd STAGE". Second-tier
+    /// aliases (`named_by_entry_name`). Empty without a cached detail.
+    entry_names: Vec<EntryName>,
+    /// Every word of the series' franchise names
+    /// (`auto_search::franchise_names`): what may stand beside an entry
+    /// name in a release's show name, and what an alias may hold beyond
+    /// the release's title (`alias_holds_item`). Empty without a cached
+    /// detail.
+    franchise_words: HashSet<String>,
+    /// Runs of a franchise name's words written as one ("jojos" for "jojo
+    /// s", "jojosbizarre"): how a release may glue them beside an entry
+    /// name (`named_by_entry_name`).
+    franchise_glued: HashSet<String>,
+    /// The series' franchise (`identify::load_franchises_for_details`),
     /// when its metadata is cached: the matcher's winner is checked
     /// against it.
     franchise: Option<Arc<identify::Franchise>>,
+}
+
+/// One alias form, prepared once per sweep.
+#[derive(Clone)]
+struct AliasForm {
+    normalized: String,
+    tokens: HashSet<String>,
+    /// `normalized`'s words in order, for the inside-the-alias rule.
+    words: Vec<String>,
+    /// `normalized` with only its alphanumerics: the cheap pre-check
+    /// before `words` are walked.
+    collapsed: String,
+}
+
+impl AliasForm {
+    fn new(normalized: String) -> Self {
+        Self {
+            tokens: auto_search::token_set(&normalized),
+            words: normalized.split_whitespace().map(str::to_string).collect(),
+            collapsed: collapse_alias(&normalized),
+            normalized,
+        }
+    }
+}
+
+/// An entry name (`SeriesMeta::entry_names`), normalized, with its words.
+#[derive(Clone, Debug, PartialEq)]
+struct EntryName {
+    normalized: String,
+    words: Vec<String>,
+}
+
+impl EntryName {
+    /// The segment as an entry name, when at least two distinct words of
+    /// it are neither generic (`the`, `no`, `movie`), nor season or part
+    /// markers (`season`, `2nd`, `ii`), nor numbers: "Steel Ball Run"
+    /// qualifies, "2nd & 3rd STAGE" does not.
+    fn qualifying(segment: &str) -> Option<Self> {
+        let normalized = auto_search::normalize_title(segment);
+        let words: Vec<String> = normalized.split_whitespace().map(str::to_string).collect();
+        let distinctive: HashSet<&str> = words
+            .iter()
+            .map(String::as_str)
+            .filter(|w| {
+                w.chars().count() > 1
+                    && !auto_search::is_generic_title_token(w)
+                    && !auto_search::is_season_marker_token(w)
+                    && !w.chars().all(|c| c.is_ascii_digit())
+            })
+            .collect();
+        (distinctive.len() >= 2).then_some(Self { normalized, words })
+    }
 }
 
 #[derive(Clone)]
@@ -221,7 +317,18 @@ struct PendingCandidate {
 }
 
 impl SeriesMeta {
+    /// `from_series_with` and no extra aliases.
+    #[cfg(test)]
     fn from_series(series: &series::Series) -> Self {
+        Self::from_series_with(series, &[])
+    }
+
+    /// The row as the matcher reads it, with `extra_aliases` beside its
+    /// own titles and alternate titles: full aliases in every form and
+    /// in the anchors, as alternate titles are. `series_metas` passes a
+    /// split part's MAL entry titles (`mal_entry_titles`). They never
+    /// decide the series' season: that is the row's own names' to say.
+    fn from_series_with(series: &series::Series, extra_aliases: &[String]) -> Self {
         let mut alias_input = vec![
             series.title.clone(),
             series.title_romaji.clone(),
@@ -229,11 +336,16 @@ impl SeriesMeta {
             series.title_native.clone(),
         ];
         alias_input.extend(series.alternate_title_list());
-        let aliases = auto_search::dedupe_strings(alias_input);
-
-        let season_num = aliases
+        let own_aliases = auto_search::dedupe_strings(alias_input.clone());
+        let season_num = own_aliases
             .iter()
             .find_map(|alias| release_title::season_marker(alias));
+        let named_season = own_aliases
+            .iter()
+            .find_map(|alias| named_season_marker(alias));
+        alias_input.extend(extra_aliases.iter().cloned());
+        let aliases = auto_search::dedupe_strings(alias_input);
+
         let anchors = release_title::SeriesAnchors::new(&aliases)
             .with_specials_as_episodes(!media::is_tv_format(&series.format));
 
@@ -248,7 +360,7 @@ impl SeriesMeta {
                 expanded.push(normalized.clone());
                 collapsed_aliases.push(collapse_alias(&normalized));
             }
-            let core = normalize_core_title(&normalized);
+            let core = normalize_core_title(&RE_ALIAS_PART_LIST.replace_all(&normalized, " "));
             if !core.is_empty() {
                 core_aliases.push(core.clone());
                 expanded.push(core.clone());
@@ -261,13 +373,13 @@ impl SeriesMeta {
             }
         }
 
+        // A raw alias and its normalized form are one form here.
+        let mut seen_forms: HashSet<String> = HashSet::new();
         let alias_forms = auto_search::dedupe_strings(expanded)
             .iter()
-            .map(|alias| {
-                let normalized = auto_search::normalize_title(alias);
-                let tokens = auto_search::token_set(&normalized);
-                (normalized, tokens)
-            })
+            .map(|alias| auto_search::normalize_title(alias))
+            .filter(|normalized| !normalized.is_empty() && seen_forms.insert(normalized.clone()))
+            .map(AliasForm::new)
             .collect();
         let core_aliases = auto_search::dedupe_strings(core_aliases);
         let core_tokens = core_aliases
@@ -282,22 +394,181 @@ impl SeriesMeta {
             collapsed_aliases: auto_search::dedupe_strings(collapsed_aliases),
             collapsed_core_aliases: auto_search::dedupe_strings(collapsed_core_aliases),
             season_num,
+            named_season,
+            own_season_words: named_season.iter().map(i32::to_string).collect(),
+            aliases,
             anchors,
+            entry_names: Vec::new(),
+            franchise_words: HashSet::new(),
+            franchise_glued: HashSet::new(),
             franchise: None,
         }
+    }
+
+    /// The entry's own names and its franchise's words, read off its
+    /// cached detail (`series_metadata_cache`). Without one the row
+    /// matches by its aliases only.
+    ///
+    /// Both join the anchors, as the auto-search's extended pass has them
+    /// (`GatePrecompute::build_with_anchors`): a release named by them
+    /// keeps the number right after the name, `Steel Ball Run - JoJo's
+    /// Bizarre Adventure 02` its episode 2.
+    fn with_detail(mut self, detail: Option<&crate::services::anilist::AnimeDetail>) -> Self {
+        let Some(detail) = detail else {
+            return self;
+        };
+        let franchise_names = auto_search::franchise_names(detail);
+        for name in &franchise_names {
+            let words: Vec<String> = auto_search::normalize_title(name)
+                .split_whitespace()
+                .map(str::to_string)
+                .collect();
+            for start in 0..words.len() {
+                for end in start + 2..=words.len() {
+                    self.franchise_glued.insert(words[start..end].concat());
+                }
+            }
+            self.franchise_words.extend(words);
+        }
+        let mut names: Vec<EntryName> = Vec::new();
+        let mut name_texts: Vec<String> = Vec::new();
+        for segment in auto_search::entry_name_segments(detail) {
+            self.own_season_words.extend(
+                auto_search::normalize_title(&segment)
+                    .split_whitespace()
+                    .map(str::to_string),
+            );
+            let Some(name) = EntryName::qualifying(&segment) else {
+                continue;
+            };
+            if !names.contains(&name) {
+                names.push(name);
+                name_texts.push(segment);
+            }
+        }
+        self.entry_names = names;
+        if !name_texts.is_empty() || !franchise_names.is_empty() {
+            self.anchors = release_title::SeriesAnchors::new(
+                &[&self.aliases[..], &name_texts, &franchise_names].concat(),
+            )
+            .with_specials_as_episodes(!media::is_tv_format(&self.series.format));
+        }
+        self
     }
 
     fn with_franchise(mut self, franchise: Option<Arc<identify::Franchise>>) -> Self {
         self.franchise = franchise;
         self
     }
+
+    /// Whether the release's own show name (`release_title`'s series
+    /// title) is one of the entry's names (`entry_names`) with nothing
+    /// beside it but franchise words, spaced or glued (`JoJos` for "JoJo
+    /// s"), and generic words (`the`, `movie`, `ova`): "JoJo no Kimyou na
+    /// Bouken: Steel Ball Run" and "Steel Ball Run - JoJo's Bizarre
+    /// Adventure" for Steel Ball Run's entries, never "Steel Ball Run
+    /// Abridged". The name has to sit on word boundaries. A sequence
+    /// marker beside it (`Chapter`, `Final`, `II`, `2nd`) names another
+    /// entry: "Crown Handler Chapter 2" (whose series title drops the
+    /// 2) is not Chapter 1, "Mushoku Tensei Final" not the first cour.
+    /// The season-aware alias rules and the season score decide those.
+    fn named_by_entry_name(&self, parsed: &ParsedRelease) -> bool {
+        if parsed.series_title_words.is_empty() {
+            return false;
+        }
+        let beside_ok = |word: &str| {
+            self.franchise_words.contains(word)
+                || self.franchise_glued.contains(word)
+                || auto_search::is_generic_title_token(word)
+        };
+        self.entry_names.iter().any(|name| {
+            parsed.series_title_normalized.contains(&name.normalized)
+                && word_run_with_only(&parsed.series_title_words, &name.words, beside_ok)
+        })
+    }
 }
 
-/// Every library row as the matcher reads it, with its franchise.
+/// Whether `needle` occurs in `words` as a run of whole words, with every
+/// word outside the run passing `beside_ok`.
+fn word_run_with_only(
+    words: &[String],
+    needle: &[String],
+    beside_ok: impl Fn(&str) -> bool,
+) -> bool {
+    if needle.is_empty() || needle.len() > words.len() {
+        return false;
+    }
+    (0..=words.len() - needle.len()).any(|start| {
+        let end = start + needle.len();
+        words[start..end] == *needle
+            && words[..start]
+                .iter()
+                .chain(&words[end..])
+                .all(|w| beside_ok(w))
+    })
+}
+
+/// Whether the collapsed text `collapsed` (`collapse_alias`) is a run of
+/// whole words of `words`, spacing and punctuation aside: the run's
+/// words joined are `collapsed`, so `rezero` is the run `re zero`. The
+/// run starts and ends on a word: `ballrun` is in `steel ball run`,
+/// `eelball` is not. Every word outside the run has to pass `beside_ok`.
+fn collapsed_run_with_only(
+    words: &[String],
+    collapsed: &str,
+    beside_ok: impl Fn(&str) -> bool,
+) -> bool {
+    if collapsed.is_empty() {
+        return false;
+    }
+    for start in 0..words.len() {
+        let mut rest = collapsed;
+        for end in start..words.len() {
+            let Some(after) = rest.strip_prefix(words[end].as_str()) else {
+                break;
+            };
+            rest = after;
+            if rest.is_empty() {
+                if words[..start]
+                    .iter()
+                    .chain(&words[end + 1..])
+                    .all(|w| beside_ok(w))
+                {
+                    return true;
+                }
+                break;
+            }
+        }
+    }
+    false
+}
+
+/// Every library row as the matcher reads it: its aliases (a split part's
+/// MAL entry titles among them, `mal_entry_titles`), its entry names and
+/// franchise words from the cached detail, and its franchise. The cached
+/// details are read once for both the names and the franchises.
 async fn series_metas(db: &sqlx::SqlitePool, rows: &[series::Series]) -> Vec<SeriesMeta> {
-    let franchises = identify::load_franchises_for_series(db, rows).await;
+    if rows.is_empty() {
+        return Vec::new();
+    }
+    let details = identify::cached_series_details(db).await;
+    let franchises = identify::load_franchises_for_details(db, rows, &details).await;
+    let mal_titles = mal_entry_titles::all(db).await;
     rows.iter()
-        .map(|row| SeriesMeta::from_series(row).with_franchise(franchises.get(&row.id).cloned()))
+        .map(|row| {
+            // A MAL-fallback row's titles are its MAL entry's already.
+            let extra: &[String] = if row.anilist_id > 0 {
+                row.mal_id
+                    .and_then(|mal| mal_titles.get(&mal))
+                    .map(Vec::as_slice)
+                    .unwrap_or_default()
+            } else {
+                &[]
+            };
+            SeriesMeta::from_series_with(row, extra)
+                .with_detail(details.get(&row.id))
+                .with_franchise(franchises.get(&row.id).cloned())
+        })
         .collect()
 }
 
@@ -2245,8 +2516,22 @@ fn match_against(
         core_tokens: &meta.core_tokens,
         collapsed_aliases: &meta.collapsed_aliases,
         collapsed_core_aliases: &meta.collapsed_core_aliases,
+        franchise_words: &meta.franchise_words,
+        own_season_words: parsed
+            .season_hint
+            .is_some_and(|season| meta.named_season == Some(season))
+            .then_some(&meta.own_season_words),
     };
-    let alias_score = score_alias_overlap(item_view, &alias_set);
+    let mut alias_score = score_alias_overlap(item_view, &alias_set);
+    // A real alias wins a tie over an entry name.
+    let exact_alias = alias_score >= 1.0;
+    // An entry name standing alone, or beside franchise and generic
+    // words, names the series exactly too (`named_by_entry_name`):
+    // "JoJo no Kimyou na Bouken: Steel Ball Run - 09" for 2nd - 3rd STAGE,
+    // which no alias holds whole.
+    if !exact_alias && meta.named_by_entry_name(parsed) {
+        alias_score = 1.0;
+    }
     if alias_score < 0.82 {
         return None;
     }
@@ -2297,19 +2582,19 @@ fn match_against(
     if reading.via == release_title::ReadingSource::AfterName {
         matched.parse_mode = "after_name";
     }
-    // Ties: an exact alias, then the item's own season, then episodes
-    // this series can place, then the oldest row. List order used to
-    // decide. An explicit season tag is taken as written, so a number
-    // past the series' known count (`S01E06` for one-episode Steel Ball
-    // Run 1st STAGE, #303) places nothing: the row that shares the alias
-    // and holds that episode wins the tie.
+    // Ties: an exact alias (an entry name is not one), then the item's
+    // own season, then episodes this series can place, then the oldest
+    // row. List order used to decide. An explicit season tag is taken as
+    // written, so a number past the series' known count (`S01E06` for
+    // one-episode Steel Ball Run 1st STAGE, #303) places nothing: the row
+    // that shares the alias and holds that episode wins the tie.
     let placed = !resolved_eps.is_empty()
         && meta
             .series
             .episodes
             .is_none_or(|total| resolved_eps.iter().all(|n| (1..=total).contains(n)));
     let tie = (
-        alias_score >= 1.0,
+        exact_alias,
         parsed.season_hint.is_some_and(own_season),
         placed,
         std::cmp::Reverse(meta.series.id),
@@ -2525,28 +2810,37 @@ struct ItemView<'a> {
 /// for the same reason as `ItemView`: four `&[String]` args in a row
 /// is a positional-swap hazard.
 struct AliasSet<'a> {
-    alias_forms: &'a [(String, HashSet<String>)],
+    alias_forms: &'a [AliasForm],
     core_aliases: &'a [String],
     core_tokens: &'a [HashSet<String>],
     collapsed_aliases: &'a [String],
     collapsed_core_aliases: &'a [String],
+    /// The series' franchise words (`SeriesMeta::franchise_words`): an
+    /// alias may hold them beyond the item's title.
+    franchise_words: &'a HashSet<String>,
+    /// `SeriesMeta::own_season_words` when the item names the series'
+    /// own season (`SeriesMeta::named_season`): an alias may hold them
+    /// beyond the item's title too.
+    own_season_words: Option<&'a HashSet<String>>,
 }
 
 fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
+    // The item's title inside an alias names the series only when the
+    // rest of the alias says nothing more about which entry it is.
+    if alias_holds_item(item, meta) {
+        return 1.0;
+    }
+
     let alias_max = meta
         .alias_forms
         .iter()
-        .map(|(normalized_alias, alias_tokens)| {
+        .map(|form| {
             let mut score = 0.0f32;
-            if !normalized_alias.is_empty()
-                && !item.normalized.is_empty()
-                && (item.normalized.contains(normalized_alias.as_str())
-                    || normalized_alias.contains(item.normalized))
-            {
+            if !item.normalized.is_empty() && item.normalized.contains(form.normalized.as_str()) {
                 score = score.max(1.0);
             }
-            let overlap_ab = auto_search::token_overlap_ratio(item.tokens, alias_tokens);
-            let overlap_ba = auto_search::token_overlap_ratio(alias_tokens, item.tokens);
+            let overlap_ab = auto_search::token_overlap_ratio(item.tokens, &form.tokens);
+            let overlap_ba = auto_search::token_overlap_ratio(&form.tokens, item.tokens);
             score.max(overlap_ab.min(overlap_ba))
         })
         .fold(0.0f32, f32::max);
@@ -2557,10 +2851,7 @@ fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
         .zip(meta.core_tokens)
         .map(|(alias_core, core_tokens)| {
             let mut score = 0.0f32;
-            if !alias_core.is_empty()
-                && !item.core.is_empty()
-                && (item.core.contains(alias_core) || alias_core.contains(item.core))
-            {
+            if !alias_core.is_empty() && !item.core.is_empty() && item.core.contains(alias_core) {
                 score = score.max(1.0);
             }
             let overlap_ab = auto_search::token_overlap_ratio(item.core_tokens, core_tokens);
@@ -2580,7 +2871,6 @@ fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
             if item.collapsed == *alias
                 || item.collapsed_core == *alias
                 || item.collapsed.contains(alias)
-                || (!item.collapsed_core.is_empty() && alias.contains(item.collapsed_core))
             {
                 1.0
             } else {
@@ -2592,6 +2882,45 @@ fn score_alias_overlap(item: &ItemView<'_>, meta: &AliasSet<'_>) -> f32 {
     alias_max.max(core_max).max(collapsed_max)
 }
 
+/// The "alias contains the item" direction of `score_alias_overlap`, for
+/// the item's title and its core (season words dropped): the item's words
+/// are a run of whole words of an alias form, spacing and punctuation
+/// aside (`collapsed_run_with_only`), and every alias word left over is a
+/// season or part marker, a generic title word, or one of the series'
+/// franchise words. "Jujutsu Kaisen" is inside "Jujutsu Kaisen 2nd
+/// Season"; "Steel Ball Run" is not inside "Steel Ball Run 1st STAGE",
+/// and the franchise name "JoJos Bizarre Adventure" is not inside "STEEL
+/// BALL RUN JoJo's Bizarre Adventure". Any substring used to count, with
+/// no word boundaries in the collapsed forms.
+///
+/// When the item names the season the series' own names give
+/// (`own_season_words`), the entry's own names and the season's number
+/// may be left over too: "Jujutsu Kaisen - S03E08" is inside "JUJUTSU
+/// KAISEN Season 3: The Culling Game Part 1", "Mairimashita! Iruma-kun -
+/// S04E23" inside "Mairimashita! Iruma-kun 4". A split part's TVDB season
+/// never opens this: "JoJos Bizarre Adventure S06E08" names the
+/// franchise, not Steel Ball Run.
+///
+/// The words are walked only for an alias form whose collapsed text
+/// contains the item's: this runs for every feed item and history title
+/// against every row.
+fn alias_holds_item(item: &ItemView<'_>, meta: &AliasSet<'_>) -> bool {
+    let beside_ok = |word: &str| {
+        auto_search::is_season_marker_token(word)
+            || auto_search::is_generic_title_token(word)
+            || meta.franchise_words.contains(word)
+            || meta.own_season_words.is_some_and(|w| w.contains(word))
+    };
+    let holds = |form: &AliasForm, needle: &str| {
+        !needle.is_empty()
+            && form.collapsed.contains(needle)
+            && collapsed_run_with_only(&form.words, needle, beside_ok)
+    };
+    meta.alias_forms
+        .iter()
+        .any(|form| holds(form, item.collapsed) || holds(form, item.collapsed_core))
+}
+
 fn normalize_core_title(value: &str) -> String {
     RE_CORE_TITLE
         .replace_all(value, " ")
@@ -2599,6 +2928,18 @@ fn normalize_core_title(value: &str) -> String {
         .filter(|token| !matches!(*token, "season" | "part" | "cour"))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// `release_title::season_marker`, except a season read only from a
+/// `Part N` / `Cour N` (`seasons.hint_only`): "Made in Abyss: Mezameru
+/// Shinpi Part 2" is a movie's second part, not season 2.
+fn named_season_marker(name: &str) -> Option<i32> {
+    let parsed = release_title::parse(name);
+    match parsed.season_hint().filter(|s| *s > 0) {
+        Some(_) if parsed.seasons.hint_only => None,
+        Some(season) => Some(season),
+        None => release_title::season_marker(name),
+    }
 }
 
 fn collapse_alias(value: &str) -> String {
@@ -2634,11 +2975,22 @@ fn parse_release(item: &RssItem) -> ParsedRelease {
         Some(c) if c.rule == release_title::ClaimRule::Dash => "absolute_dash",
         Some(_) => "absolute",
     };
+    let series_title_normalized = title
+        .series_title
+        .as_deref()
+        .map(auto_search::normalize_title)
+        .unwrap_or_default();
+    let series_title_words = series_title_normalized
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
     ParsedRelease {
         normalized_title,
         core_title,
         collapsed_title,
         collapsed_core_title,
+        series_title_normalized,
+        series_title_words,
         season_hint: title.season_hint(),
         season_bound,
         parse_mode,

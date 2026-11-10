@@ -615,18 +615,10 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
     // (e.g. "Steel Ball Run" from "JoJo's Bizarre Adventure: Part 7–Steel Ball Run").
     // A franchise name ("JoJo's Bizarre Adventure" there) is left out:
     // see `franchise_names`.
-    let franchise: HashSet<String> = franchise_names(detail)
-        .iter()
-        .map(|h| normalize_title(h))
-        .collect();
+    let franchise = normalized_franchise_names(detail);
     let all_titles: Vec<String> = primary.iter().chain(extra.iter()).cloned().collect();
-    for title in &all_titles {
-        for segment in split_title_segments(title, &related) {
-            if !franchise.contains(&normalize_title(&segment)) {
-                extra.push(segment);
-            }
-        }
-    }
+    let segments = own_name_segments(&all_titles, &related, &franchise);
+    extra.extend(segments);
 
     // Return only the NEW aliases (not already in primary).
     let primary_lower: HashSet<String> = primary.iter().map(|s| s.to_lowercase()).collect();
@@ -634,6 +626,50 @@ pub fn collect_extended_aliases(detail: &AnimeDetail) -> Vec<String> {
         .into_iter()
         .filter(|s| !primary_lower.contains(&s.to_lowercase()))
         .collect()
+}
+
+/// The entry's own names inside its compound primary titles (romaji,
+/// English, native; never the AniList synonyms): the segments
+/// `split_title_segments` yields, minus its franchise names
+/// (`franchise_names`). "Steel Ball Run" and "2nd & 3rd STAGE" for
+/// "JoJo no Kimyou na Bouken: Steel Ball Run - 2nd & 3rd STAGE". RSS
+/// reads a release named by one of these plus franchise words as the
+/// entry's (`rss::SeriesMeta`), so the caller decides which segments
+/// are distinctive enough to count.
+pub fn entry_name_segments(detail: &AnimeDetail) -> Vec<String> {
+    let related = related_anime_titles(detail);
+    let franchise = normalized_franchise_names(detail);
+    dedupe_strings(own_name_segments(
+        &collect_aliases(detail),
+        &related,
+        &franchise,
+    ))
+}
+
+/// `franchise_names`, normalized: the form segments are compared in.
+fn normalized_franchise_names(detail: &AnimeDetail) -> HashSet<String> {
+    franchise_names(detail)
+        .iter()
+        .map(|h| normalize_title(h))
+        .collect()
+}
+
+/// Every `split_title_segments` segment of `titles`, in order, that is
+/// not one of the (normalized) `franchise` names.
+fn own_name_segments(
+    titles: &[String],
+    related: &HashSet<String>,
+    franchise: &HashSet<String>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for title in titles {
+        for segment in split_title_segments(title, related) {
+            if !franchise.contains(&normalize_title(&segment)) {
+                out.push(segment);
+            }
+        }
+    }
+    out
 }
 
 /// Issue #300. The segments of this series' compound titles that name
@@ -1152,8 +1188,9 @@ pub fn names_more_than_the_series(title: &str, aliases: &[String]) -> bool {
 
 /// Words that mark a season, part, or arc when they follow a series
 /// title: the difference between an episode title and a sequel's
-/// subtitle in the `Title - X - 05` position.
-fn is_season_marker_token(token: &str) -> bool {
+/// subtitle in the `Title - X - 05` position. Also what RSS lets an
+/// alias hold beyond a release's name (`rss::score_alias_overlap`).
+pub(crate) fn is_season_marker_token(token: &str) -> bool {
     if matches!(
         token,
         "season"

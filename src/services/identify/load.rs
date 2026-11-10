@@ -86,23 +86,42 @@ pub async fn load_franchises_for_series(
     db: &SqlitePool,
     rows: &[crate::models::series::Series],
 ) -> HashMap<i64, Arc<Franchise>> {
+    if rows.is_empty() {
+        return HashMap::new();
+    }
+    let details = cached_series_details(db).await;
+    load_franchises_for_details(db, rows, &details).await
+}
+
+/// Every library row's cached detail (`series_metadata_cache`), keyed by
+/// series id, in one query. A read error or a blob that does not parse
+/// reads as no detail. RSS reads it once per sweep for both the
+/// franchises and its own aliases.
+pub async fn cached_series_details(db: &SqlitePool) -> HashMap<i64, AnimeDetail> {
+    sqlx::query("SELECT series_id, detail_json FROM series_metadata_cache")
+        .fetch_all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|row| {
+            let detail =
+                serde_json::from_str::<AnimeDetail>(&row.get::<String, _>("detail_json")).ok()?;
+            Some((row.get::<i64, _>("series_id"), detail))
+        })
+        .collect()
+}
+
+/// [`load_franchises_for_series`] over details the caller already read
+/// ([`cached_series_details`]).
+pub async fn load_franchises_for_details(
+    db: &SqlitePool,
+    rows: &[crate::models::series::Series],
+    details: &HashMap<i64, AnimeDetail>,
+) -> HashMap<i64, Arc<Franchise>> {
     let mut out = HashMap::new();
     if rows.is_empty() {
         return out;
     }
-    let details: HashMap<i64, AnimeDetail> =
-        sqlx::query("SELECT series_id, detail_json FROM series_metadata_cache")
-            .fetch_all(db)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|row| {
-                let detail =
-                    serde_json::from_str::<AnimeDetail>(&row.get::<String, _>("detail_json"))
-                        .ok()?;
-                Some((row.get::<i64, _>("series_id"), detail))
-            })
-            .collect();
     let print = fingerprint(db).await;
     for row in rows {
         let Some(detail) = details.get(&row.id) else {

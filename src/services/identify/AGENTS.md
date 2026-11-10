@@ -8,7 +8,7 @@ Which franchise entry a release belongs to, decided by comparison. The alias gat
 - `names.rs`: `NameForm::of`, the one normalizer for both sides (entry titles and a release's name zones). Reading a name runs `release_title::parse`, which is why names are memoized wherever many franchises are built.
 - `structure.rs`: `Claims` (season, multi-season, part, episodes, special, movie, year) and `Fits` (each claim `Yes` / `No` / `Unknown` per entry).
 - `graph.rs`: `FranchiseGraph` (plain serde data: nodes, edges, TVDB rows, curated offsets) and its `build(target, alternates)` into a `Franchise` of `EntryCard`s with numbering frames worked out.
-- `load.rs`: the franchise out of the metadata caches (`load_franchise`, `load_franchises_for_series` for the RSS sweep's whole library in one query, `load_graph`), `Franchise::from_detail` for callers with no database, and the same walk over a graph in memory (`FranchiseGraph::around`, `GraphIndex`).
+- `load.rs`: the franchise out of the metadata caches (`load_franchise`, `load_franchises_for_series` for a whole library in one query, `cached_series_details` plus `load_franchises_for_details` for the RSS sweep, which reads the cached details once for its entry names too, `load_graph`), `Franchise::from_detail` for callers with no database, and the same walk over a graph in memory (`FranchiseGraph::around`, `GraphIndex`).
 - `tests.rs`: each tier on hand-built franchises shaped after real ones.
 
 ## Loading

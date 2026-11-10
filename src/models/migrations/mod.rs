@@ -3093,6 +3093,22 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
     .execute(db)
     .await?;
 
+    // #303: the titles of a MAL entry AniList split into several
+    // entries (Steel Ball Run's 1st STAGE and 2nd - 3rd STAGE are both
+    // MAL 61469). Release groups name the MAL entry, so RSS matches the
+    // parts by these too. See `models::mal_entry_titles`.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS mal_entry_titles (
+            mal_id INTEGER PRIMARY KEY,
+            titles_json TEXT NOT NULL,
+            cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(db)
+    .await?;
+
     Ok(())
 }
 
