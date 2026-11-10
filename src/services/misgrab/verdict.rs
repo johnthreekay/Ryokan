@@ -17,9 +17,9 @@ use std::collections::{HashMap, HashSet};
 use crate::models::grabbed_torrents::VerificationDetail;
 use crate::services::auto_search::{
     distinctive_overlap_ratio, is_generic_title_token, is_media_filename, normalize_title,
-    parse_release_season, token_set,
+    token_set,
 };
-use crate::services::library_link;
+use crate::services::{library_link, release_title};
 
 /// A media file "names something" when this many content tokens survive
 /// the noise filters.
@@ -66,6 +66,12 @@ pub(crate) const FILE_NOISE_TOKENS: &[&str] = &[
     "complete",
     "uncensored",
     "uncen",
+    "uncut",
+    "remaster",
+    "remastered",
+    "hdr",
+    "sd",
+    "hq",
     "censored",
     "raw",
     "raws",
@@ -76,6 +82,15 @@ pub(crate) const FILE_NOISE_TOKENS: &[&str] = &[
     "dubbed",
     "eng",
     "jpn",
+    "english",
+    "japanese",
+    "spanish",
+    "latino",
+    "castellano",
+    "french",
+    "german",
+    "italian",
+    "portuguese",
     "jap",
     "multi",
     "dual",
@@ -92,6 +107,9 @@ pub(crate) const FILE_NOISE_TOKENS: &[&str] = &[
     "sp",
     "sample",
     "season",
+    "saison",
+    "temporada",
+    "stagione",
     "ep",
     "eps",
     "vol",
@@ -195,6 +213,13 @@ pub struct VerdictInput<'a> {
     /// The season number the series maps to (0 when unknown); only
     /// used for an advisory note.
     pub expected_season: i32,
+    /// Title segments that name the series' franchise, not the series
+    /// (`auto_search::franchise_names`). A colon or dash segment
+    /// of an alias equal to one does not count as naming the series.
+    pub franchise_names: &'a [String],
+    /// The series' franchise (`services::identify`). It can only make a
+    /// verdict less sure, never a misgrab: see [`apply_identity`].
+    pub franchise: Option<&'a crate::services::identify::Franchise>,
 }
 
 /// Flatten a relative path so the top-level folder counts as part of
@@ -219,6 +244,13 @@ fn is_structural_token(t: &str) -> bool {
         return true;
     }
     if t.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    // `2nd`, `4th`: a season's ordinal (`2nd Season`).
+    if let Some(at) = t.find(|c: char| !c.is_ascii_digit())
+        && at > 0
+        && matches!(&t[at..], "st" | "nd" | "rd" | "th")
+    {
         return true;
     }
     let lower = t.to_ascii_lowercase();
@@ -271,14 +303,14 @@ fn is_structural_token(t: &str) -> bool {
     false
 }
 
-/// What a path claims as its title: anitomy's title from the file name
+/// What a path claims as its title: the series title from the file name
 /// and from every folder above it, tokenized the way an alias is. Only
 /// these words may condemn a download. Descriptor words ("Dual
 /// Audio", "10 bits"), the group name, and episode titles ("All
 /// That's Left") are real words too, and on a series whose title is a
 /// number ("86") they used to be the only Latin words in the path.
 ///
-/// `memo` shares the per-segment anitomy parse across files: every
+/// `memo` shares the per-segment parse across files: every
 /// file in a pack sits under the same one or two folders, so a
 /// 100-file batch parses each folder name once instead of 100 times.
 pub(crate) fn claimed_title_tokens(
@@ -306,7 +338,7 @@ fn segment_title_tokens(segment: &str) -> HashSet<String> {
     let normalized = normalize_title(&title);
     // "S01E21-All That's Left": a name that opens with an episode
     // or season marker (or a bare number) goes on to an episode
-    // title, which anitomy cannot tell from a series title. It is
+    // title, which no parser can tell from a series title. It is
     // not a claim about which show this is.
     if normalized
         .split_whitespace()
@@ -360,14 +392,29 @@ pub(crate) struct PreparedAlias {
     forms: Vec<(String, HashSet<String>)>,
 }
 
-pub(crate) fn prepare_aliases(aliases: &[String]) -> Vec<PreparedAlias> {
+/// A segment form equal to one of `franchise_names` is left out
+/// (issue #300): "JoJo no Kimyou na Bouken - 01" is the 2012 series,
+/// and the head of Steel Ball Run's "JoJo no Kimyou na Bouken: Steel
+/// Ball Run" verified it. The alias itself is always kept.
+pub(crate) fn prepare_aliases(
+    aliases: &[String],
+    franchise_names: &[String],
+) -> Vec<PreparedAlias> {
+    let heads: HashSet<String> = franchise_names
+        .iter()
+        .map(|h| normalize_title(h))
+        .filter(|h| !h.is_empty())
+        .collect();
     aliases
         .iter()
         .map(|alias| PreparedAlias {
             alias: alias.clone(),
             forms: alias_forms(alias)
                 .into_iter()
-                .map(|form| normalize_title(&form))
+                .enumerate()
+                .map(|(i, form)| (i, normalize_title(&form)))
+                .filter(|(i, normalized)| *i == 0 || !heads.contains(normalized))
+                .map(|(_, normalized)| normalized)
                 .filter(|normalized| !normalized.is_empty())
                 .map(|normalized| {
                     let tokens = token_set(&normalized);
@@ -411,6 +458,86 @@ fn alias_content_tokens(aliases: &[String]) -> HashSet<String> {
 }
 
 pub fn assess(input: &VerdictInput<'_>) -> Verdict {
+    let verdict = assess_names(input);
+    match input.franchise {
+        Some(franchise) => apply_identity(verdict, input.filenames, franchise),
+        None => verdict,
+    }
+}
+
+/// What `identify` makes of one file: its own name, else the folder it
+/// sits in (`Show S01/01.mkv`).
+fn identify_file(
+    path: &str,
+    franchise: &crate::services::identify::Franchise,
+) -> crate::services::identify::Verdict {
+    use crate::services::identify::{self, Verdict as Identity};
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let folder = path
+        .contains(['/', '\\'])
+        .then(|| path.split(['/', '\\']).next())
+        .flatten();
+    match identify::identify(franchise, name) {
+        Identity::Neither => folder
+            .map(|folder| identify::identify(franchise, folder))
+            .unwrap_or(Identity::Neither),
+        verdict => verdict,
+    }
+}
+
+/// The franchise's say over a verdict, one way only: the failure mode
+/// of a false misgrab (deleting a correct download) is worse than a
+/// missed one, so `identify` never condemns a grab. A misgrab whose
+/// files `identify` reads as the series, a tie or a pack across its
+/// entries is unverifiable; a verified grab whose every titled file is
+/// another entry's by name or structure (tiers A and S) is unverifiable
+/// too.
+pub(crate) fn apply_identity(
+    verdict: Verdict,
+    filenames: &[String],
+    franchise: &crate::services::identify::Franchise,
+) -> Verdict {
+    use crate::services::identify::{Tier, Verdict as Identity};
+    let media: Vec<&String> = filenames.iter().filter(|f| is_media_filename(f)).collect();
+    match verdict {
+        Verdict::Misgrab { .. }
+            if media.iter().any(|f| {
+                matches!(
+                    identify_file(f, franchise),
+                    Identity::Target | Identity::Ambiguous { .. } | Identity::Spans
+                )
+            }) =>
+        {
+            Verdict::Unverifiable {
+                reason: "a file names an entry of the series' franchise",
+            }
+        }
+        Verdict::Verified { .. } => {
+            let mut memo: HashMap<String, HashSet<String>> = HashMap::new();
+            let titled: Vec<&&String> = media
+                .iter()
+                .filter(|f| has_title_signal(&claimed_title_tokens(f, &mut memo)))
+                .collect();
+            let all_rivals = !titled.is_empty()
+                && titled.iter().all(|f| {
+                    matches!(
+                        identify_file(f, franchise),
+                        Identity::Rival(r) if matches!(r.tier, Tier::NamesMore | Tier::Structure)
+                    )
+                });
+            if all_rivals {
+                Verdict::Unverifiable {
+                    reason: "every titled file fits another entry of the series' franchise better",
+                }
+            } else {
+                verdict
+            }
+        }
+        verdict => verdict,
+    }
+}
+
+fn assess_names(input: &VerdictInput<'_>) -> Verdict {
     let media: Vec<&String> = input
         .filenames
         .iter()
@@ -426,7 +553,7 @@ pub fn assess(input: &VerdictInput<'_>) -> Verdict {
     if input.expected_season > 0 {
         let explicit: Vec<i32> = media
             .iter()
-            .map(|f| parse_release_season(f))
+            .filter_map(|f| release_title::parse(f).season_hint())
             .filter(|s| *s > 0)
             .collect();
         if !explicit.is_empty() && explicit.iter().all(|s| *s != input.expected_season) {
@@ -445,7 +572,7 @@ pub fn assess(input: &VerdictInput<'_>) -> Verdict {
         .collect();
 
     let known = alias_content_tokens(&aliases);
-    let prepared = prepare_aliases(&aliases);
+    let prepared = prepare_aliases(&aliases, input.franchise_names);
     let mut claimed_memo: HashMap<String, HashSet<String>> = HashMap::new();
     let mut any_signal = false;
     let mut shares_a_word = false;
@@ -508,6 +635,8 @@ mod tests {
             sibling_aliases: &siblings,
             filenames: &files,
             expected_season: season,
+            franchise_names: &[],
+            franchise: None,
         })
     }
 
@@ -516,6 +645,49 @@ mod tests {
         "コワレモノ:璃沙 THE ANIMATION",
         "Risa THE ANIMATION",
     ];
+
+    #[test]
+    fn a_franchise_name_does_not_name_a_later_entry() {
+        // Issue #300: the 2012 series' files named Steel Ball Run's
+        // "JoJo no Kimyou na Bouken: Steel Ball Run" through its head.
+        // AniList 210482's titles and synonyms, and its relations' titles
+        // (the 1st STAGE and the manga) as siblings.
+        let own = strs(&[
+            "JoJo no Kimyou na Bouken: Steel Ball Run - 2nd & 3rd STAGE",
+            "STEEL BALL RUN JoJo's Bizarre Adventure 2nd - 3rd STAGE",
+            "JoJo's Bizarre Adventure: Part 7\u{2013}Steel Ball Run",
+            "SBR",
+        ]);
+        let siblings = strs(&[
+            "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE",
+            "STEEL BALL RUN JoJo's Bizarre Adventure 1st STAGE",
+            "JoJo no Kimyou na Bouken: Steel Ball Run",
+            "JoJo's Bizarre Adventure: Part 7\u{2013}Steel Ball Run",
+        ]);
+        let heads = strs(&["JoJo no Kimyou na Bouken", "JoJo's Bizarre Adventure"]);
+        let judge = |files: &[&str], heads: &[String]| {
+            assess(&VerdictInput {
+                own_aliases: &own,
+                sibling_aliases: &siblings,
+                filenames: &strs(files),
+                expected_season: 0,
+                franchise_names: heads,
+                franchise: None,
+            })
+        };
+        let rh =
+            ["[RH] JoJo no Kimyou na Bouken - 01 (JoJo's Bizarre Adventure) [BDRip] [1080p].mkv"];
+        let windstorm = ["[Windstorm] JoJo's Bizarre Adventure - S01E01 (BD 1080p HEVC).mkv"];
+        for files in [&rh[..], &windstorm[..]] {
+            assert_eq!(judge(files, &[]).as_str(), "verified", "{files:?}");
+            // Too related to condemn, no longer verified.
+            assert_eq!(judge(files, &heads).as_str(), "unverifiable", "{files:?}");
+        }
+        let own_files = [
+            "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 06 [1080p NF WEBRip HEVC AAC].mkv",
+        ];
+        assert_eq!(judge(&own_files, &heads).as_str(), "verified");
+    }
 
     #[test]
     fn grisaia_pack_against_kowaremono_aliases_is_misgrab() {
@@ -795,6 +967,8 @@ mod tests {
             sibling_aliases: &[],
             filenames: &files,
             expected_season: 0,
+            franchise_names: &[],
+            franchise: None,
         });
         let d = v.detail(&files);
         assert_eq!(v.as_str(), "misgrab");
@@ -804,5 +978,131 @@ mod tests {
         let json = serde_json::to_string(&d).unwrap();
         let back: VerificationDetail = serde_json::from_str(&json).unwrap();
         assert_eq!(back.files, d.files);
+    }
+
+    mod identity {
+        use super::*;
+        use crate::services::identify::{Franchise, FranchiseGraph, GraphEdge, GraphNode};
+
+        fn node(id: i64, romaji: &str, english: &str, episodes: i32, year: i32) -> GraphNode {
+            GraphNode {
+                id,
+                title_romaji: romaji.to_string(),
+                title_english: english.to_string(),
+                format: "TV".to_string(),
+                episodes: Some(episodes),
+                season_year: Some(year),
+                ..GraphNode::default()
+            }
+        }
+
+        fn franchise(nodes: Vec<GraphNode>, target: i64) -> Franchise {
+            let edges = nodes
+                .windows(2)
+                .map(|w| GraphEdge {
+                    from: w[1].id,
+                    to: w[0].id,
+                    relation: "PREQUEL".to_string(),
+                })
+                .collect();
+            FranchiseGraph {
+                nodes,
+                edges,
+                ..FranchiseGraph::default()
+            }
+            .build(target, &[])
+            .unwrap()
+        }
+
+        fn judge(own: &[&str], files: &[&str], franchise: Option<&Franchise>) -> Verdict {
+            assess(&VerdictInput {
+                own_aliases: &strs(own),
+                sibling_aliases: &[],
+                filenames: &strs(files),
+                expected_season: 0,
+                franchise_names: &[],
+                franchise,
+            })
+        }
+
+        fn kny() -> Franchise {
+            franchise(
+                vec![
+                    node(
+                        1,
+                        "Kimetsu no Yaiba",
+                        "Demon Slayer: Kimetsu no Yaiba",
+                        26,
+                        2019,
+                    ),
+                    node(
+                        2,
+                        "Kimetsu no Yaiba: Yuukaku-hen",
+                        "Demon Slayer: Kimetsu no Yaiba Entertainment District Arc",
+                        11,
+                        2021,
+                    ),
+                ],
+                2,
+            )
+        }
+
+        fn jjk() -> Franchise {
+            franchise(
+                vec![
+                    node(1, "Jujutsu Kaisen", "", 24, 2020),
+                    node(2, "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen", "", 12, 2026),
+                ],
+                1,
+            )
+        }
+
+        #[test]
+        fn a_file_the_franchise_reads_as_the_series_is_no_misgrab() {
+            // The aliases the verdict holds lack the English title the
+            // franchise knows (a detail from a fallback provider).
+            let own = ["Kimetsu no Yaiba: Yuukaku-hen"];
+            let files = ["[G] Demon Slayer Entertainment District Arc - 05 [1080p].mkv"];
+            assert!(judge(&own, &files, None).is_misgrab());
+            assert_eq!(
+                judge(&own, &files, Some(&kny())),
+                Verdict::Unverifiable {
+                    reason: "a file names an entry of the series' franchise"
+                }
+            );
+        }
+
+        #[test]
+        fn a_grab_whose_files_are_another_entrys_is_no_longer_verified() {
+            let own = ["Jujutsu Kaisen"];
+            let files = [
+                "[SubsPlease] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06 (1080p).mkv",
+                "[SubsPlease] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 07 (1080p).mkv",
+            ];
+            assert_eq!(judge(&own, &files, None).as_str(), "verified");
+            assert_eq!(judge(&own, &files, Some(&jjk())).as_str(), "unverifiable");
+            // One file of the series' own keeps the grab verified.
+            let mixed = [files[0], "[SubsPlease] Jujutsu Kaisen - 06 (1080p).mkv"];
+            assert_eq!(judge(&own, &mixed, Some(&jjk())).as_str(), "verified");
+        }
+
+        #[test]
+        fn the_franchise_never_makes_a_misgrab() {
+            // Files that are another entry's, and no alias words: whatever
+            // identify says, the names alone decide a misgrab.
+            let own = ["Jujutsu Kaisen"];
+            for files in [
+                &["[G] Totally Different Show - 01.mkv"][..],
+                &["[G] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06.mkv"][..],
+                &["01.mkv", "02.mkv"][..],
+            ] {
+                let without = judge(&own, files, None);
+                let with = judge(&own, files, Some(&jjk()));
+                assert!(
+                    !with.is_misgrab() || without.is_misgrab(),
+                    "{files:?}: {without:?} -> {with:?}"
+                );
+            }
+        }
     }
 }

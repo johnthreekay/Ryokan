@@ -1,0 +1,426 @@
+{
+  "bucket": "multi-episode",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=S01E01-E02&c=1_0",
+    "https://nyaa.si/?page=rss&q=E01-E02&c=1_0",
+    "https://nyaa.si/?page=rss&q=-+01-02&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[ToonsHub] Young Ladies Dont Play Fighting Games S01E01-E02 1080p YT WEB-DL AAC2.0 H.264 (Tai-Ari deshita.: Ojou-sama wa Kakutou Game nante Shinai, Prerelease)",
+      "url": "https://nyaa.si/view/2127949",
+      "category": "1_4",
+      "expect": {
+        "group": "ToonsHub",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Feibanyama] You and I Are Polar Opposites S01E01-E02 [BILIBILI WebRip 2160p HEVC OPUS Multi-Audio Multi-Subs] (Seihantai na Kimi to Boku)",
+      "url": "https://nyaa.si/view/2066276",
+      "category": "1_2",
+      "expect": {
+        "group": "Feibanyama",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 2160
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Im Living With a Otaku NEET Kunoichi S01E01-E02 1080p AMZN WEB-DL DUAL DDP2.0 H 264-VARYG (NEET Kunoichi to Naze ka Dousei Hajimemashita, Dual-Audio)",
+      "url": "https://nyaa.si/view/1986442",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Gecko] PetitCure Precure Fairies S01E01-E02 | ぷちきゅあ～Precure Fairies～ | PetitCure: Precure Fairies (2025) [YTB.WEB-DL 1920x1080 AVC 8bit, Opus 2.0][0451EF26]",
+      "url": "https://nyaa.si/view/1958380",
+      "category": "1_4",
+      "expect": {
+        "group": "Gecko",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "year": 2025,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[PHF] Aria the Scarlet Ammo AA S01E01-E02 [Funi-DL] [Dub] [720p]",
+      "url": "https://nyaa.si/view/905770",
+      "category": "1_2",
+      "expect": {
+        "group": "PHF",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 720
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Team246] Gate: Jieitai Kanochi nite Kaku Tatakeri E01-E02 [BDREMUX MULTI DTSHDMA]vostfr]",
+      "url": "https://nyaa.si/view/1273813",
+      "category": "1_4",
+      "expect": {
+        "group": "Team246",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        }
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Judas] Bungou Stray Dogs Wan! (Seasons 01-02) [1080p][HEVC x265 10bit][Dual-Audio][Multi-Subs] (Batch)",
+      "url": "https://nyaa.si/view/2169413",
+      "category": "1_2",
+      "expect": {
+        "group": "Judas",
+        "batch": true,
+        "seasons": [
+          1,
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[shincaps] Magical Explorer - 01-02 (ANIPLUS 1920x1080 H264 AAC).ts",
+      "url": "https://nyaa.si/view/2169271",
+      "category": "1_2",
+      "expect": {
+        "group": "shincaps",
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "one file holding two episodes is not a batch"
+    },
+    {
+      "title": "[SubsPlease] RWBY - Hyousetsu Teikoku - 01-03 (720p) [CCDDC9CB].mkv",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "SubsPlease",
+        "episodes": {
+          "first": 1,
+          "last": 3
+        },
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[droplet] Kakusei Hunter Omegahorn Anime - Tales from the Ancient Past 01-02",
+      "url": "https://nyaa.si/view/2165503",
+      "category": "1_2",
+      "expect": {
+        "group": "droplet",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        }
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Raze] Nukitashi The Animation - Specials 01-02 (BD) x265 10bit 1080p 143.8561fps",
+      "url": "https://nyaa.si/view/2051778",
+      "category": "1_2",
+      "expect": {
+        "group": "Raze",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "special": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[anon] Nukitashi Specials 01-02 (BD 1080p AVC FLAC) | ぬきたし EX 01-02",
+      "url": "https://nyaa.si/view/2049220",
+      "category": "1_2",
+      "expect": {
+        "group": "anon",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "special": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GM-Team][天相][Divine Manifestation][2025][01-02][4K HEVC 10Bit][Multi-Subs]",
+      "url": "https://nyaa.si/view/2031690",
+      "category": "1_2",
+      "expect": {
+        "group": "GM-Team",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "year": 2025,
+        "resolution": 2160
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[AniArchive] Ke Jin Wanjia (01-02) [www][3840x2160][HEVC 10bit] (克金玩家) (Wealth and Wonder)",
+      "url": "https://nyaa.si/view/1981653",
+      "category": "1_2",
+      "expect": {
+        "group": "AniArchive",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 2160
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Inka-Subs] Cooking Papa - 01-02",
+      "url": "https://nyaa.si/view/1954692",
+      "category": "1_2",
+      "expect": {
+        "group": "Inka-Subs",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        }
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Happy Resource Sharing] Tales Of Herding Gods - 牧神记 (2024) [01-02] (1080P)",
+      "url": "https://nyaa.si/view/1899170",
+      "category": "1_2",
+      "expect": {
+        "group": "Happy Resource Sharing",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "year": 2024,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Q] 全职高手 第3季 | The King's Avatar S3 (01-02) (1080p HEVC Multi-Sub)",
+      "url": "https://nyaa.si/view/1831474",
+      "category": "1_2",
+      "expect": {
+        "group": "Q",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Beatrice-Raws] Kusuriya no Hitorigoto (Vol 01-02) [BDRip 1920x1080 HEVC TrueHD]",
+      "url": "https://nyaa.si/view/1816049",
+      "category": "1_2",
+      "expect": {
+        "group": "Beatrice-Raws",
+        "batch": true,
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "a volume range is a pack, but its numbers are not episodes"
+    },
+    {
+      "title": "[Chihiro] Ayakashi Triangle 01-02 [Blu-ray 1080p HEVC FLAC]",
+      "url": "https://nyaa.si/view/1722810",
+      "category": "1_2",
+      "expect": {
+        "group": "Chihiro",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Hall_of_C] 西行纪 Westward (Xi Xing Ji) - Season 5 Episodes 01-02",
+      "url": "https://nyaa.si/view/1701631",
+      "category": "1_2",
+      "expect": {
+        "group": "Hall_of_C",
+        "batch": true,
+        "seasons": [
+          5
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 2
+        }
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MeruMeruSubs] Hataraki Man - 01-02",
+      "url": "https://nyaa.si/view/1626702",
+      "category": "1_2",
+      "expect": {
+        "group": "MeruMeruSubs",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        }
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[mal lu zen] Shinobi no Ittoki (Time of the Shinobi) (01-02) [720p] 10-bit [HEVC]",
+      "url": "https://nyaa.si/view/1592009",
+      "category": "1_2",
+      "expect": {
+        "group": "mal lu zen",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 720
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[amZero] Human Bug Daigaku 01-02 [1080p AV1 10Bit][WEBRip][AAC][MultiSubs]",
+      "url": "https://nyaa.si/view/1589815",
+      "category": "1_2",
+      "expect": {
+        "group": "amZero",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 2
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Ninjala S01E138-S01E198 (WEBDL 1080p x264 AAC) [S1PH3R] + EP110",
+      "url": "https://nyaa.si/view/2171494",
+      "expect": {
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 138,
+          "last": 198
+        },
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "A tag range that writes the season again; read only S01E138 before (AnimeTosho file list: 62 videos)"
+    },
+    {
+      "title": "Full Moon wo Sagashite (2002) S01E01-S01E28 (Bluray 1080p x265 FLAC - AAC) (Dual Audio) [S1PH3R]",
+      "url": "https://nyaa.si/view/2100492",
+      "expect": {
+        "group": "S1PH3R",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 28
+        },
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "The whole season as a tag range that writes the season again"
+    },
+    {
+      "title": "Qin's Moon S1 ep. 1 to 11 (Remastered)",
+      "url": "https://nyaa.si/view/1486124",
+      "expect": {
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 11
+        }
+      },
+      "verified": "hand",
+      "note": "`to` after an episode marker is a range (AnimeTosho file list: 14 videos)"
+    }
+  ]
+}

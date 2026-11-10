@@ -626,6 +626,40 @@ pub async fn get_anime_detail_cached(mal_id: i64) -> Result<AnimeDetail, String>
     Ok(detail)
 }
 
+/// A MAL entry's romaji and English titles, in that order (either may be
+/// empty). The detail cache answers when it holds the entry; otherwise
+/// one `/anime/{id}` request, with none of `get_anime_detail`'s relation
+/// fetches (up to eight more requests 500 ms apart). For #303's split
+/// MAL entries, whose titles are all the metadata refresh keeps.
+pub async fn get_anime_titles(mal_id: i64) -> Result<(String, String), String> {
+    {
+        let cache = DETAIL_CACHE.read().await;
+        if let Some(entry) = cache.get(&mal_id)
+            && entry.fetched_at.elapsed().as_secs() < DETAIL_CACHE_TTL_SECS
+        {
+            return Ok((
+                entry.detail.title_romaji.clone(),
+                entry.detail.title_english.clone(),
+            ));
+        }
+    }
+    let api_base = std::env::var("JIKAN_API_BASE").unwrap_or_else(|_| JIKAN_API.to_string());
+    let url = format!("{}/anime/{}", api_base.trim_end_matches('/'), mal_id);
+    let body: FullResponse = get_json_with_retry(&HTTP_CLIENT, &url)
+        .await
+        .map_err(|e| format!("Jikan titles failed: {}", e))?;
+    if body.data.mal_id != mal_id {
+        return Err(format!(
+            "Jikan titles failed: asked for MAL {mal_id}, got {}",
+            body.data.mal_id
+        ));
+    }
+    Ok((
+        body.data.title.unwrap_or_default(),
+        body.data.title_english.unwrap_or_default(),
+    ))
+}
+
 /// MAL's `rating` label is the only adult signal Jikan carries. `Rx -
 /// Hentai` is the tier AniList also flags `isAdult`; `R+ - Mild Nudity`
 /// and below are not adult on either site.

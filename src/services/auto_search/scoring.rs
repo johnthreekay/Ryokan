@@ -13,6 +13,7 @@ use std::collections::HashSet;
 
 use crate::models::config::Config;
 use crate::services::custom_formats::{self, CompiledCustomFormat, EvalContext};
+use crate::services::numbering::Numbering;
 use crate::services::nyaa::SearchResult;
 use crate::services::quality;
 use crate::services::scoring::ScoreComponent;
@@ -20,9 +21,9 @@ use crate::services::seadex;
 use crate::services::source::{self, ClassificationResult, Resolution, Source};
 
 use super::{
-    MatchKind, SearchTarget, distinctive_overlap_ratio, normalize_title, parse_release_numbers,
-    season_mismatch, token_set,
+    IdentityVerdict, MatchKind, SearchTarget, distinctive_overlap_ratio, normalize_title, token_set,
 };
+use crate::services::release_title::{self, SeriesAnchors};
 
 /// Misgrab guardrails: a fuzzy title match loses to an otherwise-equal
 /// verbatim one, and so does anything the fallback passes (extended
@@ -34,6 +35,14 @@ use super::{
 /// looks at the CF subtotal, so these can never drop a candidate.
 pub(super) const FUZZY_MATCH_PENALTY: i32 = -25;
 pub(super) const FALLBACK_PHASE_PENALTY: i32 = -10;
+
+/// `services::identify` found another entry of the franchise that fits
+/// the release better (a rival, kept only on the interactive lists) or
+/// as well (a tie, kept everywhere). A rival costs more than a fuzzy
+/// match on a fallback pass, so it sorts below the target's own releases
+/// of the same quality; a tie's cost is a tiebreaker.
+pub(super) const IDENTITY_RIVAL_PENALTY: i32 = -40;
+pub(super) const IDENTITY_TIE_PENALTY: i32 = -10;
 
 /// Apply the Custom Format + SeaDex overlay to a base score.
 ///
@@ -193,6 +202,7 @@ pub(super) fn rescore_for_auto_search(
     classification: &ClassificationResult,
     config: &Config,
     aliases: &[String],
+    anchors: &SeriesAnchors,
     target: &SearchTarget,
     expected_season: i32,
     is_finished: bool,
@@ -201,13 +211,14 @@ pub(super) fn rescore_for_auto_search(
     preferred_resolution: Resolution,
     cutoff_source: Source,
     cutoff_resolution: Resolution,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
 ) -> i32 {
     rescore_for_auto_search_with_breakdown(
         result,
         classification,
         config,
         aliases,
+        anchors,
         target,
         expected_season,
         is_finished,
@@ -216,7 +227,7 @@ pub(super) fn rescore_for_auto_search(
         preferred_resolution,
         cutoff_source,
         cutoff_resolution,
-        absolute_offset,
+        numbering,
         false, // batch_search_mode — non-batch callers
     )
     .0
@@ -240,6 +251,7 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
     classification: &ClassificationResult,
     config: &Config,
     aliases: &[String],
+    anchors: &SeriesAnchors,
     target: &SearchTarget,
     expected_season: i32,
     is_finished: bool,
@@ -248,9 +260,11 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
     preferred_resolution: Resolution,
     cutoff_source: Source,
     cutoff_resolution: Resolution,
-    absolute_offset: i32,
+    numbering: impl Into<Numbering>,
     batch_search_mode: bool,
 ) -> (i32, Vec<ScoreComponent>) {
+    let numbering = numbering.into();
+    let absolute_offset = numbering.absolute_offset();
     let mut score = result.score;
     let mut parts: Vec<ScoreComponent> = Vec::new();
     let mut add =
@@ -273,7 +287,9 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
         .iter()
         .map(|alias| {
             let normalized_alias = normalize_title(alias);
-            if normalized_title.contains(&normalized_alias) {
+            if normalized_alias.is_empty() {
+                0.0
+            } else if normalized_title.contains(&normalized_alias) {
                 1.0
             } else {
                 // Same ratio the title gate uses (#219), so the breakdown
@@ -315,10 +331,22 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
         } else {
             add(&mut parts, "Title Match Confidence", delta, detail);
         }
+        if let Some(identity) = &p.identity
+            && let Some(entry) = identity.looks_like()
+        {
+            let (delta, detail) = match identity.verdict {
+                IdentityVerdict::Rival => (IDENTITY_RIVAL_PENALTY, format!("looks like {entry}")),
+                _ => (IDENTITY_TIE_PENALTY, format!("fits {entry} as well")),
+            };
+            add(&mut parts, "Franchise Identity", delta, Some(detail));
+        }
     }
 
-    // Season mismatch penalty (explicit season markers like S03, "3rd Season")
-    if season_mismatch(&result.title, expected_season) {
+    // Season mismatch penalty (explicit season markers like S03, "3rd Season").
+    // #303: the TVDB season a split counts in is no mismatch, the same
+    // `season_allowed` rule the gate and the interactive filter apply.
+    let release = release_title::parse(&result.title);
+    if !numbering.season_allowed(&release, expected_season) {
         add(
             &mut parts,
             "Season Mismatch",
@@ -366,17 +394,29 @@ pub(super) fn rescore_for_auto_search_with_breakdown(
             } else {
                 add(&mut parts, "Single-Episode Target", 10, None);
             }
-            let parsed = parse_release_numbers(&result.title);
-            let relative_match = parsed.contains(ep);
-            let absolute_match =
-                absolute_offset > 0 && parsed.contains(&ep.saturating_add(absolute_offset));
-            if relative_match || absolute_match {
-                add(
-                    &mut parts,
-                    "Episode Number Match",
-                    40,
-                    Some(format!("release covers episode {ep}")),
-                );
+            let parsed = release.for_series(anchors).episodes;
+            // #303 — The number the series' numbering reads as the
+            // target; a split part's `- 06` is its episode 5 and gets
+            // no match here. The detail says which number it was.
+            let reading = numbering.for_tag(crate::services::numbering::season_tag(&release));
+            // A pack's run may reach back into an earlier part, as the
+            // gate reads it (`pack_episode_match`).
+            let matched = if result.is_batch && parsed.len() > 2 {
+                reading.pack_accepts(&parsed, *ep)
+            } else {
+                reading.accepts(&parsed, *ep)
+            };
+            if matched {
+                let detail = match reading.reading {
+                    crate::services::numbering::Reading::Absolute => {
+                        format!(
+                            "release covers episode {ep} (numbered {})",
+                            ep.saturating_add(reading.offset)
+                        )
+                    }
+                    _ => format!("release covers episode {ep}"),
+                };
+                add(&mut parts, "Episode Number Match", 40, Some(detail));
             } else if absolute_offset > 0 && !parsed.is_empty() {
                 // #30 — franchise-alias fallback surfaces candidates
                 // whose parsed number matches neither target. Bury them.
@@ -591,7 +631,7 @@ mod tests {
         target: &SearchTarget,
         is_finished: bool,
         finished_mode: quality::FinishedSeriesMode,
-        absolute_offset: i32,
+        absolute_offset: impl Into<Numbering>,
         batch_search_mode: bool,
     ) -> (i32, Vec<ScoreComponent>) {
         rescore_for_auto_search_with_breakdown(
@@ -599,6 +639,7 @@ mod tests {
             classification,
             &default_config(),
             &["Show".to_string()],
+            &SeriesAnchors::new(&["Show"]),
             target,
             1,
             is_finished,
@@ -610,6 +651,91 @@ mod tests {
             absolute_offset,
             batch_search_mode,
         )
+    }
+
+    /// #303: a split part's `- 06` is its episode 5: no match for
+    /// episode 6, and `- 07` earns it with the number it was released as.
+    #[test]
+    fn rescore_matches_a_split_part_on_its_absolute_number_only() {
+        use crate::services::numbering::{NumberingSetting, OffsetSource};
+        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic);
+        let c = cls(Source::Web, Resolution::R1080p);
+        let parts = |title: &str| {
+            let mut r = candidate(title, "h1");
+            r.is_batch = false;
+            rescore(
+                &r,
+                &c,
+                &SearchTarget::Episode(6),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                sbr,
+                false,
+            )
+            .1
+        };
+        let seven = parts("[Erai-raws] Show - 07 [1080p].mkv");
+        let matched = seven
+            .iter()
+            .find(|p| p.label == "Episode Number Match")
+            .expect("- 07 is episode 6");
+        assert_eq!(
+            matched.detail.as_deref(),
+            Some("release covers episode 6 (numbered 7)")
+        );
+        let six = parts("[Erai-raws] Show - 06 [1080p].mkv");
+        assert!(
+            six.iter().all(|p| p.label != "Episode Number Match"),
+            "{six:?}"
+        );
+        assert!(
+            six.iter().any(|p| p.label == "Wrong Episode Number"),
+            "{six:?}"
+        );
+    }
+
+    /// #303: the gate admits `S06E07` for Steel Ball Run 2nd - 3rd STAGE
+    /// (TVDB season 6, its split confirmed there), so scoring must not
+    /// dock it as a Season Mismatch; a tag of any other season still is.
+    #[test]
+    fn rescore_does_not_dock_the_split_seasons_tag() {
+        use crate::services::numbering::{NumberingSetting, OffsetSource};
+        let sbr = Numbering::resolve(1, OffsetSource::Split, NumberingSetting::Automatic)
+            .with_tag_season(Some(6));
+        let c = cls(Source::Web, Resolution::R1080p);
+        let labels = |title: &str, numbering: Numbering| -> Vec<String> {
+            let mut r = candidate(title, "h1");
+            r.is_batch = false;
+            rescore(
+                &r,
+                &c,
+                &SearchTarget::Episode(6),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                numbering,
+                false,
+            )
+            .1
+            .into_iter()
+            .map(|p| p.label)
+            .collect()
+        };
+        let tagged = labels("[DKB] Show - S06E07 [1080p].mkv", sbr);
+        assert!(
+            !tagged.contains(&"Season Mismatch".to_string()),
+            "{tagged:?}"
+        );
+        assert!(
+            tagged.contains(&"Episode Number Match".to_string()),
+            "{tagged:?}"
+        );
+        let other = labels("[DKB] Show - S05E07 [1080p].mkv", sbr);
+        assert!(other.contains(&"Season Mismatch".to_string()), "{other:?}");
+        let unconfirmed = labels("[DKB] Show - S06E07 [1080p].mkv", sbr.with_tag_season(None));
+        assert!(
+            unconfirmed.contains(&"Season Mismatch".to_string()),
+            "{unconfirmed:?}"
+        );
     }
 
     #[test]
@@ -635,6 +761,34 @@ mod tests {
         // Score climbed from 100 by alias + single-ep + episode-match
         // contributions (≥ 50 minimum: 10 + 40).
         assert!(score >= 100 + 10 + 40, "got {score}");
+    }
+
+    #[test]
+    fn rescore_reads_a_bare_episode_after_the_series_name() {
+        // EternalAnimes' dashless `_05_` (#296) earns the episode match;
+        // the old loose reader also did, but `Show 2 (BD)`-style title
+        // numbers no longer do.
+        let c = cls(Source::Web, Resolution::R1080p);
+        let labels = |title: &str| -> Vec<String> {
+            let mut r = candidate(title, "h1");
+            r.score = 0;
+            r.is_batch = false;
+            let (_, parts) = rescore(
+                &r,
+                &c,
+                &SearchTarget::Episode(5),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                0,
+                false,
+            );
+            parts.into_iter().map(|p| p.label).collect()
+        };
+        assert!(
+            labels("[EA]Show_05_[1920x1080][HEVC].mkv")
+                .contains(&"Episode Number Match".to_string())
+        );
+        assert!(!labels("[Group] Show 5 (BD 1080p)").contains(&"Episode Number Match".to_string()));
     }
 
     #[test]
@@ -811,6 +965,7 @@ mod tests {
             &c,
             &default_config(),
             &["Show".to_string()],
+            &SeriesAnchors::new(&["Show"]),
             &SearchTarget::Episode(5),
             1,
             false,
@@ -844,6 +999,7 @@ mod tests {
             kind,
             alias: "Show".to_string(),
             ratio: 1.0,
+            identity: None,
         });
         r
     }
@@ -1010,6 +1166,7 @@ mod tests {
                 &c,
                 &default_config(),
                 &aliases,
+                &SeriesAnchors::new(&aliases),
                 &SearchTarget::Single,
                 1,
                 false,
@@ -1034,5 +1191,107 @@ mod tests {
             .find(|p| p.label == "Title Alias Match")
             .expect("the distinctive token alone is a full match");
         assert_eq!(alias_part.delta, 40);
+    }
+
+    #[test]
+    fn an_alias_that_normalizes_to_nothing_earns_no_alias_match() {
+        // An empty normalized alias is a substring of every title and used
+        // to earn the full 40.
+        let c = cls(Source::Web, Resolution::R1080p);
+        let parts_for = |aliases: &[String], title: &str| {
+            let mut r = candidate(title, "h1");
+            r.score = 0;
+            rescore_for_auto_search_with_breakdown(
+                &r,
+                &c,
+                &default_config(),
+                aliases,
+                &SeriesAnchors::new(aliases),
+                &SearchTarget::Single,
+                1,
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                Source::Web,
+                Resolution::R1080p,
+                Source::Hdtv,
+                Resolution::R720p,
+                0,
+                false,
+            )
+            .1
+        };
+        let kaiju = "[SubsPlease] Kaiju No. 8 - 01 (1080p) [ABCD1234].mkv";
+        let punctuation = parts_for(&["!!!".to_string()], kaiju);
+        assert!(
+            punctuation.iter().all(|p| p.label != "Title Alias Match"),
+            "{punctuation:?}"
+        );
+        // AniList's English `[Oshi No Ko]` keeps its text: no credit on
+        // another show, full credit on its own.
+        let oshi = ["[Oshi No Ko]".to_string()];
+        let other = parts_for(&oshi, kaiju);
+        assert!(
+            other.iter().all(|p| p.label != "Title Alias Match"),
+            "{other:?}"
+        );
+        let own = parts_for(&oshi, "[SubsPlease] Oshi no Ko - 05 (1080p) [ABCD1234].mkv");
+        let alias_part = own
+            .iter()
+            .find(|p| p.label == "Title Alias Match")
+            .expect("its own release matches");
+        assert_eq!(alias_part.delta, 40);
+    }
+
+    #[test]
+    fn a_rival_or_a_tie_costs_a_franchise_identity_line() {
+        use crate::services::auto_search::{IdentityNote, IdentityVerdict, MatchPhase};
+        let c = cls(Source::Web, Resolution::R1080p);
+        let parts_for = |verdict: Option<IdentityVerdict>| {
+            let mut r = stamped(
+                "[G] Show - 05 [1080p].mkv",
+                MatchKind::Verbatim,
+                MatchPhase::Primary,
+            );
+            if let Some(verdict) = verdict {
+                r.match_provenance.as_mut().unwrap().identity = Some(IdentityNote {
+                    verdict,
+                    entry: Some(2),
+                    entry_title: "Show 2nd Season".to_string(),
+                    tier: None,
+                });
+            }
+            rescore(
+                &r,
+                &c,
+                &SearchTarget::Episode(5),
+                false,
+                quality::FinishedSeriesMode::SameAsAiring,
+                0,
+                false,
+            )
+            .1
+        };
+        let line = |parts: &[ScoreComponent]| {
+            parts
+                .iter()
+                .find(|p| p.label == "Franchise Identity")
+                .map(|p| (p.delta, p.detail.clone().unwrap_or_default()))
+        };
+        assert_eq!(
+            line(&parts_for(Some(IdentityVerdict::Rival))),
+            Some((
+                IDENTITY_RIVAL_PENALTY,
+                "looks like Show 2nd Season".to_string()
+            ))
+        );
+        assert_eq!(
+            line(&parts_for(Some(IdentityVerdict::Ambiguous))),
+            Some((
+                IDENTITY_TIE_PENALTY,
+                "fits Show 2nd Season as well".to_string()
+            ))
+        );
+        assert_eq!(line(&parts_for(Some(IdentityVerdict::Target))), None);
+        assert_eq!(line(&parts_for(None)), None);
     }
 }

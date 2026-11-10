@@ -13,6 +13,7 @@ use std::sync::LazyLock;
 use ::scraper::{Html, Selector};
 
 use super::{SearchOptions, SearchResult, extract_hash, nyaa_base};
+use crate::services::release_title;
 
 static SEL_ROW: LazyLock<Selector> =
     LazyLock::new(|| Selector::parse("table.torrent-list tbody tr").expect("SEL_ROW parses"));
@@ -43,62 +44,6 @@ static SEL_VIEW_MAGNET: LazyLock<Selector> = LazyLock::new(|| {
 });
 static SEL_VIEW_TORRENT: LazyLock<Selector> = LazyLock::new(|| {
     Selector::parse("a.card-footer-item[href$='.torrent']").expect("SEL_VIEW_TORRENT parses")
-});
-
-/// Episode range like "01-12", "01~24", "01 - 24". Broader than the old
-/// `01[-~]\d{2,3}` hard-coded form so releases that start at a non-01
-/// episode (sequels, cour splits) still register as batches.
-static BATCH_RANGE_RE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
-    regex_lite::Regex::new(r"(?i)\b\d{1,3}\s*[-~]\s*\d{2,3}\b").expect("BATCH_RANGE_RE parses")
-});
-
-/// Bare season marker: `S1`, `S01`, `Season 1`, etc. A season marker on
-/// its own — without a paired single-episode indicator — means the
-/// release covers the whole season. This is how most BD packs from
-/// high-quality groups (MTBB, Okay-Subs, Sephirotic, YURASUKA, neoDESU)
-/// are titled: `[Group] Show S1 (BD 1080p)` or `[Group] Show [Season 1]`.
-static SEASON_MARKER_RE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
-    regex_lite::Regex::new(r"(?i)\b(s\d{1,2}|season\s*\d+)\b").expect("SEASON_MARKER_RE parses")
-});
-
-/// Bare Roman-numeral season marker: `II`, `III`, `IV`, `VI`, `VII`,
-/// `VIII`, `IX`. Common in anime sequel titles that spell the season
-/// out (`Mob Psycho 100 III`, `Overlord IV`, `KanColle II`) — SeaDex
-/// and many BD groups use this form, so without it the batch heuristic
-/// misses entire season packs.
-///
-/// Multi-character only: bare `I`, `V`, `X` are excluded. `I` alone is
-/// too noisy (pronoun, initialisms). Bare `V` collides with `Volume V`,
-/// `Vol V` and similar; bare `X` collides with franchise names (`Show
-/// X`, `X-Files`-style titles) and volume numbering. Anime rarely go
-/// past season IX, so the coverage loss is negligible and the false-
-/// positive floor drops meaningfully.
-///
-/// Case-sensitive (uppercase only) to avoid matching lowercase letter
-/// sequences like `ix` or `vi` that could appear inside words. Applied
-/// to the raw title, not the lowercased form used by the other batch
-/// checks.
-static ROMAN_SEASON_MARKER_RE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
-    regex_lite::Regex::new(r"\b(II|III|IV|VI|VII|VIII|IX)\b")
-        .expect("ROMAN_SEASON_MARKER_RE parses")
-});
-
-/// Single-episode indicator. If any of these hit, the release is
-/// scoped to one episode (or a very small multi-ep span) and should
-/// NOT be flagged as a batch even if a season marker is present.
-/// Patterns covered:
-///   - `S01E12`, `S1E05` — Western-style
-///   - ` - 12`, ` - 24.5` — classic fansub single-ep suffix
-///   - `Ep 12`, `Ep. 12`, `Episode 12`
-///   - `#12`
-static SINGLE_EP_RE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
-    regex_lite::Regex::new(
-        // The dash-number form takes a half-episode `.5` and a
-        // revision `v2` tail: `Show Season 2 - 05v2` is a weekly, not
-        // a season pack (`\b` alone does not sit between `5` and `v`).
-        r"(?i)(s\d{1,2}e\d{1,3}|\s-\s*\d{1,3}(?:\.\d+)?(?:v\d+)?\b|\bep\.?\s*\d{1,3}\b|\bepisode\s*\d{1,3}\b|#\d{1,3})",
-    )
-    .expect("SINGLE_EP_RE parses")
 });
 
 pub(super) fn parse_results(html: &str, opts: &SearchOptions) -> (Vec<SearchResult>, bool) {
@@ -180,12 +125,12 @@ pub(super) fn parse_results(html: &str, opts: &SearchOptions) -> (Vec<SearchResu
         let row_class = row.value().attr("class").unwrap_or("");
         let is_trusted = row_class.contains("success");
 
-        // Filename-layer classification (anitomy + source-token scan).
+        // Filename-layer classification (release-title fields + source-token scan).
         // Drops the old ad-hoc bracket/regex extract and mirrors what the
         // grab-side pipeline's Layer 1 produces, so the label the user
         // sees in interactive search equals the value persisted on grab.
         let classified = classify_search_result(&title);
-        let is_batch = detect_batch(&title);
+        let is_batch = release_title::parse(&title).is_batch();
         let info_hash = extract_hash(&magnet);
 
         let mut result = SearchResult {
@@ -259,7 +204,7 @@ struct ClassifiedFields {
 /// parser is sync. Interactive paths that want Layer 3 enrichment call
 /// [`enrich_results_with_group_map`] after parsing.
 fn classify_search_result(title: &str) -> ClassifiedFields {
-    use crate::services::source::{ClassificationResult, DecisionRule, Resolution, Source};
+    use crate::services::source::{ClassificationResult, DecisionRule, Source};
     use crate::services::source_filename::classify_filename;
 
     let fc = classify_filename(title);
@@ -295,16 +240,13 @@ fn classify_search_result(title: &str) -> ClassifiedFields {
         other => other.to_string(),
     };
 
-    // Bare-digit resolution ("1080") for back-compat with existing
-    // templates that render `{{ r.resolution }}p` tags.
-    let resolution = match fc.resolution {
-        Resolution::Unknown => String::new(),
-        r => r.as_str().trim_end_matches('p').to_string(),
-    };
+    // Group and bare-digit resolution ("1080", which existing templates
+    // render as `{{ r.resolution }}p`) as every source reads them.
+    let fields = release_title::release_fields(title);
 
     ClassifiedFields {
-        group: fc.release_group.unwrap_or_default(),
-        resolution,
+        group: fields.group,
+        resolution: fields.resolution,
         quality_label,
         source: match winning_source {
             Source::Unknown => String::new(),
@@ -341,59 +283,6 @@ pub(super) fn sanitize_query_for_nyaa(query: &str) -> String {
         at_token_start = ch.is_whitespace() || ch == '"';
     }
     out
-}
-
-fn detect_batch(title: &str) -> bool {
-    let lower = title.to_lowercase();
-
-    // Explicit batch keywords.
-    if lower.contains("batch") || lower.contains("complete") {
-        return true;
-    }
-
-    // Numeric episode ranges like "01-12", "01~24", "01 - 24". A range
-    // ascends, and a spaced one pairs numbers of one width: in
-    // `Chihayafuru 2 - 05`, `Mob Psycho 100 - 05`, and `Season 2 - 05`
-    // (season markers are masked first) the left number is the
-    // title's own, the shape every weekly of such a series has. The
-    // dash between a title and its episode is spaced; a pack's range
-    // is `01-12` or `01 - 12`.
-    if has_plausible_range(&SEASON_MARKER_RE.replace_all(&lower, " ")) {
-        return true;
-    }
-
-    // Season marker with no single-episode indicator — the dominant
-    // batch form for BD season packs: `Show S1 (BD 1080p)`, `Show
-    // [Season 1] [BD 1080p]`, `Show.S01.1080p.BluRay...`,
-    // `Mob Psycho 100 III (BD 1080p)`. The single-ep guard keeps
-    // `Show S01E12` / `Show S1 - 12` off the batch path.
-    //
-    // The Roman-numeral check runs against the raw title (not `lower`)
-    // because the regex is case-sensitive — see ROMAN_SEASON_MARKER_RE.
-    let has_season_marker =
-        SEASON_MARKER_RE.is_match(&lower) || ROMAN_SEASON_MARKER_RE.is_match(title);
-    if has_season_marker && !SINGLE_EP_RE.is_match(&lower) {
-        return true;
-    }
-
-    false
-}
-
-/// See the range rule in `detect_batch`.
-fn has_plausible_range(text: &str) -> bool {
-    BATCH_RANGE_RE.find_iter(text).any(|m| {
-        let found = m.as_str();
-        let spaced = found.contains(char::is_whitespace);
-        let mut parts = found.split(['-', '~']);
-        let (Some(left), Some(right)) = (parts.next(), parts.next()) else {
-            return false;
-        };
-        let (left, right) = (left.trim(), right.trim());
-        let (Ok(l), Ok(r)) = (left.parse::<u32>(), right.parse::<u32>()) else {
-            return false;
-        };
-        l < r && (!spaced || left.len() == right.len())
-    })
 }
 
 fn parse_size(s: &str) -> i64 {
@@ -504,7 +393,7 @@ pub(super) fn parse_view_page(
         .unwrap_or_default();
 
     let classified = classify_search_result(&title);
-    let is_batch = detect_batch(&title);
+    let is_batch = release_title::parse(&title).is_batch();
 
     let mut result = SearchResult {
         match_provenance: None,
@@ -721,130 +610,13 @@ mod tests {
         );
         assert_eq!(result.torrent, "https://nyaa.si/download/1713886.torrent");
         assert_eq!(result.link, "https://nyaa.si/view/1713886");
-        // `detect_batch` fires on the season marker in the title.
+        // `release_title`'s `is_batch` reads the season pack in the title.
         assert!(
             result.is_batch,
             "smol pack titled with Season N should be flagged as batch"
         );
         assert_eq!(result.resolution, "1080");
         assert_eq!(result.group, "smol");
-    }
-
-    // ── detect_batch — Roman-numeral season markers ──────────────────────
-    //
-    // SeaDex's curated picks for anime sequels frequently use Roman-numeral
-    // season markers in the title (`Mob Psycho 100 III`, `Overlord IV`,
-    // `KanColle II`). Before these tests were added, detect_batch missed
-    // those entirely because SEASON_MARKER_RE only recognised `S\d+` /
-    // `Season \d+` forms, so the curated pack got silently dropped at the
-    // `candidates.retain(|c| c.is_batch)` filter in
-    // `find_best_batch_for_target`.
-
-    #[test]
-    fn detect_batch_roman_numeral_season_marker_iii() {
-        // The regression case from the PR #47 session: the DIY full-season
-        // BD pack for Mob Psycho 100 III.
-        assert!(detect_batch(
-            "[DIY] Mob Psycho 100 III (BD 1080p HEVC FLAC) [Dual-Audio]"
-        ));
-    }
-
-    #[test]
-    fn detect_batch_roman_numeral_season_marker_ii_and_iv() {
-        assert!(detect_batch("[MTBB] KanColle II (BD 1080p)"));
-        assert!(detect_batch("[smol] Overlord IV (BD 1080p)"));
-    }
-
-    #[test]
-    fn detect_batch_season_marker_with_a_revision_tail_is_a_single_episode() {
-        // `\b` does not sit between `5` and `v`, so the single-episode
-        // guard used to miss `- 05v2` and the season marker made the
-        // weekly a batch.
-        assert!(!detect_batch(
-            "[SubsPlease] Show Season 2 - 05v2 (1080p) [ABCD1234].mkv"
-        ));
-        assert!(!detect_batch("[Group] Show S2 - 05v2 (1080p)"));
-        assert!(!detect_batch("[Group] Show Season 2 - 05.5 (1080p)"));
-        assert!(detect_batch("[Group] Show Season 2 (BD 1080p)"));
-    }
-
-    #[test]
-    fn detect_batch_a_title_number_beside_the_episode_is_not_a_range() {
-        // `2 - 05` and `100 - 05` used to read as ranges, so every
-        // weekly of a series whose title ends in a number was a batch.
-        assert!(!detect_batch(
-            "[HorribleSubs] Chihayafuru 2 - 05 [720p].mkv"
-        ));
-        assert!(!detect_batch(
-            "[SubsPlease] Mob Psycho 100 - 05 (1080p) [ABCD1234].mkv"
-        ));
-        assert!(!detect_batch(
-            "[SubsPlease] Show Season 2 - 05 (1080p) [ABCD1234].mkv"
-        ));
-        assert!(!detect_batch("[Group] Log Horizon 2 - 12 (1080p)"));
-        // Real ranges, spaced or not, still are.
-        assert!(detect_batch("[Group] Show - 01 - 12 (BD 1080p)"));
-        assert!(detect_batch("[Group] Show 01-12 (BD 1080p)"));
-        assert!(detect_batch("[Group] Show (1-24) (BD 1080p)"));
-        assert!(detect_batch("[Group] Show 01~24 (BD 1080p)"));
-    }
-
-    #[test]
-    fn detect_batch_roman_numeral_with_single_ep_is_not_batch() {
-        // Single-ep guard must still fire: a Roman-numeral season marker
-        // paired with a per-episode indicator is an individual episode
-        // release, not a batch.
-        assert!(
-            !detect_batch("[Group] Mob Psycho 100 III - 05 (1080p)"),
-            "Roman season marker + single-ep suffix must not be a batch"
-        );
-        assert!(
-            !detect_batch("[Group] Overlord IV Ep 12 (1080p)"),
-            "Roman season marker + Ep N must not be a batch"
-        );
-    }
-
-    #[test]
-    fn detect_batch_lowercase_roman_numerals_are_not_matched() {
-        // Case-sensitive on purpose: lowercase "ii"/"iii"/"ix" etc. could
-        // appear inside words and would false-positive if we accepted them.
-        // Torrent titles conventionally use uppercase Roman numerals, so
-        // we don't pay for that false-positive risk.
-        assert!(
-            !detect_batch("[Group] some title iii (1080p)"),
-            "lowercase roman numerals must not trigger the batch heuristic"
-        );
-    }
-
-    #[test]
-    fn detect_batch_single_i_does_not_fire() {
-        // `I` alone is excluded from the Roman regex — too ambiguous
-        // (pronoun, initial, etc.). A title with a bare `I` and no other
-        // batch signal must stay off the batch path.
-        assert!(
-            !detect_batch("[Group] Show I vs Y (some subtitle)"),
-            "bare `I` must not be treated as a season marker"
-        );
-    }
-
-    #[test]
-    fn detect_batch_single_letter_roman_v_and_x_do_not_fire() {
-        // Bare `V` and `X` are excluded to avoid colliding with `Volume
-        // V` / `Vol V` volume markers, `X-Files`-style franchise names,
-        // and miscellaneous single-letter tokens. Multi-character
-        // Roman numerals (II/III/IV/VI/VII/VIII/IX) remain supported.
-        assert!(
-            !detect_batch("[Group] Volume V (1080p)"),
-            "`Volume V` with no other batch signal must not fire"
-        );
-        assert!(
-            !detect_batch("[Group] Show V (1080p)"),
-            "bare `V` must not be treated as a season marker"
-        );
-        assert!(
-            !detect_batch("[Group] The X Movie (1080p)"),
-            "bare `X` must not be treated as a season marker"
-        );
     }
 
     #[test]
@@ -956,7 +728,7 @@ mod tests {
         assert_eq!(extract_hash(""), "");
     }
 
-    // ── #24 — anitomy-derived classification on SearchResult ──────────────
+    // ── #24 — filename-layer classification on SearchResult ──────────────
 
     #[test]
     fn classify_search_result_subsplease_1080p_webdl_from_filename_tokens() {

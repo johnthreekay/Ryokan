@@ -1,0 +1,633 @@
+{
+  "name": "monogatari",
+  "roots": [
+    9260,
+    5081
+  ],
+  "nodes": [
+    {
+      "id": 5081,
+      "mal_id": 5081,
+      "title_romaji": "Bakemonogatari",
+      "title_english": "Bakemonogatari",
+      "title_native": "化物語",
+      "synonyms": [
+        "Monster Tale",
+        "化物语",
+        "ปกรณัมของเหล่าภูต",
+        "Monogatari"
+      ],
+      "format": "TV",
+      "episodes": 15,
+      "season_year": 2009,
+      "end_year": 2010
+    },
+    {
+      "id": 9260,
+      "mal_id": 9260,
+      "title_romaji": "Kizumonogatari I: Tekketsu-hen",
+      "title_english": "Kizumonogatari Part 1: Tekketsu",
+      "title_native": "傷物語〈Ⅰ鉄血篇〉",
+      "synonyms": [
+        "Wound Tale 1: Iron Blood"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2016,
+      "end_year": 2016
+    },
+    {
+      "id": 11597,
+      "mal_id": 11597,
+      "title_romaji": "Nisemonogatari",
+      "title_english": "Nisemonogatari",
+      "title_native": "偽物語",
+      "synonyms": [
+        "Fake Tale",
+        "Истории подделок",
+        "ปกรณัมของเทียม"
+      ],
+      "format": "TV",
+      "episodes": 11,
+      "season_year": 2012,
+      "end_year": 2012
+    },
+    {
+      "id": 15689,
+      "mal_id": 15689,
+      "title_romaji": "Nekomonogatari (Kuro)",
+      "title_english": "Nekomonogatari Black",
+      "title_native": "猫物語（黒）",
+      "synonyms": [],
+      "format": "TV",
+      "episodes": 4,
+      "season_year": 2012,
+      "end_year": 2012
+    },
+    {
+      "id": 17074,
+      "mal_id": 17074,
+      "title_romaji": "Monogatari Series: Second Season",
+      "title_english": "Monogatari Series Second Season",
+      "title_native": "〈物語〉シリーズ セカンドシーズン",
+      "synonyms": [
+        "Nekomonogatari White",
+        "Kabukimonogatari",
+        "Otorimonogatari",
+        "Onimonogatari",
+        "Koimonogatari"
+      ],
+      "format": "TV",
+      "episodes": 26,
+      "season_year": 2013,
+      "end_year": 2013
+    },
+    {
+      "id": 20593,
+      "mal_id": 21855,
+      "title_romaji": "Hanamonogatari",
+      "title_english": "Hanamonogatari",
+      "title_native": "花物語",
+      "synonyms": [
+        "Monogatari Series Second Season +α",
+        "ปกรณัมแห่งบุปผา"
+      ],
+      "format": "TV",
+      "episodes": 5,
+      "season_year": 2014,
+      "end_year": 2014
+    },
+    {
+      "id": 20918,
+      "mal_id": 28025,
+      "title_romaji": "Tsukimonogatari",
+      "title_english": "Tsukimonogatari",
+      "title_native": "憑物語",
+      "synonyms": [
+        "Possession Tale"
+      ],
+      "format": "TV",
+      "episodes": 4,
+      "season_year": 2014,
+      "end_year": 2014
+    },
+    {
+      "id": 21262,
+      "mal_id": 31181,
+      "title_romaji": "Owarimonogatari",
+      "title_english": "Owarimonogatari",
+      "title_native": "終物語",
+      "synonyms": [
+        "End Tale"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2015,
+      "end_year": 2015
+    },
+    {
+      "id": 21399,
+      "mal_id": 31757,
+      "title_romaji": "Kizumonogatari II: Nekketsu-hen",
+      "title_english": "Kizumonogatari Part 2: Nekketsu",
+      "title_native": "傷物語〈Ⅱ熱血篇〉",
+      "synonyms": [
+        "Wound Tale 2: Hot Blood"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2016,
+      "end_year": 2016
+    },
+    {
+      "id": 21400,
+      "mal_id": 31758,
+      "title_romaji": "Kizumonogatari III: Reiketsu-hen",
+      "title_english": "Kizumonogatari Part 3: Reiketsu",
+      "title_native": "傷物語〈Ⅲ冷血篇〉",
+      "synonyms": [
+        "Wound Tale 3: Cold Blood"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2017,
+      "end_year": 2017
+    },
+    {
+      "id": 21520,
+      "mal_id": 32268,
+      "title_romaji": "Koyomimonogatari",
+      "title_english": "Koyomimonogatari",
+      "title_native": "暦物語",
+      "synonyms": [
+        "Calendar Tale"
+      ],
+      "format": "ONA",
+      "episodes": 12,
+      "season_year": 2016,
+      "end_year": 2016
+    },
+    {
+      "id": 21745,
+      "mal_id": 35247,
+      "title_romaji": "Owarimonogatari (Ge)",
+      "title_english": "Owarimonogatari Second Season",
+      "title_native": "終物語（下）",
+      "synonyms": [
+        "Owarimonogatari 2",
+        "End Tale"
+      ],
+      "format": "TV",
+      "episodes": 7,
+      "season_year": 2017,
+      "end_year": 2017
+    },
+    {
+      "id": 100815,
+      "mal_id": 36999,
+      "title_romaji": "Zoku Owarimonogatari",
+      "title_english": "Zoku Owarimonogatari",
+      "title_native": "続・終物語",
+      "synonyms": [
+        "Continued End Tale"
+      ],
+      "format": "OVA",
+      "episodes": 6,
+      "season_year": 2019,
+      "end_year": 2019
+    },
+    {
+      "id": 104434,
+      "mal_id": 37139,
+      "title_romaji": "Koyomi History",
+      "title_english": "",
+      "title_native": "こよみヒストリー",
+      "synonyms": [
+        "Madogatari"
+      ],
+      "format": "OVA",
+      "episodes": 1,
+      "season_year": 2016,
+      "end_year": 2016
+    },
+    {
+      "id": 143663,
+      "mal_id": 51068,
+      "title_romaji": "Bakemonogatari PV",
+      "title_english": "",
+      "title_native": "化物語 PV",
+      "synonyms": [
+        "漫画 化物語 シャフト制作特別PV",
+        "Bakemonogatari Special PV"
+      ],
+      "format": "SPECIAL",
+      "episodes": 1,
+      "season_year": 2022,
+      "end_year": 2022
+    },
+    {
+      "id": 173533,
+      "mal_id": 57864,
+      "title_romaji": "Monogatari Series: Off & Monster Season",
+      "title_english": "MONOGATARI Series: OFF & MONSTER Season",
+      "title_native": "〈物語〉シリーズ オフ&モンスターシーズン",
+      "synonyms": [
+        "Orokamonogatari",
+        "Nademonogatari",
+        "Wazamonogatari",
+        "Shinobumonogatari"
+      ],
+      "format": "ONA",
+      "episodes": 14,
+      "season_year": 2024,
+      "end_year": 2024
+    },
+    {
+      "id": 180332,
+      "mal_id": 59612,
+      "title_romaji": "Monogatari Series: Off & Monster Season - Zankoku Douwa: Utsukushi-hime",
+      "title_english": "MONOGATARI Series: OFF & MONSTER Season - A Cruel Fairy Tale: The Beautiful Princess",
+      "title_native": "〈物語〉シリーズ オフ&モンスターシーズン 残酷童話 うつくし姫",
+      "synonyms": [
+        "MONOGATARI Series: OFF & MONSTER Season Episode 6.5",
+        "〈物語〉シリーズ オフ&モンスターシーズン EX",
+        "Monogatari Series: Off & Monster Season - The Princess Beauty",
+        "Wazamonogatari"
+      ],
+      "format": "SPECIAL",
+      "episodes": 1,
+      "season_year": 2024,
+      "end_year": 2024
+    },
+    {
+      "id": 181970,
+      "mal_id": 56609,
+      "title_romaji": "Kizumonogatari: Koyomi Vamp",
+      "title_english": "KIZUMONOGATARI -Koyomi Vamp-",
+      "title_native": "傷物語 -こよみヴァンプ-",
+      "synonyms": [
+        "Wound Tale: Koyomi Vamp "
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2024,
+      "end_year": 2024
+    },
+    {
+      "id": 195448,
+      "mal_id": 61968,
+      "title_romaji": "Monogatari Series: Off & Monster Season Shin Episode",
+      "title_english": "",
+      "title_native": "〈物語〉シリーズ オフ&モンスターシーズン 新エピソード",
+      "synonyms": [],
+      "format": "",
+      "episodes": null,
+      "season_year": 2026,
+      "end_year": null
+    }
+  ],
+  "edges": [
+    {
+      "from": 5081,
+      "to": 11597,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 5081,
+      "to": 15689,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 5081,
+      "to": 21520,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 5081,
+      "to": 143663,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 9260,
+      "to": 21399,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 9260,
+      "to": 181970,
+      "relation": "SUMMARY"
+    },
+    {
+      "from": 11597,
+      "to": 5081,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 11597,
+      "to": 17074,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 11597,
+      "to": 21520,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 15689,
+      "to": 5081,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 15689,
+      "to": 21400,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 17074,
+      "to": 11597,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 17074,
+      "to": 21262,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 17074,
+      "to": 21520,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 17074,
+      "to": 104434,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 20593,
+      "to": 100815,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 20918,
+      "to": 21262,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 20918,
+      "to": 21520,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 20918,
+      "to": 21745,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 21262,
+      "to": 17074,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 21262,
+      "to": 20918,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 21399,
+      "to": 9260,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 21399,
+      "to": 21400,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 21399,
+      "to": 181970,
+      "relation": "SUMMARY"
+    },
+    {
+      "from": 21400,
+      "to": 15689,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 21400,
+      "to": 21399,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 21400,
+      "to": 181970,
+      "relation": "SUMMARY"
+    },
+    {
+      "from": 21745,
+      "to": 20918,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 21745,
+      "to": 100815,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 100815,
+      "to": 20593,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 100815,
+      "to": 21745,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 100815,
+      "to": 173533,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 173533,
+      "to": 100815,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 173533,
+      "to": 180332,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 173533,
+      "to": 195448,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 195448,
+      "to": 173533,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 5081,
+      "tvdb_id": 102261,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 9260,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 1
+    },
+    {
+      "id": 11597,
+      "tvdb_id": 102261,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 15689,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 2
+    },
+    {
+      "id": 17074,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": -7
+    },
+    {
+      "id": 17074,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": -3
+    },
+    {
+      "id": 17074,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 1
+    },
+    {
+      "id": 17074,
+      "tvdb_id": 102261,
+      "season": 3,
+      "episode_offset": -3
+    },
+    {
+      "id": 17074,
+      "tvdb_id": 102261,
+      "season": 3,
+      "episode_offset": -2
+    },
+    {
+      "id": 17074,
+      "tvdb_id": 102261,
+      "season": 3,
+      "episode_offset": -1
+    },
+    {
+      "id": 17074,
+      "tvdb_id": 102261,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 20593,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 9
+    },
+    {
+      "id": 20593,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 13
+    },
+    {
+      "id": 20918,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 14
+    },
+    {
+      "id": 21262,
+      "tvdb_id": 102261,
+      "season": 4,
+      "episode_offset": 0
+    },
+    {
+      "id": 21399,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 18
+    },
+    {
+      "id": 21400,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 19
+    },
+    {
+      "id": 21400,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 32
+    },
+    {
+      "id": 21520,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 20
+    },
+    {
+      "id": 21745,
+      "tvdb_id": 102261,
+      "season": 5,
+      "episode_offset": 0
+    },
+    {
+      "id": 100815,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": -3
+    },
+    {
+      "id": 100815,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 32
+    },
+    {
+      "id": 100815,
+      "tvdb_id": 102261,
+      "season": 1,
+      "episode_offset": 12
+    },
+    {
+      "id": 173533,
+      "tvdb_id": 102261,
+      "season": 6,
+      "episode_offset": 0
+    },
+    {
+      "id": 180332,
+      "tvdb_id": 102261,
+      "season": 0,
+      "episode_offset": 40
+    }
+  ],
+  "offsets": [
+    {
+      "id": 21399,
+      "episodes": 1
+    },
+    {
+      "id": 21400,
+      "episodes": 2
+    }
+  ]
+}

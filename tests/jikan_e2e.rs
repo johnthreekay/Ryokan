@@ -429,3 +429,84 @@ async fn fetch_episode_titles_skips_the_request_during_cooldown_without_caching(
     }
     jikan::reset_state_for_tests().await;
 }
+
+#[tokio::test]
+async fn get_anime_titles_makes_one_request_and_no_relation_fetches() {
+    // #303's weekly title refresh for a split MAL entry: one `/anime/{id}`
+    // request, never `/full` (whose relations cost up to eight more
+    // requests 500 ms apart). `expect` fails the test on any other call.
+    let _gate = ENV_LOCK.lock().await;
+    jikan::reset_state_for_tests().await;
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/61469"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": {
+                "mal_id": 61469,
+                "title": "Steel Ball Run: JoJo no Kimyou na Bouken",
+                "title_english": "STEEL BALL RUN JoJo's Bizarre Adventure",
+                "title_japanese": null,
+                "type": "ONA",
+                "relations": [{
+                    "relation": "Prequel",
+                    "entry": [{"mal_id": 48661, "type": "anime", "name": "Stone Ocean"}]
+                }]
+            }
+        })))
+        .expect(1)
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/61470"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": { "mal_id": 1, "title": "Cowboy Bebop" }
+        })))
+        .expect(1)
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("JIKAN_API_BASE", mock.uri());
+    }
+
+    let titles = jikan::get_anime_titles(61469).await.expect("titles");
+    assert_eq!(
+        titles,
+        (
+            "Steel Ball Run: JoJo no Kimyou na Bouken".to_string(),
+            "STEEL BALL RUN JoJo's Bizarre Adventure".to_string()
+        )
+    );
+    // Another entry's payload is no answer.
+    assert!(jikan::get_anime_titles(61470).await.is_err());
+
+    unsafe {
+        std::env::remove_var("JIKAN_API_BASE");
+    }
+    jikan::reset_state_for_tests().await;
+}
+
+#[tokio::test]
+async fn get_anime_titles_reads_the_detail_cache_first() {
+    let _gate = ENV_LOCK.lock().await;
+    jikan::reset_state_for_tests().await;
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/778/full"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(full_response(778, "Cached")))
+        .expect(1)
+        .mount(&mock)
+        .await;
+    unsafe {
+        std::env::set_var("JIKAN_API_BASE", mock.uri());
+    }
+
+    jikan::get_anime_detail_cached(778).await.expect("detail");
+    // Served from the cache: no `/anime/778` mock exists to answer it.
+    let (_, english) = jikan::get_anime_titles(778).await.expect("titles");
+    assert_eq!(english, "Cached");
+
+    unsafe {
+        std::env::remove_var("JIKAN_API_BASE");
+    }
+    jikan::reset_state_for_tests().await;
+}

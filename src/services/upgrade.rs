@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::AppState;
 use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, metadata_cache, series};
+use crate::services::grab_commit::{GrabFor, GrabSeries, grab_episode_list};
 use crate::services::source::{self, ClassificationResult, Resolution};
 use crate::services::{auto_search, logger, media};
 
@@ -33,17 +34,22 @@ pub fn judge_release_for_episode(
 ) -> Result<source::UpgradeKind, source::UpgradeRejection> {
     let no_seadex_hashes: HashSet<String> = HashSet::new();
     // No tag row: no group (no revision) and no score; the renamed
-    // library file is not a release title.
+    // library file is not a release title. The group is read from the
+    // stored title the way the incoming one is: a row written before
+    // `release_fields` holds another reader's group.
     let (existing_title, existing_group, scorable) = match tag {
-        Some(t) if !t.release_title.is_empty() => {
-            (t.release_title.as_str(), t.release_group.as_str(), true)
-        }
+        Some(t) if !t.release_title.is_empty() => (
+            t.release_title.as_str(),
+            crate::services::release_title::release_fields(&t.release_title).group,
+            true,
+        ),
         _ => (
             disk_file.map(|f| f.filename.as_str()).unwrap_or_default(),
-            "",
+            String::new(),
             false,
         ),
     };
+    let existing_group = existing_group.as_str();
     let existing_file = source::ExistingFile {
         classification: existing_classification,
         revision: media::parse_release_revision(existing_title),
@@ -290,6 +296,10 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
         // grabbed_torrents row by hash, but episode_tags::record_grab
         // is unconditional INSERT, so each iteration pollutes history.
         let mut covered_by_batch: HashSet<i32> = HashSet::new();
+        // A release grabbed earlier in this pass is never grabbed again,
+        // whatever numbering its list was recorded in (an unmarked
+        // second-half pack reads as absolute and covers other targets).
+        let mut grabbed_this_pass: HashSet<String> = HashSet::new();
 
         for target in targets {
             // Skip targets a previously-grabbed batch already covers.
@@ -316,6 +326,14 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
             let Some(result) = best else {
                 continue;
             };
+            let release_key = if result.info_hash.is_empty() {
+                result.title.to_lowercase()
+            } else {
+                result.info_hash.to_lowercase()
+            };
+            if grabbed_this_pass.contains(&release_key) {
+                continue;
+            }
 
             // Issue #28 — PT upgrade gate. When a user hasn't
             // opted this series in to PT-sourced upgrades and the
@@ -468,20 +486,23 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                     )
                     .await;
 
-                    // Record for post-processing and quality tags.
-                    let mut ep_nums: Vec<i32> = match &target {
-                        auto_search::SearchTarget::Episode(n) => vec![*n],
-                        auto_search::SearchTarget::Single => vec![1],
+                    // Record for post-processing and quality tags, series-relative.
+                    let grab_for = match &target {
+                        auto_search::SearchTarget::Episode(n) => GrabFor::Episode(*n),
+                        auto_search::SearchTarget::Single => GrabFor::Single,
                     };
+                    let ep_nums = grab_episode_list(
+                        &result.title,
+                        &GrabSeries::from_row(row).with_episode_count(detail.episodes),
+                        grab_for,
+                        result.is_batch,
+                    );
+                    grabbed_this_pass.insert(release_key.clone());
                     if result.is_batch {
-                        let parsed = auto_search::parse_release_numbers(&result.title);
-                        if !parsed.is_empty() {
-                            ep_nums = parsed.into_iter().collect();
-                            ep_nums.sort_unstable();
-                        }
                         // Mark every episode this batch will cover as
                         // satisfied so the rest of this series's loop
-                        // doesn't re-find / re-grab the same pack.
+                        // doesn't re-find / re-grab the same pack. Both
+                        // sides are series-relative episode numbers.
                         covered_by_batch.extend(&ep_nums);
                     }
                     let grab_id = crate::models::grabbed_torrents::record_grab(

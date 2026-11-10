@@ -3064,6 +3064,15 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
         // sweep's move-mode rule never applies to a row imported by
         // hardlink because the mode was switched later.
         "ALTER TABLE grabbed_torrents ADD COLUMN import_mode TEXT",
+        // #303: where `cumulative_prior_episodes` came from (`rule`,
+        // `split`, `walk`; empty until the next refresh writes it) and
+        // the user's episode numbering choice (empty = automatic,
+        // `anilist`, `absolute`). See `services::numbering`.
+        "ALTER TABLE series ADD COLUMN cumulative_offset_source TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE series ADD COLUMN episode_numbering TEXT NOT NULL DEFAULT ''",
+        // #303: the TVDB season a split offset was confirmed in; its tags
+        // (`S06E07`) count on from the earlier parts.
+        "ALTER TABLE series ADD COLUMN cumulative_offset_season INTEGER",
     ] {
         sqlx::query(sql).execute(db).await.ok();
     }
@@ -3080,6 +3089,22 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
     drop_series_mal_id_unique(db).await?;
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_series_mal_id_lookup ON series (mal_id) WHERE mal_id IS NOT NULL",
+    )
+    .execute(db)
+    .await?;
+
+    // #303: the titles of a MAL entry AniList split into several
+    // entries (Steel Ball Run's 1st STAGE and 2nd - 3rd STAGE are both
+    // MAL 61469). Release groups name the MAL entry, so RSS matches the
+    // parts by these too. See `models::mal_entry_titles`.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS mal_entry_titles (
+            mal_id INTEGER PRIMARY KEY,
+            titles_json TEXT NOT NULL,
+            cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
     )
     .execute(db)
     .await?;

@@ -1,0 +1,362 @@
+{
+  "source": "src/NzbDrone.Core.Test/ParserTests/AnimeMetadataParserFixture.cs",
+  "repository": "https://github.com/Sonarr/Sonarr",
+  "commit": "8f8226786bad9804486368768a108ae3aec17101",
+  "license": "GPL-3.0-only",
+  "cases": [
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[SubDESU]_Show_Title_DxD_07_(1280x720_x264-AAC)_[6B7FD717]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "SubDESU",
+        "hash": "6B7FD717"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Chihiro]_Show_Title!!_-_06_[848x480_H.264_AAC][859EEAFA]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Chihiro",
+        "hash": "859EEAFA"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Underwater]_Show_Title_-_12_(720p)_[5C7BC4F9]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Underwater",
+        "hash": "5C7BC4F9"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[HorribleSubs]_Show_Title_-_33_[720p]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "HorribleSubs",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[HorribleSubs] Show-Title - 13 [1080p].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "HorribleSubs",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Doremi].Show.Title.5.Go.Go!.31.[1280x720].[C65D4B1F].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Doremi",
+        "hash": "C65D4B1F"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Doremi].Show.Title.5.Go.Go!.31[1280x720].[C65D4B1F]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Doremi",
+        "hash": "C65D4B1F"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Doremi].Show.Title.5.Go.Go!.31.[1280x720].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Doremi",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[K-F] Series Title 214",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "K-F",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[K-F] Series Title S10E14 214",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "K-F",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[K-F] Series Title 10x14 214",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "K-F",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[K-F] Series Title 214 10x14",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "K-F",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "Series Title - 031 - The Resolution to Kill [Lunar].avi",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Lunar",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[ACX]Series Title 01 Episode Name [Kosaka] [9C57891E].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "ACX",
+        "hash": "9C57891E"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[S-T-D] Series Title! - 06 (1280x720 10bit AAC) [59B3F2EA].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "S-T-D",
+        "hash": "59B3F2EA"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[SubDESU]_Show_Title_DxD_07_(1280x720_x264-AAC)_(6B7FD717)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "SubDESU",
+        "hash": "6B7FD717"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Chihiro]_Show_Title!!_-_06_[848x480_H.264_AAC](859EEAFA)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Chihiro",
+        "hash": "859EEAFA"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Underwater]_Show_Title_-_12_(720p)_(5C7BC4F9)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Underwater",
+        "hash": "5C7BC4F9"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[HorribleSubs]_Show_Title_-_33_[720p]",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "HorribleSubs",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[HorribleSubs] Show-Title - 13 [1080p].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "HorribleSubs",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Doremi].Show.Title.5.Go.Go!.31.[1280x720].(C65D4B1F).mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Doremi",
+        "hash": "C65D4B1F"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Doremi].Show.Title.5.Go.Go!.31[1280x720].(C65D4B1F)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Doremi",
+        "hash": "C65D4B1F"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[Doremi].Show.Title.5.Go.Go!.31.[1280x720].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Doremi",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[K-F] Series Title 214",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "K-F",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[K-F] Series Title S10E14 214",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "K-F",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[K-F] Series Title 10x14 214",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "K-F",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[K-F] Series Title 214 10x14",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "K-F",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "Series Title - 031 - The Resolution to Kill [Lunar].avi",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "Lunar",
+        "hash": null
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[ACX]Series Title 01 Episode Name [Kosaka] (9C57891E).mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "ACX",
+        "hash": "9C57891E"
+      }
+    },
+    {
+      "method": "should_parse_releasegroup_and_hash",
+      "title": "[S-T-D] Series Title! - 06 (1280x720 10bit AAC) (59B3F2EA).mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "group": "S-T-D",
+        "hash": "59B3F2EA"
+      }
+    },
+    {
+      "method": "should_parse_release_hashes_with_10b_or_8b",
+      "title": "[DHD] Series Title! - 08 (1280x720 10bit AAC) [8B00F2EA].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "hash": "8B00F2EA"
+      }
+    },
+    {
+      "method": "should_parse_release_hashes_with_10b_or_8b",
+      "title": "[DHD] Series Title! - 10 (1280x720 10bit AAC) [10BBF2EA].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "hash": "10BBF2EA"
+      }
+    },
+    {
+      "method": "should_parse_release_hashes_with_10b_or_8b",
+      "title": "[DHD] Series Title! - 08 (1280x720 10bit AAC) [008BF28B].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "hash": "008BF28B"
+      }
+    },
+    {
+      "method": "should_parse_release_hashes_with_10b_or_8b",
+      "title": "[DHD] Series Title! - 10 (1280x720 10bit AAC) [000BF10B].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "hash": "000BF10B"
+      }
+    },
+    {
+      "method": "should_parse_release_hashes_with_10b_or_8b",
+      "title": "[DHD] Series Title! - 08 (1280x720 8bit AAC) [8B8BF2EA].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "hash": "8B8BF2EA"
+      }
+    },
+    {
+      "method": "should_parse_release_hashes_with_10b_or_8b",
+      "title": "[DHD] Series Title! - 10 (1280x720 8bit AAC) [10B10BEA].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "hash": "10B10BEA"
+      }
+    }
+  ]
+}

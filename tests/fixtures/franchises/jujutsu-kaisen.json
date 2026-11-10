@@ -1,0 +1,258 @@
+{
+  "name": "jujutsu-kaisen",
+  "roots": [
+    113415
+  ],
+  "nodes": [
+    {
+      "id": 113415,
+      "mal_id": 40748,
+      "title_romaji": "Jujutsu Kaisen",
+      "title_english": "JUJUTSU KAISEN",
+      "title_native": "呪術廻戦",
+      "synonyms": [
+        "JJK",
+        "Sorcery Fight",
+        "咒术回战",
+        "주술회전",
+        "มหาเวทย์ผนึกมาร",
+        "جوجوتسو كايسن",
+        "Магическая битва",
+        "咒術迴戰",
+        "Chú Thuật Hồi Chiến"
+      ],
+      "format": "TV",
+      "episodes": 24,
+      "season_year": 2020,
+      "end_year": 2021
+    },
+    {
+      "id": 131573,
+      "mal_id": 48561,
+      "title_romaji": "Jujutsu Kaisen 0",
+      "title_english": "JUJUTSU KAISEN 0",
+      "title_native": "呪術廻戦 0",
+      "synonyms": [
+        "JJK 0",
+        "咒术回战0",
+        "มหาเวทย์ผนึกมาร : ซีโร่",
+        "‎جوجوتسو كايسن 0",
+        "Jujutsu Kaisen Movie",
+        "Магическая битва 0"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 145064,
+      "mal_id": 51009,
+      "title_romaji": "Jujutsu Kaisen 2nd Season",
+      "title_english": "JUJUTSU KAISEN Season 2",
+      "title_native": "呪術廻戦 第2期",
+      "synonyms": [
+        "呪術廻戦 懐玉・玉折／渋谷事変 ",
+        "Jujutsu Kaisen: Kaigyoku Gyokusetsu / Shibuya Jihen",
+        "Jujutsu Kaisen: Hidden Inventory / Premature Death",
+        "JJK2",
+        "咒術迴戰  第二季",
+        "มหาเวทย์ผนึกมาร ภาค 2 ",
+        "咒术回战 2",
+        "2جوجوتسو كايسن ",
+        "Jujutsu Kaisen: Shibuya Incident"
+      ],
+      "format": "TV",
+      "episodes": 23,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 172463,
+      "mal_id": 57658,
+      "title_romaji": "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen",
+      "title_english": "JUJUTSU KAISEN Season 3: The Culling Game Part 1",
+      "title_native": "呪術廻戦 死滅回游 前編",
+      "synonyms": [
+        "Jujutsu Kaisen 3rd Season",
+        "呪術廻戦 第3期",
+        "JJK3",
+        "มหาเวทย์ผนึกมาร จรดลล้างบาง พาร์ต 1"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2026,
+      "end_year": 2026
+    },
+    {
+      "id": 192809,
+      "mal_id": 59654,
+      "title_romaji": "Jujutsu Kaisen: Kaigyoku・Gyokusetsu",
+      "title_english": "JUJUTSU KAISEN: Hidden Inventory / Premature Death – The Movie",
+      "title_native": "呪術廻戦 懐玉・玉折",
+      "synonyms": [
+        "JJK Movie",
+        "JUJUTSU KAISEN - Inventário Oculto / Morte Prematura - O Filme"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2025,
+      "end_year": 2025
+    },
+    {
+      "id": 204066,
+      "mal_id": 62392,
+      "title_romaji": "Jujutsu Kaisen: Shibuya Jihen Tokubetsu Henshuu-ban × Shimetsu Kaiyuu Senkou Jouei",
+      "title_english": "JUJUTSU KAISEN: Execution -Shibuya Incident x The Culling Game Begins-",
+      "title_native": "呪術廻戦『渋谷事変 特別編集版』×『死滅回游 先行上映』",
+      "synonyms": [
+        "JJK Movie",
+        "JUJUTSU KAISEN: Execution"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2025,
+      "end_year": 2025
+    },
+    {
+      "id": 209895,
+      "mal_id": 63824,
+      "title_romaji": "Jujutsu Kaisen: Shimetsu Kaiyuu - Kouhen",
+      "title_english": "",
+      "title_native": "呪術廻戦 死滅回游 後編",
+      "synonyms": [
+        "Jujutsu Kaisen 4th Season",
+        "呪術廻戦 第4期",
+        "JUJUTSU KAISEN Season 4: The Culling Game Part 2"
+      ],
+      "format": "",
+      "episodes": null,
+      "season_year": null,
+      "end_year": null
+    }
+  ],
+  "edges": [
+    {
+      "from": 113415,
+      "to": 131573,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 113415,
+      "to": 145064,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 131573,
+      "to": 113415,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 145064,
+      "to": 113415,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 145064,
+      "to": 172463,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 145064,
+      "to": 192809,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 145064,
+      "to": 204066,
+      "relation": "SUMMARY"
+    },
+    {
+      "from": 172463,
+      "to": 145064,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 172463,
+      "to": 204066,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 172463,
+      "to": 209895,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 192809,
+      "to": 145064,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 192809,
+      "to": 204066,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 204066,
+      "to": 145064,
+      "relation": "PARENT"
+    },
+    {
+      "from": 204066,
+      "to": 172463,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 204066,
+      "to": 192809,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 209895,
+      "to": 172463,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 113415,
+      "tvdb_id": 377543,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 131573,
+      "tvdb_id": 377543,
+      "season": 0,
+      "episode_offset": 1
+    },
+    {
+      "id": 145064,
+      "tvdb_id": 377543,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 172463,
+      "tvdb_id": 377543,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 192809,
+      "tvdb_id": 377543,
+      "season": 0,
+      "episode_offset": 6
+    }
+  ],
+  "offsets": [
+    {
+      "id": 145064,
+      "episodes": 24
+    },
+    {
+      "id": 172463,
+      "episodes": 47
+    }
+  ]
+}

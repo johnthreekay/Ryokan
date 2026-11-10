@@ -26,6 +26,7 @@ use sqlx::SqlitePool;
 use crate::models::log::LogCategory;
 use crate::models::{config, episode_tags, grabbed_torrents, series};
 use crate::services::anilist::AnimeDetail;
+use crate::services::release_title::SeriesAnchors;
 use crate::services::source::ClassificationResult;
 use crate::services::{anilist, auto_search, logger, media, metadata_sync};
 
@@ -75,8 +76,11 @@ pub async fn expand_from_files(
         Some(_) => false,
         None => match grabbed_torrents::get_by_id(db, grab_id).await {
             Ok(Some(grab)) => {
+                let franchise =
+                    crate::services::identify::load_franchise(db, parent_detail, 0, &[]).await;
                 let aliases =
-                    crate::services::misgrab::aliases_from_detail(parent_detail, filenames);
+                    crate::services::misgrab::aliases_from_detail(parent_detail, filenames)
+                        .with_franchise(franchise);
                 crate::services::misgrab::assess_and_stamp(db, &grab, filenames, &aliases)
                     .await
                     .is_misgrab()
@@ -330,9 +334,15 @@ pub async fn expand_from_files(
         // an upgrade searching by episode 1 of Owari S2 finds a route
         // whose files were originally numbered E14 on disk.
         let mut ep_nums: Vec<i32> = Vec::new();
+        let sibling_anchors = SeriesAnchors::new(&[
+            sibling.title_romaji.as_str(),
+            sibling.title_english.as_str(),
+            sibling.title_native.as_str(),
+        ])
+        .with_specials_as_episodes(!media::is_tv_format(&sibling.format));
         for &file_idx in &sibling.file_indices {
             if let Some(name) = filenames.get(file_idx)
-                && let Some(span) = media::parse_episode_span(&name.to_lowercase())
+                && let Some(span) = media::parse_file_path_for(name, &sibling_anchors)
             {
                 // Every episode a multi-episode file holds (issue #246).
                 for raw in span.episodes() {
@@ -427,15 +437,36 @@ pub async fn expand_from_files(
         parent_episode_numbers.iter().copied().collect();
     let mut all_parent_eps: std::collections::BTreeSet<i32> =
         parent_eps_covered.iter().copied().collect();
+    // A number the parent's own name holds is never a file's episode,
+    // and an absolute-numbered file lands in its relative slot, the
+    // numbering `parent_episode_numbers` and the import both use. The
+    // names are the import's own (`series_anchors`: the row's title and
+    // alternate titles too), so both read a file alike.
+    let parent_row = series::get_by_id(db, parent_series_id).await.ok().flatten();
+    let parent_numbering = parent_row
+        .as_ref()
+        .map(series::Series::numbering)
+        .unwrap_or_default();
+    let parent_anchors = match &parent_row {
+        Some(row) => crate::services::grab_commit::series_anchors(row),
+        None => SeriesAnchors::new(&auto_search::collect_aliases(parent_detail))
+            .with_specials_as_episodes(!media::is_tv_format(&parent_detail.format)),
+    };
     for &file_idx in &parent_file_indices {
         let Some(name) = filenames.get(file_idx) else {
             continue;
         };
-        let Some(span) = media::parse_episode_span(&name.to_ascii_lowercase()) else {
+        let Some(span) = media::parse_file_path_for(name, &parent_anchors) else {
             continue;
         };
+        // A TV series' special (`OVA 01`) is filed under Specials, no
+        // episode slot: tagging its number would mark a regular episode
+        // grabbed, and the specials cleanup would then delete that row.
+        if span.special && !parent_anchors.specials_are_episodes() {
+            continue;
+        }
         // Every episode a multi-episode file holds (issue #246).
-        for raw_ep in span.episodes() {
+        for raw_ep in crate::services::grab_commit::file_slot_episodes(span, parent_numbering) {
             if raw_ep <= 0 {
                 continue;
             }
@@ -519,9 +550,15 @@ pub async fn expand_from_files(
             file_indices: parent_file_indices,
             episode_numbers: parent_episode_numbers.to_vec(),
             matched_subtitle: String::new(),
-            // Parent-route files always use their own arc-local
-            // numbering — no offset ever needed here.
-            episode_offset: 0,
+            // Parent-route files use their own arc-local numbering, no
+            // offset; a split part's are numbered on from the earlier
+            // parts (#303). The import reads a split part's own route
+            // with its numbering, not this offset, so a tag counts the
+            // way the coverage above was read (`route_offset_for`).
+            episode_offset: match parent_numbering.reading {
+                crate::services::numbering::Reading::Absolute => parent_numbering.offset,
+                _ => 0,
+            },
         });
     }
 
@@ -847,9 +884,11 @@ mod tests {
     /// Seerr-driven add → auto_search picked the [Arid] BD batch
     /// release. The release title carries no episode-range token and
     /// no "[BD]"/"Batch"/"Complete" keyword, so:
-    ///   - `parse_release_numbers` returns empty,
-    ///   - `batch_episode_numbers` falls back to `[1]`,
-    ///   - `detect_batch_from_title` returns false.
+    ///   - `parse_release_numbers` returned empty,
+    ///   - `batch_episode_numbers` fell back to `[1]`,
+    ///   - `detect_batch_from_title` returned false
+    ///
+    /// (the title readers of the time, since replaced by `release_title`).
     ///
     /// The grab row lands as `episode_numbers=[1], is_batch=0`, and
     /// post-processing's `grab_claims_episode` guard rejects every

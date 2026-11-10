@@ -408,7 +408,7 @@ pub struct SeriesContext<'a> {
 
 /// Run the pre-download classification pipeline against a release title.
 ///
-/// Fuses Layer 1 (filename tokens via anitomy), Layer 3 (release group
+/// Fuses Layer 1 (filename tokens), Layer 3 (release group
 /// identity table), Layer 4 (temporal inference — when `series` is
 /// provided), and — when L1+L3 come back unconfident — Layer 2 (Nyaa
 /// description scraping). The post-download layers (ffprobe, directory
@@ -993,7 +993,7 @@ mod upgrade_policy_tests {
 // Finished-series filters
 // ───────────────────────────────────────────────────────────────────────────
 
-/// Filename-only BluRay heuristic. Runs Layer 1 (anitomy tokens) and the
+/// Filename-only BluRay heuristic. Runs Layer 1 (filename tokens) and the
 /// aggregator without touching the DB, then checks whether the dominant
 /// source is BluRay. Used by inline collection-time filters that need a
 /// yes/no answer before the full DB-backed `classify_release` pass runs.

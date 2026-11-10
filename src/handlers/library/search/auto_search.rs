@@ -47,19 +47,28 @@ pub(crate) async fn series_still_in_library(db: &SqlitePool, series_id: Option<i
     series::get_by_id(db, sid).await.ok().flatten().is_some()
 }
 
-pub(super) fn batch_episode_numbers(title: &str, detail: &anilist::AnimeDetail) -> Vec<i32> {
-    let mut ep_nums: Vec<i32> = auto_search::parse_release_numbers(title)
-        .into_iter()
-        .collect();
-    if ep_nums.is_empty()
-        && let Some(total) = detail.episodes
-        && total > 0
-        && total <= 1000
-    {
-        ep_nums = (1..=total).collect();
+/// Episode numbers for a log line, sorted, runs folded: `1-3, 6`.
+fn format_episode_list(episodes: &[i32]) -> String {
+    let mut sorted = episodes.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let mut parts: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < sorted.len() {
+        let start = sorted[i];
+        let mut end = start;
+        while i + 1 < sorted.len() && sorted[i + 1] == end + 1 {
+            i += 1;
+            end = sorted[i];
+        }
+        parts.push(if start == end {
+            start.to_string()
+        } else {
+            format!("{start}-{end}")
+        });
+        i += 1;
     }
-    ep_nums.sort_unstable();
-    ep_nums
+    parts.join(", ")
 }
 
 // AutoExpandGrabContext + the core expansion logic live in
@@ -67,6 +76,7 @@ pub(super) fn batch_episode_numbers(title: &str, detail: &anilist::AnimeDetail) 
 // same routine as a fallback when the grab-time metadata wait here
 // timed out. Re-export locally so call sites in this file stay terse.
 use crate::services::auto_expand::{AutoExpandGrabContext, expand_from_files};
+use crate::services::grab_commit::{GrabFor, GrabSeries, grab_episode_list};
 
 /// Grab-time outer orchestrator: wait for qBit metadata, then delegate
 /// to [`services::auto_expand::expand_from_files`]. Failure here
@@ -416,6 +426,12 @@ async fn run_auto_search_targets_with_upgrades(
     let mut grabbed = Vec::new();
     let mut skipped = Vec::new();
     let total_targets = targets.len();
+    // Issue #300: the episodes a queued pack covers. A later target the
+    // pack holds is skipped; any other target is still searched, so a
+    // pack found for an episode's upgrade no longer ends the search
+    // before an episode that is missing outright.
+    let mut covered_by_pack: std::collections::HashSet<i32> = std::collections::HashSet::new();
+    let mut pack_covered_skips = 0usize;
     for (idx, target) in targets.into_iter().enumerate() {
         // Issue #102 — auto-search of a "monitor all" series queues a
         // per-episode loop. If the user removes the series mid-loop
@@ -457,6 +473,19 @@ async fn run_auto_search_targets_with_upgrades(
             });
         }
         let label = auto_search::target_label(&target);
+        if let auto_search::SearchTarget::Episode(n) = &target
+            && covered_by_pack.contains(n)
+        {
+            logger::debug(
+                &state.db,
+                LogCategory::AutoSearch,
+                &format!("{}: covered by a queued pack; not searched", label),
+                "",
+            )
+            .await;
+            pack_covered_skips += 1;
+            continue;
+        }
         let is_upgrade = matches!(&target, auto_search::SearchTarget::Episode(n) if upgrades.classifications.contains_key(n));
         progress::emit(
             "search",
@@ -627,6 +656,9 @@ async fn run_auto_search_targets_with_upgrades(
                 // capture, SAB-routed grabs land with `hash=""` and the
                 // post-processing reconcile loop marks them removed after
                 // 30s when `list_scoped` can't match them.
+                // The episodes this grab was recorded for (filled
+                // below once the grab row is written).
+                let mut queued_episodes: Vec<i32> = Vec::new();
                 let selective_outcome: Result<(Option<Vec<usize>>, String), String> =
                     if wants_selective {
                         let detail_clone = detail.clone();
@@ -709,19 +741,21 @@ async fn run_auto_search_targets_with_upgrades(
                         .await;
                         // Record for post-processing and episode quality tags.
                         if let Some(sid) = series_id {
-                            let mut ep_nums: Vec<i32> = match &target {
-                                auto_search::SearchTarget::Episode(n) => vec![*n],
-                                auto_search::SearchTarget::Single => vec![1],
+                            // Series-relative, every episode a batch or a
+                            // multi-episode release covers gets a grab tag.
+                            let grab_for = match &target {
+                                auto_search::SearchTarget::Episode(n) => GrabFor::Episode(*n),
+                                auto_search::SearchTarget::Single => GrabFor::Single,
                             };
-                            // For batch releases, parse all episode numbers from
-                            // the title so every covered episode gets a grab tag.
-                            if result.is_batch {
-                                let parsed = auto_search::parse_release_numbers(&result.title);
-                                if !parsed.is_empty() {
-                                    ep_nums = parsed.into_iter().collect();
-                                    ep_nums.sort_unstable();
-                                }
-                            }
+                            let ep_nums = grab_episode_list(
+                                &result.title,
+                                &GrabSeries::load(&state.db, sid)
+                                    .await
+                                    .with_episode_count(detail.episodes),
+                                grab_for,
+                                result.is_batch,
+                            );
+                            queued_episodes = ep_nums.clone();
                             // `record_grab` returns `None` on the
                             // empty-hash + FK-violation anomaly path
                             // documented on the model, or on a DB
@@ -904,17 +938,30 @@ async fn run_auto_search_targets_with_upgrades(
                     score: result.score,
                 });
                 if queued_batch && allow_batch {
+                    if queued_episodes.is_empty() {
+                        // No episode list to go by (no series row to
+                        // record the grab against): the pack is taken
+                        // to cover the season, as before.
+                        logger::info(
+                            &state.db,
+                            LogCategory::AutoSearch,
+                            "Season pack queued; stopping episode search",
+                            "",
+                        )
+                        .await;
+                        skipped.push(
+                            "Season pack queued; skipped additional episode searches".to_string(),
+                        );
+                        break;
+                    }
                     logger::info(
                         &state.db,
                         LogCategory::AutoSearch,
-                        "Season pack queued; stopping episode search",
-                        "",
+                        "Season pack queued; skipping the episodes it covers",
+                        &format!("episodes {}", format_episode_list(&queued_episodes)),
                     )
                     .await;
-                    skipped.push(
-                        "Season pack queued; skipped additional episode searches".to_string(),
-                    );
-                    break;
+                    covered_by_pack.extend(queued_episodes);
                 }
             }
             None => {
@@ -925,35 +972,33 @@ async fn run_auto_search_targets_with_upgrades(
                     "",
                 )
                 .await;
-                if fuzzy_only.is_empty() {
-                    skipped.push(format!("{}: no matching release found", label));
-                } else {
-                    let sample = fuzzy_only
-                        .iter()
-                        .take(2)
-                        .map(|t| format!("\"{t}\""))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    skipped.push(format!(
-                        "{}: {} release(s) looked close but none named the series exactly, for example {}. Add an alternate title on the series page if one of them is right.",
-                        label,
-                        fuzzy_only.len(),
-                        sample
-                    ));
-                    logger::info(
-                        &state.db,
-                        LogCategory::AutoSearch,
-                        &format!(
-                            "Skipped {} release(s) that did not name the series exactly for {}",
-                            fuzzy_only.len(),
-                            label
-                        ),
-                        &fuzzy_only.join(" | "),
-                    )
-                    .await;
+                match fuzzy_only.describe("release") {
+                    None => skipped.push(format!("{}: no matching release found", label)),
+                    Some(message) => {
+                        skipped.push(format!("{}: {}", label, message));
+                        logger::info(
+                            &state.db,
+                            LogCategory::AutoSearch,
+                            &format!(
+                                "Skipped {} release(s) that did not name the series exactly or fit another entry better for {}",
+                                fuzzy_only.len(),
+                                label
+                            ),
+                            &fuzzy_only.log_detail(),
+                        )
+                        .await;
+                    }
                 }
             }
         }
+    }
+
+    if pack_covered_skips > 0 {
+        skipped.push(format!(
+            "Season pack queued; skipped {} episode search{} it covers",
+            pack_covered_skips,
+            if pack_covered_skips == 1 { "" } else { "es" }
+        ));
     }
 
     logger::info(
@@ -1231,8 +1276,10 @@ pub async fn auto_search_episode(
 
     if let Some(_tracked) = tracked_row {
         // Monitoring status does not block manual episode searches.
-    } else if matches!(detail.format.as_str(), "MOVIE" | "SPECIAL" | "OVA" | "ONA")
-        && episode_number != 1
+    } else if matches!(
+        auto_search::SearchTarget::for_episode(&detail, episode_number),
+        auto_search::SearchTarget::Single
+    ) && episode_number != 1
     {
         return Err((
             axum::http::StatusCode::BAD_REQUEST,
@@ -1312,6 +1359,9 @@ mod upgrade_candidate_tests {
             restrict_to_uploader: String::new(),
             alternate_titles: String::new(),
             cumulative_prior_episodes: 0,
+            cumulative_offset_source: String::new(),
+            cumulative_offset_season: None,
+            episode_numbering: String::new(),
             monitor_mode_manual_override: false,
             user_score: None,
             added_at: String::new(),

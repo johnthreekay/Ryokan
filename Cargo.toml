@@ -1,6 +1,6 @@
 [package]
 name = "ryokan"
-version = "2.2.3"
+version = "2.3.0"
 edition = "2024"
 authors = ["John K"]
 license = "GPL-3.0-or-later"
@@ -113,6 +113,21 @@ required-features = ["test-support"]
 [[test]]
 name = "nyaa_filename_corpus"
 path = "tests/nyaa_filename_corpus.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "release_title_corpora"
+path = "tests/release_title_corpora.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "identify_franchises"
+path = "tests/identify_franchises.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "identify_corpora"
+path = "tests/identify_corpora.rs"
 required-features = ["test-support"]
 
 [[test]]
@@ -260,7 +275,7 @@ async-trait = "0.1"
 futures-util = "0.3"
 
 # HTML scraping
-scraper = "0.27"
+scraper = "0.29"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -310,7 +325,7 @@ regex-lite = "0.1"
 # do not support — fancy-regex adds PCRE-style backtracking. We keep
 # regex-lite as the default for Ryokan's own internal regexes because
 # they don't need look-around and we want the linear-time guarantee.
-fancy-regex = "0.19"
+fancy-regex = "0.20"
 sha2 = "0.11"
 # SHA-1 for a .torrent's v1 infohash (its bencoded `info` dict): an
 # autobrr push without a hash (`services::torrent_file`), and the
@@ -327,8 +342,6 @@ sha1_smol = "1"
 hmac = "0.13"
 ammonia = "4"
 
-# Anime release title tokenization (wraps bundled anitomy C++ lib, compiled via cc)
-anitomy = "0.2"
 
 # Recursive directory walk for the manual-import wizard (#122). Already
 # in the lock as a transitive dep; promoted to a direct one because the

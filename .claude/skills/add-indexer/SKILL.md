@@ -55,7 +55,7 @@ Snapshot `indexer_priority` and `indexer_name` at search time onto each `Release
 
 ### Source-classification degradation
 
-The Nyaa-description-body signal is unavailable for non-Nyaa sources; classification degrades to four layers (filename + ffprobe + temporal + group-map). Ensure your `Release.title` is rich enough that the filename layer can do its job, anitomy parses the title for resolution, group, episode number, etc. If your wire format strips brackets or normalizes the title, the filename layer goes blind.
+The Nyaa-description-body signal is unavailable for non-Nyaa sources; classification degrades to four layers (filename + ffprobe + temporal + group-map). Ensure your `Release.title` is rich enough that the filename layer can do its job, `release_title` parses the title for resolution, group, episode number, etc. If your wire format strips brackets or normalizes the title, the filename layer goes blind.
 
 ### Protocol-specific notes (any non-torznab impl)
 

@@ -237,6 +237,7 @@ mod tests {
 
     #[tokio::test]
     async fn merged_entry_renumbers_into_anilist_numbering() {
+        let _mappings = crate::services::anibridge::TEST_CACHE_LOCK.lock().await;
         // AniList 55 covers TMDB s1 (1-12) and s2 (1-12) as its 1-24.
         seed_tmdb_episode_spans_for_tests(&[(9, 1, 1, 12, 55, 1), (9, 2, 1, 12, 55, 13)]).await;
         let g = group(vec![file(Some(5)), file(Some(12))], vec![entry(55, "Show")]);
@@ -257,6 +258,7 @@ mod tests {
 
     #[tokio::test]
     async fn split_cour_season_splits_the_group_and_keeps_unmapped_files() {
+        let _mappings = crate::services::anibridge::TEST_CACHE_LOCK.lock().await;
         // TMDB s2: 1-12 are AniList 55 e1-12, 13-24 are AniList 56 e1-12.
         seed_tmdb_episode_spans_for_tests(&[(9, 2, 1, 12, 55, 1), (9, 2, 13, 24, 56, 1)]).await;
         let g = group(
@@ -303,6 +305,7 @@ mod tests {
 
     #[tokio::test]
     async fn untouched_without_a_season_or_a_known_show() {
+        let _mappings = crate::services::anibridge::TEST_CACHE_LOCK.lock().await;
         seed_tmdb_episode_spans_for_tests(&[(9, 2, 1, 12, 55, 1)]).await;
         let mut g = group(vec![file(Some(5))], vec![entry(55, "Show")]);
         g.tmdb_season = None;

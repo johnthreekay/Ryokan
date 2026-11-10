@@ -130,7 +130,7 @@ pub struct SearchResult {
     pub seeders: i32,
     pub leechers: i32,
     pub downloads: i32,
-    /// Release group extracted via anitomy. Kept as `String` for backward-
+    /// Release group (`release_title::release_fields`). Kept as `String` for backward-
     /// compat with the old ad-hoc bracket parse; empty string means "no
     /// group detected."
     pub group: String,

@@ -1,0 +1,125 @@
+{
+  "about": "Season readings asserted by release_parse::parse_release_season (0 means none), season_mismatch (with expected_season), and rss::parse_release's season_hint.",
+  "cases": [
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "Jujutsu Kaisen Part 2 - 01 (1080p).mkv",
+      "expect": 2,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "Chainsaw Man Part 3 - 07.mkv",
+      "expect": 3,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "Show Name Cour 2 - 01.mkv",
+      "expect": 2,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "Evangelion III.mkv",
+      "expect": 3,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "Monogatari II - 01.mkv",
+      "expect": 2,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "[Group] JJK II [1080p].mkv",
+      "expect": 2,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "[Group] Monogatari [II] - 01.mkv",
+      "expect": 2,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "Frieren (Part II).mkv",
+      "expect": 2,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "Title, II - 01.mkv",
+      "expect": 2,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::parse_release_season",
+      "title": "I Want to Eat Your Pancreas.mkv",
+      "expect": 0,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::season_mismatch",
+      "title": "[SubsPlease] Jujutsu Kaisen Season 2 - 12 (1080p).mkv",
+      "expected_season": 1,
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::season_mismatch",
+      "title": "[Group] Monogatari II - 01 (1080p).mkv",
+      "expected_season": 1,
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::season_mismatch",
+      "title": "[Group] Show - 12 (1080p).mkv",
+      "expected_season": 2,
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::season_mismatch",
+      "title": "[SubsPlease] Jujutsu Kaisen Season 2 - 12 (1080p).mkv",
+      "expected_season": 2,
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::season_mismatch",
+      "title": "[Group] Monogatari II - 01 (1080p).mkv",
+      "expected_season": 2,
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "release_parse::season_mismatch",
+      "title": "[Group] Show Part 3 - 01.mkv",
+      "expected_season": 3,
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::parse_release.season_hint",
+      "title": "[Kaizoku] Jujutsu Kaisen Season 3 (WEB 1080p HEVC EAC-3) | The Culling Game Part 1",
+      "expect": 3,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::parse_release.season_hint",
+      "title": "[Group] Cool Anime S3 - 05 (1080p)",
+      "expect": 3,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::parse_release.season_hint",
+      "title": "[Group] Series 3rd Season (WEB 1080p)",
+      "expect": 3,
+      "from": "dev 966695a"
+    }
+  ]
+}

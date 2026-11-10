@@ -14,15 +14,19 @@
 # pinning a mutation" failure modes between active sessions.
 #
 # Why shards: a GitHub-hosted job is capped at 6 hours, and the
-# curated subset (~712 mutants) runs at roughly 30 mutants an hour on
+# curated subset (~960 mutants) runs at roughly 30 mutants an hour on
 # ubuntu-latest with two jobs (every mutant is an incremental rebuild
 # plus the full nextest suite). Eighteen weekly runs in a row were
 # cancelled at the cap with a third of the mutants done. The matrix
-# below splits the mutants round-robin across 8 shards (~90 each,
-# about 3 hours per shard), and a second job merges the shards'
+# below splits the mutants round-robin across 8 shards (~120 each,
+# about 4 hours per shard), and a second job merges the shards'
 # `mutants.out` files before the baseline diff. Each shard runs its own
 # unmutated baseline, so the per-mutant test timeout stays auto-derived
 # from the runner's real test time rather than a guessed constant.
+#
+# `release_title/rules.rs` (about 850 mutants on its own) stays out: it
+# would push every shard past the cap, and the corpus snapshot test
+# (`release_title::corpus`) fails on any change to a title's reading.
 #
 # Per-PR mutation gating is NOT viable. Weekly cron is the right
 # cadence; manual `workflow_dispatch` is available for ad-hoc runs.
@@ -74,7 +78,7 @@ jobs:
       - name: Install mold + clang
         run: sudo apt-get update && sudo apt-get install -y mold clang
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Distinct cache key from rust.yml so the test profile
           # (opt-level=1 deps) doesn't fight with verify-pass cache.
@@ -82,7 +86,7 @@ jobs:
           key: mutants-weekly
 
       # Both binaries via prebuilt-action (avoids the ~2 min build).
-      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
           tool: cargo-nextest,cargo-mutants
 
@@ -113,7 +117,9 @@ jobs:
             --file 'src/services/source/mod.rs' \
             --file 'src/handlers/library/crud/mod.rs' \
             --file 'src/services/anibridge.rs' \
-            --file 'src/services/metadata_sync.rs'
+            --file 'src/services/metadata_sync.rs' \
+            --file 'src/services/release_title/mod.rs' \
+            --file 'src/services/release_title/anchors.rs'
           code=$?
           echo "cargo-mutants exit code: $code"
           case "$code" in

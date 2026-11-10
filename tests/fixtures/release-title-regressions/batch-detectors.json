@@ -1,0 +1,467 @@
+{
+  "about": "Titles asserted by the three batch detectors' inline tests (nyaa::scraper::detect_batch, rss::feed::detect_batch, indexers::detect_batch_from_title) and the issue #296 stopgap; expect is the asserted is_batch.",
+  "cases": [
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[DIY] Mob Psycho 100 III (BD 1080p HEVC FLAC) [Dual-Audio]",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[MTBB] KanColle II (BD 1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[smol] Overlord IV (BD 1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[SubsPlease] Show Season 2 - 05v2 (1080p) [ABCD1234].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show S2 - 05v2 (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show Season 2 - 05.5 (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show Season 2 (BD 1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[HorribleSubs] Chihayafuru 2 - 05 [720p].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[SubsPlease] Mob Psycho 100 - 05 (1080p) [ABCD1234].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[SubsPlease] Show Season 2 - 05 (1080p) [ABCD1234].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Log Horizon 2 - 12 (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show - 01 - 12 (BD 1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show 01-12 (BD 1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show (1-24) (BD 1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show 01~24 (BD 1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Mob Psycho 100 III - 05 (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Overlord IV Ep 12 (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] some title iii (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show I vs Y (some subtitle)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Volume V (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show V (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] The X Movie (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Kaizoku] Jujutsu Kaisen Season 3 (WEB 1080p HEVC EAC-3) | The Culling Game Part 1",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[SubsPlease] Frieren - 01 (1080p) [ABCD1234].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Cool Anime - 05 (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Cool Anime Season 3 - 05 (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[HorribleSubs] Chihayafuru 2 - 05 [720p].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[SubsPlease] Mob Psycho 100 - 05 (1080p) [ABCD1234].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Cool Anime - 01 - 12 (1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Cool Anime Part 2 - 05 (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Cool Anime - 01-12 (1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Cool Anime S3E05 (1080p)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Cool Anime 01-12 (1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Cool Anime Complete Batch",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Series 3rd Season (1080p BD)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Series Cour 2 (1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Series Part 2 (1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[SubsPlease] Mob Psycho 100 S3 - 10v2 (1080p) [3B717070].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[ShouryuuReppa] Mob Psycho 100 S3 03 1080p [HEVC][x265][10bit][AAC]",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Metaljerk] Mob Psycho 100 III 03 [1080p] [CR] (English Dub)",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[HorribleSubs] Mob Psycho 100 - 03 [1080p].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Mob Psycho 100 - 05 [720p][x265].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Kamen Rider 555 - 08 [1080p].mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] One Piece - 01-100 (1080p)",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Mob Psycho 100 - 01-12 [BD]",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Kamen Rider 555 - 01-50 [BD]",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::detect_batch_from_title",
+      "title": "Show Incomplete Edition.mkv",
+      "expect": false,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::detect_batch_from_title",
+      "title": "Show Complete BD.mkv",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::detect_batch_from_title",
+      "title": "[Group] Show Batch.mkv",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::detect_batch_from_title",
+      "title": "[Group] Show Season Pack.mkv",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::detect_batch_from_title",
+      "title": "Show [BD]",
+      "expect": true,
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[EA]Dark_Gathering_01-25_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[ANBU-AonE]_SeriesTitle_26-27_[F224EF26].avi",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group]_Show_S2_(BD_1080p)",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group]_Overlord_IV_(BD_1080p)",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Commie]_Some_Anime_Show_-_11_[65F220B4]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[HorribleSubs]_Chihayafuru_2_-_05_[720p].mkv",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group]_Mob_Psycho_100_-_05_[720p]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group]_Show_Season_2_-_05v2_[720p]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Erai-raws]_Show_-_07_5_[1080p]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group]_Show_-_05_[1280x720_x264-AAC]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show S2 05 [1080p]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show 2nd Season 05 (1080p)",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show Season 2 05v2 (1080p)",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[MTBB] KanColle II 05 (1080p)",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show S1 1080p BluRay",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show 2nd Season (BD 1080p)",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "nyaa::scraper::detect_batch",
+      "title": "[Group] Show 2nd Season 01-12 (BD 1080p)",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[EA]Dark_Gathering_01-25_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group]_Show_Batch_[1080p]",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Commie]_Some_Anime_Show_-_11_[65F220B4]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[HorribleSubs]_Chihayafuru_2_-_05_[720p].mkv",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group]_Cool_Anime_Season_3_-_05_[1080p]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Erai-raws]_Show_-_07_5_[1080p]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Show 2nd Season 05 [1080p]",
+      "expect": false,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Show 2nd Season [BD 1080p]",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    },
+    {
+      "fn": "rss::feed::detect_batch",
+      "title": "[Group] Show 2nd Season 01-12 [BD 1080p]",
+      "expect": true,
+      "from": "issue #296 stopgap (stash)"
+    }
+  ]
+}

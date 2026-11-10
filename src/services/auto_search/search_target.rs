@@ -50,19 +50,37 @@ impl SearchTarget {
     ///   episode numbers, and for ambiguous formats with unknown episode
     ///   count the safe default is to keep `Episode(n)` — the failure
     ///   mode there is "no results" rather than "wrong series grabbed".
+    ///
+    /// The shape is `media::EntryShape`'s; the one exception is a TV
+    /// series of one episode, whose release still carries the `- 01`.
     pub fn for_episode(detail: &AnimeDetail, episode_number: i32) -> Self {
-        match detail.format.as_str() {
-            "MOVIE" => SearchTarget::Single,
-            "SPECIAL" | "OVA" | "ONA" if detail.episodes == Some(1) => SearchTarget::Single,
-            _ => SearchTarget::Episode(episode_number),
+        let single = media::EntryShape::of(&detail.format, detail.episodes).is_single();
+        if single && !media::is_tv_format(&detail.format) {
+            SearchTarget::Single
+        } else {
+            SearchTarget::Episode(episode_number)
         }
     }
 }
 
-pub fn build_missing_targets(detail: &AnimeDetail, existing_episodes: &[i32]) -> Vec<SearchTarget> {
-    let total_eps = detail.episodes.unwrap_or(0);
+/// Whether a series search runs as one `Single` target rather than per
+/// episode: a movie, or an entry AniList gives exactly one episode.
+/// The series-level twin of `SearchTarget::for_episode`'s rule. A
+/// multi-episode OVA / ONA / special numbers its releases like a TV
+/// series, and so does a series whose count is not known yet (issue
+/// #300: Steel Ball Run 2nd - 3rd STAGE, an 11-episode ONA, was
+/// searched as one release and grabbed episode 5 for the missing
+/// episode 6).
+fn is_single_entry(detail: &AnimeDetail) -> bool {
+    media::EntryShape::of(&detail.format, detail.episodes).is_single()
+}
 
-    if total_eps <= 1 || matches!(detail.format.as_str(), "MOVIE" | "SPECIAL" | "OVA" | "ONA") {
+pub fn build_missing_targets(detail: &AnimeDetail, existing_episodes: &[i32]) -> Vec<SearchTarget> {
+    // An unknown count goes by the episodes aired so far; with neither
+    // there is nothing to list, and the series is searched as one.
+    let total_eps = detail.effective_episode_count();
+
+    if is_single_entry(detail) || total_eps <= 0 {
         return vec![SearchTarget::Single];
     }
 
@@ -81,9 +99,7 @@ pub fn build_monitored_targets(
     existing_episodes: &[i32],
     monitored_episodes: &[i32],
 ) -> Vec<SearchTarget> {
-    if detail.episodes.unwrap_or(0) <= 1
-        || matches!(detail.format.as_str(), "MOVIE" | "SPECIAL" | "OVA" | "ONA")
-    {
+    if is_single_entry(detail) || detail.effective_episode_count() <= 0 {
         if monitored_episodes.is_empty() || monitored_episodes.contains(&1) {
             return vec![SearchTarget::Single];
         }
@@ -325,6 +341,90 @@ mod tests {
         assert!(matches!(
             SearchTarget::for_episode(&d, 2),
             SearchTarget::Episode(2)
+        ));
+    }
+
+    fn episodes(targets: &[SearchTarget]) -> Vec<i32> {
+        targets
+            .iter()
+            .map(|t| match t {
+                SearchTarget::Episode(n) => *n,
+                SearchTarget::Single => 0,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_multi_episode_ona_is_searched_per_episode() {
+        // Issue #300: Steel Ball Run 2nd - 3rd STAGE (an 11-episode ONA)
+        // with episodes 1-5 on disk was searched as one release, and the
+        // search for the missing episode 6 grabbed "- 05".
+        let d = detail_with("ONA", Some(11));
+        let monitored: Vec<i32> = (1..=11).collect();
+        assert_eq!(
+            episodes(&build_monitored_targets(&d, &[1, 2, 3, 4, 5], &monitored)),
+            [6, 7, 8, 9, 10, 11]
+        );
+        let ova = detail_with("OVA", Some(6));
+        assert_eq!(
+            episodes(&build_missing_targets(&ova, &[1, 2])),
+            [3, 4, 5, 6]
+        );
+    }
+
+    #[test]
+    fn a_one_episode_entry_and_a_movie_are_searched_as_one() {
+        for d in [
+            detail_with("OVA", Some(1)),
+            detail_with("ONA", Some(1)),
+            detail_with("TV", Some(1)),
+            detail_with("MOVIE", None),
+            detail_with("MOVIE", Some(2)),
+        ] {
+            assert!(
+                matches!(
+                    build_monitored_targets(&d, &[], &[1]).as_slice(),
+                    [SearchTarget::Single]
+                ),
+                "{} {:?}",
+                d.format,
+                d.episodes
+            );
+            assert!(matches!(
+                build_missing_targets(&d, &[]).as_slice(),
+                [SearchTarget::Single]
+            ));
+        }
+    }
+
+    #[test]
+    fn an_airing_series_with_no_final_count_goes_by_the_aired_episodes() {
+        // AniList reports `episodes: null` while a show airs with no
+        // announced count; seven episodes are out.
+        let mut d = detail_with("TV", None);
+        d.next_airing_episode = Some(8);
+        let monitored: Vec<i32> = (1..=7).collect();
+        assert_eq!(
+            episodes(&build_monitored_targets(&d, &[1, 2, 3, 4, 5], &monitored)),
+            [6, 7]
+        );
+        assert_eq!(
+            episodes(&build_missing_targets(&d, &[1, 2, 3, 4, 5])),
+            [6, 7]
+        );
+    }
+
+    #[test]
+    fn a_series_with_no_episode_information_is_searched_as_one() {
+        // No count and nothing aired: there is no episode to list.
+        let d = detail_with("ONA", None);
+        assert!(matches!(
+            build_monitored_targets(&d, &[], &[]).as_slice(),
+            [SearchTarget::Single]
+        ));
+        assert!(matches!(
+            build_missing_targets(&d, &[]).as_slice(),
+            [SearchTarget::Single]
         ));
     }
 

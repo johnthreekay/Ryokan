@@ -291,6 +291,15 @@
                     <textarea name="alternate_titles" id="series-alternate-titles" rows="2" placeholder="One per line">{{ alternate_titles }}</textarea>
                     <span class="form-hint">Other names release groups use for this series, one per line. Automatic search and RSS only take a release that names the series exactly, so this is where a group's own name for it goes.</span>
                 </div>
+                <div class="form-group" style="margin:0">
+                    <label for="series-episode-numbering">Episode numbering</label>
+                    <select name="episode_numbering" id="series-episode-numbering">
+                        <option value=""{% if episode_numbering.is_empty() %} selected{% endif %}>Automatic</option>
+                        <option value="anilist"{% if episode_numbering == "anilist" %} selected{% endif %}>AniList (each entry counts from 1)</option>
+                        <option value="absolute"{% if episode_numbering == "absolute" %} selected{% endif %}>Absolute (counts on from earlier entries)</option>
+                    </select>
+                    {% include "partials/series/numbering_hint.html" %}
+                </div>
                 <div style="display:flex;gap:8px;align-items:center">
                     <button type="submit" class="btn btn-primary">Save</button>
                     <span class="form-hint" id="series-search-overrides-status"></span>

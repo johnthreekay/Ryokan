@@ -1,0 +1,101 @@
+{
+  "about": "Titles asserted by the feed and indexer group / resolution extractors; expect is the asserted string (empty means none).",
+  "cases": [
+    {
+      "fn": "rss::feed::extract_group",
+      "title": "[SubsPlease] Show - 01",
+      "expect": "SubsPlease",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::extract_group",
+      "title": "Show - 01",
+      "expect": "",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::extract_group",
+      "title": "[unclosed group rest",
+      "expect": "",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::extract_group",
+      "title": "[漢字組] Show",
+      "expect": "漢字組",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::extract_group",
+      "title": "[] Show",
+      "expect": "",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::extract_resolution",
+      "title": "[Group] Show 1080p HEVC + 720p AVC dual-track",
+      "expect": "1080",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::extract_resolution",
+      "title": "[Group] Show 1080P",
+      "expect": "1080",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::extract_resolution",
+      "title": "[Group] Show - 01",
+      "expect": "",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "rss::feed::extract_resolution",
+      "title": "[Group] Show 10-bit 1080 BluRay",
+      "expect": "1080",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::extract_group_from_title",
+      "title": "[GroupX] Show - 01 [BD 1080p].mkv",
+      "expect": "GroupX",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::extract_group_from_title",
+      "title": "[12345] [GroupX] Show.mkv",
+      "expect": "GroupX",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::extract_group_from_title",
+      "title": "Show - 01.mkv",
+      "expect": "",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::extract_resolution_from_title",
+      "title": "Show 2160P.mkv",
+      "expect": "2160",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::extract_resolution_from_title",
+      "title": "Show 480P.mkv",
+      "expect": "480",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::extract_resolution_from_title",
+      "title": "Show [1080P]",
+      "expect": "1080",
+      "from": "dev 966695a"
+    },
+    {
+      "fn": "indexers::extract_resolution_from_title",
+      "title": "Show - 01.mkv",
+      "expect": "",
+      "from": "dev 966695a"
+    }
+  ]
+}

@@ -233,6 +233,13 @@ struct SeriesTemplate {
     restrict_to_uploader: String,
     /// Alternate titles the user added for this series, one per line.
     alternate_titles: String,
+    /// #303 — The stored episode numbering choice (empty for automatic,
+    /// `anilist`, `absolute`) and the line explaining what it reads.
+    episode_numbering: String,
+    /// Read by `partials/series/numbering_hint.html` (`hint`; `oob` is
+    /// false on the page itself).
+    hint: String,
+    oob: bool,
     /// #23 — Global defaults, surfaced as placeholder hints so the user
     /// can see what the per-series field will inherit when left blank.
     default_custom_query_tokens: String,
@@ -452,6 +459,11 @@ pub struct SetSearchOverridesForm {
     /// Alternate titles, one per line. Empty string clears.
     #[serde(default)]
     alternate_titles: String,
+    /// #303 — Episode numbering: empty for automatic, `anilist`, or
+    /// `absolute` (`numbering::NumberingSetting`). Absent leaves the
+    /// stored choice as it is; an unknown value saves as automatic.
+    #[serde(default)]
+    episode_numbering: Option<String>,
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]

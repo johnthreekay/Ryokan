@@ -474,6 +474,63 @@ pub async fn compute_cumulative_prior_episodes(db: &SqlitePool, root_provider_id
     offset
 }
 
+/// #303 — The episodes of the entries AniList split out of the same MAL
+/// entry before `anilist_id`: walk its PREQUEL edges, any format, while
+/// the prequel carries `mal_id`, and sum their counts. Steel Ball Run
+/// 2nd - 3rd STAGE (210482) shares MAL 61469 with its prequel 1st STAGE
+/// (190327, one episode), so this is 1; Stone Ocean, a different MAL
+/// entry, ends the walk.
+///
+/// `None` when the entry has no such prequel (the first part of a split,
+/// every ordinary entry, a MAL-fallback row whose negative id has no
+/// AniList relations), and when a prequel's count is unknown: a guessed
+/// offset would misnumber every release. A pure cache read, like the TV
+/// walk; same hop cap and cycle guard.
+pub async fn split_prior_episodes(
+    db: &SqlitePool,
+    anilist_id: i64,
+    mal_id: Option<i64>,
+) -> Option<i32> {
+    const MAX_DEPTH: usize = 20;
+    let mal_id = mal_id.filter(|m| *m > 0)?;
+    if anilist_id <= 0 {
+        return None;
+    }
+    let mut offset: i32 = 0;
+    let mut current = anilist_id;
+    let mut visited: HashSet<i64> = HashSet::from([current]);
+    let mut found = false;
+    for _ in 0..MAX_DEPTH {
+        let row = sqlx::query(
+            "SELECT pr.related_provider_id, \
+                    COALESCE(pr.episodes, json_extract(pm.detail_json, '$.episodes')) AS episodes \
+             FROM provider_relations_cache pr \
+             LEFT JOIN provider_metadata_cache pm ON pm.provider_id = pr.related_provider_id \
+             WHERE pr.provider_id = ? AND pr.relation_type = 'PREQUEL' \
+               AND pr.related_mal_id = ? AND pr.related_provider_id > 0 \
+             ORDER BY COALESCE(pr.episodes, 0) DESC \
+             LIMIT 1",
+        )
+        .bind(current)
+        .bind(mal_id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+        let Some(row) = row else { break };
+        let prev_id: i64 = row.get("related_provider_id");
+        if !visited.insert(prev_id) {
+            break;
+        }
+        let episodes: Option<i64> = row.try_get("episodes").ok().flatten();
+        let episodes = crate::services::anilist::plausible_episode_count(episodes?)?;
+        offset = offset.saturating_add(episodes);
+        found = true;
+        current = prev_id;
+    }
+    found.then_some(offset)
+}
+
 async fn replace_episode_table(
     db: &SqlitePool,
     table: &str,

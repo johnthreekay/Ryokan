@@ -3172,6 +3172,81 @@ async fn import_sequel_number(
     claimed: &[i32],
     real_e01: bool,
 ) -> (String, Vec<String>, Option<Vec<u8>>) {
+    import_numbered_file(
+        SequelShape {
+            name: "Long Sequel",
+            format: "TV",
+            title_prefix: "[Group] Long Sequel 2nd Season",
+            offset_source: "",
+            video: None,
+            title: None,
+            stray: None,
+        },
+        cumulative,
+        episodes,
+        raw,
+        claimed,
+        real_e01,
+    )
+    .await
+}
+
+/// The series [`import_numbered_file`] imports into: its name (and
+/// folder), AniList format, the release's title up to its number, and
+/// where its offset came from (`series.cumulative_offset_source`).
+struct SequelShape {
+    name: &'static str,
+    format: &'static str,
+    title_prefix: &'static str,
+    offset_source: &'static str,
+    /// The download's one video when its name is not the title's.
+    video: Option<&'static str>,
+    /// The grab's title when it is not `<title_prefix> - <raw> (1080p)`.
+    title: Option<&'static str>,
+    /// Another episode's video beside it in the download folder (SAB's
+    /// `storage` can be the parent complete dir).
+    stray: Option<&'static str>,
+}
+
+/// One finished single-file grab `<title_prefix> - <raw> (1080p)`
+/// claimed as `claimed`, run through `run_once`. Returns the grab's
+/// final state, the season folder's file names, and the bytes of a
+/// pre-existing E01 when `real_e01` put one there.
+async fn import_numbered_file(
+    shape: SequelShape,
+    cumulative: i32,
+    episodes: Option<i32>,
+    raw: i32,
+    claimed: &[i32],
+    real_e01: bool,
+) -> (String, Vec<String>, Option<Vec<u8>>) {
+    let (state, names, e01, _) =
+        import_numbered_file_with_tags(shape, cumulative, episodes, raw, claimed, real_e01, false)
+            .await;
+    (state, names, e01)
+}
+
+/// [`import_numbered_file`], optionally writing the `grabbed` tag row a
+/// grab path writes for each claimed episode. The fourth value is the
+/// episodes whose tag row is still `grabbed` after the import.
+async fn import_numbered_file_with_tags(
+    shape: SequelShape,
+    cumulative: i32,
+    episodes: Option<i32>,
+    raw: i32,
+    claimed: &[i32],
+    real_e01: bool,
+    write_tags: bool,
+) -> (String, Vec<String>, Option<Vec<u8>>, Vec<i32>) {
+    let SequelShape {
+        name,
+        format,
+        title_prefix,
+        offset_source,
+        video,
+        title: title_override,
+        stray,
+    } = shape;
     let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
     let media_root = tempfile::TempDir::new().expect("media_root tempdir");
     let source_dir = tempfile::TempDir::new().expect("source tempdir");
@@ -3186,31 +3261,54 @@ async fn import_sequel_number(
     .execute(&db)
     .await
     .expect("seed config row");
-    let series_id = seed_series(&db, 1, "Long Sequel").await;
+    let series_id = seed_series(&db, 1, name).await;
     sqlx::query(
-        "UPDATE series SET format = 'TV', cumulative_prior_episodes = ?, episodes = ? \
-         WHERE id = ?",
+        "UPDATE series SET format = ?, cumulative_prior_episodes = ?, episodes = ?, \
+         cumulative_offset_source = ? WHERE id = ?",
     )
+    .bind(format)
     .bind(cumulative)
     .bind(episodes)
+    .bind(offset_source)
     .bind(series_id)
     .execute(&db)
     .await
     .unwrap();
-    let season_dir = media_root.path().join("Long Sequel").join("Season 01");
+    let season_dir = media_root.path().join(name).join("Season 01");
     std::fs::create_dir_all(&season_dir).unwrap();
-    let existing_e01 = season_dir.join("Long Sequel - S01E01.mkv");
+    let existing_e01 = season_dir.join(format!("{name} - S01E01.mkv"));
     if real_e01 {
         std::fs::write(&existing_e01, b"the real e01").unwrap();
     }
 
-    let title = format!("[Group] Long Sequel 2nd Season - {raw} (1080p)");
-    let video = format!("{title}.mkv");
+    let title =
+        title_override.map_or_else(|| format!("{title_prefix} - {raw} (1080p)"), str::to_string);
+    let video = video.map_or_else(|| format!("{title}.mkv"), str::to_string);
     std::fs::write(source_dir.path().join(&video), b"new").unwrap();
+    if let Some(stray) = stray {
+        std::fs::write(source_dir.path().join(stray), b"stray").unwrap();
+    }
     let g = grabbed_torrents::record_grab(&db, "seq12", &title, series_id, claimed, false)
         .await
         .unwrap()
         .unwrap();
+    if write_tags {
+        let class = crate::services::source::classify_release_sync(&title, Some("1080p"));
+        for ep in claimed {
+            crate::models::episode_tags::record_grab(
+                &db,
+                series_id,
+                *ep,
+                &class,
+                &title,
+                "Erai-raws",
+                3,
+                false,
+            )
+            .await
+            .unwrap();
+        }
+    }
     grabbed_torrents::set_download_client(&db, g, Some(1))
         .await
         .unwrap();
@@ -3244,12 +3342,20 @@ async fn import_sequel_number(
         state_kind: DownloadItemState::Seeding,
         seeding_done: false,
     };
-    let files = vec![DownloadFile {
+    let mut files = vec![DownloadFile {
         name: video,
         size: 3,
         progress: 1.0,
         wanted: true,
     }];
+    if let Some(stray) = stray {
+        files.push(DownloadFile {
+            name: stray.to_string(),
+            size: 5,
+            progress: 1.0,
+            wanted: true,
+        });
+    }
     let state = build_test_app_state(db.clone(), None);
     let client = Arc::new(ImportingClient { torrent, files });
     install_pool(
@@ -3269,7 +3375,20 @@ async fn import_sequel_number(
         .filter_map(|e| e.ok())
         .filter_map(|e| e.file_name().into_string().ok())
         .collect();
-    (final_state, names, std::fs::read(&existing_e01).ok())
+    let still_grabbed: Vec<i32> = sqlx::query_scalar(
+        "SELECT episode_number FROM episode_quality_tags \
+         WHERE series_id = ? AND state = 'grabbed' ORDER BY episode_number",
+    )
+    .bind(series_id)
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    (
+        final_state,
+        names,
+        std::fs::read(&existing_e01).ok(),
+        still_grabbed,
+    )
 }
 
 #[tokio::test]
@@ -3288,6 +3407,290 @@ async fn run_once_files_an_ambiguous_sequel_number_where_the_grab_put_it() {
         e01.as_deref(),
         Some(&b"the real e01"[..]),
         "E01 is untouched"
+    );
+}
+
+/// #303: Steel Ball Run 2nd - 3rd STAGE, offset 1 from its split, ONA.
+fn split_part() -> SequelShape {
+    SequelShape {
+        name: "Steel Ball Run",
+        format: "ONA",
+        title_prefix: "[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run",
+        offset_source: "split",
+        video: None,
+        title: None,
+        stray: None,
+    }
+}
+
+#[tokio::test]
+async fn run_once_files_a_split_part_number_absolute_only() {
+    // `- 07` grabbed for episode 6 is its episode 6; E01 is untouched.
+    let (state, names, e01) = import_numbered_file(split_part(), 1, Some(11), 7, &[6], true).await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E06")),
+        "filed as E06: {names:?}"
+    );
+    assert!(!names.iter().any(|n| n.contains("S01E07")), "{names:?}");
+    assert_eq!(e01.as_deref(), Some(&b"the real e01"[..]));
+}
+
+#[tokio::test]
+async fn run_once_never_files_an_earlier_part_number_into_a_split_part() {
+    // `- 01` is 1st STAGE's: no slot, the real E01 stays.
+    let (state, names, e01) = import_numbered_file(split_part(), 1, Some(11), 1, &[1], true).await;
+    assert_ne!(state, "imported");
+    assert_eq!(e01.as_deref(), Some(&b"the real e01"[..]));
+    assert_eq!(names.len(), 1, "{names:?}");
+}
+
+#[tokio::test]
+async fn run_once_imports_a_split_part_grab_recorded_before_its_offset() {
+    // A Search-page grab that auto-adds the series records the title's
+    // own number (`- 07` as `[7]`) before the refresh stores the split
+    // offset. The import reads the file as episode 6; the grab still owns
+    // it through its raw number.
+    let (state, names, _) = import_numbered_file(split_part(), 1, Some(11), 7, &[7], false).await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E06")),
+        "filed as E06: {names:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_once_clears_the_tag_a_pre_split_grab_wrote_for_the_titles_number() {
+    // The same grab wrote a `grabbed` tag row for episode 7. The file is
+    // episode 6, so nothing fills that row; left alone it kept the real
+    // episode 7 off the Wanted page as "downloading" for good.
+    let (state, names, _, still_grabbed) =
+        import_numbered_file_with_tags(split_part(), 1, Some(11), 7, &[7], false, true).await;
+    assert_eq!(state, "imported");
+    assert!(names.iter().any(|n| n.contains("S01E06")), "{names:?}");
+    assert!(still_grabbed.is_empty(), "stale rows: {still_grabbed:?}");
+
+    // A list in the series' own numbering is filled, not cleared.
+    let (state, _, _, still_grabbed) =
+        import_numbered_file_with_tags(split_part(), 1, Some(11), 7, &[6], false, true).await;
+    assert_eq!(state, "imported");
+    assert!(still_grabbed.is_empty(), "{still_grabbed:?}");
+}
+
+#[tokio::test]
+async fn run_once_never_claims_a_stray_file_by_its_raw_number_under_a_split() {
+    // The grab is `- 03` for episode 2 (`[2]`, the series' own reading).
+    // A stray `- 02` beside it reads as episode 1; its raw 2 is in the
+    // list, which used to claim it and replace the real E01 with it.
+    let (state, names, e01) = import_numbered_file(
+        SequelShape {
+            stray: Some("[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 02 (1080p).mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        3,
+        &[2],
+        true,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E02")),
+        "filed as E02: {names:?}"
+    );
+    assert_eq!(
+        e01.as_deref(),
+        Some(&b"the real e01"[..]),
+        "the stray never replaced E01"
+    );
+}
+
+#[tokio::test]
+async fn run_once_reads_a_raw_list_of_a_split_part_by_its_raw_numbers_only() {
+    // A list recorded before the split was stored (`- 03` as `[3]`): the
+    // grab's own file is claimed through its raw 3 and filed as E02. The
+    // stray `- 04` beside it reads as episode 3, which is in the list
+    // too; counting both numberings claimed it and filed it as E03.
+    let (state, names, _) = import_numbered_file(
+        SequelShape {
+            stray: Some("[Erai-raws] JoJo no Kimyou na Bouken: Steel Ball Run - 04 (1080p).mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        3,
+        &[3],
+        false,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E02")),
+        "filed as E02: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|n| n.contains("S01E03")),
+        "the stray is no E03: {names:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_once_claims_a_split_parts_file_when_its_title_names_no_episode() {
+    // An unnumbered release grabbed for episode 7 before the split was
+    // stored (`[7]`) holds `- 07`, episode 6 now. The title cannot say
+    // which numbering the list is in, so both count and the file is the
+    // grab's own, filed as E06.
+    let (state, names, _) = import_numbered_file(
+        SequelShape {
+            title: Some("[Group] Steel Ball Run [1080p]"),
+            video: Some("[Group] Steel Ball Run - 07 (1080p).mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        7,
+        &[7],
+        false,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E06")),
+        "filed as E06: {names:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_once_reads_a_lone_unnumbered_file_of_a_split_part_by_a_raw_list() {
+    // The one video names no episode and the list is the title's own
+    // `[7]` from before the split was stored: E06, not E07.
+    let (state, names, _) = import_numbered_file(
+        SequelShape {
+            video: Some("Steel Ball Run.mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        7,
+        &[7],
+        false,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E06")),
+        "filed as E06: {names:?}"
+    );
+    assert!(!names.iter().any(|n| n.contains("S01E07")), "{names:?}");
+}
+
+#[tokio::test]
+async fn run_once_never_claims_a_stray_for_a_title_that_names_no_episode() {
+    // An unnumbered release grabbed for episode 2 after the split was
+    // stored (`[2]`) holds `- 03`; a stray `- 02` (episode 1) sits beside
+    // it. The title cannot say which numbering the list is in, and with
+    // two videos only the series' reading counts: E02 lands, E01 stays.
+    let (state, names, e01) = import_numbered_file(
+        SequelShape {
+            title: Some("[Group] Steel Ball Run [1080p]"),
+            video: Some("[Group] Steel Ball Run - 03 (1080p).mkv"),
+            stray: Some("[Group] Steel Ball Run - 02 (1080p).mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        3,
+        &[2],
+        true,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E02")),
+        "filed as E02: {names:?}"
+    );
+    assert_eq!(
+        e01.as_deref(),
+        Some(&b"the real e01"[..]),
+        "the stray never replaced E01"
+    );
+}
+
+#[tokio::test]
+async fn run_once_reads_an_unnumbered_titles_list_in_the_series_numbering() {
+    // The same grab recorded after the split (`[6]`) with only its own
+    // `- 07`: the file is episode 6, the list's own number.
+    let (state, names, _) = import_numbered_file(
+        SequelShape {
+            title: Some("[Group] Steel Ball Run [1080p]"),
+            video: Some("[Group] Steel Ball Run - 07 (1080p).mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        7,
+        &[6],
+        false,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E06")),
+        "filed as E06: {names:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_once_reads_a_lone_unnumbered_file_by_the_claim_rule_under_either() {
+    // A TV sequel (offset 47) whose one video names no episode takes
+    // its span from the grab list; a list holding the title's absolute
+    // number (`[56]`, a grab from before the offset was stored) is still
+    // read through the claim rule: E09, not E56.
+    let (state, names, _) = import_numbered_file(
+        SequelShape {
+            name: "Long Sequel",
+            format: "TV",
+            title_prefix: "[SubsPlease] Long Sequel",
+            offset_source: "walk",
+            video: Some("Long Sequel.mkv"),
+            title: None,
+            stray: None,
+        },
+        47,
+        Some(12),
+        56,
+        &[56],
+        false,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E09")),
+        "filed as E09: {names:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_once_reads_a_lone_unnumbered_file_of_a_split_part_as_its_list() {
+    // Under the single absolute reading the grab list is the resolved
+    // episode already: `[6]` is E06, not E05.
+    let (state, names, _) = import_numbered_file(
+        SequelShape {
+            video: Some("Steel Ball Run.mkv"),
+            ..split_part()
+        },
+        1,
+        Some(11),
+        7,
+        &[6],
+        false,
+    )
+    .await;
+    assert_eq!(state, "imported");
+    assert!(
+        names.iter().any(|n| n.contains("S01E06")),
+        "filed as E06: {names:?}"
     );
 }
 

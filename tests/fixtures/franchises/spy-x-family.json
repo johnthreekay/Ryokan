@@ -1,0 +1,179 @@
+{
+  "name": "spy-x-family",
+  "roots": [
+    140960
+  ],
+  "nodes": [
+    {
+      "id": 140960,
+      "mal_id": 50265,
+      "title_romaji": "SPY×FAMILY",
+      "title_english": "SPY x FAMILY",
+      "title_native": "SPY×FAMILY",
+      "synonyms": [
+        "SxF",
+        "스파이 패밀리",
+        "间谍过家家",
+        "Семья шпиона",
+        "سباي إكس فاميلي",
+        "Gia Đình Điệp Viên"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2022,
+      "end_year": 2022
+    },
+    {
+      "id": 142838,
+      "mal_id": 50602,
+      "title_romaji": "SPY×FAMILY Part 2",
+      "title_english": "SPY x FAMILY Cour 2",
+      "title_native": "SPY×FAMILY 第2クール",
+      "synonyms": [
+        "SxF",
+        "스파이 패밀리",
+        "间谍过家家",
+        "スパイファミリー 2クール"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2022,
+      "end_year": 2022
+    },
+    {
+      "id": 158927,
+      "mal_id": 53887,
+      "title_romaji": "SPY×FAMILY Season 2",
+      "title_english": "SPY x FAMILY Season 2",
+      "title_native": "SPY×FAMILY Season 2",
+      "synonyms": [
+        "SxF 2",
+        "스파이 패밀리",
+        "Семья шпиона",
+        "スパイファミリー 2",
+        "Spy x Family – Sezon 2"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 158928,
+      "mal_id": 53888,
+      "title_romaji": "SPY×FAMILY CODE: White",
+      "title_english": "SPY x FAMILY CODE: White",
+      "title_native": "SPY×FAMILY CODE: White",
+      "synonyms": [
+        "SxF Movie",
+        "劇場版 スパイファミリー",
+        "SPY x FAMILY CÓDIGO: Branco"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 177937,
+      "mal_id": 59027,
+      "title_romaji": "SPY×FAMILY Season 3",
+      "title_english": "SPY x FAMILY Season 3",
+      "title_native": "SPY×FAMILY Season 3",
+      "synonyms": [
+        "SxF 3",
+        "スパイファミリー 3",
+        "SPY×FAMILY ซีซั่น 3",
+        "SPY×FAMILY 間諜家家酒 Season 3",
+        "間諜家家酒 Season 3"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2025,
+      "end_year": 2025
+    }
+  ],
+  "edges": [
+    {
+      "from": 140960,
+      "to": 142838,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 142838,
+      "to": 140960,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 142838,
+      "to": 158927,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 158927,
+      "to": 142838,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 158927,
+      "to": 158928,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 158927,
+      "to": 177937,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 177937,
+      "to": 158927,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 140960,
+      "tvdb_id": 405920,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 142838,
+      "tvdb_id": 405920,
+      "season": 1,
+      "episode_offset": 12
+    },
+    {
+      "id": 158927,
+      "tvdb_id": 405920,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 158928,
+      "tvdb_id": 405920,
+      "season": 0,
+      "episode_offset": 2
+    },
+    {
+      "id": 177937,
+      "tvdb_id": 405920,
+      "season": 3,
+      "episode_offset": 0
+    }
+  ],
+  "offsets": [
+    {
+      "id": 142838,
+      "episodes": 12
+    },
+    {
+      "id": 158927,
+      "episodes": 25
+    },
+    {
+      "id": 177937,
+      "episodes": 37
+    }
+  ]
+}

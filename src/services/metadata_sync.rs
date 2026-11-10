@@ -4,8 +4,8 @@ use std::sync::LazyLock;
 use sqlx::SqlitePool;
 
 use crate::models::log::LogCategory;
-use crate::models::{config, local_metadata, metadata_cache, series};
-use crate::services::{anilist, anime_relations, artwork, jikan, kitsu, logger};
+use crate::models::{config, local_metadata, mal_entry_titles, metadata_cache, series};
+use crate::services::{anilist, anime_relations, artwork, jikan, kitsu, logger, numbering};
 
 const MAX_RELATION_TREE_NODES: usize = 64;
 
@@ -240,8 +240,12 @@ where
     (1..=ep_count).any(|ep_num| !has_jikan_title(ep_num))
 }
 
+/// `cache_id` is the AniList id the list is cached under: the tracked
+/// series' own during a fallback refresh, whose `detail` is the MAL or
+/// Kitsu one (`id = -mal_id`).
 async fn build_episode_cache(
     db: &SqlitePool,
+    cache_id: i64,
     detail: &anilist::AnimeDetail,
     force_kitsu_fallback: bool,
 ) -> Vec<local_metadata::CachedEpisodeMetadata> {
@@ -254,8 +258,18 @@ async fn build_episode_cache(
     let episodic_format = !matches!(detail.format.as_str(), "MOVIE" | "SPECIAL" | "OVA" | "ONA");
     let should_fetch_jikan = episodic_format || ep_count > 1;
 
+    // #303 — Jikan and Kitsu list the MAL entry's episodes. When AniList
+    // split that entry and this is a later part, AniList episode `e` is
+    // the MAL entry's `e + split` (Steel Ball Run 2nd - 3rd STAGE's
+    // episode 1 is MAL 61469's episode 2; read 1:1 it wore 1st STAGE's
+    // title and air date).
+    let split = mal_entry_split(db, cache_id, detail.id_mal).await;
     let mut jikan_eps = if should_fetch_jikan {
-        jikan::fetch_episode_titles_for_detail(db, detail).await
+        shift_mal_episodes(
+            jikan::fetch_episode_titles_for_detail(db, detail).await,
+            split,
+            |e: &mut jikan::EpisodeInfo| &mut e.title,
+        )
     } else {
         HashMap::new()
     };
@@ -270,7 +284,11 @@ async fn build_episode_cache(
             }));
 
     let kitsu_eps = if should_try_kitsu {
-        kitsu::fetch_episode_titles_fallback(db, detail.id_mal).await
+        shift_mal_episodes(
+            kitsu::fetch_episode_titles_fallback(db, detail.id_mal).await,
+            split,
+            |e: &mut kitsu::EpisodeInfo| &mut e.title,
+        )
     } else {
         HashMap::new()
     };
@@ -389,6 +407,143 @@ async fn build_episode_cache(
     merged
 }
 
+/// How far into its MAL entry the AniList entry `anilist_id` starts
+/// (#303): the episodes of the earlier parts AniList split out of the
+/// same MAL entry (`local_metadata::split_prior_episodes`, a cache read
+/// of the relations the refresh has just written), else the library
+/// row's stored split when its relations are a fallback provider's (an
+/// AniList outage replaces them with MAL's, which name no AniList
+/// entry), else 0. A fact about MAL's episode list, so no TVDB
+/// confirmation: Throne of Seal 3's episode 1 is MAL 52684's episode 131
+/// however its releases are numbered.
+pub(crate) async fn mal_entry_split(db: &SqlitePool, anilist_id: i64, mal_id: Option<i64>) -> i32 {
+    if anilist_id <= 0 {
+        return 0;
+    }
+    if let Some(split) = local_metadata::split_prior_episodes(db, anilist_id, mal_id).await {
+        return split;
+    }
+    match series::get_by_anilist_id(db, anilist_id).await {
+        Ok(Some(row))
+            if numbering::OffsetSource::from_str(&row.cumulative_offset_source)
+                == numbering::OffsetSource::Split =>
+        {
+            row.cumulative_prior_episodes.max(0)
+        }
+        _ => 0,
+    }
+}
+
+/// #303 — How long a split MAL entry's stored titles stand before a
+/// refresh asks MAL again: the parts of one entry share the row, and the
+/// 12h refresh would otherwise fetch it twice a day per part.
+const MAL_ENTRY_TITLES_MAX_AGE_SECS: i64 = 7 * 24 * 60 * 60;
+
+/// The titles a MAL entry's detail carries that are stored, in order:
+/// its romaji title and its English title. Never its synonyms: RSS reads
+/// each stored title as a full alias, and a short synonym ("SBR") inside
+/// any collapsed release title would match it, where AniList's synonyms
+/// only enter the auto-search's extended pass.
+fn mal_entry_title_list(detail: &anilist::AnimeDetail) -> Vec<String> {
+    vec![detail.title_romaji.clone(), detail.title_english.clone()]
+}
+
+/// #303 — When AniList split the series' MAL entry into several entries
+/// (`mal_entry_titles::is_split_member`, read from the relations the
+/// refresh has just written), store that MAL entry's own titles: release
+/// groups follow the MAL entry, and no AniList part carries its names.
+///
+/// - A MAL (Jikan) detail of the entry is its titles already, so they
+///   are stored without a fetch. Such a refresh has replaced the AniList
+///   relations with MAL's, which name no AniList entry, so a row an
+///   earlier AniList refresh stored stands as the proof of the split.
+/// - An AniList detail fetches the MAL entry's titles
+///   (`jikan::get_anime_titles`: the detail cache, else one request)
+///   unless the stored row is younger than
+///   [`MAL_ENTRY_TITLES_MAX_AGE_SECS`].
+/// - Any other detail (Kitsu) means MAL failed moments ago: nothing is
+///   fetched and the stored row stands.
+///
+/// Soft throughout: a failed fetch or write is a debug line and the
+/// stored titles stay.
+async fn store_split_mal_entry_titles(
+    db: &SqlitePool,
+    anilist_id: i64,
+    mal_id: Option<i64>,
+    detail: &anilist::AnimeDetail,
+    authoritative_detail: bool,
+) {
+    let Some(mal_id) = mal_id.filter(|m| *m > 0) else {
+        return;
+    };
+    if anilist_id <= 0 {
+        return;
+    }
+    let stored_age = mal_entry_titles::age_secs(db, mal_id).await;
+    let in_hand = detail.id < 0 && detail.id_mal == Some(mal_id);
+    let member = mal_entry_titles::is_split_member(db, anilist_id, Some(mal_id)).await
+        || (in_hand && stored_age.is_some());
+    if !member {
+        return;
+    }
+    let titles = if in_hand {
+        mal_entry_title_list(detail)
+    } else {
+        if !authoritative_detail
+            || stored_age.is_some_and(|age| age < MAL_ENTRY_TITLES_MAX_AGE_SECS)
+        {
+            return;
+        }
+        match jikan::get_anime_titles(mal_id).await {
+            Ok((romaji, english)) => vec![romaji, english],
+            Err(e) => {
+                tracing::debug!(
+                    target: "ryokan::metadata_sync",
+                    anilist_id,
+                    mal_id,
+                    "MAL titles for a split entry not fetched: {e}"
+                );
+                return;
+            }
+        }
+    };
+    if let Err(e) = mal_entry_titles::set(db, mal_id, &titles).await {
+        tracing::debug!(
+            target: "ryokan::metadata_sync",
+            anilist_id,
+            mal_id,
+            "MAL titles for a split entry not stored: {e}"
+        );
+    }
+}
+
+/// Renumber a MAL-numbered episode list into a split part's own
+/// numbering: MAL episode `split + e` becomes `e`, and the earlier parts'
+/// episodes drop out. A provider's placeholder title (`Episode 9`, what
+/// Kitsu lists for an untitled episode) names the MAL number, so it is
+/// renumbered with it.
+pub(crate) fn shift_mal_episodes<T>(
+    episodes: HashMap<i32, T>,
+    split: i32,
+    title: impl Fn(&mut T) -> &mut String,
+) -> HashMap<i32, T> {
+    if split <= 0 {
+        return episodes;
+    }
+    episodes
+        .into_iter()
+        .filter(|(n, _)| *n > split)
+        .map(|(n, mut info)| {
+            let own = n - split;
+            let t = title(&mut info);
+            if t.trim() == format!("Episode {n}") {
+                *t = format!("Episode {own}");
+            }
+            (own, info)
+        })
+        .collect()
+}
+
 async fn cache_provider_detail(
     db: &SqlitePool,
     cache_provider_id: i64,
@@ -405,7 +560,7 @@ async fn cache_provider_detail(
     local_metadata::replace_relations_for_provider(db, cache_provider_id, detail)
         .await
         .map_err(|e| e.to_string())?;
-    let merged = build_episode_cache(db, detail, force_kitsu_fallback).await;
+    let merged = build_episode_cache(db, cache_provider_id, detail, force_kitsu_fallback).await;
     local_metadata::replace_episode_metadata_for_provider(db, cache_provider_id, &merged)
         .await
         .map_err(|e| e.to_string())?;
@@ -446,6 +601,125 @@ pub async fn log_rule_offset(
         ),
     )
     .await;
+}
+
+/// What a metadata refresh does with the offset decision
+/// ([`plan_offset_write`]).
+#[derive(Debug, PartialEq)]
+pub(crate) enum OffsetPlan {
+    /// Leave the stored offset, source and season as they are.
+    Keep,
+    /// Store this offset and its source.
+    Write(i32, anime_relations::OffsetSource),
+    /// Store the TV walk's answer (`anime_relations::walk_only`).
+    Walk,
+}
+
+/// The refresh writer's rule for `series.cumulative_prior_episodes`,
+/// given the decision point's answer (`None`: a split was found but the
+/// TVDB mappings that confirm one are not loaded), whether the detail
+/// came from AniList, and what is stored:
+///
+/// - A curated rule is written whatever the detail's provider: it does
+///   not read relations.
+/// - A fallback provider's detail (MAL / Kitsu) replaced the AniList
+///   relation rows the split and the walk read, so it never overwrites
+///   an offset already known: an AniList outage used to reset every
+///   sequel's offset to 0, and a split part's with it.
+/// - An undecided split keeps a stored split (a refresh must not drop
+///   it to the walk for one round), and otherwise stores the walk, as
+///   before #303, so `{episode.absolute}` and a TV sequel's offset are
+///   not held back by mappings that failed to load.
+pub(crate) fn plan_offset_write(
+    decision: Option<(i32, anime_relations::OffsetSource)>,
+    authoritative_detail: bool,
+    stored_known: bool,
+    stored_split: bool,
+) -> OffsetPlan {
+    match decision {
+        Some((offset, source @ anime_relations::OffsetSource::Rule(_))) => {
+            OffsetPlan::Write(offset, source)
+        }
+        _ if !authoritative_detail && stored_known => OffsetPlan::Keep,
+        Some((offset, source)) => OffsetPlan::Write(offset, source),
+        None if stored_split => OffsetPlan::Keep,
+        None => OffsetPlan::Walk,
+    }
+}
+
+/// #303 — Say in System → Logs when a series' numbering starts counting
+/// on from the entries AniList split out of its MAL entry: from here on
+/// its releases read absolute only, so a user wondering why `- 01` no
+/// longer matches it has a line to find.
+pub async fn log_split_offset(db: &SqlitePool, tracked: &series::Series, offset: i32) {
+    logger::info(
+        db,
+        LogCategory::AniList,
+        &format!(
+            "Episode numbering for {} continues its MAL entry: offset {}",
+            tracked.title, offset
+        ),
+        &format!(
+            "series_id={}, anilist_id={}, mal_id={:?}, previous_offset={}, previous_source={:?}",
+            tracked.id,
+            tracked.anilist_id,
+            tracked.mal_id,
+            tracked.cumulative_prior_episodes,
+            tracked.cumulative_offset_source
+        ),
+    )
+    .await;
+}
+
+/// #303 — Store the split offset for every library series whose stored
+/// offset does not have it yet: a cache-only pass of the decision point's
+/// split step, run once the TVDB mappings are loaded at boot. Without it
+/// an install upgrading with a split part in the library would read that
+/// part's releases the old way, RSS included, until the series' next
+/// metadata refresh. Rows with a curated rule are left to the refresh
+/// (the rule wins there). The episode titles move to the part's own
+/// numbering on that refresh, which has to fetch them. Returns how many
+/// rows changed.
+pub async fn apply_split_offsets(db: &SqlitePool) -> usize {
+    let Ok(rows) = series::get_all(db).await else {
+        return 0;
+    };
+    let mut changed = 0;
+    for row in rows {
+        if row.anilist_id <= 0 || row.mal_id.is_none_or(|m| m <= 0) {
+            continue;
+        }
+        // The single decision point: a curated rule outranks a split and
+        // is left to the refresh; only a split it confirms is stored here.
+        let Some((split, source @ anime_relations::OffsetSource::Split { tvdb_season })) =
+            anime_relations::cumulative_prior_episodes(db, row.anilist_id, row.mal_id).await
+        else {
+            continue;
+        };
+        if split == row.cumulative_prior_episodes
+            && row.cumulative_offset_source == numbering::OffsetSource::Split.as_str()
+            && row.cumulative_offset_season == Some(tvdb_season)
+        {
+            continue;
+        }
+        // The relations the split was read from are AniList's own rows
+        // (a MAL-sourced relation has no positive AniList id to walk).
+        if series::update_cumulative_prior_episodes(
+            db,
+            row.id,
+            split,
+            source.stored(),
+            source.tag_season(),
+            true,
+        )
+        .await
+        .is_ok()
+        {
+            log_split_offset(db, &row, split).await;
+            changed += 1;
+        }
+    }
+    changed
 }
 
 /// #206 — Make sure a rule's source entry sits in
@@ -795,7 +1069,12 @@ async fn refresh_series_metadata_inner(
         //
         // #206 — A curated anime-relations rule for this entry wins
         // over the walk; see `services::anime_relations`.
-        let (cumulative, offset_source) = anime_relations::cumulative_prior_episodes(
+        //
+        // #303 — A split of the series' own MAL entry comes between the
+        // two (`OffsetSource::Split`); `None` means the TVDB mappings
+        // that confirm a split are not loaded yet, and the stored offset
+        // stands until a refresh can decide.
+        let decision = anime_relations::cumulative_prior_episodes(
             db,
             stored_anilist_id,
             detail.id_mal.or(tracked.mal_id),
@@ -804,22 +1083,73 @@ async fn refresh_series_metadata_inner(
         // Known once a curated rule or an authoritative AniList detail
         // produced it; a fallback provider's walk sees no relations and
         // would stamp a wrong zero as final.
-        let offset_known =
-            matches!(offset_source, anime_relations::OffsetSource::Rule(_)) || authoritative_detail;
-        if let Err(err) =
-            series::update_cumulative_prior_episodes(db, tracked.id, cumulative, offset_known).await
-        {
-            tracing::warn!(
-                target: "ryokan::metadata_sync",
-                series_id = tracked.id,
-                "failed to persist cumulative_prior_episodes: {err}"
-            );
-        } else if let anime_relations::OffsetSource::Rule(rule) = offset_source {
-            if cumulative != tracked.cumulative_prior_episodes {
-                log_rule_offset(db, tracked, &rule).await;
+        //
+        // A fallback detail's relations are the fallback's own (they
+        // replaced the AniList rows above), so its walk is not allowed
+        // to overwrite an offset an AniList refresh already settled: an
+        // AniList outage used to reset every sequel's offset to 0, and a
+        // split sibling's with it.
+        let stored_known = series::absolute_offset_if_known(db, tracked.id)
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        let stored_split = numbering::OffsetSource::from_str(&tracked.cumulative_offset_source)
+            == numbering::OffsetSource::Split;
+        let write =
+            match plan_offset_write(decision, authoritative_detail, stored_known, stored_split) {
+                OffsetPlan::Keep => None,
+                OffsetPlan::Write(cumulative, source) => Some((cumulative, source)),
+                OffsetPlan::Walk => Some(anime_relations::walk_only(db, stored_anilist_id).await),
+            };
+        if let Some((cumulative, offset_source)) = write {
+            let offset_known = matches!(offset_source, anime_relations::OffsetSource::Rule(_))
+                || authoritative_detail;
+            if let Err(err) = series::update_cumulative_prior_episodes(
+                db,
+                tracked.id,
+                cumulative,
+                offset_source.stored(),
+                offset_source.tag_season(),
+                offset_known,
+            )
+            .await
+            {
+                tracing::warn!(
+                    target: "ryokan::metadata_sync",
+                    series_id = tracked.id,
+                    "failed to persist cumulative_prior_episodes: {err}"
+                );
+            } else {
+                match offset_source {
+                    anime_relations::OffsetSource::Rule(rule) => {
+                        if cumulative != tracked.cumulative_prior_episodes {
+                            log_rule_offset(db, tracked, &rule).await;
+                        }
+                        hydrate_rule_source(db, stored_anilist_id, &rule, force_kitsu_fallback)
+                            .await;
+                    }
+                    anime_relations::OffsetSource::Split { .. }
+                        if cumulative != tracked.cumulative_prior_episodes || !stored_split =>
+                    {
+                        log_split_offset(db, tracked, cumulative).await;
+                    }
+                    _ => {}
+                }
             }
-            hydrate_rule_source(db, stored_anilist_id, &rule, force_kitsu_fallback).await;
         }
+
+        // #303 — A part of a split MAL entry keeps that entry's titles,
+        // the names release groups use. After the relations writes
+        // above, which `is_split_member` reads.
+        store_split_mal_entry_titles(
+            db,
+            stored_anilist_id,
+            detail.id_mal.or(tracked.mal_id),
+            &detail,
+            authoritative_detail,
+        )
+        .await;
 
         if !authoritative_detail {
             logger::info(
@@ -849,7 +1179,7 @@ async fn refresh_series_metadata_inner(
         .await;
     }
 
-    let merged = build_episode_cache(db, &detail, force_kitsu_fallback).await;
+    let merged = build_episode_cache(db, stored_anilist_id, &detail, force_kitsu_fallback).await;
     local_metadata::replace_episode_metadata(db, tracked.id, &merged)
         .await
         .map_err(|e| e.to_string())?;
@@ -1152,6 +1482,258 @@ pub async fn refresh_all_series_metadata(db: &SqlitePool) -> Result<(usize, usiz
 mod tests {
     use super::*;
 
+    /// #303: the refresh writer's rule. A rule always writes; a fallback
+    /// detail never overwrites a known offset; an undecided split keeps a
+    /// stored split and otherwise stores the walk.
+    #[test]
+    fn plan_offset_write_follows_the_writer_rules() {
+        use anime_relations::OffsetSource as Src;
+        let rule = anime_relations::offset_for(20958, None).expect("AoT S2 rule");
+        let split = Src::Split { tvdb_season: 6 };
+        // AniList detail: the decision is written, an undecided one walks.
+        assert_eq!(
+            plan_offset_write(Some((1, split)), true, true, false),
+            OffsetPlan::Write(1, split)
+        );
+        assert_eq!(
+            plan_offset_write(None, true, false, false),
+            OffsetPlan::Walk
+        );
+        assert_eq!(plan_offset_write(None, true, true, true), OffsetPlan::Keep);
+        // Fallback detail: a known offset stays, an unknown one is written.
+        assert_eq!(
+            plan_offset_write(Some((0, Src::Walk)), false, true, false),
+            OffsetPlan::Keep
+        );
+        assert_eq!(
+            plan_offset_write(Some((0, Src::Walk)), false, false, false),
+            OffsetPlan::Write(0, Src::Walk)
+        );
+        assert_eq!(plan_offset_write(None, false, true, true), OffsetPlan::Keep);
+        // A rule reads no relations: written whatever the provider.
+        assert_eq!(
+            plan_offset_write(Some((25, Src::Rule(rule))), false, true, true),
+            OffsetPlan::Write(25, Src::Rule(rule))
+        );
+    }
+
+    /// The title shift reads the split from the relations the refresh
+    /// wrote, and from the stored row when a fallback provider's
+    /// relations replaced them.
+    #[tokio::test]
+    async fn mal_entry_split_reads_relations_then_the_stored_split() {
+        let db = crate::test_support::in_memory_pool().await;
+        assert_eq!(mal_entry_split(&db, 210482, Some(61469)).await, 0);
+        sqlx::query(
+            "INSERT INTO provider_relations_cache \
+             (provider_id, related_provider_id, related_mal_id, episodes, format, relation_type, media_type) \
+             VALUES (210482, 190327, 61469, 1, 'ONA', 'PREQUEL', 'ANIME')",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        assert_eq!(mal_entry_split(&db, 210482, Some(61469)).await, 1);
+        // An unconfirmed split (no TVDB placement) still shifts titles:
+        // MAL's episode list is the MAL entry's whatever groups do.
+        sqlx::query("DELETE FROM provider_relations_cache")
+            .execute(&db)
+            .await
+            .unwrap();
+        let id = crate::test_support::seed_series(&db, 210482, "SBR").await;
+        series::update_cumulative_prior_episodes(
+            &db,
+            id,
+            1,
+            numbering::OffsetSource::Split,
+            Some(6),
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(mal_entry_split(&db, 210482, Some(61469)).await, 1);
+        assert_eq!(mal_entry_split(&db, -61469, Some(61469)).await, 0);
+    }
+
+    /// #303: the boot pass stores a confirmed split for a series written
+    /// before the source existed, and leaves an unconfirmed one alone.
+    #[tokio::test]
+    async fn apply_split_offsets_stores_a_confirmed_split_only() {
+        let _mappings = crate::services::anibridge::TEST_CACHE_LOCK.lock().await;
+        let db = crate::test_support::in_memory_pool().await;
+        let second = crate::test_support::seed_series(&db, 210482, "SBR 2nd - 3rd STAGE").await;
+        let seal = crate::test_support::seed_series(&db, 185729, "Throne of Seal 3").await;
+        for (id, mal) in [(second, 61469), (seal, 52684)] {
+            sqlx::query("UPDATE series SET mal_id = ? WHERE id = ?")
+                .bind(mal)
+                .bind(id)
+                .execute(&db)
+                .await
+                .unwrap();
+        }
+        for (owner, prequel, mal, episodes) in
+            [(210482, 190327, 61469, 1), (185729, 153499, 52684, 130)]
+        {
+            sqlx::query(
+                "INSERT INTO provider_relations_cache \
+                 (provider_id, related_provider_id, related_mal_id, episodes, format, relation_type, media_type) \
+                 VALUES (?, ?, ?, ?, 'ONA', 'PREQUEL', 'ANIME')",
+            )
+            .bind(owner)
+            .bind(prequel)
+            .bind(mal)
+            .bind(episodes)
+            .execute(&db)
+            .await
+            .unwrap();
+        }
+        crate::services::anibridge::seed_tvdb_placements_for_tests(&[(210482, 262954, 6, Some(1))])
+            .await;
+        assert_eq!(apply_split_offsets(&db).await, 1);
+        let row = series::get_by_id(&db, second).await.unwrap().unwrap();
+        assert_eq!(row.cumulative_prior_episodes, 1);
+        assert_eq!(row.cumulative_offset_source, "split");
+        assert_eq!(
+            series::absolute_offset_if_known(&db, second).await.unwrap(),
+            Some(1)
+        );
+        let row = series::get_by_id(&db, seal).await.unwrap().unwrap();
+        assert_eq!(row.cumulative_prior_episodes, 0);
+        // A second pass has nothing left to do.
+        assert_eq!(apply_split_offsets(&db).await, 0);
+    }
+
+    /// #303: a split part stores its MAL entry's romaji and English
+    /// titles, never its synonyms. An AniList refresh fetches them (here
+    /// from the seeded Jikan detail cache, so nothing reaches the network)
+    /// at most once a week; a MAL detail is stored as it is; a Kitsu
+    /// detail fetches nothing.
+    #[tokio::test]
+    async fn a_split_part_stores_its_mal_entry_titles() {
+        // A MAL id no other test seeds: the Jikan detail cache is global.
+        const MAL: i64 = 961_469;
+        let db = crate::test_support::in_memory_pool().await;
+        let mal_detail = |romaji: &str, english: &str, synonyms: &[&str]| {
+            let mut d = detail_fixture(-MAL);
+            d.id_mal = Some(MAL);
+            d.title_romaji = romaji.into();
+            d.title_english = english.into();
+            d.synonyms = synonyms.iter().map(|s| s.to_string()).collect();
+            d
+        };
+        let mut al_detail = detail_fixture(910_002);
+        al_detail.id_mal = Some(MAL);
+        al_detail.title_romaji = "SBR 2nd - 3rd STAGE".into();
+        jikan::seed_detail_cache_for_tests(
+            MAL,
+            mal_detail(
+                "Steel Ball Run: JoJo no Kimyou na Bouken",
+                "STEEL BALL RUN JoJo's Bizarre Adventure",
+                &["SBR"],
+            ),
+        )
+        .await;
+
+        // No split in the relations: nothing is stored.
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &al_detail, true).await;
+        assert!(mal_entry_titles::all(&db).await.is_empty());
+
+        sqlx::query(
+            "INSERT INTO provider_relations_cache \
+             (provider_id, related_provider_id, related_mal_id, episodes, format, relation_type, media_type) \
+             VALUES (910002, 910001, ?, 1, 'ONA', 'PREQUEL', 'ANIME')",
+        )
+        .bind(MAL)
+        .execute(&db)
+        .await
+        .unwrap();
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &al_detail, true).await;
+        let pool = &db;
+        let stored = move || async move { mal_entry_titles::all(pool).await.remove(&MAL) };
+        assert_eq!(
+            stored().await.unwrap(),
+            [
+                "Steel Ball Run: JoJo no Kimyou na Bouken",
+                "STEEL BALL RUN JoJo's Bizarre Adventure",
+            ],
+            "the synonym SBR is never stored"
+        );
+
+        // A fresh row is not fetched again; a week-old one is.
+        jikan::seed_detail_cache_for_tests(MAL, mal_detail("Renamed", "", &[])).await;
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &al_detail, true).await;
+        assert_eq!(stored().await.unwrap().len(), 2);
+        sqlx::query("UPDATE mal_entry_titles SET cached_at = datetime('now', '-8 days')")
+            .execute(&db)
+            .await
+            .unwrap();
+        // A Kitsu detail (MAL just failed) fetches nothing, stale or not.
+        let kitsu = detail_fixture(4242);
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &kitsu, false).await;
+        assert_eq!(stored().await.unwrap().len(), 2);
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &al_detail, true).await;
+        assert_eq!(stored().await.unwrap(), ["Renamed"]);
+
+        // A MAL fallback refresh replaced the AniList relations with
+        // MAL's; the stored row still marks the split, and the titles in
+        // hand are stored without a fetch.
+        sqlx::query("DELETE FROM provider_relations_cache")
+            .execute(&db)
+            .await
+            .unwrap();
+        let in_hand = mal_detail("Steel Ball Run", "STEEL BALL RUN JoJo", &["SBR"]);
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &in_hand, false).await;
+        assert_eq!(
+            stored().await.unwrap(),
+            ["Steel Ball Run", "STEEL BALL RUN JoJo"]
+        );
+        // With no row and no split relation, a MAL detail proves nothing.
+        sqlx::query("DELETE FROM mal_entry_titles")
+            .execute(&db)
+            .await
+            .unwrap();
+        store_split_mal_entry_titles(&db, 910_002, Some(MAL), &in_hand, false).await;
+        assert!(stored().await.is_none());
+        // A MAL-fallback row is never a split part.
+        store_split_mal_entry_titles(&db, -MAL, Some(MAL), &in_hand, true).await;
+        assert!(stored().await.is_none());
+
+        jikan::clear_detail_cache_entry_for_tests(MAL).await;
+    }
+
+    /// #303: a split part reads the MAL entry's episode `e + split` as
+    /// its episode `e`; the earlier parts' episodes drop out.
+    #[test]
+    fn mal_episodes_shift_into_a_split_part_numbering() {
+        let ep = |title: &str| jikan::EpisodeInfo {
+            title: title.to_string(),
+            aired: String::new(),
+        };
+        let mal: HashMap<i32, jikan::EpisodeInfo> = HashMap::from([
+            (1, ep("Steel Ball Run")),
+            (2, ep("The Sheriff's Request to Mountain Tim")),
+            (7, ep("Tusk, Part 1")),
+            (9, ep("Episode 9")),
+        ]);
+        fn title(e: &mut jikan::EpisodeInfo) -> &mut String {
+            &mut e.title
+        }
+        let shifted = shift_mal_episodes(mal.clone(), 1, title);
+        let titles: std::collections::BTreeMap<i32, &str> = shifted
+            .iter()
+            .map(|(n, e)| (*n, e.title.as_str()))
+            .collect();
+        assert_eq!(
+            titles,
+            std::collections::BTreeMap::from([
+                (1, "The Sheriff's Request to Mountain Tim"),
+                (6, "Tusk, Part 1"),
+                // A placeholder names the MAL number; it moves with it.
+                (8, "Episode 8"),
+            ])
+        );
+        assert_eq!(shift_mal_episodes(mal.clone(), 0, title).len(), 4);
+    }
+
     fn series_fixture(anilist_id: i64) -> series::Series {
         series::Series {
             is_adult: false,
@@ -1176,6 +1758,9 @@ mod tests {
             restrict_to_uploader: String::new(),
             alternate_titles: String::new(),
             cumulative_prior_episodes: 0,
+            cumulative_offset_source: String::new(),
+            cumulative_offset_season: None,
+            episode_numbering: String::new(),
             monitor_mode_manual_override: false,
             user_score: None,
             added_at: String::new(),

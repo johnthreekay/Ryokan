@@ -2001,3 +2001,622 @@ async fn an_untracked_series_page_searches_by_its_anilist_id() {
 
     unset_nyaa_base();
 }
+
+#[tokio::test]
+async fn interactive_batch_list_offers_unnumbered_packs_and_the_auto_grab_does_not() {
+    // `[UTW] Angel Beats! [BD][h264-720p AC3]` names the series and
+    // nothing of what it holds: usually the whole series, sometimes a
+    // movie or one file. The interactive batch list offers it (its grab
+    // opens the file picker); the automatic batch grab never takes it.
+    // A weekly, a movie, a sequel named by its subtitle and a title
+    // giving another year are no pack of this series.
+    use ryokan::services::auto_search::{BatchList, collect_scored_batches_for_target};
+    let _gate = ENV_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    let rows = [
+        (1, "[UTW] Test Show [BD][h264-720p AC3]"),
+        (2, "[Group] Test Show (01-12) [BD 1080p]"),
+        (3, "[Group] Test Show - 05 (1080p) [WEB].mkv"),
+        (4, "[Group] Test Show The Movie [BD 1080p]"),
+        (5, "[UTW] Test Show Another Story [BD][h264-720p AC3]"),
+        // A remake's year: the series aired in 2024.
+        (6, "[UTW] Test Show (2009) [BD][h264-720p AC3]"),
+    ]
+    .iter()
+    .map(|(n, title)| nyaa_row(&format!("{n:040x}"), 9000 + n, title, "8.0 GiB", 20))
+    .collect::<String>();
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page(&rows)))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let state = build_state().await;
+    let detail = detail_for(1002, "Test Show");
+    let cfg = default_config();
+    let cfs: Vec<ryokan::services::custom_formats::CompiledCustomFormat> = vec![];
+    let titles = |list: BatchList| {
+        let (state, detail, cfg, cfs) = (&state, &detail, &cfg, &cfs);
+        async move {
+            let results = collect_scored_batches_for_target(
+                &state.db,
+                detail,
+                cfg,
+                &SearchTarget::Single,
+                cfs,
+                &state.indexers,
+                list,
+            )
+            .await;
+            assert!(results.iter().all(|r| r.is_batch), "{results:?}");
+            let mut titles: Vec<String> = results.into_iter().map(|r| r.title).collect();
+            titles.sort();
+            titles
+        }
+    };
+
+    assert_eq!(
+        titles(BatchList::Interactive).await,
+        vec![
+            "[Group] Test Show (01-12) [BD 1080p]".to_string(),
+            "[UTW] Test Show [BD][h264-720p AC3]".to_string(),
+        ]
+    );
+    assert_eq!(
+        titles(BatchList::AutoGrab).await,
+        vec!["[Group] Test Show (01-12) [BD 1080p]".to_string()]
+    );
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
+async fn a_queued_pack_skips_only_the_episodes_it_covers() {
+    // Issue #300: a pack found for an early target ended the whole
+    // series search ("Season pack queued; stopping episode search"),
+    // so an episode the pack does not hold was never searched. The
+    // pack now skips the targets it covers and the rest still run.
+    let _gate = ENV_LOCK.lock().await;
+    let server = MockServer::start().await;
+    let rows = [
+        nyaa_row(
+            &format!("{:040x}", 0x300a),
+            30001,
+            "[Group] Pack Show - 01-03 [BD 1080p]",
+            "6.0 GiB",
+            40,
+        ),
+        nyaa_row(
+            &format!("{:040x}", 0x300b),
+            30002,
+            "[Group] Pack Show - 06 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            40,
+        ),
+        nyaa_row(
+            &format!("{:040x}", 0x300c),
+            30003,
+            "[Group] Pack Show - 05 [BD 1080p].mkv",
+            "2.0 GiB",
+            40,
+        ),
+    ]
+    .concat();
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page(&rows)))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9300;
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, anilist_id, "Pack Show").await;
+    // Episodes 1, 2 and 5 are on disk below the cutoff, so they are
+    // upgrade targets, searched after the missing episode 6; an
+    // upgrade target takes a pack (the issue's case).
+    let media_root = tempfile::tempdir().unwrap();
+    let folder = media_root.path().join("Pack Show");
+    std::fs::create_dir_all(&folder).unwrap();
+    for ep in [1, 2, 5] {
+        std::fs::write(
+            folder.join(format!("Pack Show - {ep:02} (720p) [WEB].mkv")),
+            b"x",
+        )
+        .unwrap();
+    }
+    let cfg = Config {
+        media_root: media_root.path().to_string_lossy().into_owned(),
+        cutoff_source: "bluray".into(),
+        cutoff_resolution: "1080".into(),
+        ..default_config()
+    };
+    ryokan::models::config::save_config(&state.db, &cfg)
+        .await
+        .unwrap();
+    for ep in [1, 2, 5, 6] {
+        ryokan::models::monitoring::set_episode_monitored(&state.db, series_id, ep, true)
+            .await
+            .unwrap();
+    }
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let axum::response::Json(report) = auto_search_series(
+        axum::extract::State(state.clone()),
+        axum::extract::Path(series_id),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await
+    .expect("series search");
+
+    let titles: Vec<&str> = report
+        .grabbed
+        .iter()
+        .map(|h| h.release_title.as_str())
+        .collect();
+    assert_eq!(
+        titles,
+        [
+            "[Group] Pack Show - 06 (1080p) [WEB].mkv",
+            "[Group] Pack Show - 01-03 [BD 1080p]",
+            // Searched after the pack: it used to end the search here.
+            "[Group] Pack Show - 05 [BD 1080p].mkv",
+        ],
+        "{report:?}\n{}",
+        dump_logs(&state.db).await
+    );
+    assert_eq!(client.add_calls().len(), 3);
+    assert!(
+        report
+            .skipped
+            .iter()
+            .any(|s| s == "Season pack queued; skipped 1 episode search it covers"),
+        "episode 2 is in the pack: {report:?}"
+    );
+
+    unset_nyaa_base();
+}
+
+/// A sequel cour beside a first season, in the metadata caches the
+/// 12-hour sweep fills (`identify::load_franchise` reads them).
+async fn seed_sequel_in_caches(db: &sqlx::SqlitePool, first: &AnimeDetail, sequel: &AnimeDetail) {
+    seed_related_in_caches(db, first, sequel, "SEQUEL").await;
+}
+
+/// `first` and `other` in the metadata caches, `other` related to `first`
+/// as `relation`.
+async fn seed_related_in_caches(
+    db: &sqlx::SqlitePool,
+    first: &AnimeDetail,
+    sequel: &AnimeDetail,
+    relation: &str,
+) {
+    let mut first = first.clone();
+    first.relations = vec![ryokan::services::anilist::RelatedEntry {
+        id: sequel.id,
+        id_mal: None,
+        title_romaji: sequel.title_romaji.clone(),
+        title_english: sequel.title_english.clone(),
+        title_native: sequel.title_native.clone(),
+        cover_url: String::new(),
+        format: "TV".into(),
+        status: "FINISHED".into(),
+        status_display: String::new(),
+        episodes: sequel.episodes,
+        relation_type: relation.into(),
+        season_year: sequel.season_year,
+        media_type: "ANIME".into(),
+    }];
+    for d in [&first, sequel] {
+        ryokan::models::local_metadata::replace_relations_for_provider(db, d.id, d)
+            .await
+            .unwrap();
+        ryokan::models::metadata_cache::upsert_provider(db, d.id, None, d)
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn auto_search_episode_handler_skips_a_release_another_entry_fits_better() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // The release contains the series' name verbatim, but its names are
+    // the sequel's in full: `identify` vetoes it for the first season,
+    // and the report says which entry it looked like instead of
+    // advising an alternate title.
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "1212121212121212121212121212121212121212",
+        99201,
+        "[SubsPlease] Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen - 06 (1080p) [ABCD1234].mkv",
+        "1.4 GiB",
+        200,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let anilist_id: i64 = 9101;
+    let state = build_state().await;
+    let _series_id = seed_series_with_cache(&state, anilist_id, "Jujutsu Kaisen").await;
+    let mut sequel = detail_for(9102, "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen");
+    sequel.season_year = Some(2026);
+    seed_sequel_in_caches(
+        &state.db,
+        &detail_for(anilist_id, "Jujutsu Kaisen"),
+        &sequel,
+    )
+    .await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((anilist_id, 6_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert!(report.grabbed.is_empty(), "report={report:?}");
+    assert!(client.add_calls().is_empty());
+    let note = report
+        .skipped
+        .iter()
+        .find(|s| s.contains("fit another entry of it better"))
+        .unwrap_or_else(|| panic!("report should name the other entry; report={report:?}"));
+    assert!(
+        note.contains("looks like Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen"),
+        "{note}"
+    );
+    assert!(!note.contains("alternate title"), "{note}");
+
+    unset_nyaa_base();
+}
+
+/// Hunter x Hunter 2011 tracked with the alternate title `Hunter x
+/// Hunter`, and `[DP] Hunter x Hunter - 003`: the name is the 1999
+/// series' exactly and, through the alternate, the 2011 one's too.
+/// Returns the report and the number of grabs.
+async fn search_hxh_2011_episode_3(track_1999: bool) -> (Vec<String>, usize) {
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "3434343434343434343434343434343434343434",
+        99301,
+        "[DP] Hunter x Hunter - 003 [Multi Subs][BDRip][1080p]",
+        "1.4 GiB",
+        200,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let state = build_state().await;
+    let mut hxh_2011 = detail_for(11061, "HUNTER×HUNTER (2011)");
+    hxh_2011.title_english = "Hunter x Hunter (2011)".into();
+    hxh_2011.episodes = Some(148);
+    hxh_2011.season_year = Some(2011);
+    let mut hxh_1999 = detail_for(136, "HUNTER×HUNTER");
+    hxh_1999.title_english = "Hunter x Hunter".into();
+    hxh_1999.episodes = Some(62);
+    hxh_1999.season_year = Some(1999);
+
+    let series_id =
+        ryokan::test_support::seed_series(&state.db, 11061, "HUNTER×HUNTER (2011)").await;
+    ryokan::models::metadata_cache::upsert(&state.db, series_id, 11061, None, &hxh_2011)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE series SET alternate_titles = 'Hunter x Hunter' WHERE id = ?")
+        .bind(series_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    if track_1999 {
+        ryokan::test_support::seed_series(&state.db, 136, "HUNTER×HUNTER").await;
+    }
+    seed_related_in_caches(&state.db, &hxh_2011, &hxh_1999, "ALTERNATIVE").await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((11061_i64, 3_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    unset_nyaa_base();
+    (report.skipped, client.add_calls().len())
+}
+
+#[tokio::test]
+async fn auto_search_skips_a_release_another_tracked_series_fits_as_well() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // Only the 2011 series tracked: the tie is with an entry the library
+    // doesn't have (Sonarr never sees it), and the release is grabbed.
+    let (_, grabs) = search_hxh_2011_episode_3(false).await;
+    assert_eq!(grabs, 1);
+
+    // Both tracked: Sonarr's ambiguous release, which neither takes
+    // automatically. The report says which series it also fits.
+    let (skipped, grabs) = search_hxh_2011_episode_3(true).await;
+    assert_eq!(grabs, 0, "{skipped:?}");
+    let note = skipped
+        .iter()
+        .find(|s| s.contains("fit another series in the library just as well"))
+        .unwrap_or_else(|| panic!("report should name the other series: {skipped:?}"));
+    assert!(note.contains("(also HUNTER×HUNTER)"), "{note}");
+}
+
+#[tokio::test]
+async fn auto_search_episode_handler_takes_the_sequels_absolute_number_with_the_franchise_loaded() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // The same franchise from the sequel's side: `Jujutsu Kaisen - 18`
+    // is past the first season's twelve, so it is the sequel's sixth,
+    // and identify keeps it (the old franchise pass ran with no sibling
+    // guard at all to let these through).
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&nyaa_row(
+        "3434343434343434343434343434343434343434",
+        99202,
+        "[SubsPlease] Jujutsu Kaisen - 18 (1080p) [ABCD1234].mkv",
+        "1.4 GiB",
+        200,
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let first = detail_for(9111, "Jujutsu Kaisen");
+    let mut sequel = detail_for(9112, "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen");
+    sequel.season_year = Some(2026);
+    let state = build_state().await;
+    let series_id =
+        seed_series_with_cache(&state, 9112, "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen").await;
+    sqlx::query("UPDATE series SET cumulative_prior_episodes = 12 WHERE id = ?")
+        .bind(series_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    seed_sequel_in_caches(&state.db, &first, &sequel).await;
+    let client = install_recording_default_torrent_client(&state).await;
+
+    let result = auto_search_episode(
+        axum::extract::State(state.clone()),
+        axum::extract::Path((9112, 6_i32)),
+        axum::extract::Query(AutoSearchQuery::default()),
+    )
+    .await;
+    let axum::response::Json(report) = result.expect("auto-search must succeed");
+    assert_eq!(report.grabbed.len(), 1, "report={report:?}");
+    assert_eq!(client.add_calls().len(), 1);
+    let detail: String = sqlx::query_scalar(
+        "SELECT detail FROM logs WHERE message LIKE 'Grabbed: %' ORDER BY id DESC LIMIT 1",
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap();
+    assert!(detail.contains("identity=target"), "{detail}");
+
+    unset_nyaa_base();
+}
+
+/// A target and its relatives, by relation, in the metadata caches.
+async fn seed_relatives_in_caches(
+    db: &sqlx::SqlitePool,
+    target: &AnimeDetail,
+    relatives: &[(&AnimeDetail, &str)],
+) {
+    let mut target = target.clone();
+    target.relations = relatives
+        .iter()
+        .map(|(rel, relation)| ryokan::services::anilist::RelatedEntry {
+            id: rel.id,
+            id_mal: None,
+            title_romaji: rel.title_romaji.clone(),
+            title_english: rel.title_english.clone(),
+            title_native: rel.title_native.clone(),
+            cover_url: String::new(),
+            format: rel.format.clone(),
+            status: "FINISHED".into(),
+            status_display: String::new(),
+            episodes: rel.episodes,
+            relation_type: (*relation).into(),
+            season_year: rel.season_year,
+            media_type: "ANIME".into(),
+        })
+        .collect();
+    ryokan::models::local_metadata::replace_relations_for_provider(db, target.id, &target)
+        .await
+        .unwrap();
+    ryokan::models::metadata_cache::upsert_provider(db, target.id, None, &target)
+        .await
+        .unwrap();
+    for (rel, _) in relatives {
+        ryokan::models::metadata_cache::upsert_provider(db, rel.id, None, rel)
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn find_all_for_target_labels_a_rival_and_drops_one_its_names_give_away() {
+    let _gate = ENV_LOCK.lock().await;
+
+    // For the 2001 series: its own release, the 2019 remake's (the year
+    // fits only the remake: kept, labeled, scored below), and a sequel
+    // named by its subtitle (dropped, as the sibling guard did).
+    let server = MockServer::start().await;
+    let html = nyaa_results_page(&format!(
+        "{}{}{}",
+        nyaa_row(
+            "5656565656565656565656565656565656565656",
+            99301,
+            "[Leopard-Raws] Fruits Basket (2019) - 05 (TX 1280x720 x264 AAC).mp4",
+            "400 MiB",
+            300,
+        ),
+        nyaa_row(
+            "7878787878787878787878787878787878787878",
+            99302,
+            "[Group] Fruits Basket - 05 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            20,
+        ),
+        nyaa_row(
+            "9090909090909090909090909090909090909090",
+            99303,
+            "[Group] Fruits Basket The Final - 05 (1080p) [WEB].mkv",
+            "1.4 GiB",
+            50,
+        ),
+    ));
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let mut original = detail_for(9301, "Fruits Basket");
+    original.season_year = Some(2001);
+    original.end_year = Some(2001);
+    let mut remake = detail_for(9302, "Fruits Basket (2019)");
+    remake.season_year = Some(2019);
+    remake.end_year = Some(2019);
+    let mut finale = detail_for(9303, "Fruits Basket: The Final");
+    finale.season_year = Some(2021);
+    finale.end_year = Some(2021);
+    let state = build_state().await;
+    seed_relatives_in_caches(
+        &state.db,
+        &original,
+        &[(&remake, "ALTERNATIVE"), (&finale, "SEQUEL")],
+    )
+    .await;
+
+    let cfs: Vec<ryokan::services::custom_formats::CompiledCustomFormat> = vec![];
+    let results = find_all_for_target(
+        &state.db,
+        &original,
+        &default_config(),
+        &SearchTarget::Episode(5),
+        true,
+        &cfs,
+        &state.indexers,
+    )
+    .await;
+    let titles: Vec<&str> = results.iter().map(|r| r.title.as_str()).collect();
+    assert_eq!(titles.len(), 2, "{titles:?}");
+    assert!(
+        titles[0].starts_with("[Group] Fruits Basket - 05"),
+        "{titles:?}"
+    );
+    assert!(titles[1].starts_with("[Leopard-Raws]"), "{titles:?}");
+    let rival = results[1]
+        .match_provenance
+        .as_ref()
+        .and_then(|p| p.identity.as_ref())
+        .expect("the remake's release carries the verdict");
+    assert_eq!(rival.looks_like(), Some("Fruits Basket (2019)"));
+    assert!(
+        results[1]
+            .score_breakdown
+            .iter()
+            .any(|p| p.label == "Franchise Identity" && p.delta < 0),
+        "{:?}",
+        results[1].score_breakdown
+    );
+
+    unset_nyaa_base();
+}
+
+/// #303: a split part (Steel Ball Run 2nd - 3rd STAGE, offset 1 from 1st
+/// STAGE, absolute only) queries the number its releases carry, and the
+/// list keeps only the release that is really the episode. Every pass
+/// that names an episode has to use it: `Steel Ball Run 06` would fetch
+/// episode 5's release, and episode 6's would never be on the page.
+#[tokio::test]
+async fn find_all_for_target_queries_a_split_part_by_its_absolute_number() {
+    let _gate = ENV_LOCK.lock().await;
+    let server = MockServer::start().await;
+    let rows = [
+        nyaa_row(
+            "1111111111111111111111111111111111111111",
+            7007,
+            "[Erai-raws] Steel Ball Run - 07 [1080p NF WEB-DL AVC AAC]",
+            "1.3 GiB",
+            50,
+        ),
+        nyaa_row(
+            "2222222222222222222222222222222222222222",
+            6006,
+            "[Erai-raws] Steel Ball Run - 06 [1080p NF WEB-DL AVC AAC]",
+            "1.3 GiB",
+            50,
+        ),
+    ]
+    .concat();
+    Mock::given(method("GET"))
+        .and(query_param("q", "Steel Ball Run 07"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page(&rows)))
+        .expect(1..)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(query_param("q", "Steel Ball Run 06"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page(&rows)))
+        .expect(0)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page("")))
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let state = build_state().await;
+    let series_id = seed_series_with_cache(&state, 210482, "Steel Ball Run").await;
+    sqlx::query(
+        "UPDATE series SET format = 'ONA', episodes = 11, cumulative_prior_episodes = 1, \
+         cumulative_offset_source = 'split', cumulative_offset_season = 6 WHERE id = ?",
+    )
+    .bind(series_id)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let mut detail = detail_for(210482, "Steel Ball Run");
+    detail.format = "ONA".into();
+    detail.episodes = Some(11);
+    let cfs: Vec<ryokan::services::custom_formats::CompiledCustomFormat> = vec![];
+    let results = find_all_for_target(
+        &state.db,
+        &detail,
+        &default_config(),
+        &SearchTarget::Episode(6),
+        true,
+        &cfs,
+        &state.indexers,
+    )
+    .await;
+    let titles: Vec<&str> = results.iter().map(|r| r.title.as_str()).collect();
+    assert_eq!(
+        titles,
+        vec!["[Erai-raws] Steel Ball Run - 07 [1080p NF WEB-DL AVC AAC]"],
+        "{titles:?}"
+    );
+
+    unset_nyaa_base();
+}

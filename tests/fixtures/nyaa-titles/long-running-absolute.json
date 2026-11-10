@@ -1,0 +1,445 @@
+{
+  "bucket": "long-running-absolute",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=Dual-Audio&c=1_2",
+    "https://nyaa.si/?page=rss&q=One+Piece&c=1_2",
+    "https://nyaa.si/?page=rss&q=Detective+Conan&c=1_2",
+    "https://nyaa.si/?page=rss&q=Boruto&c=1_2",
+    "https://nyaa.si/?page=rss&q=Doraemon&c=1_0",
+    "https://nyaa.si/?page=rss&q=Movie+BD&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[AnoZu] One Piece S23E02 1080p CR WEB-DL Dual-Audio DDP 2.0 H.264",
+      "url": "https://nyaa.si/view/2179524",
+      "category": "1_2",
+      "expect": {
+        "group": "AnoZu",
+        "seasons": [
+          23
+        ],
+        "episodes": [
+          2
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[MicroHatSubs] One Piece 1100-1104 (BD 1080p)",
+      "url": "https://nyaa.si/view/2179517",
+      "category": "1_2",
+      "expect": {
+        "group": "MicroHatSubs",
+        "batch": true,
+        "episodes": {
+          "first": 1100,
+          "last": 1104
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[HatSubs] One Piece 1100-1104 (BD 1080p 10-bit)",
+      "url": "https://nyaa.si/view/2179516",
+      "category": "1_2",
+      "expect": {
+        "group": "HatSubs",
+        "batch": true,
+        "episodes": {
+          "first": 1100,
+          "last": 1104
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ToonsHub] One Piece EP1157 1080p CR WEB-DL DUAL AAC2.0 H.264 (Dual-Audio, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179440",
+      "category": "1_2",
+      "expect": {
+        "group": "ToonsHub",
+        "episodes": [
+          1157
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Yameii] ONE PIECE HEROINES - S01E01 [English Dub] [CR WEB-DL 720p H264 AAC] [3A3EBFF2]",
+      "url": "https://nyaa.si/view/2173668",
+      "category": "1_2",
+      "expect": {
+        "group": "Yameii",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "resolution": 720,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "One Piece - 1156 [English Dub][1080p]",
+      "url": "https://nyaa.si/view/2176622",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "episodes": [
+          1156
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Judas] One Piece - 1180 [1080p][HEVC x265 10bit][Multi-Subs] (Weekly)",
+      "url": "https://nyaa.si/view/2167085",
+      "category": "1_2",
+      "expect": {
+        "group": "Judas",
+        "episodes": [
+          1180
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "One Piece S01E1157 Nami in a Fix An Adventure in Block Kingdom 1080p CR WEB-DL DUAL AAC2.0 H.264-VARYG (Dual-Audio, Multi-Subs)",
+      "url": "https://nyaa.si/view/2179415",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1157
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Erai-raws] Detective Conan - 1217 [1080p CR WEBRip HEVC AAC][MultiSub][3E0BB908]",
+      "url": "https://nyaa.si/view/2175579",
+      "category": "1_2",
+      "expect": {
+        "group": "Erai-raws",
+        "episodes": [
+          1217
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[ASW] Detective Conan - 1216v2 [1080p HEVC x265 10Bit][AAC]",
+      "url": "https://nyaa.si/view/2175344",
+      "category": "1_2",
+      "expect": {
+        "group": "ASW",
+        "episodes": [
+          1216
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[SubsPlease] Detective Conan - The Counterfeit Case of Ultra 30 (1080p) [6BD3ED0A].mkv",
+      "url": "https://nyaa.si/view/2167737",
+      "category": "1_2",
+      "expect": {
+        "group": "SubsPlease",
+        "ambiguous": 30,
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Detective Conan",
+          "Meitantei Conan"
+        ],
+        "episodes": []
+      },
+      "verified": "hand",
+      "note": "a special named by title; the 30 is in the title"
+    },
+    {
+      "title": "[ToonsHub] Detective Conan EP1217 1080p CR WEB-DL AAC2.0 H.264 (Meitantei Conan, Multi-Subs)",
+      "url": "https://nyaa.si/view/2175064",
+      "category": "1_2",
+      "expect": {
+        "group": "ToonsHub",
+        "episodes": [
+          1217
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Detective Conan S01E1217 The Hands Pushing Their Back 1080p CR WEB-DL AAC2.0 H.264-VARYG (Meitantei Conan, Multi-Subs)",
+      "url": "https://nyaa.si/view/2175061",
+      "category": "1_2",
+      "expect": {
+        "group": "VARYG",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1217
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[JP-EN] Boruto : Naruto Next Generations S01 [2017 - 2023] COMPLETE 1080p BDRip x265 DTS-HD MA 2.0 Kira [SEV]",
+      "url": "https://nyaa.si/view/1974801",
+      "category": "1_2",
+      "expect": {
+        "group": "JP-EN",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "[2017 - 2023] is a year range"
+    },
+    {
+      "title": "[HimawariNijiima] Boruto Sub Edits v2 (1-26, 181-188, 193-205, 219-230, 243-255)",
+      "url": "https://nyaa.si/view/1954248",
+      "category": "1_2",
+      "expect": {
+        "group": "HimawariNijiima",
+        "batch": true,
+        "episodes": null,
+        "version": 2
+      },
+      "verified": "hand",
+      "note": "a list of ranges"
+    },
+    {
+      "title": "[DBD-Raws][博人传 -火影忍者新时代-/Boruto: Naruto Next Generations/BORUTO-ボルト- NARUTO NEXT GENERATIONS][001-293TV全集+OVA+特典映像][美版/USA.Ver][1080P][BDRip][HEVC-10bit][FLAC][MKV]",
+      "url": "https://nyaa.si/view/1869368",
+      "category": "1_2",
+      "expect": {
+        "group": "DBD-Raws",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 293
+        },
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Himawari] Boruto - 231-255",
+      "url": "https://nyaa.si/view/1863917",
+      "category": "1_2",
+      "expect": {
+        "group": "Himawari",
+        "batch": true,
+        "episodes": {
+          "first": 231,
+          "last": 255
+        }
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[神楽坂 まひろ] 博人传之火影忍者次世代 / Boruto: Naruto Next Generations - 293 (B-Global 3840x2160 HEVC AAC MKV)",
+      "url": "https://nyaa.si/view/1653443",
+      "category": "1_2",
+      "expect": {
+        "group": "神楽坂 まひろ",
+        "episodes": [
+          293
+        ],
+        "resolution": 2160,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[NanakoRaws] Doraemon (2005) - 939 (NBN TV 1080p HEVC AAC)",
+      "url": "https://nyaa.si/view/2178890",
+      "category": "1_4",
+      "expect": {
+        "group": "NanakoRaws",
+        "episodes": [
+          939
+        ],
+        "year": 2005,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Ommex] Doraemon (2005) Episode 938 [ENG SUB][1080p x265 AAC]",
+      "url": "https://nyaa.si/view/2177380",
+      "category": "1_2",
+      "expect": {
+        "group": "Ommex",
+        "episodes": [
+          938
+        ],
+        "year": 2005,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[TardRaws]  Doraemon: Doraemon no Nandemo Quiz Pocket (360p)",
+      "url": "https://nyaa.si/view/2176804",
+      "category": "1_4",
+      "expect": {
+        "group": "TardRaws",
+        "resolution": 360,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[夜莺家族&YYQ字幕组]New Doraemon 哆啦A梦新番[936][2026.10.03][AVC][1080P][GB_JP]",
+      "url": "https://nyaa.si/view/2176040",
+      "category": "1_3",
+      "expect": {
+        "group": "夜莺家族&YYQ字幕组",
+        "episodes": [
+          936
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[shincaps] Doraemon (2005) - 183 (CS-EX1 1440x1080 MPEG2 AAC).ts",
+      "url": "https://nyaa.si/view/2171530",
+      "category": "1_4",
+      "expect": {
+        "group": "shincaps",
+        "episodes": [
+          183
+        ],
+        "year": 2005,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Wofire] Doraemon Movie 12 - Nobita's Dorabian Nights (1991) [1080p, HEVC, EAC3]",
+      "url": "https://nyaa.si/view/2169438",
+      "category": "1_2",
+      "expect": {
+        "group": "Wofire",
+        "ambiguous": 12,
+        "year": 1991,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "movie number before a subtitle dash"
+    },
+    {
+      "title": "[ZG & Ommex] Doraemon Movie 45 - New Nobita and the Castle of the Undersea Devil (2026) (BDRip 1080p x264 10-bit CRF16 DD-AC3 2.0 DD-AC3 5.1)",
+      "url": "https://nyaa.si/view/2164263",
+      "category": "1_2",
+      "expect": {
+        "group": "ZG & Ommex",
+        "ambiguous": 45,
+        "year": 2026,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[NanakoRaws] Doraemon (1979) - 1661-1668 (EX-CS2 TV 1080p HEVC AAC)",
+      "url": "https://nyaa.si/view/2173042",
+      "category": "1_4",
+      "expect": {
+        "group": "NanakoRaws",
+        "batch": true,
+        "episodes": {
+          "first": 1661,
+          "last": 1668
+        },
+        "year": 1979,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[NanakoRaws] Doraemon (2005) S01E935 (NBN TV 1080p HEVC AAC)",
+      "url": "https://nyaa.si/view/2166623",
+      "category": "1_4",
+      "expect": {
+        "group": "NanakoRaws",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          935
+        ],
+        "year": 2005,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "Doraemon - New Nobita and the Castle of the Undersea Devil (2026) [Blu-Flash][EFA135E6].mkv",
+      "url": "https://nyaa.si/view/2164429",
+      "category": "1_2",
+      "expect": {
+        "group": null,
+        "year": 2026,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[APTX-Fansub] Detective Conan - 1217 FHD [1FF691DA].mp4",
+      "url": "https://nyaa.si/view/2177774",
+      "expect": {
+        "group": "APTX-Fansub",
+        "batch": false,
+        "episodes": [
+          1217
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "FHD is 1080; the number before it is the episode"
+    }
+  ]
+}

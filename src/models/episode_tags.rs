@@ -1626,6 +1626,7 @@ mod grab_history_state_tests {
             kind: MatchKind::Fuzzy,
             alias: "Risa THE ANIMATION".to_string(),
             ratio: 0.67,
+            identity: None,
         };
         record_grab_with_match(
             &db,

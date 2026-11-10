@@ -108,6 +108,10 @@ Ryokan's migrations are idempotent by design (each `ALTER TABLE … ADD COLUMN` 
 
 Automatic search only takes a release whose name contains one of the series' titles as written, or an alternate title you added, and names nothing beyond it, so a sequel titled by subtitle ("Dr. Stone New World") is not mistaken for the first season. When the only releases on offer name the show some other way, the search toast reads "looked close but none named the series exactly" and lists examples, and System → Logs has the full list. If one of those is the right show, add that name on the series page under **Advanced search overrides**, **Alternate titles**, and search again. See [How releases are scored](scoring.md#what-automatic-search-will-and-will-not-grab).
 
+## RSS skipped a release it used to grab
+
+Since 2.3.0, RSS takes a release named by a shortened title only when the short name lines up with whole words of one of the series' titles, and the words left over are a season or part marker. Before, any run of letters inside a title counted, which sent releases to unrelated shows. Two kinds of names are affected. One is a short name for a long single title ("Ano Hana", "Mugen Gacha"). The other is a first season tagged `S01` when the series' titles name no season. System → RSS lists such a release as "No tracked series match". Add the name the release uses on the series page under **Advanced search overrides**, **Alternate titles**, and the next sync will take it.
+
 ## Ryokan removed a download it decided was the wrong series
 
 Ryokan compares the files inside every download with the series it was grabbed for. When the file names clearly belong to a different show, it removes the download, blocklists the release, and searches again. Open System, Misgrabs to see what was caught and why: the row shows the file names Ryokan looked at.

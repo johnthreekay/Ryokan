@@ -15,6 +15,7 @@ use regex_lite::Regex;
 
 use crate::services::anilist::AnimeEntry;
 use crate::services::library_link::share_substantive_token;
+use crate::services::release_title;
 
 /// What the files told us about a group, as ranking input.
 #[derive(Clone, Debug, Default)]
@@ -165,21 +166,6 @@ static RE_SEASON_MARK: LazyLock<Regex> = LazyLock::new(|| {
         .expect("RE_SEASON_MARK compiles")
 });
 
-fn roman_to_int(s: &str) -> Option<i32> {
-    match s.to_ascii_lowercase().as_str() {
-        "ii" => Some(2),
-        "iii" => Some(3),
-        "iv" => Some(4),
-        "v" => Some(5),
-        "vi" => Some(6),
-        "vii" => Some(7),
-        "viii" => Some(8),
-        "ix" => Some(9),
-        "x" => Some(10),
-        _ => None,
-    }
-}
-
 /// Season number an AL title slot advertises, if any.
 pub fn season_marker(slot: &str) -> Option<i32> {
     let caps = RE_SEASON_MARK.captures(slot)?;
@@ -188,7 +174,10 @@ pub fn season_marker(slot: &str) -> Option<i32> {
             return m.as_str().parse().ok();
         }
     }
-    caps.get(5).and_then(|m| roman_to_int(m.as_str()))
+    caps.get(5)
+        .and_then(|m| release_title::roman_value(m.as_str()))
+        .filter(|n| *n >= 2)
+        .map(|n| n as i32)
 }
 
 fn entry_season_marker(entry: &AnimeEntry) -> Option<i32> {

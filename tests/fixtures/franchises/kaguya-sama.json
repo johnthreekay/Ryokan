@@ -1,0 +1,255 @@
+{
+  "name": "kaguya-sama",
+  "roots": [
+    101921
+  ],
+  "nodes": [
+    {
+      "id": 101921,
+      "mal_id": 37999,
+      "title_romaji": "Kaguya-sama wa Kokurasetai: Tensaitachi no Renai Zunousen",
+      "title_english": "Kaguya-sama: Love is War",
+      "title_native": "かぐや様は告らせたい～天才たちの恋愛頭脳戦～",
+      "synonyms": [
+        "Kaguya Wants to be Confessed To: The Geniuses' War of Love and Brains",
+        "קאגויה סאמה",
+        "辉夜大小姐想让我告白～天才们的恋爱头脑战～",
+        "辉夜姬想让人告白",
+        "辉夜姬想让人告白～天才们的恋爱头脑战～",
+        "辉告",
+        "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen",
+        "Kaguya-sama : L'Amour est une guerre",
+        "สารภาพรักกับคุณคางุยะซะดีๆ ~สงครามประสาทความรักของเหล่าอัจฉริยะ~",
+        "Госпожа Кагуя: В любви как на войне",
+        "Kaguya-sama: Cuộc Chiến Tỏ Tình",
+        "Cuộc Chiến Tỏ Tình"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2019,
+      "end_year": 2019
+    },
+    {
+      "id": 112641,
+      "mal_id": 40591,
+      "title_romaji": "Kaguya-sama wa Kokurasetai?: Tensaitachi no Renai Zunousen",
+      "title_english": "Kaguya-sama: Love is War?",
+      "title_native": "かぐや様は告らせたい？～天才たちの恋愛頭脳戦～",
+      "synonyms": [
+        "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen 2",
+        "Kaguya-sama: Love is War Season 2",
+        "辉夜大小姐想让我告白～天才们的恋爱头脑战～第二季",
+        "辉夜大小姐想让我告白～天才们的恋爱头脑战～ 2",
+        "Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen",
+        "สารภาพรักกับคุณคางุยะซะดีๆ ~สงครามประสาทความรักของเหล่าอัจฉริยะ~ ภาค 2",
+        "Госпожа Кагуя: в любви как на войне. 2 сезон",
+        "Kaguya-sama: Cuộc Chiến Tỏ Tình (Phần 2)"
+      ],
+      "format": "TV",
+      "episodes": 12,
+      "season_year": 2020,
+      "end_year": 2020
+    },
+    {
+      "id": 125367,
+      "mal_id": 43608,
+      "title_romaji": "Kaguya-sama wa Kokurasetai: Ultra Romantic",
+      "title_english": "Kaguya-sama: Love is War -Ultra Romantic-",
+      "title_native": "かぐや様は告らせたい-ウルトラロマンティック-",
+      "synonyms": [
+        "Kaguya-sama: Love is War Season 3",
+        "辉夜大小姐想让我告白～天才们的恋爱头脑战～ 3",
+        "辉夜大小姐想让我告白～天才们的恋爱头脑战～ 第三季",
+        "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen 3",
+        "สารภาพรักกับคุณคางุยะซะดี ๆ ~สงครามประสาทความรักของเหล่าอัจฉริยะ~ ภาค 3",
+        "สารภาพรักกับคุณคางุยะ ซะดี ๆ -อุลตร้า โรแมนติก-",
+        "Kaguya-sama wa Kokurasetai 3rd Season",
+        "Kaguya-sama: Cuộc Chiến Tỏ Tình - Ultra Romantic",
+        "Госпожа Кагуя: в любви как на войне. Ультраромантика",
+        "Nona Kaguya Ingin Ditembak: Ultra Romantic"
+      ],
+      "format": "TV",
+      "episodes": 13,
+      "season_year": 2022,
+      "end_year": 2022
+    },
+    {
+      "id": 125368,
+      "mal_id": 43609,
+      "title_romaji": "Kaguya-sama wa Kokurasetai: Tensaitachi no Renai Zunousen OVA",
+      "title_english": "",
+      "title_native": "かぐや様は告らせたい～天才たちの恋愛頭脳戦～OVA",
+      "synonyms": [
+        "Kaguya-sama: Love is War OVA",
+        "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen OVA"
+      ],
+      "format": "OVA",
+      "episodes": 1,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 151384,
+      "mal_id": 52198,
+      "title_romaji": "Kaguya-sama wa Kokurasetai: First Kiss wa Owaranai",
+      "title_english": "Kaguya-sama: Love is War -The First Kiss That Never Ends-",
+      "title_native": "かぐや様は告らせたい -ファーストキッスは終わらない-",
+      "synonyms": [
+        "Kaguya-sama: Love is War Movie",
+        "Kaguya-sama: Cuộc chiến tỏ tình - Nụ hôn đầu không hồi kết",
+        "Госпожа Кагуя: в любви как на войне. Бесконечный первый поцелуй"
+      ],
+      "format": "TV",
+      "episodes": 4,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 165557,
+      "mal_id": 50325,
+      "title_romaji": "Kaguya-sama wa Kokurasetai: Ultra Romantic 3rd Season Teaser PV - Ishigami Yuu wa Kataritai",
+      "title_english": "Kaguya-sama: Love is War -Ultra Romantic- \"Yu Ishigami Wants to Chat\"",
+      "title_native": "第３期『かぐや様は告らせたい-ウルトラロマンティック-』 ／ ティザーPV 「石上優は語りたい」",
+      "synonyms": [],
+      "format": "ONA",
+      "episodes": 1,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 194884,
+      "mal_id": 61903,
+      "title_romaji": "Kaguya-sama wa Kokurasetai: Otona e no Kaidan",
+      "title_english": "Kaguya-sama: Love Is War -Stairway to Adulthood-",
+      "title_native": "かぐや様は告らせたい 大人への階段",
+      "synonyms": [
+        "Kaguya-sama: Love Is War - The Grown-Up Staircase"
+      ],
+      "format": "SPECIAL",
+      "episodes": 2,
+      "season_year": 2025,
+      "end_year": 2025
+    },
+    {
+      "id": 205081,
+      "mal_id": 63212,
+      "title_romaji": "Kaguya-sama wa Kokurasetai: Kanketsu-hen",
+      "title_english": "",
+      "title_native": "かぐや様は告らせたい 完結編",
+      "synonyms": [
+        "Kaguya-sama: Love is War - Final Chapter"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": null,
+      "end_year": null
+    }
+  ],
+  "edges": [
+    {
+      "from": 101921,
+      "to": 112641,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 112641,
+      "to": 101921,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 112641,
+      "to": 125367,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 112641,
+      "to": 125368,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 125367,
+      "to": 112641,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 125367,
+      "to": 151384,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 125367,
+      "to": 165557,
+      "relation": "SIDE_STORY"
+    },
+    {
+      "from": 151384,
+      "to": 125367,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 151384,
+      "to": 194884,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 194884,
+      "to": 151384,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 194884,
+      "to": 205081,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 205081,
+      "to": 194884,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 101921,
+      "tvdb_id": 354198,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 112641,
+      "tvdb_id": 354198,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 125367,
+      "tvdb_id": 354198,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 125368,
+      "tvdb_id": 354198,
+      "season": 0,
+      "episode_offset": 0
+    },
+    {
+      "id": 151384,
+      "tvdb_id": 354198,
+      "season": 0,
+      "episode_offset": 4
+    },
+    {
+      "id": 165557,
+      "tvdb_id": 354198,
+      "season": 0,
+      "episode_offset": 1
+    },
+    {
+      "id": 194884,
+      "tvdb_id": 354198,
+      "season": 0,
+      "episode_offset": 14
+    }
+  ],
+  "offsets": []
+}

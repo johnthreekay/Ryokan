@@ -61,7 +61,7 @@ fn search_response_for(id: i64, romaji: &str, english: &str, native: &str) -> se
 }
 
 /// Empty AL search response — used to drive the NoMatch outcome
-/// when anitomy emits a parsed title but AL has nothing for it.
+/// when the title parses but AL has nothing for it.
 fn empty_search_response() -> serde_json::Value {
     json!({ "data": { "Page": { "media": [] } } })
 }
@@ -446,7 +446,7 @@ async fn no_match_when_al_search_empty() {
         LibraryLinkOutcome::NoMatch { parsed_title } => {
             assert!(
                 parsed_title.is_some(),
-                "anitomy should still emit a parsed title even when AL has no match"
+                "the title should still parse even when AL has no match"
             );
         }
         other => panic!("expected NoMatch, got {:?}", other),

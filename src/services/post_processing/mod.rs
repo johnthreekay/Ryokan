@@ -8,6 +8,7 @@ use crate::models::{
     config, episode_tags, grabbed_torrents, local_metadata, metadata_cache, series,
 };
 use crate::services::download_client::DownloadClient;
+use crate::services::numbering::Numbering;
 use crate::services::recycle::{self, RecycleKind};
 use crate::services::source::{self, SeriesContext};
 use crate::services::{logger, media, naming, nfo};
@@ -139,25 +140,21 @@ impl ResolvedEpisode {
 /// `claimed` is the grab's episode list for this series, or `&[]` when
 /// there is none to go by (a pack's preflight, a routed sibling), and
 /// `episode_count` the series' known episode count (0 = unknown); see
-/// [`claimed_ep_offset`].
+/// [`claimed_ep_offset`]. `numbering` is the target series' (#303): a
+/// split part's bare `- 01` resolves to episode 0, an error, so the
+/// file is skipped as an earlier entry's.
 fn resolve_episode(
     span: media::EpisodeSpan,
     route_offset: Option<i32>,
-    cumulative_prior_episodes: i32,
+    numbering: Numbering,
     claimed: &[i32],
     episode_count: i32,
 ) -> Result<ResolvedEpisode, String> {
-    let episode_offset = route_offset.unwrap_or_else(|| {
-        if span.season.is_some() {
-            0
-        } else {
-            claimed_ep_offset(
-                span.first,
-                cumulative_prior_episodes,
-                claimed,
-                episode_count,
-            )
-        }
+    let episode_offset = route_offset.unwrap_or_else(|| match span.season {
+        // A tag counts within its season, unless it names the TVDB season
+        // a split part counts in (#303: `S06E07` is its episode 6).
+        Some(season) => numbering.file_offset(Some(season), span.first),
+        None => claimed_ep_offset(span.first, numbering, claimed, episode_count),
     });
     let episode = span.first - episode_offset;
     if episode <= 0 {
@@ -171,6 +168,27 @@ fn resolve_episode(
         episode,
         episode_last: span.last - episode_offset,
     })
+}
+
+/// The offset a routed file is read with (`resolve_episode`'s
+/// `route_offset`). A route to the grab's own series under the single
+/// absolute reading (#303, the parent route auto-expand writes for a
+/// split part) is read with the series' numbering rather than the
+/// route's fixed offset, so a tag counts the way auto-expand's coverage
+/// rows read it: `S01E06` within season 1, `S06E07` on from 1st STAGE.
+pub(crate) fn route_offset_for(
+    route: Option<(i64, i32)>,
+    grab_series_id: i64,
+    numbering: Numbering,
+) -> Option<i32> {
+    let (series_id, offset) = route?;
+    if series_id == grab_series_id
+        && numbering.reading == crate::services::numbering::Reading::Absolute
+    {
+        None
+    } else {
+        Some(offset)
+    }
 }
 
 /// The slot a lone video with an unparseable name takes from the grab
@@ -243,9 +261,21 @@ pub(crate) struct BatchPlan {
 /// `tv_series` holds the ids of target series whose AniList format is
 /// TV (`media::is_tv_format`): only for those does a special marker in
 /// a file name mean "special" rather than the series' own numbering.
-pub(crate) fn validate_batch_episode_map(
-    files: &[(usize, i64, Option<i32>, i32, String)],
+#[cfg(test)]
+pub(crate) fn validate_batch_episode_map<N: Into<Numbering> + Copy>(
+    files: &[(usize, i64, Option<i32>, N, String)],
     tv_series: &HashSet<i64>,
+) -> Result<BatchPlan, String> {
+    validate_batch_episode_map_with_anchors(files, tv_series, &HashMap::new())
+}
+
+/// [`validate_batch_episode_map`] reading each file with its target
+/// series' names (`anchors`), so a number the name holds is never a
+/// file's episode (`Mob Psycho 100 (BD).mkv`).
+pub(crate) fn validate_batch_episode_map_with_anchors<N: Into<Numbering> + Copy>(
+    files: &[(usize, i64, Option<i32>, N, String)],
+    tv_series: &HashSet<i64>,
+    anchors: &HashMap<i64, crate::services::release_title::SeriesAnchors>,
 ) -> Result<BatchPlan, String> {
     struct Entry<'a> {
         file_idx: usize,
@@ -258,14 +288,17 @@ pub(crate) fn validate_batch_episode_map(
     let mut entries: Vec<Entry<'_>> = Vec::new();
     let mut specials: HashSet<usize> = HashSet::new();
 
-    for (file_idx, series_id, route_offset, cumulative_prior_episodes, name) in files {
+    for (file_idx, series_id, route_offset, numbering, name) in files {
         let filename = Path::new(name)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(name);
         let lower = filename.to_lowercase();
         let in_specials_folder = media::path_names_specials(Path::new(name));
-        let parsed = media::parse_episode_span(&lower);
+        let parsed = match anchors.get(series_id) {
+            Some(names) => media::parse_episode_span_for(&lower, names),
+            None => media::parse_episode_span(&lower),
+        };
         // A special of a TV series takes no slot: the name says so
         // (`OVA 01`, a bare `- OVA` with no number at all), or the
         // pack keeps it in a `Specials/` subfolder whatever it is
@@ -278,11 +311,15 @@ pub(crate) fn validate_batch_episode_map(
             specials.insert(*file_idx);
             continue;
         }
+        // A pack's `Extras/` (menus, previews, PVs) takes no slot, whatever
+        // the files are called there; a special in it was set aside above.
+        if media::path_names_extras(name) {
+            continue;
+        }
         let Some(span) = parsed else {
             continue;
         };
-        let Ok(resolved) = resolve_episode(span, *route_offset, *cumulative_prior_episodes, &[], 0)
-        else {
+        let Ok(resolved) = resolve_episode(span, *route_offset, (*numbering).into(), &[], 0) else {
             continue;
         };
         // No version token reads as v1 so `E05` + `E05v2` compare 1 vs 2.
@@ -1518,7 +1555,8 @@ async fn import_torrent(
     // multi-video import through the single-file path would reintroduce the
     // duplicate-destination overwrite that this preflight prevents.
     let batch_episode_plan = if requires_episode_map_preflight(grab.is_batch, video_files.len()) {
-        let mut cumulative_by_series = HashMap::new();
+        let mut numbering_by_series = HashMap::new();
+        let mut anchors_by_series = HashMap::new();
         let mut tv_series: HashSet<i64> = HashSet::new();
         let mut batch_files = Vec::with_capacity(video_files.len());
         for (file_idx, file) in &video_files {
@@ -1526,8 +1564,8 @@ async fn import_torrent(
             let target_series_id = route
                 .map(|(series_id, _)| series_id)
                 .unwrap_or(grab.series_id);
-            let cumulative_prior_episodes =
-                if let Some(value) = cumulative_by_series.get(&target_series_id) {
+            let numbering: Numbering =
+                if let Some(value) = numbering_by_series.get(&target_series_id) {
                     *value
                 } else {
                     let row = series::get_by_id(&state.db, target_series_id)
@@ -1537,19 +1575,23 @@ async fn import_torrent(
                     if media::is_tv_format(&row.format) {
                         tv_series.insert(target_series_id);
                     }
-                    let value = row.cumulative_prior_episodes;
-                    cumulative_by_series.insert(target_series_id, value);
+                    anchors_by_series.insert(
+                        target_series_id,
+                        crate::services::grab_commit::series_anchors(&row),
+                    );
+                    let value = row.numbering();
+                    numbering_by_series.insert(target_series_id, value);
                     value
                 };
             batch_files.push((
                 *file_idx,
                 target_series_id,
-                route.map(|(_, offset)| offset),
-                cumulative_prior_episodes,
+                route_offset_for(route, grab.series_id, numbering),
+                numbering,
                 file.name.clone(),
             ));
         }
-        validate_batch_episode_map(&batch_files, &tv_series)?
+        validate_batch_episode_map_with_anchors(&batch_files, &tv_series, &anchors_by_series)?
     } else {
         BatchPlan::default()
     };
@@ -1624,6 +1666,26 @@ async fn import_torrent(
     // after the file loop.
     let mut grabs_to_mark_replaced: std::collections::HashSet<i64> =
         std::collections::HashSet::new();
+
+    // #303: which numbering the grab's own list is in under its series'
+    // absolute reading (`grab_commit::grab_list_numbering`). Read once,
+    // for the grab's own series only: a routed sibling never takes the
+    // list.
+    let own_list_numbering = std::sync::OnceLock::new();
+    let grab_list_numbering = |series: &series::Series| {
+        use crate::services::grab_commit::{GrabSeries, ListNumbering, grab_list_numbering};
+        if series.id != grab.series_id {
+            return ListNumbering::Series;
+        }
+        *own_list_numbering.get_or_init(|| {
+            grab_list_numbering(
+                &grab.torrent_name,
+                &grab.episode_numbers,
+                &GrabSeries::from_row(series),
+                grab.is_batch,
+            )
+        })
+    };
 
     for (file_idx, file) in &video_files {
         debug_assert!(!unsafe_video_indices.contains(file_idx));
@@ -1779,7 +1841,10 @@ async fn import_torrent(
         // name here. It goes to the Specials folder as `S00Exx`, with
         // no tag or history row, and never fails the grab.
         let lower_name = filename_only.to_lowercase();
-        let name_span = media::parse_episode_span(&lower_name);
+        let name_span = media::parse_file_path_for(
+            &file.name,
+            &crate::services::grab_commit::series_anchors(&ctx.series),
+        );
         let is_special = batch_episode_plan.specials.contains(file_idx)
             || (!preflight_ran
                 && media::is_tv_format(&ctx.series.format)
@@ -1865,6 +1930,18 @@ async fn import_torrent(
             } else {
                 None
             };
+            // A span taken from the grab's own list is series-relative
+            // already under the single absolute reading (#303: every
+            // writer records the resolved episode for it), so no offset
+            // comes off it a second time, unless the list predates the
+            // reading and holds the title's own numbers. Under the
+            // either-reading a list can still hold a title's own absolute
+            // number, which the claim rule below settles as it always has.
+            let from_grab_list = parsed.is_none()
+                && fallback.is_some()
+                && ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute
+                && grab_list_numbering(&ctx.series)
+                    != crate::services::grab_commit::ListNumbering::TitlesOwn;
             let Some(span) = parsed.or(fallback) else {
                 logger::warn(
                     &state.db,
@@ -1882,10 +1959,19 @@ async fn import_torrent(
             } else {
                 &[]
             };
+            let route_offset = if from_grab_list {
+                Some(0)
+            } else {
+                route_offset_for(
+                    routes_by_file.get(file_idx).copied(),
+                    grab.series_id,
+                    ctx.series.numbering(),
+                )
+            };
             match resolve_episode(
                 span,
-                routes_by_file.get(file_idx).map(|(_, offset)| *offset),
-                ctx.series.cumulative_prior_episodes,
+                route_offset,
+                ctx.series.numbering(),
                 claimed,
                 ctx.known_episode_count(),
             ) {
@@ -1919,7 +2005,33 @@ async fn import_torrent(
         // own numbering when it was read off a title, so an
         // absolute-numbered file (`- 56` for episode 9 after 47 prior
         // episodes) matches by either.
-        let claims_this_episode = resolved.raw_episodes().chain(resolved.episodes()).any(|n| {
+        // The file's own number counts too, for grab rows that recorded a
+        // title's number as it was: a Search-page grab that auto-added the
+        // series before its offset was stored. Under the single absolute
+        // reading (#303) the title says which numbering the list is in,
+        // and only that one counts: with both, a grab for `[6]` (`- 07`)
+        // also claimed a stray `- 06` beside it (episode 5) and replaced
+        // the library's E05 with it. A title naming no episode cannot
+        // say: both count while the download holds this one video (a
+        // click on episode 7 before the split was stored, `[7]`, still
+        // owns its `- 07`), and only the series' reading once it holds
+        // more, where a raw number could claim a neighbor.
+        let (raw_counts, resolved_counts) = {
+            use crate::services::grab_commit::ListNumbering;
+            let absolute_only =
+                ctx.series.numbering().reading == crate::services::numbering::Reading::Absolute;
+            match grab_list_numbering(&ctx.series) {
+                ListNumbering::TitlesOwn => (true, false),
+                ListNumbering::Undecided if video_files.len() == 1 => (true, true),
+                ListNumbering::Series | ListNumbering::Undecided if absolute_only => (false, true),
+                ListNumbering::Series | ListNumbering::Undecided => (true, true),
+            }
+        };
+        let mut claim_numbers = resolved
+            .raw_episodes()
+            .filter(|_| raw_counts)
+            .chain(resolved.episodes().filter(|_| resolved_counts));
+        let claims_this_episode = claim_numbers.any(|n| {
             grab_claims_episode(
                 grab.is_batch,
                 routes_by_file.contains_key(file_idx),
@@ -1939,6 +2051,20 @@ async fn import_torrent(
             )
             .await;
             continue;
+        }
+        // #303 — A list recorded before the split was stored names the
+        // title's own number (`- 07` as `[7]`), and so does the `grabbed`
+        // tag row the grab wrote. The file lands one slot lower (E06), so
+        // nothing would ever fill or clear the row for 7: the Wanted page
+        // dropped the episode as downloading for good. The cleanup after
+        // the loop clears what this pass did not import.
+        if !grab.is_batch
+            && !routes_by_file.contains_key(file_idx)
+            && resolved
+                .episodes()
+                .any(|n| !grab.episode_numbers.contains(&n))
+        {
+            special_claims.push(grab.episode_numbers.clone());
         }
 
         let title_for = |ep: i32| -> String {
@@ -2767,7 +2893,9 @@ async fn import_torrent(
 
     // The picker (and auto-expand's backfill) wrote `grabbed` tag rows
     // for the episodes the grab claimed; a file that landed as a
-    // special never fills them, and nothing else would clear them.
+    // special, or in another slot than the list named (#303, a list
+    // recorded before a split offset was stored), never fills them, and
+    // nothing else would clear them.
     if !special_claims.is_empty() {
         let imported: HashSet<i32> = imported_eps_by_series
             .get(&grab.series_id)

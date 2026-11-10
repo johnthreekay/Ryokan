@@ -1,0 +1,259 @@
+{
+  "bucket": "pipe-dual-titles",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&q=Kaizoku&c=1_2",
+    "https://nyaa.si/?page=rss&q=Ironclad&c=1_2",
+    "https://nyaa.si/?page=rss&q=AnoZu&c=1_2",
+    "https://nyaa.si/?page=rss&q=GetItTwisted&c=1_2",
+    "https://nyaa.si/?page=rss&q=Movie+BD&c=1_2"
+  ],
+  "cases": [
+    {
+      "title": "[CRUCiBLE] Fena: Pirate Princess Season 1 (S01) (BD Remux 1080p FLAC H.264) [Dual Audio] | Kaizoku Oujo | 海賊王女",
+      "url": "https://nyaa.si/view/2014553",
+      "category": "1_2",
+      "expect": {
+        "group": "CRUCiBLE",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Ironclad] Sora wa Akai Kawa no Hotori - S01E17 [WEB.1080p.AV1] | Red River (Multi-Subs) (Weekly)",
+      "url": "https://nyaa.si/view/2179518",
+      "category": "1_2",
+      "expect": {
+        "group": "Ironclad",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          17
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[AnoZu] DARK MACHINE THE ANIMATION S01E03 1080p CR WEB-DL AAC 2.0 H.264 | Dark Machine: The Animation",
+      "url": "https://nyaa.si/view/2179485",
+      "category": "1_2",
+      "expect": {
+        "group": "AnoZu",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[Kaizoku] Jujutsu Kaisen Season 3 (WEB 1080p HEVC EAC-3) | The Culling Game Part 1",
+      "url": "https://nyaa.si/view/2101610",
+      "category": "1_2",
+      "expect": {
+        "group": "Kaizoku",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Hyperdimension Neptunia S01 [BD Remux 1080p AVC FLAC TrueHD Dual-Audio] | Choujigen Game Neptune The Animation",
+      "url": "https://nyaa.si/view/2167087",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Kampfer S01 [BD 1080p AVC Opus Dual-Audio] | Kämpfer",
+      "url": "https://nyaa.si/view/2156108",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Bodacious Space Pirates S01 v2 [BD 1080p AVC Opus Dual-Audio] | Mouretsu Pirates",
+      "url": "https://nyaa.si/view/2139220",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "version": 2,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] THE iDOLM@STER MOVIE: Beyond the Brilliant Future! (2014) [BD 1080p HEVC Opus] | The iDOLM@STER Movie: Kagayaki no Mukougawa e! | The Idolmaster Movie",
+      "url": "https://nyaa.si/view/2126418",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "year": 2014,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Samurai Girls S00E22-E23 [BD 1080p AVC Opus] | Hyakka Ryouran: Samurai After Specials",
+      "url": "https://nyaa.si/view/2105691",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          0
+        ],
+        "episodes": {
+          "first": 22,
+          "last": 23
+        },
+        "special": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Senran Kagura S02 [BD 1080p AVC Opus Dual-Audio] | Senran Kagura Shinovi Master: Tokyo Youma-hen | Season 2",
+      "url": "https://nyaa.si/view/2090171",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] FLCL Progressive (2018) v2 [BD 1080p HEVC Opus] | Fooly Cooly | Furi Kuri",
+      "url": "https://nyaa.si/view/2085107",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "version": 2,
+        "year": 2018,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Link Click S02 [BD 1080p AVC Opus AAC Dual-Audio] | Shiguang Dailiren II | Season 2",
+      "url": "https://nyaa.si/view/2073805",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Psycho-Pass S03 [BD 1080p HEVC Opus AAC Dual-Audio] | Psycho Pass 3 | Season 3",
+      "url": "https://nyaa.si/view/2078742",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          3
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Psycho-Pass Sinners of the System - Case.3 On the Other Side of Love and Hate (2019) v2 [BD Remux 1080p AVC FLAC DTS-HD AAC Dual-Audio] | Onshuu no Kanata ni",
+      "url": "https://nyaa.si/view/2075326",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "version": 2,
+        "year": 2019,
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Atelier Ryza: Ever Darkness & the Secret Hideout The Animation S01 [BD 1080p AVC Opus] | Ryza no Atelier: Tokoyami no Joou to Himitsu no Kakurega",
+      "url": "https://nyaa.si/view/2128678",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[GetItTwisted] Yohane the Parhelion: Sunshine in the Mirror S01 [BD Remux 1080p AVC FLAC] | Genjitsu no Yohane: Sunshine in the Mirror",
+      "url": "https://nyaa.si/view/2109278",
+      "category": "1_2",
+      "expect": {
+        "group": "GetItTwisted",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[PHTMini] Rascal Does Not Dream of Bunny Girl Senpai - S01 (BD 1080p AV1 Opus 2.0) (Multi-Audio) (German/Deutsch) | AoButa (Season 1)",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "PHTMini",
+        "batch": true,
+        "seasons": [
+          1
+        ],
+        "resolution": 1080
+      },
+      "verified": "hand"
+    }
+  ]
+}

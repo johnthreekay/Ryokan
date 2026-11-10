@@ -42,8 +42,9 @@ use sqlx::SqlitePool;
 use crate::AppState;
 use crate::models::{config, episode_tags, log::LogCategory, series};
 use crate::services::anilist::{self, AnimeEntry};
+use crate::services::release_title::SeriesAnchors;
 use crate::services::source::{self, ClassificationResult, WebKind};
-use crate::services::{logger, progress};
+use crate::services::{logger, media, progress};
 
 /// AniList lookups in flight at once during matching. Each call still
 /// goes through the AL throttle; this cap only stops a 200-series
@@ -386,7 +387,7 @@ async fn run_preview(state: AppState, id: String) -> Result<(), String> {
     )
     .await;
 
-    // Parsing is CPU-only but an anitomy pass per file over 50k files
+    // Parsing is CPU-only but a parse per file over 50k files
     // adds up; keep it off the runtime threads.
     let files: Vec<CandidateFile> = tokio::task::spawn_blocking(move || {
         walked.files.into_iter().map(candidate_from_raw).collect()
@@ -635,6 +636,7 @@ pub async fn match_groups(groups: &mut Vec<SeriesGroup>) {
     let mut results = stream::iter(owned.into_iter().enumerate())
         .map(|(i, mut g)| async move {
             search_and_rank(&mut g, true).await;
+            reread_with_pick(&mut g);
             // The TMDB mapping may split a season across AniList
             // entries, and absolute numbering may spread a folder
             // along the sequel chain; each group comes back as one
@@ -660,6 +662,35 @@ pub async fn match_groups(groups: &mut Vec<SeriesGroup>) {
     }
     finished.sort_by_key(|(i, _)| *i);
     *groups = finished.into_iter().flat_map(|(_, gs)| gs).collect();
+}
+
+/// Once a group has its pick, a number the picked series' own name holds
+/// is not a file's episode (`Mob Psycho 100 (BD).mkv`), and where the
+/// name is found a bare reading is the number right after it. The
+/// reading is recomputed from each file's name for the current pick (the
+/// plain reading with none), so a hand pick, a typed re-search or "none
+/// of these" replaces the previous pick's reading. A file whose name
+/// reads nothing keeps what the parse step gave it.
+fn reread_with_pick(g: &mut SeriesGroup) {
+    let anchors = g.pick.and_then(|i| g.candidates.get(i)).map(|entry| {
+        SeriesAnchors::new(&[
+            entry.title_romaji.as_str(),
+            entry.title_english.as_str(),
+            entry.title_native.as_str(),
+        ])
+        .with_specials_as_episodes(!media::is_tv_format(&entry.format))
+    });
+    for f in &mut g.files {
+        let Some(plain) = media::parse_file_path(&f.rel_path) else {
+            continue;
+        };
+        let read = match &anchors {
+            Some(anchors) => media::parse_file_path_for(&f.rel_path, anchors),
+            None => Some(plain),
+        };
+        f.episode = read.map(|s| s.first);
+        f.episode_count = read.map_or(1, |s| s.count());
+    }
 }
 
 /// Snapshot of a tracked series's episode tags, for the merge preview.
@@ -871,6 +902,7 @@ pub async fn pick_by_id(
     group.skipped = false;
     group.low_confidence = false;
     revert_renumbering(&mut group);
+    reread_with_pick(&mut group);
     resolve_existing(&state.db, &mut group).await;
     store_group(state, session_id, idx, group)
 }
@@ -893,6 +925,7 @@ pub async fn research_group(
     group.skipped = false;
     revert_renumbering(&mut group);
     search_and_rank(&mut group, false).await;
+    reread_with_pick(&mut group);
     resolve_existing(&state.db, &mut group).await;
     store_group(state, session_id, idx, group)
 }
@@ -915,6 +948,7 @@ pub async fn pick_candidate(
     group.skipped = false;
     group.low_confidence = false;
     revert_renumbering(&mut group);
+    reread_with_pick(&mut group);
     resolve_existing(&state.db, &mut group).await;
     store_group(state, session_id, idx, group)
 }
@@ -951,6 +985,74 @@ mod tests {
             special: false,
             source_episode: None,
         }
+    }
+
+    #[test]
+    fn the_picked_series_name_vetoes_its_own_number() {
+        let entry = AnimeEntry {
+            id: 1,
+            id_mal: None,
+            title_romaji: "Mob Psycho 100".into(),
+            title_english: "Mob Psycho 100".into(),
+            title_native: String::new(),
+            cover_url: String::new(),
+            format: "TV".into(),
+            status: "FINISHED".into(),
+            status_display: String::new(),
+            episodes: Some(12),
+            season_year: Some(2016),
+            source: "anilist".into(),
+            average_score: None,
+        };
+        let mut g = SeriesGroup {
+            key: "mob psycho 100".into(),
+            parsed_title: "Mob Psycho 100".into(),
+            season: None,
+            tmdb_season: None,
+            year: None,
+            query: "Mob Psycho 100".into(),
+            files: vec![
+                cf(
+                    "Mob/[G] Mob Psycho 100 (BD 1080p).mkv",
+                    Some("Mob Psycho 100"),
+                    None,
+                    Some(100),
+                    None,
+                ),
+                cf(
+                    "Mob/[G] Mob Psycho 100 - 05 (BD 1080p).mkv",
+                    Some("Mob Psycho 100"),
+                    None,
+                    Some(5),
+                    None,
+                ),
+            ],
+            candidates: vec![entry],
+            pick: Some(0),
+            low_confidence: false,
+            search_error: None,
+            skipped: false,
+            existing: None,
+            resolved_by_id: false,
+            mapping_note: None,
+            search_results: Vec::new(),
+        };
+        reread_with_pick(&mut g);
+        assert_eq!(g.files[0].episode, None);
+        assert_eq!(g.files[1].episode, Some(5));
+        // "None of these": the plain reading comes back.
+        g.pick = None;
+        reread_with_pick(&mut g);
+        assert_eq!(g.files[0].episode, Some(100));
+        // Another pick whose names the file does not hold reads it plainly.
+        let mut other = g.candidates[0].clone();
+        other.title_romaji = "Something Else".into();
+        other.title_english = String::new();
+        g.candidates.push(other);
+        g.pick = Some(1);
+        reread_with_pick(&mut g);
+        assert_eq!(g.files[0].episode, Some(100));
+        assert_eq!(g.files[1].episode, Some(5));
     }
 
     #[test]

@@ -1,0 +1,3155 @@
+{
+  "source": "src/NzbDrone.Core.Test/ParserTests/SingleEpisodeParserFixture.cs",
+  "repository": "https://github.com/Sonarr/Sonarr",
+  "commit": "8f8226786bad9804486368768a108ae3aec17101",
+  "license": "GPL-3.0-only",
+  "cases": [
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.With.Title.S02E15",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series With Title",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          15
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.and.a.Title.103.720p.HDTV.X264-DIMENSION",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series and a Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.and.a.Title.113.720p.HDTV.X264-DIMENSION",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series and a Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          13
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.and.a.Title.1013.720p.HDTV.X264-DIMENSION",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series and a Title",
+        "seasons": [
+          10
+        ],
+        "episodes": [
+          13
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.4x05.HDTV.XviD-LOL",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S03E06.DVDRip.XviD-WiDE",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          6
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S10E27.WS.DSR.XviD-2HD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          10
+        ],
+        "episodes": [
+          27
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.2010.S02E14.HDTV.XviD-LOL",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title 2010",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          14
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title 0 S01E19 720p WEB DL DD5 1 H 264 NT",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title 0",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          19
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "The Series Title S01E14 A Message Back 720p WEB DL DD5 1 H264 SURFER",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          14
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title S01E07 WS PDTV XviD FUtV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          7
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S03E19.DVDRip.XviD-OSiTV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          19
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S03E09 WS PDTV XviD FUtV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          9
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "5x10 WS PDTV XviD FUtV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          5
+        ],
+        "episodes": [
+          10
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.2009.S01E14.HDTV.XviD-LOL",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title 2009",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          14
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.1995.S03E20.HDTV.XviD-LOL",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title 1995",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          20
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S03E115.DVDRip.XviD-OSiTV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          115
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - S02E21 - 94 Meetings - 720p TV.mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          21
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "24-7 Series - Title - Road to the Sonarr - S01E03 - Episode 3.mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "24-7 Series - Title - Road to the Sonarr",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.Inc.S03E19.DVDRip.\"XviD\"-OSiTV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title Inc",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          19
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title-0 (2010) - 1x05 - Missing Title",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title-0 (2010)",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title-0 (2010) - 1x05 - Title",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title-0 (2010)",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - S06E13 - 5 to 9 [DVD]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          13
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - S02E21 - 18-5-4",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          21
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S01E07.21.0.Jump.Street.720p.WEB-DL.DD5.1.h.264-KiNGS",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          7
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.525",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          5
+        ],
+        "episodes": [
+          25
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - 10x12 - 24 Hour Propane People [SDTV]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          10
+        ],
+        "episodes": [
+          12
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title S01E06 3 Beers For Batali DVDRip XviD SPRiNTER",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          6
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "24 7 Series-Title - Road to the Sonarr Part01 720p HDTV x264 ORENJI",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "24 7 Series-Title - Road to the Sonarr",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "24 7 Series-Title - Road to the Sonarr Part 02 720p HDTV x264 ORENJI",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "24 7 Series-Title - Road to the Sonarr",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          2
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "24-7 Series-Title - Road to the Sonarr - S01E01 - Part 1",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "24-7 Series-Title - Road to the Sonarr",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S6E02-Unwrapped-(Playing With Food) - [DarkData]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          2
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S06E03-Unwrapped-(Number Ones Unwrapped) - [DarkData]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title S02E21 18 5 4 720p WEB DL DD5 1 h 264 EbP",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          21
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "01x04 - Halloween, Part 1 - 720p WEB-DL",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "series.s03.e05.ws.dvdrip.xvid-m00tv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "series",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "series.2009.416.hdtv-lol",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "series 2009",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          16
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "series.six-0.2010.217.hdtv-lol",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "series six-0 2010",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          17
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - S1936E18 - I Love to Singa",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1936
+        ],
+        "episodes": [
+          18
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series_Title!_-_7x6_-_The_Scarlett_Getter_[SDTV]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title!",
+        "seasons": [
+          7
+        ],
+        "episodes": [
+          6
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series_Title_-_1x1_-_Live_and_Learn_[HDTV-720p]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Top Series - 07x03 - 2005.11.70",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Top Series",
+        "seasons": [
+          7
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.S04E09.Swan.Song.1080p.WEB-DL.DD5.1.H.264-ECI",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          9
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S08E20 50-50 Carla [DVD]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          8
+        ],
+        "episodes": [
+          20
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series S08E20 50-50 Carla [DVD]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          8
+        ],
+        "episodes": [
+          20
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S02E10 6-50 to SLC [SDTV]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          10
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Developers & Coders S02E10 6-50 to SLC [SDTV]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Developers & Coders",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          10
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "The_Big_Series_Title_-_6x12_-_The_Code_Review_Equivalency_[HDTV-720p]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Big Series Title",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          12
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series_Title.19x06.720p_HDTV_x264-FoV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          19
+        ],
+        "episodes": [
+          6
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.S03E10.Alexandra.720p.WEB-DL.AAC2.0.H.264-CROM.mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          10
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "(Series of Title s03 e - \"Series of Title Season 3 Episode 10\"",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series of Title",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          10
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Hunters.Galatic.S05E607.720p.hdtv.x264",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Hunters Galatic",
+        "seasons": [
+          5
+        ],
+        "episodes": [
+          607
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Time.With.Dev1.And.Dev2.S01E20.720p.BluRay.x264-DEiMOS",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Time With Dev1 And Dev2",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          20
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.S01E04.2-45.PM.[HDTV-720p].mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S01E04",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "1x04",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "10.Lines.You.Know.About.Code.S02E04.Prohibition.HDTV.XviD-AFG",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "10 Lines You Know About Code",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "30 Series - S01E01 - Pilot.avi",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "30 Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "666 Series Title - S01E01",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "666 Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series 13 - S01E01",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series 13",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Don't Ever Trust The B---- in Code 23.S01E01",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Don't Ever Trust The B---- in Code 23",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Warehouse.13.S01E01",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Warehouse 13",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Never.Trust.The.B----.in.Code.23.S01E01",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Never Trust The B---- in Code 23",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "42 S01E01",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "42",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "69.S01E01",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "69",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - 2x12 - The Choice [HDTV-1080p].mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          12
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - 2x4 - New Car Smell [HDTV-1080p].mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          4
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Top Series - 06x11 - 2005.08.07",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Top Series",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          11
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "The_Series_US_s06e19_04.28.2014_hdtv.x264.Poke.mp4",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series US",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          19
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "the.Series.110.hdtv-lol",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "the Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          10
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "2009x09 [SDTV].avi",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          2009
+        ],
+        "episodes": [
+          9
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S2009E09 [SDTV].avi",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          2009
+        ],
+        "episodes": [
+          9
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Week S2009E09 [SDTV].avi",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Week",
+        "seasons": [
+          2009
+        ],
+        "episodes": [
+          9
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "St_Series_209_Aids_And_Comfort",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "St Series",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          9
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[Impatience] Series - 0x01 [720p][34073169].mkv",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          0
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S15.E06.City.Sushi",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          15
+        ],
+        "episodes": [
+          6
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - S15 E06 - City Code",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          15
+        ],
+        "episodes": [
+          6
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series S1-E1-WEB-DL-1080p-NZBgeek",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series S1E1-WEB-DL-1080p-NZBgeek",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.S010E16.720p.HDTV.X264-DIMENSION",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          10
+        ],
+        "episodes": [
+          16
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[ www.Torrenting.com ] - Series.2012.S02E17.720p.HDTV.X264-DIMENSION",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series 2012",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          17
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.2012.S02E18.720p.HDTV.X264-DIMENSION.mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series 2012",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          18
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - Season 1 - Episode 01 (Resolution).avi",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "5x09 - 100 [720p WEB-DL].mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          5
+        ],
+        "episodes": [
+          9
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "1x03 - 274 [1080p BluRay].mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "1x03 - The 112th Congress [1080p BluRay].mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.2012.S02E14.720p.HDTV.X264-DIMENSION [PublicHD].mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series 2012",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          14
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.2009.S06E03.720p.HDTV.X264-DIMENSION [PublicHD].mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series 2009",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "20-1.2014.S02E01.720p.HDTV.x264-CROOKS",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "20-1 2014",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - S01E09 - Debate 109",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          9
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - S02E02 - My Maserati Does 185",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          2
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "6x13 - The Series Show 100th Episode Special",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          13
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "The Series And the Show - S41 E10478 - 2014-08-15",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series And the Show",
+        "seasons": [
+          41
+        ],
+        "episodes": [
+          10478
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "The Series And the Show - S42 E10591 - 2015-01-27",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series And the Show",
+        "seasons": [
+          42
+        ],
+        "episodes": [
+          10591
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title [1x05] Episode Title",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title [S01E05] Episode Title",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title Season 01 Episode 05 720p",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "The Series And the Show - S42 E10713 - 2015-07-20.mp4",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series And the Show",
+        "seasons": [
+          42
+        ],
+        "episodes": [
+          10713
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.103.hdtv-lol[ettv].mp4",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - 01x02 - The Rooster Prince - [itz_theo]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          2
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series (2009) - [06x16] - Room 147.mp4",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series (2009)",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          16
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "grp-zoos01e11-1080p",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "grp-zoo",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          11
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "grp-zoo-s01e11-1080p",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "grp-zoo",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          11
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series!.S2016E14.2016-01-20.avi",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series!",
+        "seasons": [
+          2016
+        ],
+        "episodes": [
+          14
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "John.Smith.The.Series.Title.5of9.The.Universe.Of.Development.1990.DVDRip.x264-HANDJOB",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "John Smith The Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Judge Developer 2016 02 25 S20E142",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Judge Developer",
+        "seasons": [
+          20
+        ],
+        "episodes": [
+          142
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Judge Developer 2016 02 25 S20E143",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Judge Developer",
+        "seasons": [
+          20
+        ],
+        "episodes": [
+          143
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Red Show - S02 - E06 - Parallel Series",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Red Show",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          6
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "App.Sonarr.Made.in.Canada.Part.Two.720p.HDTV.x264-2HD",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "App Sonarr Made in Canada",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          2
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "The.100000.Series.Title.2016.S01E05.720p.HDTV.x264-W4F",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The 100000 Series Title 2016",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series S01E02 (22 October 2016) HDTV 720p [Webrip]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          2
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "this.is.a.show.2015.0308-yestv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "this is a show 2015",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          8
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - S2016E231",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          2016
+        ],
+        "episodes": [
+          231
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - 2016x231",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          2016
+        ],
+        "episodes": [
+          231
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Short.Series.S26E022.HDTV.x264-FiHTV",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Short Series",
+        "seasons": [
+          26
+        ],
+        "episodes": [
+          22
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Super.Series.S01.Ep06.1080p.BluRay.DTS.x264-MiR",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Super Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          6
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series 104 - S01E07 The Developers [SDTV]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series 104",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          7
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "11-02 The Series Reaction (HD).m4v",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          11
+        ],
+        "episodes": [
+          2
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Plus Series la title - S14E3533 FRENCH WEBRIP H.264 AAC (09.05.2018)",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Plus Series la title",
+        "seasons": [
+          14
+        ],
+        "episodes": [
+          3533
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "The Series - S01E02 - Earth Skills HDTV-1080p AVC DTS [EN+FR+ES+PT+DA+FI+NB+SV]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "The Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          2
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - S01E01 - Day 100 [SDTV]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S01.Ep.01.English.AC3.DL.1080p.BluRay-Sonarr",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S01.E.01.English.AC3.DL.1080p.BluRay-Sonarr",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S01.Ep01.English.AC3.DL.1080p.BluRay-Sonarr",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S01.E01.English.AC3.DL.1080p.BluRay-Sonarr",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.S01EP01.English.AC3.DL.1080p.BluRay-Sonarr",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "tvs-amgo-dd51-dl-7p-azhd-x264-103",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "tvs-amgo-dd51-dl-7p-azhd",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - S01E01 [AC3 5.1 Castellano][www.descargas2020.org]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - [02x01] - Episode 1",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.Title.Of.S01E01.xyz",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title Of",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[RlsGrp] Series Title - S01E27 - 24-Hour",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          27
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - S02E01 1920x910",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Anime Title - S2020E1527 [1527] [2020-10-11] - Episode Title",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Anime Title",
+        "seasons": [
+          2020
+        ],
+        "episodes": [
+          1527
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Anime Title - S2010E994 [0994] [2010-02-28] - Episode Title [x264 720p][AAC 2ch][HS][Shion+GakiDave]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Anime Title",
+        "seasons": [
+          2010
+        ],
+        "episodes": [
+          994
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - Temporada 2 [HDTV 720p][Cap.201][AC3 5.1 Castellano][www.pctnew.com]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - Temporada 2 [HDTV 720p][Cap.1901][AC3 5.1 Castellano][www.pctnew.com]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          19
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title 1x1",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "1x1",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title [2022] [S25E13] [PL] [720p] [WEB-DL-CZRG] [x264] ",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title [2022]",
+        "seasons": [
+          25
+        ],
+        "episodes": [
+          13
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series T Se.3 afl.3",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series T",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[Anime Chap] Anime Title! S01E09 [WEB 1080p] {OP & ED Lyrics} - Episode 9 (The Eminence in Shadow)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Anime Title!",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          9
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[Anime Chap] Anime Title! S01E12 [WEB 1080p] {OP & ED Lyrics} - Episode 12 (The Eminence in Shadow)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Anime Title!",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          12
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "SeriesTitle-S16E08-10426008-0.mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "SeriesTitle",
+        "seasons": [
+          16
+        ],
+        "episodes": [
+          8
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series-S07E12-31st_Century_Fox-[Bluray-1080p].mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          7
+        ],
+        "episodes": [
+          12
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "TheTitle-S12E13-3_Acts_of_God.mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "TheTitle",
+        "seasons": [
+          12
+        ],
+        "episodes": [
+          13
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title - Temporada 2 [HDTV 720p][Cap.408]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          8
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title [HDTV][Cap.104](website.com).avi",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          4
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title [HDTV][Cap.402](website.com).avi",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          2
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series Title [HDTV 720p][Cap.101](website.com).mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Босх: Спадок (S2E1) / Series: Legacy (S2E1) (2023) WEB-DL 1080p Ukr/Eng | sub Eng",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series: Legacy",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Босх: Спадок / Series: Legacy / S2E1 of 10 (2023) WEB-DL 1080p Ukr/Eng | sub Eng",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series: Legacy",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Titles.s06e01.1999.BDRip.1080p.Ukr.Eng.AC3.Hurtom.TNU.Tenax555",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Titles",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Titles.s06.01.1999.BDRip.1080p.Ukr.Eng.AC3.Hurtom.TNU.Tenax555",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Titles",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[Judas] Series Title (2024) - S01E14",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series Title (2024)",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          14
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[ReleaseGroup] SeriesTitle S01E1 Webdl 1080p",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "SeriesTitle",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[SubsPlus+] Series no Chill - S02E01 (NF WEB 1080p AVC AAC)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series no Chill",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[SubsPlus+] Series no Chill - S02E01v2 (NF WEB 1080p AVC AAC)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series no Chill",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - Temporada 1 - [HDTV 1080p][Cap.101](wolfmax4k.com)",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series [HDTV 1080p][Cap.101](wolfmax4k.com)",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series [HDTV 1080p][Cap. 101](wolfmax4k.com).mkv",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Amazing Title (2024/S01E07/DSNP/WEB-DL/1080p/ESP/EAC3 5.1/ING/EAC3 5.1 Atmos/SUBS) SPWEB",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Amazing Title (2024)",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          7
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Mini Title (Miniserie) (2024/S01E07/DSNP/WEB-DL/1080p/ESP/EAC3 5.1/ING/EAC3 5.1 Atmos/SUBS) SPWEB",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Mini Title (2024)",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          7
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.S006E18.Some.Title.Name-Part.1.1080p.WEB-DL.AAC2.0.H.264-Release",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          18
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series.2006.S006E18.Some.Title.Name-Part.1.1080p.WEB-DL.AAC2.0.H.264-Release",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series 2006",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          18
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "我的人间烟火.Fireworks.Series.S01E01.2023.V2.1080p.WEB-DL.H264.AAC-SeeWEB",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Fireworks Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Fireworks.Series.S01E01.2023.V2.1080p.WEB-DL.H264.AAC-SeeWEB",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Fireworks Series",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S3E3 - Seventeen Seconds [1080p]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S3E3 - Part 3 Seventeen Seconds [1080p]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "S03E03 - Part 3 Seventeen Seconds [1080p]",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "[VARYG] Series at Age 29 S01E03 Rirui and Anyango 1080p CR WEB-DL AAC2.0 H.264 (29-sai Dokushin Chuuken Boukensha no Nichijou, Multi-Subs)",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "Series at Age 29",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          3
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series S093E081 1080p ALL4 WEB-DL AAC2 0 H 264-JJUNAHJAMESON",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          93
+        ],
+        "episodes": [
+          81
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series S87E136 1080p WEB-DL x264-NGP",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          87
+        ],
+        "episodes": [
+          136
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series S092E001 1080p ALL4 WEB-DL AAC2 0 H 264-JJunahJameson",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          92
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series s90 e43 1080p HDTV AAC H264",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          90
+        ],
+        "episodes": [
+          43
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - S3E10 - Episode #3.10 - rus 720p WEBDL (LostFilm)",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          10
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_single_episode",
+      "title": "Series - S03E10 - Episode #3.10 - rus 720p WEBDL (LostFilm)",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          10
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_japanese_variety_show_format",
+      "title": "221208 ABC123 Series Title Season 39 ep11.mp4",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "ABC123 Series Title",
+        "seasons": [
+          39
+        ],
+        "episodes": [
+          11
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_japanese_variety_show_format",
+      "title": "221208 ABC123 Series Title ep34[1080p60 H264].mp4",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "ABC123 Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          34
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_japanese_variety_show_format",
+      "title": "221205 ABC123 17研究所！ #17.ts",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "ABC123 17研究所！",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          17
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_japanese_variety_show_format",
+      "title": "221201 Series Title! ABC123 ep219[720p.h264].mp4",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title! ABC123",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          219
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_japanese_variety_show_format",
+      "title": "221206 Series Title! ep08(Tanaka Miku).ts",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title!",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          8
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_japanese_variety_show_format",
+      "title": "210810 ABC123 Series Title ep05.mp4",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "ABC123 Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          5
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_japanese_variety_show_format",
+      "title": "221204 乃木坂工事中 ep389.mp4",
+      "kind": "release",
+      "scope": "anime",
+      "sonarr": {
+        "series_title": "乃木坂工事中",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          389
+        ],
+        "absolute": [],
+        "full_season": false
+      }
+    },
+    {
+      "method": "should_parse_decimal_number_as_special",
+      "title": "Series Title S01E11.5 [SP]-The Poppies Bloom Red on the Battlefield",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          1
+        ],
+        "episodes": [
+          11
+        ],
+        "absolute": [],
+        "full_season": false,
+        "special": true
+      }
+    },
+    {
+      "method": "should_parse_split_episode",
+      "title": "Series.Title.S06E01b.Fade.Out.Fade.in.Part.2.1080p.DSNP.WEB-DL.AAC2.0.H.264-FLUX",
+      "kind": "release",
+      "scope": "scene",
+      "sonarr": {
+        "series_title": "Series Title",
+        "seasons": [
+          6
+        ],
+        "episodes": [
+          1
+        ],
+        "absolute": [],
+        "full_season": false,
+        "split_episode": true
+      }
+    }
+  ]
+}

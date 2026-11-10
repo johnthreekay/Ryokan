@@ -9,7 +9,8 @@
 #
 # All listed licenses are GPL-3.0-compatible (Ryokan ships GPL); MPL-2.0
 # is the special case — it's a weak per-file copyleft, GPL-compatible at
-# the combined-work level, and applies to anitomy / anitomy-sys.
+# the combined-work level, and applies to cssparser / selectors (via the
+# HTML sanitizer's dependency tree).
 
 accepted = [
     "Apache-2.0",
@@ -19,7 +20,7 @@ accepted = [
     "ISC",
     "MIT",
     "MIT-0",                 # MIT-zero, no attribution required (still safe to include)
-    "MPL-2.0",               # anitomy / anitomy-sys
+    "MPL-2.0",               # cssparser / dtoa-short / selectors
     "Unicode-3.0",           # ICU / Unicode tables
     "Zlib",
 ]

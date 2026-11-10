@@ -41,6 +41,20 @@ pub struct AliasSet {
     pub own: Vec<String>,
     pub siblings: Vec<String>,
     pub expected_season: i32,
+    /// Title segments naming the franchise, not the series (issue #300).
+    pub franchise_names: Vec<String>,
+    /// The series' franchise, when known (see `verdict::apply_identity`).
+    pub franchise: Option<std::sync::Arc<crate::services::identify::Franchise>>,
+}
+
+impl AliasSet {
+    pub fn with_franchise(
+        mut self,
+        franchise: std::sync::Arc<crate::services::identify::Franchise>,
+    ) -> Self {
+        self.franchise = Some(franchise);
+        self
+    }
 }
 
 /// Own titles plus synonyms, and every related entry's titles plus the
@@ -75,6 +89,8 @@ pub fn aliases_from_detail(detail: &AnimeDetail, filenames: &[String]) -> AliasS
         own,
         siblings: auto_search::dedupe_strings(siblings),
         expected_season: auto_search::infer_season_from_detail(detail),
+        franchise_names: auto_search::franchise_names(detail),
+        franchise: None,
     }
 }
 
@@ -93,7 +109,14 @@ pub async fn aliases_for_grab(
         .unwrap_or_default();
     if let Ok(Some(cached)) = metadata_cache::get_by_series_id(db, grab.series_id).await {
         let detail = auto_search::with_alternate_titles(cached.detail, &alt);
-        return Some(aliases_from_detail(&detail, filenames));
+        let offset = row.as_ref().map_or(0, |r| r.cumulative_prior_episodes);
+        let alternates = row
+            .as_ref()
+            .map(|r| r.alternate_title_list())
+            .unwrap_or_default();
+        let franchise =
+            crate::services::identify::load_franchise(db, &detail, offset, &alternates).await;
+        return Some(aliases_from_detail(&detail, filenames).with_franchise(franchise));
     }
     let row = row?;
     let mut own = vec![
@@ -108,6 +131,8 @@ pub async fn aliases_for_grab(
         own,
         siblings: Vec::new(),
         expected_season: 0,
+        franchise_names: Vec::new(),
+        franchise: None,
     })
 }
 
@@ -130,7 +155,7 @@ pub async fn assess_and_stamp(
         let _ = grabbed_torrents::stamp_verification(db, grab.id, "whitelisted", &detail).await;
         return verdict;
     }
-    // Pure CPU (regex normalization and an anitomy parse per path
+    // Pure CPU (regex normalization and a title parse per path
     // segment) over every file times every alias; a large pack with
     // a wide sibling set is milliseconds of work that must not sit on
     // a Tokio worker.
@@ -139,12 +164,16 @@ pub async fn assess_and_stamp(
         let siblings = aliases.siblings.clone();
         let files = filenames.to_vec();
         let expected_season = aliases.expected_season;
+        let franchise_names = aliases.franchise_names.clone();
+        let franchise = aliases.franchise.clone();
         tokio::task::spawn_blocking(move || {
             assess(&VerdictInput {
                 own_aliases: &own,
                 sibling_aliases: &siblings,
                 filenames: &files,
                 expected_season,
+                franchise_names: &franchise_names,
+                franchise: franchise.as_deref(),
             })
         })
         .await
@@ -647,6 +676,8 @@ mod tests {
             own: vec!["Kowaremono: Risa THE ANIMATION".to_string()],
             siblings: Vec::new(),
             expected_season: 0,
+            franchise_names: Vec::new(),
+            franchise: None,
         };
         let verdict = assess_and_stamp(&db, &grab, &[GRISAIA.to_string()], &aliases).await;
         assert!(matches!(verdict, Verdict::Verified { .. }), "{verdict:?}");

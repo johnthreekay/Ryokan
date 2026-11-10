@@ -1,0 +1,337 @@
+{
+  "about": "Sonarr cases where release_title deliberately reads the title differently, with the reason.",
+  "cases": [
+    {
+      "title": "[SFW-sage] Some Anime Show S3 - 12 [720p][D07C91FC]",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "[HorribleSubs] Series Title! S2 - 07 [720p]",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "Series Title (2010) {01} Episode Title (1).hdtv-720p",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series Title S03 - EP14 VOSTFR [1080p] [HardSub] Yass'Kun",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "Series Title S3 -  15 VOSTFR [720p]",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "A Series: RE S2 - Episode 4 VOSTFR (1080p)",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "To Another Series III - Episode 5 VOSTFR (1080p)",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "[HorribleSubs] Series 100 S2 - 07 [1080p].mkv",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "[XKsub] Series Title S2 [05][HEVC-10bit 1080p AAC][CHS&CHT&JPN]",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "Anime Title S21 999",
+      "reason": "Ryokan reads `S21` as a season marker; Sonarr treats it as part of the series title."
+    },
+    {
+      "title": "Anime Title S21 1000",
+      "reason": "Ryokan reads `S21` as a season marker; Sonarr treats it as part of the series title."
+    },
+    {
+      "title": "Anime Title 100 S3 - 01 (1080p) [5A493522]",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "[SubsPlease] Anime Title 100 S3 - 01 (1080p) [5A493522]",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "Different show 1. Bölüm (23.10.2023) 720p WebDL AAC H.264 - TURG",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "[SubsPlease] Title de Series S2 - 03 (540p) [63501322]",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "[Naruto-Kun.Hu] Dr Series S3 - 21 [1080p]",
+      "reason": "Ryokan reads a season marker right before the episode (`S2 - 07`, `III - Episode 5`, `S2 [05]`) as that episode's season; Sonarr keeps it in the series title and reads an absolute number."
+    },
+    {
+      "title": "[DeadFish] Another Anime Show - 01 - Special [BD][720p][AAC]",
+      "reason": "Ryokan flags a special and leaves its season unset; Sonarr reports season 0."
+    },
+    {
+      "title": "[DeadFish] Another Anime Show - 01 - OVA [BD][720p][AAC]",
+      "reason": "Ryokan flags a special and leaves its season unset; Sonarr reports season 0."
+    },
+    {
+      "title": "[DeadFish] Another Anime Show - 01 - OVD [BD][720p][AAC]",
+      "reason": "Ryokan flags a special and leaves its season unset; Sonarr reports season 0."
+    },
+    {
+      "title": "[Underwater] Another OVA - The Other -Karma- (BD 1080p) [3A561D0E].mkv",
+      "reason": "Ryokan flags a special and leaves its season unset; Sonarr reports season 0."
+    },
+    {
+      "title": "[sam] Long Series - NCOP [BD 1080p FLAC] [BBC3BC68].mkv",
+      "reason": "Ryokan classifies creditless OP/ED as extras, not specials."
+    },
+    {
+      "title": "[sam] Long Series - NCED [BD 1080p FLAC] [BBC3BC68].mkv",
+      "reason": "Ryokan classifies creditless OP/ED as extras, not specials."
+    },
+    {
+      "title": "[Group] Title S1 05 [1080p]",
+      "reason": "A season marker followed by one bare number is that season's episode in Ryokan (`S1 05`, `S01 04`); Sonarr reads a season pack or a multi-season range."
+    },
+    {
+      "title": "921.mkv",
+      "reason": "A file name read without its release folder; Sonarr's ParsePath falls back to the folder name. Ryokan's file reading owns this case."
+    },
+    {
+      "title": "[Dae-P9] Anime Series - 05.5 - S00E01 - Marrying by Contesting (BD 1080p HEVC FLAC AAC) [Dual Audio] [5BCD56B8]",
+      "reason": "A half episode (`17.5`) names no slot in Ryokan even when an `S00E01` tag follows; Sonarr reads the tag."
+    },
+    {
+      "title": "[Thighs] Anime Reincarnation - 17.5 (S00E01) (BD 1080p FLAC AAC) [Dual-Audio] [A6E2110E]",
+      "reason": "A half episode (`17.5`) names no slot in Ryokan even when an `S00E01` tag follows; Sonarr reads the tag."
+    },
+    {
+      "title": "[sam] Anime - 15.5 (S00E01) [BD 1080p FLAC] [3E8D676D]",
+      "reason": "A half episode (`17.5`) names no slot in Ryokan even when an `S00E01` tag follows; Sonarr reads the tag."
+    },
+    {
+      "title": "[Kaleido-subs] Sky Series - 07.5 (S00E01) - (BD 1080p HEVC x265 10-bit Opus 2.0) [A548C980].mkv",
+      "reason": "A half episode (`17.5`) names no slot in Ryokan even when an `S00E01` tag follows; Sonarr reads the tag."
+    },
+    {
+      "title": "Series.Title.103.104.720p.HDTV.X264-DIMENSION",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "the.Series.101.102.hdtv-lol",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series.10708.hdtv-lol.mp4",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series.10910.hdtv-lol.mp4",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "E.010910.HDTVx264REPACKLOL.mp4",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "The Series And The Code - S42 Ep10718 - Ep10722",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "The Series And The Code - S42 Ep10688 - Ep10692",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "grp-zoos01e11e12-1080p",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series.Title.E07-E08.180612.1080p-NEXT",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series Title? E11-E12 1080p HDTV AAC H.264-NEXT",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "13 Series Se.1 afl.2-3-4 [VTM]",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series T Se.3 afl.3 en 4",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series falls - Temporada 1 [HDTV][Cap.111_120]",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series S 01 720p WEB DL DD 5 1 h264 TjHD",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series Title - Series 1 (1970) DivX",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series Title / S1E1-8 of 8 [2024, WEB-DL 1080p] + Original + RUS",
+      "reason": "Ryokan keeps a complete episode range (`S1E1-8 of 8`) as an episode claim, still a batch; Sonarr folds it into a full season."
+    },
+    {
+      "title": "Series Title / S2E1-16 of 16 [2022, WEB-DL] RUS",
+      "reason": "Ryokan keeps a complete episode range (`S1E1-8 of 8`) as an episode claim, still a batch; Sonarr folds it into a full season."
+    },
+    {
+      "title": "Series Title S01 04 (1080p BluRay x265 HEVC 10bit AAC 5.1 Vyndros)",
+      "reason": "A season marker followed by one bare number is that season's episode in Ryokan (`S1 05`, `S01 04`); Sonarr reads a season pack or a multi-season range."
+    },
+    {
+      "title": "Series.and.a.Title.103.720p.HDTV.X264-DIMENSION",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series.and.a.Title.113.720p.HDTV.X264-DIMENSION",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series.and.a.Title.1013.720p.HDTV.X264-DIMENSION",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series.Title.525",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "24 7 Series-Title - Road to the Sonarr Part01 720p HDTV x264 ORENJI",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "24 7 Series-Title - Road to the Sonarr Part 02 720p HDTV x264 ORENJI",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "series.2009.416.hdtv-lol",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "series.six-0.2010.217.hdtv-lol",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "the.Series.110.hdtv-lol",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "St_Series_209_Aids_And_Comfort",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series S1-E1-WEB-DL-1080p-NZBgeek",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series.103.hdtv-lol[ettv].mp4",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "grp-zoos01e11-1080p",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "John.Smith.The.Series.Title.5of9.The.Universe.Of.Development.1990.DVDRip.x264-HANDJOB",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "App.Sonarr.Made.in.Canada.Part.Two.720p.HDTV.x264-2HD",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "this.is.a.show.2015.0308-yestv",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "11-02 The Series Reaction (HD).m4v",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "tvs-amgo-dd51-dl-7p-azhd-x264-103",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series Title - Temporada 2 [HDTV 720p][Cap.201][AC3 5.1 Castellano][www.pctnew.com]",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series Title - Temporada 2 [HDTV 720p][Cap.1901][AC3 5.1 Castellano][www.pctnew.com]",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series T Se.3 afl.3",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series Title - Temporada 2 [HDTV 720p][Cap.408]",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series Title [HDTV][Cap.104](website.com).avi",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series Title [HDTV][Cap.402](website.com).avi",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series Title [HDTV 720p][Cap.101](website.com).mkv",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Titles.s06.01.1999.BDRip.1080p.Ukr.Eng.AC3.Hurtom.TNU.Tenax555",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "Series - Temporada 1 - [HDTV 1080p][Cap.101](wolfmax4k.com)",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series [HDTV 1080p][Cap.101](wolfmax4k.com)",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "Series [HDTV 1080p][Cap. 101](wolfmax4k.com).mkv",
+      "reason": "Language-specific scene format not used by anime releases (Spanish `Cap.`, Dutch `afl.`, Turkish `Bölüm`, `{01}`)."
+    },
+    {
+      "title": "221208 ABC123 Series Title ep34[1080p60 H264].mp4",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "221205 ABC123 17研究所！ #17.ts",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "221201 Series Title! ABC123 ep219[720p.h264].mp4",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "221206 Series Title! ep08(Tanaka Miku).ts",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "210810 ABC123 Series Title ep05.mp4",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "221204 乃木坂工事中 ep389.mp4",
+      "reason": "Scene-only format outside anime release naming (compact season-episode numbers like `103`, daily dates, Sonarr's season-1 assumption for episode-only titles, spaced `S 01`, British `Series 1`, five-digit episode numbers)."
+    },
+    {
+      "title": "【悠哈璃羽字幕社＆拉斯观测组】[刀剑神域Alicization _ Anime Series Title ][17][x264 1080p][CHS]",
+      "reason": "Full-width characters are normalized to ASCII (`＆` becomes `&`)."
+    },
+    {
+      "title": "[OPFans楓雪動漫][ANIME SERIES 海賊王][第1008話][典藏版][1080P][MKV][簡繁]",
+      "reason": "Ryokan keeps the whole leading bracket as the group (`OPFans楓雪動漫`); Sonarr trims the CJK suffix."
+    }
+  ]
+}

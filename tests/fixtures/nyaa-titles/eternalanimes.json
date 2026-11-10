@@ -1,0 +1,542 @@
+{
+  "bucket": "eternalanimes",
+  "scraped": "2026-10-28",
+  "queries": [
+    "https://nyaa.si/?page=rss&u=EternalAnimes"
+  ],
+  "cases": [
+    {
+      "title": "[EA]Re_Zero_kara_Hajimeru_Isekai_Seikatsu_4th_Season_01-19_End_[1920x1080][HEVC]",
+      "url": "https://nyaa.si/view/2169787",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 19
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Re_Zero_kara_Hajimeru_Isekai_Seikatsu_4th_Season_01-11_[1920x1080][HEVC]",
+      "url": "https://nyaa.si/view/2130783",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "seasons": [
+          4
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 11
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Re_Zero_kara_Hajimeru_Isekai_Seikatsu_4th_04_V2_[1920x1080][HEVC][0E7204DD].mkv",
+      "url": "https://nyaa.si/view/2108897",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "seasons": [
+          4
+        ],
+        "episodes": [
+          4
+        ],
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+          "Re:ZERO -Starting Life in Another World- Season 4"
+        ],
+        "episodes": [
+          4
+        ]
+      },
+      "verified": "hand",
+      "note": "EA drops the word Season: a bare ordinal before an episode is a season marker"
+    },
+    {
+      "title": "[EA]Re_Zero_kara_Hajimeru_Isekai_Seikatsu_3rd_09_[1920x1080]HEVC][A4546444].mkv",
+      "url": "https://nyaa.si/view/1931976",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          9
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "malformed bracket in the original"
+    },
+    {
+      "title": "[EA]Oshi_no_Ko_2nd_Season_12_[1920x1080][HEVC][AA83802C].mkv",
+      "url": "https://nyaa.si/view/1903339",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          12
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Oshi no Ko 2nd Season",
+          "[Oshi no Ko] Season 2"
+        ],
+        "episodes": [
+          12
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Tate_no_Yuusha_no_Nariagari_Season_3_03_[1920x1080][BDRIP][HEVC][2014D6F8].mkv",
+      "url": "https://nyaa.si/view/1983028",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "seasons": [
+          3
+        ],
+        "episodes": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Kage_no_Jitsuryokusha_ni_Naritakute!_2nd_Season_05_[1920x1080][HEVC][62508F6A].mkv",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "EA",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Kage no Jitsuryokusha ni Naritakute! 2nd season",
+          "The Eminence in Shadow Season 2"
+        ],
+        "episodes": [
+          5
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Goblin_Slayer_II_05_[1920x1080][HEVC][20035ABA].mkv",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "EA",
+        "seasons": [
+          2
+        ],
+        "episodes": [
+          5
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Goblin Slayer II"
+        ],
+        "episodes": [
+          5
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Kimetsu_no_Yaiba_-_Hashira_Geiko-hen_02_V2_[1920x1080][HEVC][0A086471].mkv",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "EA",
+        "ambiguous": 2,
+        "version": 2,
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Kimetsu no Yaiba: Hashira Geiko-hen",
+          "Demon Slayer: Kimetsu no Yaiba Hashira Training Arc"
+        ],
+        "episodes": [
+          2
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Dark_Gathering_24_[1920x1080][HEVC][831E9094].mkv",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "EA",
+        "ambiguous": 24,
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Dark Gathering"
+        ],
+        "episodes": [
+          24
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Anne_Shirley_10_[1920x1080][HEVC][FE72770C].mkv",
+      "url": "https://nyaa.si/view/2022662",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "ambiguous": 10,
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Anne Shirley"
+        ],
+        "episodes": [
+          10
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Silent_Witch_-_Chinmoku_no_Majo_no_Kakushigoto_12_[1920x1080][HEVC][59362A8E].mkv",
+      "url": "https://nyaa.si/view/2054274",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "ambiguous": 12,
+        "resolution": 1080,
+        "batch": false
+      },
+      "series": {
+        "aliases": [
+          "Silent Witch: Chinmoku no Majo no Kakushigoto",
+          "Secrets of the Silent Witch"
+        ],
+        "episodes": [
+          12
+        ]
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Fate_Apocrypha_01-25_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/2164789",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 25
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Silent_Witch_-_Chinmoku_no_Majo_no_Kakushigoto_01-13_End_[1920x1080][HEVC]",
+      "url": "https://nyaa.si/view/2086244",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 13
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Mushoku_Tensei_-_Isekai_Ittara_Honki_Dasu_2nd_01-12+OVA_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/2073235",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Fate_Extra_-_Last_Encore_01-10_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/2029180",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 10
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Fate_Extra_-_Last_Encore_-Illustrias_Tendousetsu-_01-03_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/2029571",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 3
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Goblin_Slayer_-_Goblin's_Crown_[1920x1080][BDRIP][HEVC][Flac].mkv",
+      "url": "https://nyaa.si/view/2053329",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "movie, single file"
+    },
+    {
+      "title": "[EA]Planetarian_~Chiisana_Hoshi_no_Yume~_01-05_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/2024337",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 5
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Kono_Subarashii_Sekai_ni_Shukufuku_wo!_Kurenai_Densetsu_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/1997228",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "movie folder"
+    },
+    {
+      "title": "[EA]One_Punch_Man_2_01-12_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/1982036",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Nier_Automata_Ver1.1a_01-12_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/1962378",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Kimetsu_no_Yaiba_-_Mugen_Ressha-hen_01-07_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/1962360",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 7
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Fate_Stay_Night_-_Heaven's_Feel_III_-_spring_song_[1920x1080][BDRIP][HEVC][4C01F612].mkv",
+      "url": "https://nyaa.si/view/1962339",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "seasons": [
+          3
+        ],
+        "resolution": 1080,
+        "batch": false
+      },
+      "verified": "hand",
+      "note": "movie; III is the movie number and matches the AniList entry's own III"
+    },
+    {
+      "title": "[EA]Super_Cub_01-12_End_[1920x1080][BDRIP][Hi10p][Flac]",
+      "url": "https://nyaa.si/view/1907473",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Kono_Subarashii_Sekai_ni_Shukufuku_wo!_2_01-10+OVA_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/1986476",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 10
+        },
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Dark_Gathering_01-25_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/2164206",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 25
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]DanMachi_01-13+OVA_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 1,
+          "last": 13
+        },
+        "includes_specials": true,
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]DanMachi_II_01-12_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": "https://nyaa.si/view/1908985",
+      "category": "1_3",
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "seasons": [
+          2
+        ],
+        "episodes": {
+          "first": 1,
+          "last": 12
+        },
+        "resolution": 1080
+      },
+      "verified": "hand"
+    },
+    {
+      "title": "[EA]Fate_Grand_Order_-_Zettai_Majuu_Sensen_Babylonia_00-21_End_[1920x1080][BDRIP][HEVC][Flac]",
+      "url": null,
+      "category": null,
+      "expect": {
+        "group": "EA",
+        "batch": true,
+        "episodes": {
+          "first": 0,
+          "last": 21
+        },
+        "resolution": 1080
+      },
+      "verified": "hand",
+      "note": "range starts at episode 0 (a prologue), recorded as written"
+    }
+  ]
+}

@@ -1,0 +1,331 @@
+{
+  "name": "kimetsu-no-yaiba",
+  "roots": [
+    101922
+  ],
+  "nodes": [
+    {
+      "id": 101922,
+      "mal_id": 38000,
+      "title_romaji": "Kimetsu no Yaiba",
+      "title_english": "Demon Slayer: Kimetsu no Yaiba",
+      "title_native": "鬼滅の刃",
+      "synonyms": [
+        "KnY",
+        "Kimetsu no Yaiba: Kyoudai no Kizuna",
+        "Demon Slayer: Kimetsu no Yaiba: Bonds of Siblings",
+        "鬼滅の刃-兄妹の絆-",
+        "鬼灭之刃",
+        "הלהב קוטל השדים",
+        "قاتل الشياطين",
+        "ดาบพิฆาตอสูร",
+        "Miecz zabójcy demonów – Kimetsu no Yaiba",
+        " Guardians de la nit: Kimetsu no Yaiba",
+        "İblis Keser",
+        "ΚΥΝΗΓΟΣ ΔΑΙΜΟΝΩΝ: KIMETSU NO YAIBA",
+        "Zabiják démonů",
+        "شیطان کش",
+        "귀멸의 칼날",
+        "Истребитель демонов",
+        "Клинок, рассекающий демонов"
+      ],
+      "format": "TV",
+      "episodes": 26,
+      "season_year": 2019,
+      "end_year": 2019
+    },
+    {
+      "id": 112151,
+      "mal_id": 40456,
+      "title_romaji": "Kimetsu no Yaiba: Mugen Ressha-hen",
+      "title_english": "Demon Slayer -Kimetsu no Yaiba- The Movie: Mugen Train",
+      "title_native": "鬼滅の刃 無限列車編",
+      "synonyms": [
+        "KnY Movie",
+        "Els Guardians de la Nit: El Tren Infinit",
+        "Guardianes de la Noche: Tren Infinito",
+        "Demon Slayer: Mugen Treni",
+        "Demon Slayer: Il Treno Mugen",
+        "鬼灭之刃：无限列车篇",
+        "قاتل الشياطين الفيلم: قطار اللانهاية",
+        "ดาบพิฆาตอสูร เดอะมูฟวี่ : ศึกรถไฟสู่นิรันดร์",
+        "Demon Slayer: Kimetsu no Yaiba - Le film : Le train de l'Infini",
+        "ΚΥΝΗΓΟΣ ΔΑΙΜΟΝΩΝ: KIMETSU NO YAIBA – Η ΤΑΙΝΙΑ: ΤΟ ΤΡΕΝΟ ΜΟΥΓΚΕΝ",
+        "극장판 귀멸의 칼날: 무한열차편",
+        "Клинок, Рассекающий Демонов: Бесконечный Поезд"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2020,
+      "end_year": 2020
+    },
+    {
+      "id": 129874,
+      "mal_id": 49926,
+      "title_romaji": "Kimetsu no Yaiba: Mugen Ressha-hen (TV)",
+      "title_english": "Demon Slayer: Kimetsu no Yaiba Mugen Train Arc",
+      "title_native": "鬼滅の刃 無限列車編 (TV)",
+      "synonyms": [
+        "KnY 2",
+        "ดาบพิฆาตอสูร : ศึกรถไฟสู่นิรันดร์ (TV)",
+        "鬼灭之刃 无限列车篇",
+        "Demon Slayer: Kimetsu no Yaiba: Le train de l'Infini",
+        "Demon Slayer: Kimetsu no Yaiba season 2",
+        "Miecz zabójcy demonów – Kimetsu no Yaiba: Nieskończony Pociąg",
+        "귀멸의 칼날: 무한열차편",
+        "Клинок, Рассекающий Демонов: Бесконечный Поезд"
+      ],
+      "format": "TV",
+      "episodes": 7,
+      "season_year": 2021,
+      "end_year": 2021
+    },
+    {
+      "id": 142329,
+      "mal_id": 47778,
+      "title_romaji": "Kimetsu no Yaiba: Yuukaku-hen",
+      "title_english": "Demon Slayer: Kimetsu no Yaiba Entertainment District Arc",
+      "title_native": "鬼滅の刃 遊郭編",
+      "synonyms": [
+        "KnY 2",
+        "Demon Slayer: Kimetsu no Yaiba - Le quartier des plaisirs",
+        "ดาบพิฆาตอสูร ภาค 2 บทย่านเริงรมย์",
+        "Miecz zabójcy demonów – Kimetsu no Yaiba: Dzielnica uciech",
+        "귀멸의 칼날: 환락의 거리편",
+        "Клинок, Рассекающий Демонов: Квартал Красных Фонарей"
+      ],
+      "format": "TV",
+      "episodes": 11,
+      "season_year": 2022,
+      "end_year": 2022
+    },
+    {
+      "id": 145139,
+      "mal_id": 51019,
+      "title_romaji": "Kimetsu no Yaiba: Katanakaji no Sato-hen",
+      "title_english": "Demon Slayer: Kimetsu no Yaiba Swordsmith Village Arc",
+      "title_native": "鬼滅の刃 刀鍛冶の里編",
+      "synonyms": [
+        "KnY 3",
+        "ดาบพิฆาตอสูร ภาค 3 บทหมู่บ้านช่างตีดาบ",
+        "Demon Slayer: Kimetsu no Yaiba - Le village des forgerons",
+        "Истребитель демонов: Kimetsu no Yaiba. Деревня кузнецов",
+        "Miecz zabójcy demonów – Kimetsu no Yaiba: Wioska płatnerzy"
+      ],
+      "format": "TV",
+      "episodes": 11,
+      "season_year": 2023,
+      "end_year": 2023
+    },
+    {
+      "id": 166240,
+      "mal_id": 55701,
+      "title_romaji": "Kimetsu no Yaiba: Hashira Geiko-hen",
+      "title_english": "Demon Slayer: Kimetsu no Yaiba Hashira Training Arc",
+      "title_native": "鬼滅の刃 柱稽古編",
+      "synonyms": [
+        "KnY 4",
+        "Demon Slayer: Kimetsu no Yaiba - L'entraînement des Piliers",
+        "Miecz zabójcy demonów – Kimetsu no Yaiba: Trening Filarów",
+        "Клинок, рассекающий демонов: Тренировка столпов"
+      ],
+      "format": "TV",
+      "episodes": 8,
+      "season_year": 2024,
+      "end_year": 2024
+    },
+    {
+      "id": 178788,
+      "mal_id": 59192,
+      "title_romaji": "Kimetsu no Yaiba: Mugenjou-hen Movie 1 - Akaza Sairai",
+      "title_english": "Demon Slayer: Kimetsu no Yaiba Infinity Castle",
+      "title_native": "劇場版「鬼滅の刃」無限城編 第一章 猗窩座再来",
+      "synonyms": [
+        "Demon Slayer: Kimetsu no Yaiba La Forteresse infinie",
+        "Demon Slayer: Kimetsu no Yaiba Castelo Infinito",
+        "Клинок, Рассекающий Демонов: Бесконечный Замок"
+      ],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": 2025,
+      "end_year": 2025
+    },
+    {
+      "id": 195200,
+      "mal_id": 62546,
+      "title_romaji": "Kimetsu no Yaiba: Mugenjou-hen Movie 2",
+      "title_english": "Demon Slayer: Kimetsu no Yaiba Infinity Castle Part 2",
+      "title_native": "劇場版「鬼滅の刃」無限城編 第二章",
+      "synonyms": [],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": null,
+      "end_year": null
+    },
+    {
+      "id": 195201,
+      "mal_id": 62547,
+      "title_romaji": "Kimetsu no Yaiba: Mugenjou-hen Movie 3",
+      "title_english": "",
+      "title_native": "劇場版「鬼滅の刃」無限城編 第終章",
+      "synonyms": [],
+      "format": "MOVIE",
+      "episodes": 1,
+      "season_year": null,
+      "end_year": null
+    }
+  ],
+  "edges": [
+    {
+      "from": 101922,
+      "to": 112151,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 101922,
+      "to": 129874,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 112151,
+      "to": 101922,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 112151,
+      "to": 129874,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 112151,
+      "to": 142329,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 129874,
+      "to": 101922,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 129874,
+      "to": 112151,
+      "relation": "ALTERNATIVE"
+    },
+    {
+      "from": 129874,
+      "to": 142329,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 142329,
+      "to": 112151,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 142329,
+      "to": 129874,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 142329,
+      "to": 145139,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 145139,
+      "to": 142329,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 145139,
+      "to": 166240,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 166240,
+      "to": 145139,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 166240,
+      "to": 178788,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 178788,
+      "to": 166240,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 178788,
+      "to": 195200,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 195200,
+      "to": 178788,
+      "relation": "PREQUEL"
+    },
+    {
+      "from": 195200,
+      "to": 195201,
+      "relation": "SEQUEL"
+    },
+    {
+      "from": 195201,
+      "to": 195200,
+      "relation": "PREQUEL"
+    }
+  ],
+  "tvdb": [
+    {
+      "id": 101922,
+      "tvdb_id": 348545,
+      "season": 1,
+      "episode_offset": 0
+    },
+    {
+      "id": 112151,
+      "tvdb_id": 348545,
+      "season": 0,
+      "episode_offset": 1
+    },
+    {
+      "id": 129874,
+      "tvdb_id": 348545,
+      "season": 2,
+      "episode_offset": 0
+    },
+    {
+      "id": 142329,
+      "tvdb_id": 348545,
+      "season": 3,
+      "episode_offset": 0
+    },
+    {
+      "id": 145139,
+      "tvdb_id": 348545,
+      "season": 4,
+      "episode_offset": 0
+    },
+    {
+      "id": 166240,
+      "tvdb_id": 348545,
+      "season": 5,
+      "episode_offset": 0
+    },
+    {
+      "id": 178788,
+      "tvdb_id": 348545,
+      "season": 0,
+      "episode_offset": 15
+    },
+    {
+      "id": 195200,
+      "tvdb_id": 348545,
+      "season": 0,
+      "episode_offset": 0
+    }
+  ],
+  "offsets": []
+}
