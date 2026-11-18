@@ -1075,6 +1075,33 @@ mod handler_endpoints {
         assert_eq!(returned.episodes, Some(26));
     }
 
+    // ─── anilist_search failure fragment ────────────────────────
+
+    #[test]
+    fn a_failed_title_search_is_said_in_the_results_area() {
+        // Dogfood a2 #1. The Add Series modal swaps the response into
+        // its results area; a plain-text 500 is never swapped, so a
+        // failed search left the area blank, like one still running.
+        use askama::Template;
+        let html = super::super::AnilistSearchResultsPartial {
+            entries: Vec::new(),
+            error: "AniList search failed: <b>Server exploded</b>".to_string(),
+        }
+        .render()
+        .expect("renders");
+        assert!(
+            html.contains("Search failed: AniList search failed:"),
+            "{html}"
+        );
+        assert!(
+            html.contains("&lt;b&gt;") || html.contains("&#60;b&#62;"),
+            "escaped: {html}"
+        );
+        assert!(!html.contains("<b>"), "{html}");
+        assert!(!html.contains("No results found."), "{html}");
+        assert!(html.contains("role=\"alert\""), "{html}");
+    }
+
     // ─── anilist_search invalid-source guard ────────────────────
 
     #[tokio::test]
