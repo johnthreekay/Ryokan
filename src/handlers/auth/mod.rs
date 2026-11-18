@@ -718,7 +718,7 @@ pub async fn require_auth(
     // Check session cookie.
     let token = match get_session_token(&req) {
         Some(t) => t,
-        None => return crate::handlers::responses::htmx_aware_redirect_from_req(&req, "/login"),
+        None => return login_required(&req),
     };
 
     match session::validate_session(&state.db, &token).await {
@@ -735,8 +735,44 @@ pub async fn require_auth(
             }
             next.run(req).await
         }
-        _ => crate::handlers::responses::htmx_aware_redirect_from_req(&req, "/login"),
+        _ => login_required(&req),
     }
+}
+
+/// Response header on the 401 [`login_required`] gives a script
+/// request; `base.js` reads it to send the page to `/login`.
+pub const SESSION_ENDED_HEADER: &str = "x-ryokan-session";
+
+/// What a request to a protected route gets when it carries no valid
+/// session. A navigation goes to `/login`: a 303, or `HX-Redirect` for
+/// htmx, which would otherwise swap the login page into the old one.
+///
+/// A script's own request gets a 401 instead. `fetch` follows a 303 on
+/// its own, receives the login page as a 200, and reports `ok`: every
+/// caller that then only checks `r.ok` took the session ending for
+/// success, so "Add to library" said Added, and a remove or a grab
+/// confirm went through the motions, with nothing done. Browsers mark
+/// such requests with a `Sec-Fetch-Mode` other than `navigate`. A
+/// request without the header (curl, a form post from an old browser)
+/// keeps the redirect.
+fn login_required(req: &Request<Body>) -> Response {
+    let header_is = |name: &str, pred: fn(&str) -> bool| {
+        req.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(pred)
+    };
+    let htmx = header_is("hx-request", |v| v.eq_ignore_ascii_case("true"));
+    let scripted = header_is("sec-fetch-mode", |v| !v.eq_ignore_ascii_case("navigate"));
+    if scripted && !htmx {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(SESSION_ENDED_HEADER, "ended")],
+            "Your session has ended. Sign in again.",
+        )
+            .into_response();
+    }
+    crate::handlers::responses::htmx_aware_redirect_from_req(req, "/login")
 }
 
 /// Refuse a cross-site navigation to a GET that does something: builds

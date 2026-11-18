@@ -1,3 +1,25 @@
+// A request a script makes after the session has ended is answered
+// 401 with `X-Ryokan-Session: ended` (`handlers::auth::login_required`)
+// rather than a redirect, which `fetch` would follow to the login page
+// and report as a success. Wrapped once: whichever caller made the
+// request, the page goes to the login form, the way a click on a link
+// would have. The response is still handed back, so the caller's own
+// error path runs first and nothing reads as done.
+if (!window.__ryokanFetchSessionWrapped && typeof window.fetch === 'function') {
+    window.__ryokanFetchSessionWrapped = true;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = function () {
+        return nativeFetch.apply(null, arguments).then(function (resp) {
+            if (resp.status === 401 && resp.headers.get('X-Ryokan-Session') === 'ended'
+                && !window.__ryokanSessionEnded) {
+                window.__ryokanSessionEnded = true;
+                setTimeout(function () { window.location.assign('/login'); }, 0);
+            }
+            return resp;
+        });
+    };
+}
+
 // The confirm / alert / prompt modals below each need one document
 // keydown listener. This file runs again on every boosted navigation
 // (it sits in the swapped body), and a listener added per run stayed

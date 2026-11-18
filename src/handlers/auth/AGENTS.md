@@ -1,6 +1,6 @@
 # handlers/auth/AGENTS.md
 
-Cookie-based sessions for the web UI. `require_auth` middleware on protected routes redirects to `/login`; first-run setup at `/setup` creates the admin account. Tests live in `tests/` (topic-split: `throttle.rs`, `csrf.rs`, `sessions.rs`, `proxy_headers.rs`, `setup.rs`, `timing_equalization.rs`, `forgot_password.rs`, `sanitize.rs`).
+Cookie-based sessions for the web UI. `require_auth` middleware on protected routes redirects to `/login`; first-run setup at `/setup` creates the admin account. Tests live in `tests/` (topic-split: `throttle.rs`, `csrf.rs`, `sessions.rs`, `proxy_headers.rs`, `setup.rs`, `timing_equalization.rs`, `forgot_password.rs`, `sanitize.rs`). **Without a session, what the request gets depends on who is asking** (`login_required`): a navigation gets the 303 (htmx an `HX-Redirect`), and a script's own request, which browsers mark with a `Sec-Fetch-Mode` other than `navigate`, gets `401` with `X-Ryokan-Session: ended`. `fetch` follows a 303 by itself and hands back the login page as a 200, so every `r.ok` check in the page scripts read an ended session as success (Add said Added, a remove or a grab confirm did nothing); `base.js` wraps `fetch` once and sends the page to `/login` on that header. A request with no `Sec-Fetch-Mode` (curl, old browsers) keeps the redirect.
 
 ## Session cookie
 
