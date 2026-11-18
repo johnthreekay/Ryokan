@@ -136,6 +136,28 @@ pub async fn get_series(
     ))
 }
 
+/// The entries an add that names no season resolves to: every regular
+/// season's, without the Specials (season 0). Sonarr's own "all" leaves
+/// specials unmonitored, and here each one is a series of its own that
+/// would be added monitored and searched. A show the mappings file only
+/// under Specials still resolves to those entries rather than to a
+/// title guess.
+async fn whole_show_entries(tvdb_id: i64) -> Vec<anibridge::AnimeIds> {
+    let mut entries: Vec<anibridge::AnimeIds> = Vec::new();
+    for (season, ids) in anibridge::lookup_tvdb_seasons(tvdb_id).await {
+        let listed = ids
+            .anilist_id
+            .is_some_and(|al| entries.iter().any(|e| e.anilist_id == Some(al)));
+        if season != 0 && !listed {
+            entries.push(ids);
+        }
+    }
+    if entries.is_empty() {
+        return anibridge::lookup_by_tvdb(tvdb_id, None).await;
+    }
+    entries
+}
+
 /// POST /api/v3/series — add a new series.
 ///
 /// Seerr sends tvdbId which is a real TVDB ID. We map it to AniList/MAL via
@@ -148,12 +170,21 @@ pub async fn add_series(
 
     // Extract which season Seerr is requesting. Seerr marks exactly one season as
     // monitored per request, so .max() effectively picks the single monitored season.
+    // Season 0 is the show's Specials: it never outranks a real season,
+    // but a request that monitors it alone is a request for the
+    // Specials. Read as "no season", that request added every entry of
+    // the show, monitored.
     let requested_season = body.seasons.as_ref().and_then(|seasons| {
-        seasons
-            .iter()
-            .filter(|s| s.monitored && s.season_number > 0)
-            .map(|s| s.season_number)
+        let monitored = || {
+            seasons
+                .iter()
+                .filter(|s| s.monitored)
+                .map(|s| s.season_number)
+        };
+        monitored()
+            .filter(|n| *n > 0)
             .max()
+            .or_else(|| monitored().find(|n| *n == 0))
     });
 
     tracing::info!(
@@ -169,7 +200,10 @@ pub async fn add_series(
     // No TMDB fallback: Seerr sends real TVDB ids, and one that equals
     // some anime's TMDB id would add the wrong show. An unmapped id goes
     // to the title search below.
-    let mut anime_ids = anibridge::lookup_by_tvdb(tvdb_id, requested_season).await;
+    let mut anime_ids = match requested_season {
+        Some(season) => anibridge::lookup_by_tvdb(tvdb_id, Some(season)).await,
+        None => whole_show_entries(tvdb_id).await,
+    };
 
     // #26 — TMDB often models multi-cour anime as one flat season
     // (JJK, Bleach TYBW, Demon Slayer) so Seerr requests "season 1"

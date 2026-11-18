@@ -588,6 +588,169 @@ async fn a_specials_entry_is_season_zero_of_its_show() {
     anibridge::clear_cache_for_tests().await;
 }
 
+/// Answers every `Media(id: N)` detail query with entry N itself, so a
+/// fan-out that fetches the wrong entries leaves the wrong rows behind
+/// (a fixed body would collapse them all onto one id).
+async fn mock_anilist_detail_by_id() -> MockServer {
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_string_contains("Media(id"))
+        .respond_with(|req: &wiremock::Request| {
+            let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap_or_default();
+            let id = body["variables"]["id"].as_i64().unwrap_or(0);
+            ResponseTemplate::new(200)
+                .set_body_json(media_detail_response(id, &format!("Fan Show {id}")))
+        })
+        .mount(&mock)
+        .await;
+    mock
+}
+
+async fn tracked_anilist_ids(db: &SqlitePool) -> Vec<i64> {
+    sqlx::query_scalar("SELECT anilist_id FROM series ORDER BY anilist_id")
+        .fetch_all(db)
+        .await
+        .unwrap()
+}
+
+/// TVDB show 4300: two regular seasons and a Specials entry.
+async fn seed_show_with_specials() {
+    anibridge::seed_external_mappings_for_tests(
+        &[
+            (4300, 1, Some(63001), None),
+            (4300, 2, Some(63002), None),
+            (4300, 0, Some(63003), None),
+        ],
+        &[],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_specials_only_request_adds_the_specials_and_nothing_else() {
+    // A8-1. Seerr's "Specials" request monitors season 0 alone. The
+    // season filter skipped season 0, the request read as "no season",
+    // and every entry of the show was added, monitored.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+    seed_show_with_specials().await;
+    let mock = mock_anilist_detail_by_id().await;
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    let app = sonarr_router_with_series(build_test_app_state(db.clone(), None));
+    let (status, body) = post_json(
+        app,
+        "/api/v3/series",
+        SONARR_KEY,
+        json!({
+            "tvdbId": 4300,
+            "title": "Fan Show",
+            "seasons": [
+                {"seasonNumber": 0, "monitored": true},
+                {"seasonNumber": 1, "monitored": false},
+                {"seasonNumber": 2, "monitored": false},
+            ],
+            "monitored": true,
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(tracked_anilist_ids(&db).await, vec![63003]);
+    let row = series::get_by_anilist_id(&db, 63003)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.monitor_mode, "all");
+    assert_eq!(
+        series::tvdb_ids(&db, row.id).await.unwrap(),
+        Some((4300, 0)),
+        "stored as the show's season 0"
+    );
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
+async fn a_request_naming_no_season_adds_the_seasons_without_the_specials() {
+    // A8-1, the other half: with no `seasons` at all the add resolves
+    // the whole show. That is its regular seasons; the Specials are
+    // separate entries nobody asked for.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+    seed_show_with_specials().await;
+    let mock = mock_anilist_detail_by_id().await;
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    let app = sonarr_router_with_series(build_test_app_state(db.clone(), None));
+    let (status, body) = post_json(
+        app,
+        "/api/v3/series",
+        SONARR_KEY,
+        json!({ "tvdbId": 4300, "title": "Fan Show" }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(tracked_anilist_ids(&db).await, vec![63001, 63002]);
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
+async fn a_show_mapped_only_under_specials_still_resolves_without_a_season() {
+    // The Specials are left out of an unscoped add only when the show
+    // has regular seasons; a show the mappings file under season 0
+    // alone is not sent to the title search instead.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+    anibridge::seed_external_mappings_for_tests(&[(4301, 0, Some(63010), None)], &[]).await;
+    let mock = mock_anilist_detail_by_id().await;
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    let app = sonarr_router_with_series(build_test_app_state(db.clone(), None));
+    let (status, body) = post_json(
+        app,
+        "/api/v3/series",
+        SONARR_KEY,
+        json!({ "tvdbId": 4301, "title": "" }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(tracked_anilist_ids(&db).await, vec![63010]);
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
 #[tokio::test]
 async fn a_later_request_never_moves_a_series_to_another_season() {
     // Season 1 is added under (4242, 1). Seerr then asks for season 2,
