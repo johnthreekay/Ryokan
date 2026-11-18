@@ -63,6 +63,8 @@ scripts/browser-e2e.sh           # the whole suite, or: scripts/browser-e2e.sh h
 
 **Use the script, not a bare `cargo test`.** geckodriver holds exactly one WebDriver session: tests within a binary run in parallel by default and a test that bails before `client.close()` leaks its session, after which every later test prints `[skip] … Session is already started` and passes with an `ok` verdict in 0.01s. That is how five rotted tests went unnoticed for months. The script runs one binary at a time with `--test-threads=1`, restarts the driver between binaries, and reports skips as a separate count and exits non-zero when any test skipped (`RYOKAN_E2E_ALLOW_SKIPS=1` downgrades that to a warning), so a run that never drove a browser cannot look green. Every test must end with `let _ = client.close().await;` on its happy path, and `try_connect_browser` retries briefly on the session-teardown race.
 
+**The browser runs offline.** `try_connect_browser` sends a `proxy` capability that routes everything except `127.0.0.1` / `localhost` to a dead address. A fresh LibreWolf profile otherwise downloads and installs uBlock Origin about two seconds after launch (its `policies.json`), and a request issued while the add-on starts was sometimes never sent: a boosted link or a re-fetched page script hung, and about one run in seven of the boost binaries failed on a 5 s wait. A test that needs the browser to reach another host has to add it to `noProxy`.
+
 Tests skip (loudly, with `[skip]`) when the driver is unreachable. The `fantoccini` dep sits in `[dependencies]` as `optional = true` (Cargo doesn't allow optional dev-deps) and the e2e fixture handler + router builder live behind `#[cfg(feature = "browser-e2e")]` in `test_support.rs`.
 
 ### Shared harness
