@@ -855,10 +855,30 @@ pub async fn resolve_tmdb_movie_id(anilist_id: i64, mal_id: impl Into<Option<i64
 /// Shared between the disk-cache path (`ensure_loaded`) and the
 /// network path (`download_parse_and_persist`) so there's only one
 /// place to fix if the JSON shape changes.
+///
+/// Valid JSON is not enough. A body that is not the mappings (an
+/// array, `{}`, an error object from whatever answered in the file's
+/// place) builds tables with nothing in them, and that used to count
+/// as a good load: the empty tables replaced the cache in memory, the
+/// body was written over the cache on disk, the reload reported
+/// success, and every Sonarr / Radarr lookup read as "unmapped" until
+/// the next daily refresh. A file with no mapping in it is an error
+/// here, so the caller keeps what it had.
 fn parse_bytes(bytes: &[u8]) -> Result<MappingCache, String> {
     let data: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|e| format!("Failed to parse mappings JSON: {}", e))?;
+    if !data.is_object() {
+        return Err("Mappings JSON is not the mappings file: its root is not an object".into());
+    }
     let cache = build_cache(&data);
+    if cache.tmdb_to_anime.is_empty()
+        && cache.tvdb_to_anime.is_empty()
+        && cache.tmdb_movie_to_anime.is_empty()
+        && cache.mal_to_anilist.is_empty()
+        && cache.anidb_to_anilist.is_empty()
+    {
+        return Err("Mappings JSON is not the mappings file: it holds no mappings".into());
+    }
     tracing::info!(
         "Anibridge mappings loaded: {} TMDB entries, {} TVDB entries, {} AniList reverse entries, {} MAL→AL entries",
         cache.tmdb_to_anime.len(),
@@ -1715,14 +1735,19 @@ mod tests {
     }
 
     #[test]
-    fn parse_bytes_on_non_object_root_returns_empty_cache_not_error() {
-        // Defensive: a JSON that deserializes but is structurally
-        // wrong (array at root) should produce an empty cache, not
-        // error. Matches how the impl treats unrecognized shapes.
-        let bytes = b"[]".to_vec();
-        let cache = parse_bytes(&bytes).expect("non-object root should parse to empty cache");
-        assert!(cache.tmdb_to_anime.is_empty());
-        assert!(cache.anilist_to_tmdb.is_empty());
+    fn parse_bytes_refuses_json_that_is_not_the_mappings() {
+        // A8-6. These all parse as JSON and used to load as an empty
+        // cache, which then replaced a good one in memory and on disk.
+        for body in [
+            "[]",
+            "[1,2,3]",
+            "{}",
+            r#"{"message":"API rate limit exceeded"}"#,
+            r#"{"$meta":{"schema_version":"3.0.3"}}"#,
+        ] {
+            let err = parse_bytes(body.as_bytes()).expect_err(body);
+            assert!(err.contains("not the mappings file"), "{body}: {err}");
+        }
     }
 
     #[test]
@@ -1769,10 +1794,13 @@ mod tests {
         // A TMDB-only entry with no anilist/mal companion must not
         // land in the cache — otherwise the reverse lookups would
         // inherit an empty anilist_id and confuse downstream code.
+        // (Beside a real entry: a file holding nothing else is not a
+        // mappings file at all.)
         let raw = json!({
             "tmdb_show:500:s1": {
                 "tvdb_show:600:s1": {}
-            }
+            },
+            "anilist:1": {"tmdb_show:700:s1": {}}
         });
         let bytes = serde_json::to_vec(&raw).unwrap();
         let cache = parse_bytes(&bytes).unwrap();
@@ -1780,6 +1808,7 @@ mod tests {
             !cache.tmdb_to_anime.contains_key(&(500, 1)),
             "anime-less entries should not be indexed"
         );
+        assert!(cache.tmdb_to_anime.contains_key(&(700, 1)));
     }
 
     // ─── Tier 2 deferred — disk-cache helpers ───────────────────────
@@ -1980,6 +2009,34 @@ mod tests {
             );
         }
         (guard, tmp)
+    }
+
+    #[tokio::test]
+    async fn a_download_that_is_not_the_mappings_keeps_the_cache_on_disk() {
+        // A8-6: `{}` (or any other JSON in the file's place) was parsed
+        // as an empty cache and written over the good one.
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let (_guard, _tmp) = anibridge_e2e_env(&server.uri()).await;
+        let good = br#"{"tmdb_show:42:s1":{"anilist:1234":{}}}"#;
+        write_disk_cache(good).expect("seed a good disk cache");
+        Mock::given(method("GET"))
+            .and(path("/mappings.min.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .mount(&server)
+            .await;
+
+        let err = download_parse_and_persist()
+            .await
+            .expect_err("an empty object is not the mappings");
+        assert!(err.contains("not the mappings file"), "{err}");
+        assert_eq!(
+            read_disk_cache_unconditional().as_deref(),
+            Some(&good[..]),
+            "the cache on disk is untouched"
+        );
     }
 
     #[tokio::test]
