@@ -178,10 +178,34 @@ pub async fn run_sanitize(live_db: &Path, output: &Path) -> Result<SanitizeSumma
     // `/feed/<passkey>`), so only scheme and host survive (`redact_url`).
     // A feed's URL is UNIQUE, and two feeds on one host (two uploaders'
     // Nyaa feeds) redact to the same value, so those keep their row id.
-    let url_rows = redact_url_column(&pool, "grabbed_torrents", "source_url", false).await?
-        + redact_url_column(&pool, "direct_rss_feeds", "url", true).await?
-        + redact_url_column(&pool, "rss_seen", "link", false).await?
-        + redact_item_keys(&pool).await?;
+    let mut url_rows =
+        redact_url_column(&pool, "grabbed_torrents", "source_url", false, redact_url).await?
+            + redact_url_column(&pool, "direct_rss_feeds", "url", true, redact_url).await?
+            + redact_url_column(&pool, "rss_seen", "link", false, redact_url).await?
+            + redact_item_keys(&pool).await?;
+
+    // The addresses the admin typed can carry a credential too: a
+    // torznab URL with its `?apikey=` pasted in whole (the form's own
+    // key field is scrubbed above, the URL was not), and a download
+    // client or Jellyfin address written `http://user:password@host`
+    // or with `?api_key=`. An indexer's URL is a tracker's own and can
+    // hold a key in the path like a feed's, so it gets the same
+    // scheme-and-host cut; a client or Jellyfin address keeps its path
+    // (`/sabnzbd`, `/transmission/rpc`), which is what a bug report
+    // about a wrong address needs, and loses only where a credential
+    // goes. The four legacy `config` client addresses are the same
+    // strings from before `download_clients`.
+    url_rows += redact_url_column(&pool, "indexers", "url", false, redact_url).await?;
+    for (table, column) in [
+        ("download_clients", "url"),
+        ("config", "jellyfin_url"),
+        ("config", "qbit_url"),
+        ("config", "deluge_url"),
+        ("config", "transmission_url"),
+        ("config", "rtorrent_url"),
+    ] {
+        url_rows += redact_url_column(&pool, table, column, false, strip_url_credentials).await?;
+    }
 
     // Notification providers: the Discord webhook URL carries its token,
     // a generic webhook its URL, HMAC secret and custom headers
@@ -349,15 +373,67 @@ pub fn redact_url(raw: &str) -> String {
     "[redacted]".to_string()
 }
 
-/// Run [`redact_url`] over `table.column`, skipping rows already blank.
-/// A missing table (an old database) counts as nothing to do. A
-/// `unique` column gets [`row_tagged`] values, since two URLs on one
-/// host redact to the same string.
+/// A connection address the admin typed (a download client's, the
+/// Jellyfin server's) without the places a credential can sit: the
+/// `user:password@` part, the query (`?apikey=`) and the fragment.
+/// Scheme, host, port and path stay, and an address with none of the
+/// three comes back as typed. An address written without a scheme
+/// (`nas:8096/jellyfin`, as the Jellyfin field accepts) is read as one
+/// and comes back without one; anything that still does not read as
+/// an address becomes `[redacted]`.
+pub fn strip_url_credentials(raw: &str) -> String {
+    /// `None` when `url` is not an http(s) address; `Some(None)` when
+    /// it is one with nothing to take out.
+    fn strip(mut url: reqwest::Url) -> Option<Option<String>> {
+        if !matches!(url.scheme(), "http" | "https") {
+            return None;
+        }
+        if url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none()
+        {
+            return Some(None);
+        }
+        // Both setters only fail for a URL with no host, which an
+        // http(s) URL always has.
+        url.set_username("").ok()?;
+        url.set_password(None).ok()?;
+        url.set_query(None);
+        url.set_fragment(None);
+        Some(Some(url.to_string()))
+    }
+    let raw = raw.trim();
+    if let Some(outcome) = reqwest::Url::parse(raw).ok().and_then(strip) {
+        return outcome.unwrap_or_else(|| raw.to_string());
+    }
+    // `nas:8096` parses as scheme `nas`, and `192.168.1.5:8096` not at
+    // all: read both the way the clients do, as a host.
+    const ASSUMED: &str = "http://";
+    match reqwest::Url::parse(&format!("{ASSUMED}{raw}"))
+        .ok()
+        .and_then(strip)
+    {
+        Some(None) => raw.to_string(),
+        Some(Some(clean)) => clean
+            .strip_prefix(ASSUMED)
+            .map(str::to_string)
+            .unwrap_or_else(|| "[redacted]".to_string()),
+        None => "[redacted]".to_string(),
+    }
+}
+
+/// Run `redact` ([`redact_url`], or [`strip_url_credentials`] for an
+/// address whose path is worth keeping) over `table.column`, skipping
+/// rows already blank. A missing table or column (an old database)
+/// counts as nothing to do. A `unique` column gets [`row_tagged`]
+/// values, since two URLs on one host redact to the same string.
 async fn redact_url_column(
     pool: &SqlitePool,
     table: &str,
     column: &str,
     unique: bool,
+    redact: fn(&str) -> String,
 ) -> Result<u64, String> {
     let (t, c) = (quote_ident(table), quote_ident(column));
     let rows: Vec<(i64, String)> = match sqlx::query_as(sqlx::AssertSqlSafe(format!(
@@ -376,7 +452,7 @@ async fn redact_url_column(
         .map_err(|e| format!("redact {table}.{column}: {e}"))?;
     let mut changed = 0;
     for (rowid, url) in rows {
-        let mut redacted = redact_url(&url);
+        let mut redacted = redact(&url);
         if unique && redacted != url {
             redacted = row_tagged(&redacted, rowid);
         }
@@ -623,6 +699,108 @@ mod tests {
             "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd"
         );
         assert_eq!(redact_url("/local/path.torrent"), "[redacted]");
+    }
+
+    #[test]
+    fn strip_url_credentials_keeps_the_address_and_drops_what_authenticates() {
+        // Dogfood a7: these are the shapes that survived a sanitize.
+        for (raw, clean) in [
+            ("http://admin:hunter2@qbit:8080/", "http://qbit:8080/"),
+            (
+                "https://seedbox.example/sabnzbd?apikey=sekrit#x",
+                "https://seedbox.example/sabnzbd",
+            ),
+            (
+                "http://jellyfin:8096/jf?api_key=sekrit",
+                "http://jellyfin:8096/jf",
+            ),
+            // Nothing to take out: unchanged, so the row is not rewritten.
+            (
+                "http://transmission:9091/transmission/rpc",
+                "http://transmission:9091/transmission/rpc",
+            ),
+            ("http://qbit:8080", "http://qbit:8080"),
+            // No scheme, as the Jellyfin field accepts.
+            ("nas:8096/jellyfin?api_key=sekrit", "nas:8096/jellyfin"),
+            ("user:pw@192.168.1.5:8096", "192.168.1.5:8096/"),
+            ("nas:8096", "nas:8096"),
+            ("not an address", "[redacted]"),
+        ] {
+            assert_eq!(strip_url_credentials(raw), clean, "{raw}");
+        }
+    }
+
+    #[tokio::test]
+    async fn sanitize_scrubs_credentials_typed_into_connection_urls() {
+        // Dogfood a7. The password and key columns were blanked while
+        // the same secrets, pasted into the address field beside them,
+        // went out in the "safe to share" file.
+        let dir = tmpdir();
+        let live = dir.join("live.db");
+        seed_live_db(&live).await;
+        {
+            let url = format!("sqlite://{}?mode=rwc", live.display());
+            let pool = SqlitePool::connect(&url).await.unwrap();
+            sqlx::query(
+                "UPDATE download_clients SET url = 'http://seeduser:client-url-sekrit@qbit:8080/qb'",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "UPDATE indexers SET url = 'http://prowlarr:9696/1/api?apikey=indexer-url-sekrit'",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "UPDATE config SET jellyfin_url = 'http://jf:8096/jf?api_key=jellyfin-url-sekrit', \
+                 qbit_url = 'http://old:legacy-url-sekrit@oldqbit:8080', \
+                 transmission_url = 'http://tr:9091/transmission/rpc'",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            pool.close().await;
+        }
+        let out = dir.join("sanitized.db");
+        run_sanitize(&live, &out).await.unwrap();
+
+        let bytes = fs::read(&out).unwrap();
+        let haystack = String::from_utf8_lossy(&bytes);
+        for secret in [
+            "client-url-sekrit",
+            "indexer-url-sekrit",
+            "jellyfin-url-sekrit",
+            "legacy-url-sekrit",
+        ] {
+            assert!(!haystack.contains(secret), "{secret} survived in the file");
+        }
+
+        // What a bug report needs is still there: which host, which
+        // port, and for a client the path.
+        let url = format!("sqlite://{}", out.display());
+        let pool = SqlitePool::connect(&url).await.unwrap();
+        let client: String = sqlx::query_scalar("SELECT url FROM download_clients")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(client, "http://qbit:8080/qb");
+        let indexer: String = sqlx::query_scalar("SELECT url FROM indexers")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(indexer, "http://prowlarr:9696/[redacted]");
+        let (jellyfin, qbit, transmission): (String, String, String) =
+            sqlx::query_as("SELECT jellyfin_url, qbit_url, transmission_url FROM config")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(jellyfin, "http://jf:8096/jf");
+        assert_eq!(qbit, "http://oldqbit:8080/");
+        assert_eq!(transmission, "http://tr:9091/transmission/rpc");
+        pool.close().await;
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
@@ -1028,7 +1206,9 @@ mod tests {
         assert_eq!(summary.indexer_keys, 1);
         assert_eq!(summary.client_passwords, 1);
         assert_eq!(summary.api_keys, 1);
-        assert_eq!(summary.credential_urls, 2);
+        // The grab's download link, the feed's address, and the
+        // indexer's (the client's has nothing to take out).
+        assert_eq!(summary.credential_urls, 3);
 
         let url = format!("sqlite://{}?mode=ro", out.display());
         let pool = SqlitePool::connect(&url).await.unwrap();
