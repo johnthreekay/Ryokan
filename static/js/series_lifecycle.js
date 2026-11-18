@@ -128,14 +128,33 @@ function performRemoveSeries(dbId) {
         return data;
     })
     .then(data => {
-        // A folder another series also uses is kept with its files;
-        // say so on the library page this navigates to.
+        // The series is gone either way; what the cleanup left behind
+        // is said on the library page this navigates to (one queued
+        // toast, since the queue holds one). A folder another series
+        // also uses is kept with its files. A folder that could not be
+        // deleted (permissions, an unreachable media root) or a
+        // download the client would not drop used to pass without a
+        // word, leaving orphans nothing pointed at.
+        const leftovers = [];
+        const folderFailed = !!data && (data.folder === 'error' || data.folder === 'refused');
         if (data && data.folder === 'shared') {
+            leftovers.push(`The files were left in place because ${data.folder_detail || 'another series'} uses the same folder.`);
+        } else if (folderFailed) {
+            leftovers.push(`The series folder was not deleted: ${data.folder_detail || 'unknown error'}. Its files are still on disk.`);
+        }
+        const torrentErrors = (data && data.torrent_errors) || [];
+        if (torrentErrors.length) {
+            const more = torrentErrors.length > 1 ? ` (and ${torrentErrors.length - 1} more)` : '';
+            leftovers.push(`A download could not be removed from the download client: ${torrentErrors[0]}${more}.`);
+        }
+        if (leftovers.length) {
+            const kept = !folderFailed && !torrentErrors.length;
             window.ryokanQueueToast({
-                title: 'Files kept',
-                body: `The files were left in place because ${data.folder_detail || 'another series'} uses the same folder.`,
+                title: kept ? 'Files kept' : 'Removed, but not everything was cleaned up',
+                body: leftovers.join('\n'),
                 kind: 'warn',
                 category: 'library',
+                sticky: !kept,
             });
         }
         // `replace` rather than `href = '/'` because:

@@ -1036,6 +1036,63 @@ mod remove_series_safety {
         assert!(media_root.exists(), "media_root must survive");
     }
 
+    async fn removal_log_lines(db: &sqlx::SqlitePool) -> Vec<(String, String)> {
+        sqlx::query_as(
+            "SELECT level, message FROM logs WHERE message LIKE 'Removed from library%' ORDER BY id",
+        )
+        .fetch_all(db)
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_removal_that_leaves_the_folder_behind_is_a_warning_in_the_log() {
+        // Dogfood a2 #2. The row goes even when the folder could not be
+        // deleted, and the only trace was an info line reading like any
+        // other removal.
+        let tmp = TempDir::new().expect("tempdir");
+        let media_root = tmp.path().join("media");
+        std::fs::create_dir(&media_root).unwrap();
+        std::fs::create_dir(tmp.path().join("escape")).unwrap();
+        std::fs::create_dir(media_root.join("Clean Show")).unwrap();
+
+        let db = in_memory_pool().await;
+        let left_behind = seed_series(&db, 1011, "Left Behind").await;
+        override_folder_name(&db, left_behind, "../escape").await;
+        let clean = seed_series(&db, 1012, "Clean Show").await;
+        save_media_root(&db, media_root.to_str().unwrap()).await;
+        let state = build_test_app_state(db.clone(), None);
+
+        for id in [left_behind, clean] {
+            let form = super::super::RemoveSeriesForm {
+                id,
+                delete_files: Some(true),
+                add_exclusion: None,
+            };
+            let resp = remove_series(State(state.clone()), AxumJson(form))
+                .await
+                .expect("handler ok");
+            let expected = if id == left_behind {
+                "refused"
+            } else {
+                "removed"
+            };
+            assert_eq!(folder_status(&resp), expected);
+        }
+
+        let lines = removal_log_lines(&db).await;
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(lines[0].0, "warn", "{lines:?}");
+        assert!(lines[0].1.contains("left behind: Left Behind"), "{lines:?}");
+        assert_eq!(
+            lines[1],
+            (
+                "info".to_string(),
+                "Removed from library: Clean Show".to_string()
+            )
+        );
+    }
+
     #[tokio::test]
     async fn a_dot_folder_name_never_takes_the_library_with_it() {
         // A title of dots and spaces used to sanitize to "." (the media

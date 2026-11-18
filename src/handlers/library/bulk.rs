@@ -60,6 +60,13 @@ pub struct BulkOutcome {
 pub struct BulkFailure {
     pub series_id: i64,
     pub reason: String,
+    /// Bulk delete only: the series row is gone although the cleanup
+    /// was partial (folder kept, refused or not deletable, a download
+    /// the client would not drop). `reason` then says what was left
+    /// behind, and there is nothing to retry: the page removes the
+    /// card instead of keeping it selected as a failure.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub removed: bool,
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -108,6 +115,7 @@ pub async fn bulk_monitor(
             Err(reason) => failed.push(BulkFailure {
                 series_id: *series_id,
                 reason,
+                removed: false,
             }),
         }
     }
@@ -202,9 +210,19 @@ pub async fn bulk_delete(
         (None, String::new())
     };
 
-    let mut succeeded = Vec::with_capacity(req.series_ids.len());
+    // Each series once: the second pass over a repeated id found no
+    // row and reported it removed beside the first pass's failure.
+    let mut seen = std::collections::HashSet::new();
+    let series_ids: Vec<i64> = req
+        .series_ids
+        .iter()
+        .copied()
+        .filter(|id| seen.insert(*id))
+        .collect();
+
+    let mut succeeded = Vec::with_capacity(series_ids.len());
     let mut failed = Vec::new();
-    for series_id in &req.series_ids {
+    for series_id in &series_ids {
         // Read before the row goes, written only after it is gone.
         let exclusion = if req.add_exclusion {
             super::crud::sync_exclusion_snapshot(&state.db, *series_id).await
@@ -226,14 +244,26 @@ pub async fn bulk_delete(
                 }
                 succeeded.push(*series_id)
             }
-            Err(reason) => failed.push(BulkFailure {
-                series_id: *series_id,
-                reason,
-            }),
+            Err(failure) => {
+                // The row is gone, so the exclusion the user ticked
+                // applies: without it the next watch-list sync added
+                // the series straight back.
+                if failure.removed
+                    && let Some(snapshot) = exclusion
+                {
+                    super::crud::record_sync_exclusion(&state.db, snapshot).await;
+                }
+                failed.push(BulkFailure {
+                    series_id: *series_id,
+                    reason: failure.reason,
+                    removed: failure.removed,
+                })
+            }
         }
     }
 
     let failed_ids: Vec<i64> = failed.iter().map(|f| f.series_id).collect();
+    let leftovers = failed.iter().filter(|f| f.removed).count();
     logger::info(
         &state.db,
         LogCategory::Library,
@@ -243,8 +273,8 @@ pub async fn bulk_delete(
             failed.len()
         ),
         &format!(
-            "action=delete delete_files={} failed_ids={:?}",
-            req.delete_files, failed_ids
+            "action=delete delete_files={} failed_ids={:?} removed_with_leftovers={}",
+            req.delete_files, failed_ids, leftovers
         ),
     )
     .await;
@@ -252,8 +282,25 @@ pub async fn bulk_delete(
     Json(BulkOutcome { succeeded, failed })
 }
 
-/// Per-series delete worker for [`bulk_delete`]. Returns `Result<(),
-/// String>` so the loop can collect failures into `BulkOutcome.failed`
+/// Why a series sits in `BulkOutcome.failed` after a bulk delete, and
+/// whether its row went anyway (`BulkFailure.removed`).
+struct DeleteFailure {
+    reason: String,
+    removed: bool,
+}
+
+impl DeleteFailure {
+    /// Nothing was removed; the series is still in the library.
+    fn kept(reason: String) -> Self {
+        Self {
+            reason,
+            removed: false,
+        }
+    }
+}
+
+/// Per-series delete worker for [`bulk_delete`]. Returns a `Result`
+/// so the loop can collect failures into `BulkOutcome.failed`
 /// without aborting the batch.
 ///
 /// Order of operations: torrent-client + folder cleanup via the
@@ -266,14 +313,15 @@ pub async fn bulk_delete(
 /// Partial cleanup failures (folder refused / error, per-grab client
 /// errors) are surfaced as a `BulkFailure.reason` rather than counted
 /// as success — user needs to know when their `delete_files=true`
-/// request didn't actually remove the files.
+/// request didn't actually remove the files. The row is removed all
+/// the same, and `DeleteFailure.removed` says so.
 async fn delete_one_series(
     state: &AppState,
     series_id: i64,
     delete_files: bool,
     media_root: Option<&str>,
     recycle_bin_path: &str,
-) -> Result<(), String> {
+) -> Result<(), DeleteFailure> {
     if delete_files {
         // Look up the series row for `folder_name` (and to detect
         // stale-tab IDs where the row no longer exists). Per-row's
@@ -281,7 +329,7 @@ async fn delete_one_series(
         // because the helper takes `folder_name: &str`.
         let tracked = series::get_by_id(&state.db, series_id)
             .await
-            .map_err(|e| format!("lookup: {e}"))?;
+            .map_err(|e| DeleteFailure::kept(format!("lookup: {e}")))?;
         let folder_name = tracked
             .as_ref()
             .map(|t| t.folder_name.as_str())
@@ -296,7 +344,8 @@ async fn delete_one_series(
             media_root,
             recycle_bin_path,
         )
-        .await?;
+        .await
+        .map_err(DeleteFailure::kept)?;
         if !report.is_clean() {
             // Don't `?` — DB cascade still runs even on partial
             // cleanup so the library entry disappears (matches
@@ -309,9 +358,14 @@ async fn delete_one_series(
             // modal regardless.
             let reason = report.partial_failure_reason();
             if let Err(e) = series::remove(&state.db, series_id).await {
-                return Err(format!("{reason}; db remove after partial cleanup: {e}"));
+                return Err(DeleteFailure::kept(format!(
+                    "{reason}; db remove after partial cleanup: {e}"
+                )));
             }
-            return Err(reason);
+            return Err(DeleteFailure {
+                reason,
+                removed: true,
+            });
         }
     }
 
@@ -319,7 +373,7 @@ async fn delete_one_series(
     // the rss_seen NULL-out + every other FK-cascading delete.
     series::remove(&state.db, series_id)
         .await
-        .map_err(|e| format!("db remove: {e}"))
+        .map_err(|e| DeleteFailure::kept(format!("db remove: {e}")))
 }
 
 #[cfg(test)]
@@ -568,6 +622,10 @@ mod tests {
             "expected traversal-refused reason, got: {}",
             failure.reason
         );
+        assert!(
+            failure.removed,
+            "the row went, and the outcome says so: the card must not stay"
+        );
 
         // Critical: the escape target survived. If the traversal guard
         // ever flips, this assertion catches it.
@@ -584,6 +642,76 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(remaining, 0);
+    }
+
+    /// Dogfood a2 #2. A series removed with its files left behind is
+    /// still removed: the exclusion the user ticked has to be written,
+    /// or the next watch-list sync adds the series back.
+    #[tokio::test]
+    async fn bulk_delete_records_the_exclusion_for_a_series_removed_with_leftovers() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let media_root = tmp.path().join("media");
+        std::fs::create_dir(&media_root).unwrap();
+        std::fs::create_dir(tmp.path().join("escape")).unwrap();
+
+        let pool = in_memory_pool().await;
+        let series_id = insert_series(&pool, 1002, "Leftover Show").await;
+        sqlx::query("UPDATE series SET folder_name = ? WHERE id = ?")
+            .bind("../escape")
+            .bind(series_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        save_media_root(&pool, media_root.to_str().unwrap()).await;
+        let state = crate::test_support::build_test_app_state(pool.clone(), None);
+
+        let req = BulkDeleteRequest {
+            series_ids: vec![series_id],
+            delete_files: true,
+            add_exclusion: true,
+        };
+        let Json(outcome) = bulk_delete(axum::extract::State(state), Json(req)).await;
+
+        assert_eq!(outcome.failed.len(), 1);
+        assert!(outcome.failed[0].removed);
+        let excluded: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM external_sync_exclusions WHERE anilist_id = 1002",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(excluded, 1, "the removed series is excluded from sync");
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_handles_a_repeated_id_once() {
+        // The same id twice used to come back failed (the first pass,
+        // files left behind) and succeeded (the second, no row).
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let media_root = tmp.path().join("media");
+        std::fs::create_dir(&media_root).unwrap();
+        std::fs::create_dir(tmp.path().join("escape")).unwrap();
+
+        let pool = in_memory_pool().await;
+        let series_id = insert_series(&pool, 1003, "Twice").await;
+        sqlx::query("UPDATE series SET folder_name = ? WHERE id = ?")
+            .bind("../escape")
+            .bind(series_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        save_media_root(&pool, media_root.to_str().unwrap()).await;
+        let state = crate::test_support::build_test_app_state(pool.clone(), None);
+
+        let req = BulkDeleteRequest {
+            series_ids: vec![series_id, series_id],
+            delete_files: true,
+            add_exclusion: false,
+        };
+        let Json(outcome) = bulk_delete(axum::extract::State(state), Json(req)).await;
+
+        assert!(outcome.succeeded.is_empty(), "{:?}", outcome.succeeded);
+        assert_eq!(outcome.failed.len(), 1);
     }
 
     /// Issue #28 — pin the `respects_seed_rules` skip-client-delete
