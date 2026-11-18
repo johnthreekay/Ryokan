@@ -715,7 +715,9 @@ pub async fn grab_selection(
     summary = "Confirm file selections and commit the grab",
     description = "Applies wanted/unwanted priorities per the user's \
         selection, resumes the torrent, and deletes the pending_grabs \
-        row. Best-effort on per-file priority writes: partial failures \
+        row. At least one file must be selected (400 otherwise; the \
+        picker disables Confirm at zero). Best-effort on per-file \
+        priority writes: partial failures \
         (qBit down mid-apply, a priority write rejected) leave the \
         failed files at default priority rather than rolling back \
         the whole grab. Returns 404 if the preview was already \
@@ -732,7 +734,7 @@ pub async fn grab_selection(
     request_body = GrabConfirmForm,
     responses(
         (status = 200, description = "Grab committed", body = GrabConfirmResult),
-        (status = 400, description = "preview_id missing or file list not yet populated"),
+        (status = 400, description = "preview_id missing, file list not yet populated, or no file selected"),
         (status = 404, description = "Preview not found"),
         (status = 500, description = "Download client error"),
     ),
@@ -798,6 +800,18 @@ pub async fn grab_confirm(
         .into_iter()
         .filter(|&i| i < total)
         .collect();
+    // Nothing selected is not a grab. The picker disables Confirm in
+    // that state and the walkaway sweep reads an empty selection as a
+    // cancel; here it used to skip every file and then record the
+    // title's whole episode range as grabbed (the commit falls back to
+    // the title when no selected file names an episode), so the
+    // episodes left Wanted for a torrent that downloads nothing.
+    if wanted.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No files selected. Tick at least one file to grab.".to_string(),
+        ));
+    }
     let wanted_set: std::collections::HashSet<usize> = wanted.iter().copied().collect();
     let unwanted: Vec<usize> = (0..total).filter(|i| !wanted_set.contains(i)).collect();
 
@@ -1665,6 +1679,165 @@ mod tests {
         assert_eq!(
             is_batch, 0,
             "release_metadata.is_batch=false MUST beat the files.len()>1 proxy"
+        );
+    }
+
+    // ── Confirm must not record a grab that will not download ────────
+    //
+    // Dogfood a3: an empty selection used to end in a `pending` grab
+    // row and `grabbed` episodes for a torrent with every file skipped.
+
+    /// A client whose picker calls can be made to fail one at a time.
+    #[derive(Default)]
+    struct FlakyClient {
+        fail_wanted: std::sync::atomic::AtomicBool,
+        fail_unwanted: std::sync::atomic::AtomicBool,
+        fail_resume: std::sync::atomic::AtomicBool,
+        calls: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl DownloadClient for FlakyClient {
+        async fn test(&self) -> Result<String, String> {
+            Ok("flaky".into())
+        }
+        async fn add_torrent(&self, _url: &str, _hash: &str) -> Result<AddOutcome, String> {
+            Ok(AddOutcome::Added)
+        }
+        async fn add_torrent_with_file_filter(
+            &self,
+            _url: &str,
+            _hash: &str,
+            _pick: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
+        ) -> Result<SelectiveOutcome, String> {
+            Ok(SelectiveOutcome::FullDownload)
+        }
+        async fn list_scoped(&self) -> Result<Vec<DownloadItem>, String> {
+            Ok(vec![])
+        }
+        async fn get_files(&self, _hash: &str) -> Result<Vec<DownloadFile>, String> {
+            Ok(vec![])
+        }
+        async fn pause(&self, _hash: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn resume(&self, _hash: &str) -> Result<(), String> {
+            self.calls.lock().unwrap().push("resume".into());
+            if self.fail_resume.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err("qbit resume failed: 503".into());
+            }
+            Ok(())
+        }
+        async fn delete(&self, _hash: &str, _delete_files: bool) -> Result<(), String> {
+            Ok(())
+        }
+        async fn set_file_wanted(
+            &self,
+            _hash: &str,
+            files: &[usize],
+            wanted: bool,
+        ) -> Result<(), String> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("wanted={wanted} {files:?}"));
+            let fail = if wanted {
+                &self.fail_wanted
+            } else {
+                &self.fail_unwanted
+            };
+            if fail.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err("qbit filePrio failed: 503".into());
+            }
+            Ok(())
+        }
+        fn sonarr_impl_name(&self) -> &'static str {
+            "QBittorrent"
+        }
+    }
+
+    const PACK_TITLE: &str = "[Group] Pack Series - 01-03 [1080p]";
+
+    /// A three-file batch preview, file list in, ready to confirm.
+    async fn seed_pack_preview(db: &sqlx::SqlitePool, preview_id: &str) -> i64 {
+        let series_id = crate::test_support::seed_series(db, 305, "Pack Series").await;
+        let release_metadata = serde_json::json!({
+            "title": PACK_TITLE,
+            "size": "3.6 GB",
+            "seeders": 100,
+            "group": "Group",
+            "is_batch": true,
+        });
+        let file_list = serde_json::json!([
+            {"name": "[Group] Pack Series - 01 [1080p].mkv", "size": 1_000_000_000_i64},
+            {"name": "[Group] Pack Series - 02 [1080p].mkv", "size": 1_000_000_000_i64},
+            {"name": "[Group] Pack Series - 03 [1080p].mkv", "size": 1_000_000_000_i64},
+        ]);
+        pending_grabs::create(
+            db,
+            preview_id,
+            VALID_HASH,
+            "qbittorrent",
+            None,
+            Some(series_id),
+            &release_metadata.to_string(),
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+        pending_grabs::set_file_list(db, preview_id, &file_list.to_string())
+            .await
+            .unwrap();
+        series_id
+    }
+
+    /// (grab rows, tag rows, preview still there) after a confirm.
+    async fn commit_footprint(db: &sqlx::SqlitePool, preview_id: &str) -> (i64, i64, bool) {
+        let grabs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM grabbed_torrents")
+            .fetch_one(db)
+            .await
+            .unwrap();
+        let tags: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM episode_quality_tags")
+            .fetch_one(db)
+            .await
+            .unwrap();
+        let preview = pending_grabs::get(db, preview_id).await.unwrap().is_some();
+        (grabs, tags, preview)
+    }
+
+    #[tokio::test]
+    async fn confirm_400_when_no_file_is_selected() {
+        let db = in_memory_pool().await;
+        seed_pack_preview(&db, "pid-none").await;
+        let client = std::sync::Arc::new(FlakyClient::default());
+        let state = build_test_app_state(db.clone(), Some(client.clone()));
+
+        // Nothing ticked, and indices that name no file: the same thing.
+        for wanted_indices in [vec![], vec![3, 99]] {
+            let res = grab_confirm(
+                State(state.clone()),
+                Json(GrabConfirmForm {
+                    preview_id: "pid-none".into(),
+                    wanted_indices,
+                    unblock: false,
+                }),
+            )
+            .await;
+            assert!(
+                matches!(res, Err((StatusCode::BAD_REQUEST, _))),
+                "an empty selection is refused: {res:?}"
+            );
+        }
+
+        assert_eq!(
+            commit_footprint(&db, "pid-none").await,
+            (0, 0, true),
+            "no grab, no grabbed episodes, and the preview is still open"
+        );
+        assert!(
+            client.calls.lock().unwrap().is_empty(),
+            "the client is not told to skip every file"
         );
     }
 
