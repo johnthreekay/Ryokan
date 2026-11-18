@@ -1,64 +1,5 @@
 /* pages/system.css — auto-split from style.css. */
 
-@media (max-width: 640px) {
-    .rss-reason-cell {
-        min-width: 0;
-    }
-    .log-col-time,
-    .log-col-level,
-    .log-col-cat {
-        width: auto;
-        min-width: 0;
-    }
-    .log-col-time {
-        font-size: 11px;
-        white-space: nowrap;
-    }
-    .log-table {
-        table-layout: auto;
-        display: block;
-    }
-    .log-table thead { display: none; }
-    .log-table tbody { display: block; }
-    .log-table tr.log-row {
-        display: block;
-        padding: 10px 12px;
-        border-bottom: 1px solid rgba(var(--border-rgb), 0.4);
-        background: var(--bg-card);
-    }
-    .log-table td {
-        display: block;
-        padding: 0;
-        border: none;
-        overflow: visible;
-        text-overflow: clip;
-        background: transparent;
-    }
-    .log-table td.log-col-time,
-    .log-table td.log-col-level,
-    .log-table td.log-col-cat {
-        display: inline-block;
-        vertical-align: middle;
-        margin-right: 8px;
-        font-size: 11px;
-    }
-    .log-table td.log-col-time { white-space: nowrap; }
-    .log-table td.log-col-msg { margin-top: 6px; }
-    .log-row .log-message {
-        display: block;
-        overflow-wrap: break-word;
-        word-break: normal;
-        color: var(--text);
-    }
-    .log-row .log-detail {
-        display: block;
-        white-space: normal;
-        overflow-wrap: break-word;
-        word-break: normal;
-        margin-top: 4px;
-    }
-}
-
 .debug-panel {
     max-width: 980px;
 }
@@ -904,4 +845,97 @@
 }
 .misgrab-actions .inline-form {
     display: contents;
+}
+
+/* Phone layout for the Logs tab. Kept at the end of the file: these
+   selectors match the desktop rules' specificity, so placed above
+   them (as this block once was) the desktop cell padding and borders
+   won and every cell of a log card was underlined (#314). */
+@media (max-width: 640px) {
+    .rss-reason-cell {
+        min-width: 0;
+    }
+    .log-col-time,
+    .log-col-level,
+    .log-col-cat {
+        width: auto;
+        min-width: 0;
+    }
+    .log-col-time {
+        font-size: 11px;
+        white-space: nowrap;
+    }
+    .log-table {
+        table-layout: auto;
+        display: block;
+    }
+    .log-table thead { display: none; }
+    .log-table tbody { display: block; }
+    .log-table tr.log-row {
+        display: block;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(var(--border-rgb), 0.4);
+        background: var(--bg-card);
+    }
+    .log-table td {
+        display: block;
+        padding: 0;
+        border: none;
+        overflow: visible;
+        text-overflow: clip;
+        background: transparent;
+    }
+    .log-table td.log-col-time,
+    .log-table td.log-col-level,
+    .log-table td.log-col-cat {
+        display: inline-block;
+        vertical-align: middle;
+        margin-right: 8px;
+        font-size: 11px;
+    }
+    .log-table td.log-col-time { white-space: nowrap; }
+    .log-table td.log-col-msg { margin-top: 6px; }
+    .log-row .log-message {
+        display: block;
+        overflow-wrap: break-word;
+        word-break: normal;
+        color: var(--text);
+    }
+    .log-row .log-detail {
+        display: block;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: normal;
+        margin-top: 4px;
+    }
+}
+
+@media (max-width: 640px) {
+    /* #314: the filter row's `flex: 1 1 0` let it shrink to a sliver
+       beside the actions, so its controls stacked and ran under them.
+       On a phone each group takes a full row: the two selects share
+       one line, the search box and its button the next (at the 44px
+       touch height the button has here), and the count sits at the
+       left of the actions row. */
+    .logs-filters,
+    .logs-actions {
+        flex: 1 1 100%;
+    }
+    .logs-filters .log-filter-select {
+        flex: 1 1 40%;
+        min-width: 0;
+        min-height: 44px;
+    }
+    .logs-filters .log-filter-input {
+        flex: 1 1 60%;
+        min-width: 0;
+        max-width: none;
+        min-height: 44px;
+    }
+    .logs-actions {
+        flex-wrap: wrap;
+    }
+    .logs-actions .log-count {
+        margin-right: auto;
+    }
 }

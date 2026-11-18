@@ -639,6 +639,16 @@ window.ryokanNewProgressId = function () {
 window.ryokanProgressToast = function (opts) {
     opts = opts || {};
     if (!opts.progressId) throw new Error('ryokanProgressToast requires opts.progressId');
+    // One toast per job. A full page load re-attaches a stored progress
+    // toast (`__ryokanRestoreToasts`) before the page's own script
+    // asks to follow the same job, and each call used to add a toast
+    // (#314: the import page showed its status two and three times).
+    // The newer call wins, since it carries the page's `onTerminal`.
+    const followers = window.__ryokanProgressFollowers = window.__ryokanProgressFollowers || {};
+    const previous = followers[opts.progressId];
+    if (previous) {
+        try { previous.dismiss(); } catch (_) {}
+    }
     const toast = window.ryokanToast({
         id: opts.id,
         kind: opts.kind || 'info',
@@ -660,6 +670,7 @@ window.ryokanProgressToast = function (opts) {
     });
     let stopped = false;
     let lastTerminal = null;
+    let handle = null;
     // Apply a single ProgressEvent to the toast; track terminal so
     // close() can fire onTerminal + finalize cleanly. Shared between
     // the SSE and the polling-fallback code paths.
@@ -667,9 +678,13 @@ window.ryokanProgressToast = function (opts) {
         toast.update({kind: ev.kind, title: ev.title, body: ev.body || ''});
         if (ev.terminal) lastTerminal = ev;
     }
+    function release() {
+        if (followers[opts.progressId] === handle) delete followers[opts.progressId];
+    }
     function close() {
         if (stopped) return;
         stopped = true;
+        release();
         // Always finalize so a sticky toast can't get orphaned. Two
         // cases land here:
         //   1. Normal completion: `lastTerminal` carries the success/
@@ -784,19 +799,23 @@ window.ryokanProgressToast = function (opts) {
         // today, but cheap defensive fallback).
         startPolling();
     }
-    return {
+    handle = {
         dismiss: function () {
             stopped = true;
+            release();
             if (es) { es.close(); es = null; }
             toast.dismiss();
         },
         update: function (p) { toast.update(p); },
         finalize: function (p) {
             stopped = true;
+            release();
             if (es) { es.close(); es = null; }
             toast.finalize(p);
         },
     };
+    followers[opts.progressId] = handle;
+    return handle;
 };
 
 // A full page load rebuilds the toasts the previous page still had
