@@ -3802,7 +3802,7 @@ pub async fn run_once(state: &AppState) {
             logger::warn(
                 &state.db,
                 LogCategory::PostProcess,
-                "Jellyfin refresh failed after import",
+                &format!("{} refresh failed after import", jellyfin.label()),
                 &e,
             )
             .await;
@@ -3810,7 +3810,7 @@ pub async fn run_once(state: &AppState) {
             logger::info(
                 &state.db,
                 LogCategory::PostProcess,
-                "Triggered Jellyfin library refresh",
+                &format!("Triggered {} library refresh", jellyfin.label()),
                 "",
             )
             .await;

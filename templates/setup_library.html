@@ -4,13 +4,13 @@
 
 {% block content %}
 {# First-run step after /setup (handlers::settings::setup_library).
-   Saving turns post-processing on; Skip leaves it off. The Jellyfin
+   Saving turns post-processing on; Skip leaves it off. The media server
    Test button is the Integrations tab's, against the same endpoint. #}
 <div class="setup-library">
     <div class="page-header">
         <h2>Set up your library</h2>
     </div>
-    <p class="cf-section-desc">Ryokan renames finished downloads and places them in your media library, the folder Jellyfin reads. If you don't have a media library yet, skip this step and set it up later in Settings → General.</p>
+    <p class="cf-section-desc">Ryokan renames finished downloads and places them in your media library, the folder your media server reads. If you don't have a media library yet, skip this step and set it up later in Settings → General.</p>
     {% if let Some(err) = error %}
         <div class="alert alert-error" role="alert">{{ err }}</div>
     {% endif %}
@@ -34,16 +34,26 @@
         </div>
 
         <div class="cf-section">
-            <h3>Jellyfin <span class="form-hint">optional</span></h3>
-            <p class="cf-section-desc">With Jellyfin connected, Ryokan refreshes its library after each import. Leave both fields empty if you don't use Jellyfin.</p>
-            <div class="form-group">
-                <label for="jellyfin_url">URL</label>
-                <input type="text" name="jellyfin_url" id="jellyfin_url" value="{{ jellyfin_url }}" placeholder="http://jellyfin:8096">
+            <h3>Media server <span class="form-hint">optional</span></h3>
+            <p class="cf-section-desc">With a media server connected, Ryokan refreshes its library after each import. Leave the URL and key empty if you don't use one.</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="media_server_kind">Type</label>
+                    <select name="media_server_kind" id="media_server_kind">
+                        {% for kind in crate::services::jellyfin::MediaServerKind::ALL %}
+                        <option value="{{ kind.as_str() }}" {% if media_server_kind == kind.as_str() %}selected{% endif %}>{{ kind.label() }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="jellyfin_url">URL</label>
+                    <input type="text" name="jellyfin_url" id="jellyfin_url" value="{{ jellyfin_url }}" placeholder="http://jellyfin:8096">
+                </div>
             </div>
             <div class="form-group">
                 <label for="jellyfin_api_key">API Key</label>
                 <input type="password" name="jellyfin_api_key" id="jellyfin_api_key" autocomplete="new-password" placeholder="{% if jellyfin_key_saved %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% endif %}">
-                <span class="form-hint">Create one in Jellyfin under Dashboard → API Keys.</span>
+                <span class="form-hint">Jellyfin and Emby: create an API key in the server's dashboard. Plex: paste your X-Plex-Token.</span>
             </div>
             <div class="settings-inline-actions">
                 <button type="button" class="btn btn-secondary"

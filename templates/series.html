@@ -705,7 +705,7 @@
 <!-- Remove-from-library confirmation modal — dedicated destructive variant,
      not a ryokanConfirm call. The shared confirm modal is too compact to sell
      the stakes of a library remove (folder deletion, download-client
-     side-effects, Jellyfin cleanup). This one inlines the concrete path, file count, and
+     side-effects, media server cleanup). This one inlines the concrete path, file count, and
      size so the user can read exactly what is about to disappear. -->
 <div class="modal-backdrop" id="remove-series-modal" style="display:none">
     <div class="modal remove-series-modal">
@@ -747,7 +747,7 @@
                 <li>The series folder {% if recycle_enabled %}will move to the recycle bin{% else %}will be deleted from disk{% endif %}.</li>
                 {% endif %}
                 <li>Every torrent for this series will be removed from <strong>the download client</strong>.</li>
-                <li>Imported episodes and the <strong>Jellyfin</strong> folder will be gone.</li>
+                <li>Imported episodes will be gone from your <strong>media server</strong>.</li>
             </ul>
             {% if recycle_enabled %}
             <p class="remove-series-final-warning">Files can be restored from the <a href="/library/recycle">Recycle Bin</a> page until they are purged. The library entry itself is removed.</p>

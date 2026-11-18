@@ -2919,6 +2919,14 @@ pub async fn migrate(db: &SqlitePool) -> Result<(), sqlx::Error> {
             .ok();
     }
 
+    // #315: which media server the `jellyfin_url` / `jellyfin_api_key`
+    // pair belongs to (`jellyfin`, `emby`, `plex`). Default `jellyfin`,
+    // the only kind before, so an upgrade changes nothing.
+    sqlx::query("ALTER TABLE config ADD COLUMN media_server_kind TEXT NOT NULL DEFAULT 'jellyfin'")
+        .execute(db)
+        .await
+        .ok();
+
     {
         // Sonarr-style upgrade policy: propers / repacks / fansub `v2`
         // as upgrades, and "upgrade until Custom Format score". The

@@ -14,7 +14,10 @@ use crate::models::log::LogCategory;
 use crate::models::{config, custom_formats as cf_model, group_source_map};
 use crate::services::naming::{self as naming_service, TemplateKind};
 use crate::services::{
-    custom_formats as cf_service, jellyfin::JellyfinClient, logger, source::Source,
+    custom_formats as cf_service,
+    jellyfin::{JellyfinClient, MediaServerKind},
+    logger,
+    source::Source,
 };
 
 pub mod autobrr_key;
@@ -377,6 +380,9 @@ pub struct SettingsForm {
     rtorrent_download_path: String,
     jellyfin_url: String,
     jellyfin_api_key: String,
+    /// Absent from a tab that doesn't post it; the save keeps what is stored.
+    #[serde(default)]
+    media_server_kind: Option<String>,
     preferred_groups: String,
     blocked_groups: String,
     preferred_source: String,
@@ -444,6 +450,9 @@ pub struct SettingsForm {
 pub struct JellyfinTestForm {
     pub jellyfin_url: String,
     pub jellyfin_api_key: String,
+    /// `jellyfin` (the default), `emby` or `plex`.
+    #[serde(default)]
+    pub media_server_kind: String,
 }
 
 /// HTMX swap-target partial for connection-test buttons (Phase 1.5
@@ -509,6 +518,10 @@ pub struct IntegrationsForm {
     jellyfin_url: String,
     #[serde(default)]
     jellyfin_api_key: String,
+    /// Absent from a page rendered before #315; the save keeps what is
+    /// stored rather than falling back to Jellyfin.
+    #[serde(default)]
+    media_server_kind: Option<String>,
     /// Checkboxes + their paired API keys — unchecked / unset
     /// omits the field; `#[serde(default)]` maps the absence to
     /// `None`.
@@ -1147,7 +1160,7 @@ pub async fn settings_submit(
                 form.tab.clone(),
                 None,
                 None,
-                Some(format!("Jellyfin: {e}")),
+                Some(format!("Media server: {e}")),
                 None,
                 None,
             )
@@ -1263,6 +1276,13 @@ pub async fn settings_submit(
             .to_string(),
         jellyfin_url: form.jellyfin_url.trim().trim_end_matches('/').to_string(),
         jellyfin_api_key: bulk_jellyfin_key,
+        media_server_kind: match form.media_server_kind.as_deref() {
+            Some(kind) => MediaServerKind::parse(kind).as_str().to_string(),
+            None => existing_cfg
+                .as_ref()
+                .map(|c| c.media_server_kind.clone())
+                .unwrap_or_else(|| MediaServerKind::default().as_str().to_string()),
+        },
         // Quality-tab fields (preferred_groups, blocked_groups,
         // preferred_*/cutoff_*, finished_series_quality, prefer_subs)
         // are now owned by the dedicated `/settings/quality` subform
@@ -1741,37 +1761,7 @@ pub async fn settings_submit(
         // user with a stale browser tab doesn't blank them out
         // on save, but they don't drive runtime behavior.
 
-        if !cfg.jellyfin_url.is_empty() && !cfg.jellyfin_api_key.is_empty() {
-            let client = JellyfinClient::new(&cfg.jellyfin_url, &cfg.jellyfin_api_key);
-            match client.test_connection().await {
-                Ok(info) => {
-                    let label = if info.server_name.trim().is_empty() {
-                        format!("Jellyfin ({})", info.version)
-                    } else {
-                        format!(
-                            "Jellyfin {} ({}) connected.",
-                            info.server_name, info.version
-                        )
-                    };
-                    logger::info(
-                        &state.db,
-                        LogCategory::Jellyfin,
-                        &format!("{} connected", label),
-                        &cfg.jellyfin_url,
-                    )
-                    .await;
-                    notices.push(label);
-                    *state.jellyfin.write().await = Some(client);
-                }
-                Err(e) => {
-                    logger::error(&state.db, LogCategory::Jellyfin, "Connection failed", &e).await;
-                    *state.jellyfin.write().await = None;
-                    notices.push(format!("Jellyfin connection failed: {}.", e));
-                }
-            }
-        } else {
-            *state.jellyfin.write().await = None;
-        }
+        connect_media_server(&state, &cfg, &mut notices).await;
 
         if !cfg.media_root.is_empty() && !std::path::Path::new(&cfg.media_root).is_dir() {
             notices.push(format!(
@@ -2435,7 +2425,7 @@ pub async fn settings_integrations_submit(
                 &state,
                 None,
                 None,
-                Some(format!("Jellyfin: {e}")),
+                Some(format!("Media server: {e}")),
                 is_htmx,
             )
             .await;
@@ -2489,6 +2479,10 @@ pub async fn settings_integrations_submit(
             .to_string(),
         jellyfin_url: form.jellyfin_url.trim().trim_end_matches('/').to_string(),
         jellyfin_api_key,
+        media_server_kind: match form.media_server_kind.as_deref() {
+            Some(kind) => MediaServerKind::parse(kind).as_str().to_string(),
+            None => existing_cfg.media_server_kind.clone(),
+        },
         sonarr_enabled: form.sonarr_enabled.is_some(),
         sonarr_api_key: form.sonarr_api_key.unwrap_or_default().trim().to_string(),
         radarr_enabled: form.radarr_enabled.is_some(),
@@ -2543,37 +2537,7 @@ pub async fn settings_integrations_submit(
     // actually reach a Jellyfin server. Updates `state.jellyfin` so
     // every other request that reads it sees the live (or cleared)
     // client.
-    if !cfg.jellyfin_url.is_empty() && !cfg.jellyfin_api_key.is_empty() {
-        let client = JellyfinClient::new(&cfg.jellyfin_url, &cfg.jellyfin_api_key);
-        match client.test_connection().await {
-            Ok(info) => {
-                let label = if info.server_name.trim().is_empty() {
-                    format!("Jellyfin ({})", info.version)
-                } else {
-                    format!(
-                        "Jellyfin {} ({}) connected.",
-                        info.server_name, info.version
-                    )
-                };
-                logger::info(
-                    &state.db,
-                    LogCategory::Jellyfin,
-                    &format!("{} connected", label),
-                    &cfg.jellyfin_url,
-                )
-                .await;
-                notices.push(label);
-                *state.jellyfin.write().await = Some(client);
-            }
-            Err(e) => {
-                logger::error(&state.db, LogCategory::Jellyfin, "Connection failed", &e).await;
-                *state.jellyfin.write().await = None;
-                notices.push(format!("Jellyfin connection failed: {}.", e));
-            }
-        }
-    } else {
-        *state.jellyfin.write().await = None;
-    }
+    connect_media_server(&state, &cfg, &mut notices).await;
 
     integrations_response(&state, Some(cfg), Some(notices.join(" ")), None, is_htmx).await
 }
@@ -2753,12 +2717,53 @@ pub async fn settings_groups_delete(
     }
 }
 
+/// Side effect of a save that can change the media server connection:
+/// test it, and make the live client the tested one or none. The
+/// result goes into the save toast.
+async fn connect_media_server(state: &AppState, cfg: &config::Config, notices: &mut Vec<String>) {
+    let Some(client) = JellyfinClient::from_config(cfg) else {
+        *state.jellyfin.write().await = None;
+        return;
+    };
+    let server = client.label();
+    match client.test_connection().await {
+        Ok(info) => {
+            let label = if info.server_name.trim().is_empty() {
+                format!("{server} ({})", info.version)
+            } else {
+                format!(
+                    "{server} {} ({}) connected.",
+                    info.server_name, info.version
+                )
+            };
+            logger::info(
+                &state.db,
+                LogCategory::Jellyfin,
+                &format!("{} connected", label),
+                &cfg.jellyfin_url,
+            )
+            .await;
+            notices.push(label);
+            *state.jellyfin.write().await = Some(client);
+        }
+        Err(e) => {
+            logger::error(&state.db, LogCategory::Jellyfin, "Connection failed", &e).await;
+            *state.jellyfin.write().await = None;
+            // The client's messages are sentences already.
+            notices.push(format!(
+                "{server} connection failed: {}.",
+                e.trim_end_matches('.')
+            ));
+        }
+    }
+}
+
 #[utoipa::path(
     post,
     path = "/api/jellyfin/test",
     tag = "System",
-    summary = "Test Jellyfin connection",
-    description = "Test connectivity to a Jellyfin instance with the provided URL and API key. \
+    summary = "Test the media server connection",
+    description = "Test connectivity to a Jellyfin, Emby or Plex server (`media_server_kind`, Jellyfin when absent) with the provided URL and API key. \
                    Returns an HTML fragment (Phase 1.5 grab-bag, issue #129) — `hx-swap=innerHTML` \
                    on the result span renders the message inline. Always 200 so HTMX swaps in both \
                    success and failure cases (htmx 2.x default error policy skips the swap on 4xx/5xx).",
@@ -2784,16 +2789,21 @@ pub async fn jellyfin_test(
         Ok(key) => key,
         Err(message) => return ConnectionTestResultPartial { ok: false, message }.into_html_ok(),
     };
-    let client = JellyfinClient::new(form.jellyfin_url.trim(), &api_key);
+    let client = JellyfinClient::new(
+        MediaServerKind::parse(&form.media_server_kind),
+        form.jellyfin_url.trim(),
+        &api_key,
+    );
+    let server = client.label();
 
     let result = match client.test_connection().await {
         Ok(info) => ConnectionTestResultPartial {
             ok: true,
             message: if info.server_name.trim().is_empty() {
-                format!("Connected to Jellyfin {}", info.version)
+                format!("Connected to {server} {}", info.version)
             } else {
                 format!(
-                    "Connected to Jellyfin {} ({})",
+                    "Connected to {server} {} ({})",
                     info.server_name, info.version
                 )
             },
@@ -2811,7 +2821,7 @@ pub async fn jellyfin_test(
     path = "/api/health",
     tag = "System",
     summary = "Health check",
-    description = "Returns connection status of the active download client and Jellyfin.",
+    description = "Returns connection status of the active download client and the media server (under the `jellyfin` key, whichever kind is configured).",
     responses(
         (status = 200, description = "Health status", body = serde_json::Value),
     ),
@@ -2850,7 +2860,7 @@ pub async fn api_health(State(state): State<AppState>) -> Json<serde_json::Value
             Some(c) => match c.test_connection().await {
                 Ok(info) => {
                     let label = if info.server_name.trim().is_empty() {
-                        format!("Jellyfin {}", info.version)
+                        format!("{} {}", c.label(), info.version)
                     } else {
                         format!("{} ({})", info.server_name, info.version)
                     };
@@ -2872,8 +2882,8 @@ pub async fn api_health(State(state): State<AppState>) -> Json<serde_json::Value
     post,
     path = "/api/jellyfin/refresh",
     tag = "System",
-    summary = "Refresh Jellyfin library",
-    description = "Trigger a library scan in Jellyfin to pick up newly added media. \
+    summary = "Refresh the media server's library",
+    description = "Trigger a library scan in the connected media server to pick up newly added media. \
                    Returns an HTML fragment for HTMX swap into the test-result span; always 200 \
                    (see /api/jellyfin/test for the swap-on-error rationale).",
     responses(
@@ -2888,12 +2898,12 @@ pub async fn jellyfin_refresh(State(state): State<AppState>) -> Response {
     let result = match client {
         None => ConnectionTestResultPartial {
             ok: false,
-            message: "Jellyfin not configured".to_string(),
+            message: "No media server connected. Save a working connection first.".to_string(),
         },
         Some(c) => match c.refresh_library().await {
             Ok(()) => ConnectionTestResultPartial {
                 ok: true,
-                message: "Jellyfin library refresh queued".to_string(),
+                message: format!("{} library refresh queued", c.label()),
             },
             Err(err) => ConnectionTestResultPartial {
                 ok: false,

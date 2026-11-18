@@ -20,7 +20,7 @@ use crate::handlers::responses::htmx_aware_redirect;
 use crate::handlers::secret_field;
 use crate::models::config;
 use crate::models::log::LogCategory;
-use crate::services::jellyfin::JellyfinClient;
+use crate::services::jellyfin::{JellyfinClient, MediaServerKind};
 use crate::services::logger;
 
 use super::CONFIG_WRITE_LOCK;
@@ -32,6 +32,7 @@ struct SetupLibraryTemplate {
     title_language: String,
     media_root: String,
     post_processing_mode: String,
+    media_server_kind: String,
     jellyfin_url: String,
     jellyfin_key_saved: bool,
     error: Option<String>,
@@ -50,6 +51,8 @@ pub struct SetupLibraryForm {
     pub jellyfin_url: String,
     #[serde(default)]
     pub jellyfin_api_key: String,
+    #[serde(default)]
+    pub media_server_kind: String,
 }
 
 fn render(cfg: &config::Config, error: Option<String>, saved: bool) -> Response {
@@ -59,6 +62,7 @@ fn render(cfg: &config::Config, error: Option<String>, saved: bool) -> Response 
         title_language: cfg.title_language.clone(),
         media_root: cfg.media_root.clone(),
         post_processing_mode: cfg.post_processing_mode.clone(),
+        media_server_kind: cfg.media_server_kind.clone(),
         jellyfin_url: cfg.jellyfin_url.clone(),
         jellyfin_key_saved: !cfg.jellyfin_api_key.is_empty(),
         error,
@@ -137,6 +141,9 @@ pub async fn setup_library_submit(
     }
     .to_string();
     let jellyfin_url = form.jellyfin_url.trim().to_string();
+    let media_server_kind = MediaServerKind::parse(&form.media_server_kind)
+        .as_str()
+        .to_string();
 
     let guard = CONFIG_WRITE_LOCK.lock().await;
     // The save below writes the whole row, so a read that failed must
@@ -148,6 +155,7 @@ pub async fn setup_library_submit(
                 media_root,
                 post_processing_mode,
                 jellyfin_url,
+                media_server_kind,
                 ..config::Config::default()
             };
             return render(
@@ -164,6 +172,7 @@ pub async fn setup_library_submit(
         media_root: media_root.clone(),
         post_processing_mode: post_processing_mode.clone(),
         jellyfin_url: jellyfin_url.clone(),
+        media_server_kind: media_server_kind.clone(),
         ..existing.clone()
     };
     if let Err(e) = check_media_root(&media_root).await {
@@ -178,7 +187,7 @@ pub async fn setup_library_submit(
         &jellyfin_url,
     ) {
         Ok(key) => key,
-        Err(e) => return render(&typed, Some(format!("Jellyfin: {e}")), false),
+        Err(e) => return render(&typed, Some(format!("Media server: {e}")), false),
     };
     let cfg = config::Config {
         media_root,
@@ -186,6 +195,7 @@ pub async fn setup_library_submit(
         post_processing_mode,
         jellyfin_url,
         jellyfin_api_key,
+        media_server_kind,
         ..existing
     };
     if let Err(e) = config::save_config(&state.db, &cfg).await {
@@ -214,13 +224,11 @@ pub async fn setup_library_submit(
     )
     .await;
 
-    // Same Jellyfin side effect as the Integrations save: the live
+    // Same media server side effect as the Integrations save: the live
     // client is the tested one or none.
-    if cfg.jellyfin_url.is_empty() || cfg.jellyfin_api_key.is_empty() {
-        *state.jellyfin.write().await = None;
-    } else {
-        let client = JellyfinClient::new(&cfg.jellyfin_url, &cfg.jellyfin_api_key);
-        match client.test_connection().await {
+    match JellyfinClient::from_config(&cfg) {
+        None => *state.jellyfin.write().await = None,
+        Some(client) => match client.test_connection().await {
             Ok(_) => *state.jellyfin.write().await = Some(client),
             Err(e) => {
                 logger::error(&state.db, LogCategory::Jellyfin, "Connection failed", &e).await;
@@ -228,12 +236,13 @@ pub async fn setup_library_submit(
                 return render(
                     &cfg,
                     Some(format!(
-                        "Saved, but Jellyfin didn't connect ({e}). Fix it here, or continue and change it later in Settings → Connections."
+                        "Saved, but {} didn't connect ({e}). Fix it here, or continue and change it later in Settings → Connections.",
+                        client.label()
                     )),
                     true,
                 );
             }
-        }
+        },
     }
 
     htmx_aware_redirect(is_htmx, "/")
@@ -422,6 +431,75 @@ mod tests {
         assert!(cfg.post_processing_enabled);
         assert_eq!(cfg.jellyfin_api_key, "typed-jellyfin-key");
         assert!(state.jellyfin.read().await.is_none(), "no untested client");
+    }
+
+    /// #315: the Type select picks the server the URL and key belong to.
+    #[tokio::test]
+    async fn a_plex_server_is_saved_tested_and_shown_as_plex() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let plex = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .and(header("X-Plex-Token", "plex-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "MediaContainer": {"friendlyName": "px", "version": "1.42.2"}
+            })))
+            .expect(1)
+            .mount(&plex)
+            .await;
+
+        let (db, state, cookie) = seeded().await;
+        let root = tempfile::tempdir().unwrap();
+        let (status, _, page) = post(
+            state.clone(),
+            &cookie,
+            form(&[
+                ("media_root", root.path().to_str().unwrap()),
+                ("media_server_kind", "plex"),
+                ("jellyfin_url", &plex.uri()),
+                ("jellyfin_api_key", "plex-token"),
+            ]),
+        )
+        .await;
+        assert!(status.is_redirection(), "{status} {page}");
+        let cfg = config::get_config(&db).await.unwrap().unwrap();
+        assert_eq!(cfg.media_server_kind, "plex");
+        let live = state.jellyfin.read().await.clone().expect("connected");
+        assert_eq!(live.kind(), super::MediaServerKind::Plex);
+
+        let page = super::render(&cfg, None, false);
+        let page = axum::body::to_bytes(page.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let page = String::from_utf8_lossy(&page);
+        assert!(
+            page.contains(r#"<option value="plex" selected>Plex</option>"#),
+            "{page}"
+        );
+        assert!(
+            page.contains(r#"<option value="jellyfin" >Jellyfin</option>"#),
+            "{page}"
+        );
+    }
+
+    /// A value the select cannot post is stored as the default, never
+    /// as itself.
+    #[tokio::test]
+    async fn an_unknown_server_type_is_saved_as_jellyfin() {
+        let (db, state, cookie) = seeded().await;
+        let root = tempfile::tempdir().unwrap();
+        post(
+            state,
+            &cookie,
+            form(&[
+                ("media_root", root.path().to_str().unwrap()),
+                ("media_server_kind", "kodi"),
+            ]),
+        )
+        .await;
+        let cfg = config::get_config(&db).await.unwrap().unwrap();
+        assert_eq!(cfg.media_server_kind, "jellyfin");
     }
 
     #[tokio::test]
