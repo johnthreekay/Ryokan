@@ -822,6 +822,85 @@ async fn a_later_request_never_moves_a_series_to_another_season() {
     anibridge::clear_cache_for_tests().await;
 }
 
+#[tokio::test]
+async fn an_id_is_not_resolved_by_guesswork_while_the_mappings_are_down() {
+    // A8-5. No mappings in memory, none on disk, and the download
+    // failing: every id read as "unmapped", so lookups answered a stub
+    // and adds went to the title search and took AniList's first hit.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+    let upstream = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&upstream)
+        .await;
+    // AniList would answer the title search, if it were asked.
+    let anilist_mock = mock_anilist_detail_by_id().await;
+    let empty_cache = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var(
+            "RYOKAN_ANIBRIDGE_MAPPINGS_URL",
+            format!("{}/mappings.json", upstream.uri()),
+        );
+        std::env::set_var("RYOKAN_ANIBRIDGE_CACHE_DIR", empty_cache.path());
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", anilist_mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    seed_sonarr_state(&db).await;
+    seed_radarr_state(&db).await;
+    let state = build_test_app_state(db.clone(), None);
+    let sonarr = sonarr_router_with_series(state.clone());
+    let radarr = radarr_router_with_movie(state);
+
+    let (status, _) = post_json(
+        sonarr.clone(),
+        "/api/v3/series",
+        SONARR_KEY,
+        json!({ "tvdbId": 4242, "title": "Some Show", "seasons": [{"seasonNumber": 1, "monitored": true}] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    let (status, _) = post_json(
+        radarr.clone(),
+        "/radarr/api/v3/movie",
+        RADARR_KEY,
+        json!({ "tmdbId": 128, "title": "Some Movie", "monitored": true }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(
+        tracked_anilist_ids(&db).await.is_empty(),
+        "nothing was added on a guess"
+    );
+
+    for (app, uri, key) in [
+        (sonarr, "/api/v3/series/lookup?term=tvdb:4242", SONARR_KEY),
+        (
+            radarr,
+            "/radarr/api/v3/movie/lookup?term=tmdb:128",
+            RADARR_KEY,
+        ),
+    ] {
+        let req = Request::builder()
+            .uri(uri)
+            .header("x-api-key", key)
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE, "{uri}");
+    }
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANIBRIDGE_MAPPINGS_URL");
+        std::env::remove_var("RYOKAN_ANIBRIDGE_CACHE_DIR");
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
 // ─── Radarr add_movie ──────────────────────────────────────────────
 
 #[tokio::test]

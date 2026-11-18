@@ -256,6 +256,22 @@ impl EpisodeSpan {
     }
 }
 
+/// [`ensure_loaded`] for a caller that must not go on without the
+/// mappings: `Err` is a ready 503 for the Sonarr / Radarr shims. With
+/// the tables missing every external id reads as "unmapped", and an
+/// add then fell through to a title search and added whatever AniList
+/// listed first, on what was only a failed download.
+pub async fn require_loaded() -> Result<(), (axum::http::StatusCode, String)> {
+    if ensure_loaded().await {
+        return Ok(());
+    }
+    Err((
+        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        "The TVDB / TMDB id mappings could not be loaded, so this id cannot be resolved yet. Try again shortly."
+            .to_string(),
+    ))
+}
+
 /// Ensure the mappings are loaded, downloading if necessary.
 /// Returns true if cache is available. The download mutex prevents
 /// concurrent callers from racing to download at the same time.

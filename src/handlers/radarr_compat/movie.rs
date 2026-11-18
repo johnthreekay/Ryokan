@@ -119,7 +119,9 @@ pub async fn add_movie(
 ) -> Result<Json<RadarrMovie>, (StatusCode, String)> {
     let tmdb_id = body.tmdb_id.unwrap_or(0);
 
-    anibridge::ensure_loaded().await;
+    // Without the mappings the id is unknown, not unmapped: 503, never
+    // the title-search fallback below.
+    anibridge::require_loaded().await?;
     let anime_ids = anibridge::lookup_by_tmdb_movie(tmdb_id).await;
     let requested_anilist_id = anime_ids.first().and_then(|a| a.anilist_id);
 

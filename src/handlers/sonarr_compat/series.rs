@@ -195,8 +195,10 @@ pub async fn add_series(
         body.seasons,
     );
 
-    // Resolve TVDB + season → AniList/MAL IDs via anibridge.
-    anibridge::ensure_loaded().await;
+    // Resolve TVDB + season → AniList/MAL IDs via anibridge. Without
+    // the mappings the id is not "unmapped", it is unknown: 503, never
+    // the title-search fallback below.
+    anibridge::require_loaded().await?;
     // No TMDB fallback: Seerr sends real TVDB ids, and one that equals
     // some anime's TMDB id would add the wrong show. An unmapped id goes
     // to the title search below.
