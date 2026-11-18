@@ -938,6 +938,26 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn every_group_matching_a_library_series_is_marked_existing() {
+        // Dogfood A5-2: on a rescan only the first of two groups that
+        // resolve to one library series read "Already in library".
+        let db = in_memory_pool().await;
+        crate::test_support::seed_series(&db, 7001, "Show").await;
+        let mut groups = vec![
+            group(Vec::new(), entry(7001, "Show")),
+            group(Vec::new(), entry(7001, "Show")),
+            group(Vec::new(), entry(7002, "Another Show")),
+        ];
+        crate::services::manual_import::resolve_existing_all(&db, &mut groups).await;
+        assert!(groups[0].existing.is_some());
+        assert!(
+            groups[1].existing.is_some(),
+            "the second group of the same series is in the library too"
+        );
+        assert!(groups[2].existing.is_none());
+    }
+
     struct Fixture {
         _tmp: tempfile::TempDir,
         media: PathBuf,
