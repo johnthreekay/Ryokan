@@ -1,490 +1,693 @@
 # Quick start
 
-End-to-end: deploy Ryokan + Jellyfin + a download client, configure them, add a show, watch it land in your library.
+This guide takes you from a bare Linux server to a full installation of Ryokan and its connectors.
 
-If you want a complete stack with extras (Seerr, reverse proxy, VPN), use the **[Stack builder](stack-builder.md)** instead. It generates the whole `docker-compose.yml` for you.
+## 1. Install Docker
 
-## What you'll need
+Skip this step if you already have Docker + Docker Compose.
 
-- **Docker** and **Docker Compose** installed (`docker --version` and `docker compose version` should both work at the terminal). New to Docker? Read [Docker's overview](https://docs.docker.com/get-started/docker-overview/) first; it covers what containers, images, and volumes are, which the rest of this page assumes you know.
+=== "Debian-based"
 
-You don't need a download client running in advance; we'll deploy one alongside Ryokan and Jellyfin in the next step. You also don't need a Prowlarr or AniList account; the built-in Nyaa search works without either.
+    ```sh
+    curl -fsSL https://get.docker.com | sudo sh
+    ```
 
-## 1. Run Ryokan, Jellyfin, and your download client
+=== "Fedora and RHEL-based"
 
-Set up the host paths. The compose file lives in `/srv/stack/`; per-service config and state go under `/srv/docker/<service>/`; downloads and the media library go under `/srv/media/`.
+    ```sh
+    curl -fsSL https://get.docker.com | sudo sh
+    sudo systemctl enable --now docker
+    ```
+
+=== "Arch-based"
+
+    ```sh
+    sudo pacman -S docker docker-compose
+    sudo systemctl enable --now docker
+    ```
+
+=== "openSUSE"
+
+    ```sh
+    sudo zypper install docker docker-compose
+    sudo systemctl enable --now docker
+    ```
+
+=== "Unraid, Synology, TrueNAS"
+
+    Docker is already part of the system. On Synology, install **Container Manager** from the Package Center. On Unraid, install the **Compose Manager** plugin from Community Applications.
+
+    Use a folder on your storage pool for the two folders in step 2, for example `/mnt/user/media` on Unraid or `/volume1/media` on Synology.
+
+Then let your own user run Docker without `sudo`:
 
 ```sh
-sudo mkdir -p /srv/stack /srv/media/{downloads,anime} /srv/docker
-sudo chown 1000:1000 /srv/media/downloads /srv/media/anime
-cd /srv/stack
+sudo usermod -aG docker $USER
 ```
 
-Adjust `1000:1000` if your host user has different IDs (`id -u` and `id -g` to check). Pick the download client you want to use, create its per-service folder, and save the matching `docker-compose.yml` in `/srv/stack/`. All five composes deploy Ryokan + Jellyfin alongside the chosen client; the three services share `/srv/media/anime` so files Ryokan imports show up in Jellyfin automatically.
+You'll have to log out and log back in for that to take effect. Check that it works:
 
-=== "qBittorrent"
+```sh
+docker run --rm hello-world
+```
 
-    ```sh
-    sudo mkdir -p /srv/docker/{ryokan,jellyfin,qbittorrent}
-    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,qbittorrent}
-    ```
+It should print "Hello from Docker!" along with the steps it took to generate the message.
 
-    ```yaml
-    services:
-      ryokan:
-        image: ghcr.io/johnthreekay/ryokan:latest
-        container_name: ryokan
-        ports:
-          - "8978:8978"
-        volumes:
-          - /srv/docker/ryokan:/data
-          - /srv/media/downloads:/downloads
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+## 2. Choose your stack
 
-      jellyfin:
-        image: jellyfin/jellyfin:latest
-        container_name: jellyfin
-        ports:
-          - "8096:8096"
-        volumes:
-          - /srv/docker/jellyfin/config:/config
-          - /srv/docker/jellyfin/cache:/cache
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+The defaults are a good start if you have no preference. You can always come back and change them later.
 
-      qbittorrent:
-        image: lscr.io/linuxserver/qbittorrent:latest
-        container_name: qbittorrent
-        ports:
-          - "8080:8080"        # web UI
-          - "6881:6881"        # BT
-          - "6881:6881/udp"
-        volumes:
-          - /srv/docker/qbittorrent:/config
-          - /srv/media/downloads:/downloads
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-          - WEBUI_PORT=8080
-        restart: unless-stopped
-    ```
+<form id="stack-form" class="stack-form" autocomplete="off">
+<div class="sf-group">
+  <div class="sf-head"><span class="sf-title">Download client</span><span class="sf-sub">Pick one or more.</span></div>
+  <div class="sf-grid">
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="qbittorrent" checked><span class="sf-name">qBittorrent</span><span class="sf-desc">Recommended.</span></label>
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="deluge"><span class="sf-name">Deluge</span></label>
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="transmission"><span class="sf-name">Transmission</span></label>
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="rtorrent"><span class="sf-name">rTorrent</span><span class="sf-desc">Comes with the ruTorrent web UI.</span></label>
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="sabnzbd"><span class="sf-name">SABnzbd</span><span class="sf-desc">Usenet. Needs a Usenet provider and indexer.</span></label>
+  </div>
+</div>
+<div class="sf-group">
+  <div class="sf-head"><span class="sf-title">Media server</span><span class="sf-sub">Allows you to stream your library to other devices.</span></div>
+  <div class="sf-grid">
+    <label class="sf-opt"><input type="radio" name="media_server" value="jellyfin" checked><span class="sf-name">Jellyfin</span><span class="sf-desc">Recommended. Free and open source.</span></label>
+    <label class="sf-opt"><input type="radio" name="media_server" value="emby"><span class="sf-name">Emby</span><span class="sf-desc">Some features need Emby Premiere.</span></label>
+    <label class="sf-opt"><input type="radio" name="media_server" value="plex"><span class="sf-name">Plex</span><span class="sf-desc">Needs a Plex account.</span></label>
+    <label class="sf-opt"><input type="radio" name="media_server" value="none"><span class="sf-name">None</span><span class="sf-desc">You already have one, or don't want one.</span></label>
+  </div>
+</div>
+<div class="sf-group">
+  <div class="sf-head"><span class="sf-title">Requests</span><span class="sf-sub">A page where you or your friends/family request anime.</span></div>
+  <div class="sf-grid">
+    <label class="sf-opt"><input type="radio" name="requests" value="none" checked><span class="sf-name">None</span></label>
+    <label class="sf-opt"><input type="radio" name="requests" value="seerr"><span class="sf-name">Seerr</span><span class="sf-desc">Sends requests to Ryokan.</span></label>
+  </div>
+</div>
+<div class="sf-group">
+  <div class="sf-head"><span class="sf-title">Folders and user</span></div>
+  <div class="sf-fields">
+    <label class="sf-field sf-wide"><span class="sf-label">Media folder</span><input type="text" name="shared_path" value="/srv/media" spellcheck="false"><span class="sf-help">Holds your downloads and your library. Use a full path.</span></label>
+    <label class="sf-field sf-wide"><span class="sf-label">Settings folder</span><input type="text" name="appdata_path" value="/srv/docker" spellcheck="false"><span class="sf-help">Each app keeps its settings in a folder under this one.</span></label>
+    <label class="sf-field"><span class="sf-label">User ID</span><input type="number" name="puid" value="1000" min="0"><span class="sf-help"><code>id -u</code> prints yours.</span></label>
+    <label class="sf-field"><span class="sf-label">Group ID</span><input type="number" name="pgid" value="1000" min="0"><span class="sf-help"><code>id -g</code> prints yours.</span></label>
+    <label class="sf-field"><span class="sf-label">Time zone</span><input type="text" name="tz" value="UTC" placeholder="America/Chicago" spellcheck="false"><span class="sf-help">Such as <code>America/Chicago</code>.</span></label>
+  </div>
+</div>
+<details class="sf-more">
+  <summary>More options: file handling, indexers, VPN, HTTPS, host check</summary>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">File operation mode</span><span class="sf-sub">How a finished download gets into your library.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="radio" name="file_mode" value="hardlink" checked><span class="sf-name">Hardlink</span><span class="sf-desc">Recommended. No extra disk space, and torrents keep seeding.</span></label>
+      <label class="sf-opt"><input type="radio" name="file_mode" value="copy"><span class="sf-name">Copy</span><span class="sf-desc">Torrents keep seeding. Each episode takes its space twice.</span></label>
+      <label class="sf-opt"><input type="radio" name="file_mode" value="move"><span class="sf-name">Move</span><span class="sf-desc">No extra disk space. Torrents stop seeding.</span></label>
+    </div>
+  </div>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">Indexer manager</span><span class="sf-sub">Lets Ryokan search trackers and Usenet indexers besides Nyaa, which is built in.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="radio" name="indexer" value="none" checked><span class="sf-name">None</span><span class="sf-desc">Nyaa only.</span></label>
+      <label class="sf-opt"><input type="radio" name="indexer" value="prowlarr"><span class="sf-name">Prowlarr</span><span class="sf-desc">Torrents and Usenet. The usual choice.</span></label>
+      <label class="sf-opt"><input type="radio" name="indexer" value="jackett"><span class="sf-name">Jackett</span><span class="sf-desc">Torrents only.</span></label>
+    </div>
+  </div>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">VPN</span><span class="sf-sub">Sends your torrent clients through a VPN with Gluetun. You need a VPN subscription.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="radio" name="vpn" value="none" checked><span class="sf-name">None</span><span class="sf-desc">Torrents use your own connection.</span></label>
+      <label class="sf-opt"><input type="radio" name="vpn" value="gluetun"><span class="sf-name">Gluetun</span><span class="sf-desc">ProtonVPN, Mullvad, PIA, NordVPN and others.</span></label>
+    </div>
+  </div>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">Reverse proxy</span><span class="sf-sub">Puts Ryokan on your own domain with HTTPS. You need a domain.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="radio" name="proxy" value="none" checked><span class="sf-name">None</span><span class="sf-desc">Reach Ryokan by address and port.</span></label>
+      <label class="sf-opt"><input type="radio" name="proxy" value="caddy"><span class="sf-name">Caddy</span><span class="sf-desc">Gets certificates on its own. The easy one.</span></label>
+      <label class="sf-opt"><input type="radio" name="proxy" value="traefik"><span class="sf-name">Traefik</span><span class="sf-desc">Configured with labels.</span></label>
+      <label class="sf-opt"><input type="radio" name="proxy" value="nginx"><span class="sf-name">nginx</span><span class="sf-desc">You write the config and bring the certificates.</span></label>
+      <label class="sf-opt"><input type="radio" name="proxy" value="cloudflared"><span class="sf-name">Cloudflare Tunnel</span><span class="sf-desc">No open ports on your router.</span></label>
+    </div>
+  </div>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">Host check</span><span class="sf-sub">Ryokan's pages then only answer to an IP address, <code>localhost</code>, or the names you list. See <a href="../docker/#host-check">Host check</a>.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="checkbox" name="host_check"><span class="sf-name">Turn on the host check</span><span class="sf-desc">Off by default.</span></label>
+    </div>
+    <div class="sf-fields">
+      <label class="sf-field sf-wide"><span class="sf-label">Names you open Ryokan by</span><input type="text" name="allowed_hosts" value="" placeholder="nas ryokan.lan ryokan.example.com" spellcheck="false"><span class="sf-help">Separate them with spaces.</span></label>
+    </div>
+  </div>
+</details>
+<div class="sf-summary">
+  <span class="sf-summary-label">Your stack</span>
+  <span class="sf-chips" data-picker="summary"><span class="sf-chip">Ryokan</span><span class="sf-chip">qBittorrent</span><span class="sf-chip">Jellyfin</span></span>
+</div>
+<p class="sf-error" data-picker="problem" hidden></p>
+</form>
 
-=== "Deluge"
+!!! tip "Already running one of these?"
+    Pick **None** for the media server if you have one, or untick the download client and remove it from the file in step 3. Your existing media server has to be able to read `/srv/media/anime`, and your existing download client has to save into `/srv/media/downloads`.
 
-    ```sh
-    sudo mkdir -p /srv/docker/{ryokan,jellyfin,deluge}
-    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,deluge}
-    ```
+## 3. Create the folders and start the stack
 
-    ```yaml
-    services:
-      ryokan:
-        image: ghcr.io/johnthreekay/ryokan:latest
-        container_name: ryokan
-        ports:
-          - "8978:8978"
-        volumes:
-          - /srv/docker/ryokan:/data
-          - /srv/media/downloads:/downloads
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+Create the folders the stack uses, owned by the user from step 2:
 
-      jellyfin:
-        image: jellyfin/jellyfin:latest
-        container_name: jellyfin
-        ports:
-          - "8096:8096"
-        volumes:
-          - /srv/docker/jellyfin/config:/config
-          - /srv/docker/jellyfin/cache:/cache
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+<button type="button" data-copy="prep" class="stack-copy">Copy commands</button>
 
-      deluge:
-        image: lscr.io/linuxserver/deluge:latest
-        container_name: deluge
-        ports:
-          - "8112:8112"        # web UI
-          - "6881:6881"        # BT
-          - "6881:6881/udp"
-        volumes:
-          - /srv/docker/deluge:/config
-          - /srv/media/downloads:/downloads
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
-    ```
+<pre data-picker="prep" class="stack-output"><code>sudo mkdir -p \
+  /srv/media/downloads \
+  /srv/media/anime \
+  /srv/docker/ryokan \
+  /srv/docker/qbittorrent \
+  /srv/docker/jellyfin
+sudo chown -R 1000:1000 \
+  /srv/media/downloads \
+  /srv/media/anime \
+  /srv/docker/ryokan \
+  /srv/docker/qbittorrent \
+  /srv/docker/jellyfin</code></pre>
 
-=== "Transmission"
+Next, make a folder for the stack itself, for example `/srv/stack`, and save this in it as `docker-compose.yml`:
 
-    ```sh
-    sudo mkdir -p /srv/docker/{ryokan,jellyfin,transmission}
-    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,transmission}
-    ```
+<button type="button" data-copy="compose" class="stack-copy">Copy file</button>
 
-    ```yaml
-    services:
-      ryokan:
-        image: ghcr.io/johnthreekay/ryokan:latest
-        container_name: ryokan
-        ports:
-          - "8978:8978"
-        volumes:
-          - /srv/docker/ryokan:/data
-          - /srv/media/downloads:/downloads
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+<pre data-picker="compose" class="stack-output"><code class="language-yaml">Loading…</code></pre>
 
-      jellyfin:
-        image: jellyfin/jellyfin:latest
-        container_name: jellyfin
-        ports:
-          - "8096:8096"
-        volumes:
-          - /srv/docker/jellyfin/config:/config
-          - /srv/docker/jellyfin/cache:/cache
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+<div markdown data-when="client:rtorrent">
 
-      transmission:
-        image: lscr.io/linuxserver/transmission:latest
-        container_name: transmission
-        ports:
-          - "9091:9091"        # web UI
-          - "51413:51413"      # BT
-          - "51413:51413/udp"
-        volumes:
-          - /srv/docker/transmission:/config
-          - /srv/media/downloads:/downloads
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-          - USER=admin
-          - PASS=changeme      # change before first start
-        restart: unless-stopped
-    ```
+**rTorrent: set a password before the first start.** Without these two files, the ruTorrent page and the address Ryokan uses are open to anyone on your network. Put your own password in place of `REPLACE-WITH-YOUR-PASSWORD`:
 
-=== "rTorrent"
+```text
+sudo mkdir -p /srv/docker/rutorrent/passwd
+docker run --rm httpd:2.4-alpine htpasswd -Bbn admin "REPLACE-WITH-YOUR-PASSWORD" \
+  | sudo tee /srv/docker/rutorrent/passwd/rutorrent.htpasswd > /dev/null
+sudo cp /srv/docker/rutorrent/passwd/rutorrent.htpasswd /srv/docker/rutorrent/passwd/rpc.htpasswd
+sudo chown -R 1000:1000 /srv/docker/rutorrent/passwd
+```
 
-    ```sh
-    sudo mkdir -p /srv/docker/{ryokan,jellyfin,rutorrent/passwd}
-    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,rutorrent}
-    ```
+The username is `admin`.
 
-    ```yaml
-    services:
-      ryokan:
-        image: ghcr.io/johnthreekay/ryokan:latest
-        container_name: ryokan
-        ports:
-          - "8978:8978"
-        volumes:
-          - /srv/docker/ryokan:/data
-          - /srv/media/downloads:/downloads
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+</div>
 
-      jellyfin:
-        image: jellyfin/jellyfin:latest
-        container_name: jellyfin
-        ports:
-          - "8096:8096"
-        volumes:
-          - /srv/docker/jellyfin/config:/config
-          - /srv/docker/jellyfin/cache:/cache
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+<div markdown data-when="server:plex">
 
-      rutorrent:
-        image: crazymax/rtorrent-rutorrent:latest
-        container_name: rutorrent
-        ports:
-          - "8082:8080"        # ruTorrent web UI (host:container; 8082 picked to leave 8080 free for other clients)
-          - "50000:50000"      # BT incoming peer connections
-          - "6881:6881/udp"    # DHT
-        # XML-RPC (port 8000 inside the container) isn't host-exposed.
-        # Ryokan talks to it via Docker's per-compose network at
-        # `http://rutorrent:8000/RPC2`. Add `- "8000:8000"` here only if
-        # you want to hit it from the host with curl for debugging.
-        volumes:
-          - /srv/docker/rutorrent:/data
-          - /srv/media/downloads:/downloads      # contains /downloads/temp and /downloads/complete after first start
-          - /srv/docker/rutorrent/passwd:/passwd  # htpasswd files for web UI + RPC auth
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
-    ```
+**Plex: add a claim token before the first start.** Plex only lets you set up a new server from the same machine, or with a claim token. Get one at [plex.tv/claim](https://www.plex.tv/claim/), paste it into `PLEX_CLAIM` in the file, and start the stack within four minutes.
 
-    **Set up basic auth before bringing the stack up.** The crazy-max image looks for htpasswd files at `/passwd/rutorrent.htpasswd` (web UI) and `/passwd/rpc.htpasswd` (XML-RPC, the endpoint Ryokan uses). When the files exist, nginx enforces auth in front of both; when they don't, both are unauthenticated. Generate both with the same credentials in one shot:
+</div>
 
-    ```sh
-    docker run --rm httpd:2.4-alpine htpasswd -Bbn admin "REPLACE-WITH-YOUR-PASSWORD" \
-      | sudo tee /srv/docker/rutorrent/passwd/rutorrent.htpasswd > /dev/null
-    sudo cp /srv/docker/rutorrent/passwd/rutorrent.htpasswd /srv/docker/rutorrent/passwd/rpc.htpasswd
-    sudo chown -R 1000:1000 /srv/docker/rutorrent/passwd
-    ```
+<div markdown data-when="vpn:gluetun">
 
-    Replace `REPLACE-WITH-YOUR-PASSWORD` with whatever you want; same credentials work for ruTorrent's web UI and the connection Ryokan makes. Step 4 walks through plugging them into Ryokan.
+**VPN: add your provider's details before the first start.** In the `gluetun` part of the file, set `VPN_SERVICE_PROVIDER` and the keys or login your provider gave you. The [Gluetun wiki](https://github.com/qdm12/gluetun-wiki) lists what each provider needs. If they are wrong, your torrent clients have no connection at all.
 
-=== "SABnzbd"
+</div>
 
-    ```sh
-    sudo mkdir -p /srv/docker/{ryokan,jellyfin,sabnzbd/{config,incomplete}}
-    sudo chown -R 1000:1000 /srv/docker/{ryokan,jellyfin,sabnzbd}
-    ```
+<div markdown data-when="proxy:caddy">
 
-    ```yaml
-    services:
-      ryokan:
-        image: ghcr.io/johnthreekay/ryokan:latest
-        container_name: ryokan
-        ports:
-          - "8978:8978"
-        volumes:
-          - /srv/docker/ryokan:/data
-          - /srv/media/downloads:/downloads
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+**Caddy: put your domain in the file.** Replace `ryokan.example.com` in the `caddy` part of the file with your own name, and point that name at this server.
 
-      jellyfin:
-        image: jellyfin/jellyfin:latest
-        container_name: jellyfin
-        ports:
-          - "8096:8096"
-        volumes:
-          - /srv/docker/jellyfin/config:/config
-          - /srv/docker/jellyfin/cache:/cache
-          - /srv/media/anime:/media/anime
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
+</div>
 
-      sabnzbd:
-        image: lscr.io/linuxserver/sabnzbd:latest
-        container_name: sabnzbd
-        ports:
-          - "8081:8080"          # host:container; SAB lives on 8080 internally
-        volumes:
-          - /srv/docker/sabnzbd/config:/config
-          - /srv/docker/sabnzbd/incomplete:/incomplete-downloads   # in-progress
-          - /srv/media/downloads:/downloads                        # completed (shared with Ryokan + Jellyfin)
-        environment:
-          - PUID=1000
-          - PGID=1000
-          - TZ=Etc/UTC
-        restart: unless-stopped
-    ```
+<div markdown data-when="proxy:traefik">
 
-    !!! note "Why two folders?"
-        SAB splits in-progress (`/incomplete-downloads`) from completed (`/downloads`). The compose puts the in-progress side under SAB's own config tree so it's tucked out of the way; only completed downloads land in `/srv/media/downloads` where Ryokan reads them.
+**Traefik: put your email and domain in the file.** Replace `you@example.com` in the `traefik` part of the file. Then add the three labels from the comment under it to the `ryokan` service, with your own name in place of `ryokan.example.com`.
 
-Bring it up:
+</div>
+
+<div markdown data-when="proxy:nginx">
+
+**nginx: write the config before the first start.** The comment in the `nginx` part of the file has a config to start from. Save it as `/srv/docker/nginx/conf.d/ryokan.conf`, and put your certificate files in `/srv/docker/nginx/certs`.
+
+</div>
+
+<div markdown data-when="proxy:cloudflared">
+
+**Cloudflare Tunnel: paste your tunnel token into the file.** Create a tunnel in Cloudflare Zero Trust under **Networks → Tunnels**, and paste its token into `TUNNEL_TOKEN`. In the tunnel's settings, add a public hostname that points at `http://ryokan:8978`.
+
+</div>
+
+Start the stack from the folder that holds the file:
 
 ```sh
 docker compose up -d
 ```
 
-Ryokan is now on port 8978, Jellyfin on 8096, your download client on its default port. Per-service config and state live at `/srv/docker/<service>/`; downloads land at `/srv/media/downloads`; the library lives at `/srv/media/anime`. Everything the stack writes is inspectable from the host (no Docker named volumes to dig through).
+The first start downloads every app, which can take a few minutes. `docker compose ps` should then list each one as running.
 
-??? info "How each client uses `/srv/media/downloads`"
-    The five clients structure that folder differently. Ryokan only reads completed files, so all five layouts work transparently.
+The addresses below use `localhost`. If the server is another machine, use its name or IP address in place of `localhost`.
 
-    - **qBittorrent / Deluge**: write files directly to `/downloads/<category>/<file>` inside the container (or `/downloads/<file>` if no category is set). Single shared folder.
-    - **Transmission**: writes everything to `/downloads/`, with a `.part` suffix on the filename while the torrent is in flight; renames on completion.
-    - **rTorrent**: splits `/downloads/temp/` (in-progress) and `/downloads/complete/` (completed); files move from temp to complete when the torrent finishes.
-    - **SABnzbd**: uses a separate folder for in-progress (`/incomplete-downloads/`, bind-mounted to `/srv/docker/sabnzbd/incomplete` on the host) and `/downloads/` for completed.
+## 4. Set up your download client
 
-!!! tip "Already running Jellyfin or your download client elsewhere?"
-    Drop the relevant service block from the compose and skip the corresponding setup step below. Make sure the existing instance can read `/srv/media/anime` (Jellyfin) or write to `/srv/media/downloads` (download client), or adjust paths accordingly.
+Each client needs to save into `/srv/media/downloads`. <span data-when="mode:hardlink">Ryokan can only hardlink a finished file when the client saved it there.</span><span data-when="mode:copy mode:move">That is where Ryokan picks finished files up from.</span>
 
-## 2. First login to Ryokan
+<div markdown data-when="client:qbittorrent">
 
-Open <http://localhost:8978> in a browser. You'll be redirected to a setup page. Pick a username and a password of at least 8 characters, type it twice, and submit. A password can be up to 72 characters long. Accented letters, Japanese characters and emoji count as two to four each toward that limit. That account is your admin account; Ryokan is single-user, so this is the only one you'll create.
+### qBittorrent
 
-Ryokan then asks where to put finished episodes. Set **Media Root Path** to `/media/anime`. That's the path inside Ryokan's container; it maps to `/srv/media/anime` on your host, the same folder Jellyfin reads from. Leave the file operation mode on Hardlink and the Jellyfin fields empty for now (step 5 connects it), and click **Save and continue**. Saving turns on post-processing, which renames each finished download and places it in that folder. **Skip for now** leaves post-processing off, and Settings → General has the same settings for later.
-
-!!! warning "PUID and PGID matter for shared folders"
-    The `1000:1000` defaults work for most homelabs but not all. If files Ryokan writes show up with the wrong owner and Jellyfin can't read them, run `id -u` and `id -g` on your media-owning user and update both services' `PUID` / `PGID`. [Installation → PUID and PGID](install.md#puid-and-pgid) explains why.
-
-After that you'll see an empty library page. That's expected; we haven't told Ryokan about any shows yet.
-
-## 3. Set up Jellyfin
-
-Open <http://localhost:8096> in another tab. Walk through Jellyfin's first-run wizard:
-
-1. Pick your display language.
-2. Create a Jellyfin admin account (separate from Ryokan's).
-3. **Add a media library**:
-    - **Content type**: Shows
-    - **Display name**: Anime (or whatever you like)
-    - **Folder**: click the `+` and add `/media/anime`. This is the path Jellyfin sees inside its container; it maps to `/srv/media/anime` on your host, the same folder Ryokan writes to.
-4. Accept the metadata defaults; you can tweak per-library later.
-5. Finish the wizard.
-
-Jellyfin's library will be empty for now. That's fine; once Ryokan grabs and imports its first episode, Jellyfin's scheduled scan will pick it up. You can also click **Scan All Libraries** in Dashboard → Libraries to force one immediately after a grab.
-
-## 4. Add a download client to Ryokan
-
-In Ryokan, go to **Settings → Download Clients → Add download client**. Fill in the values for your chosen client below.
-
-=== "qBittorrent"
-
-    First, fetch qBit's randomly-generated initial password from its logs:
+1. qBittorrent prints a temporary password to its log the first time it starts. Find it with:
 
     ```sh
     docker compose logs qbittorrent | grep -i "temporary password"
     ```
 
-    Open <http://localhost:8080> and log in (`admin` / that temporary password). qBit will prompt you to set a real password; do that, then come back to Ryokan.
+2. Open <http://localhost:8080> and log in as `admin` with your temp password.
+3. Go to **Tools → Options → Web UI** and set your own password under Authentication.
+4. Go to **Tools → Options → Downloads** and set **Default Save Path** to `/srv/media/downloads`.
+5. Click **Save**.
 
-    In Ryokan's add-client form:
+</div>
 
-    - **Kind**: qBittorrent
-    - **URL**: `http://qbittorrent:8080`
-    - **Username**: `admin`
-    - **Password**: the password you just set in qBit
-    - **Category**: `ryokan-anime`
-    - **Default client**: on
+<div markdown data-when="client:deluge">
 
-=== "Deluge"
+### Deluge
 
-    Open <http://localhost:8112>. The default Deluge web UI password is `deluge`; set a real one when prompted.
+1. Open <http://localhost:8112> and log in with the default password `deluge`. Change it when Deluge asks.
+2. Go to **Preferences → Downloads** and set **Download to** to `/srv/media/downloads`.
+3. Go to **Preferences → Network**. Under Incoming Port, untick **Use Random Port** and set the port to <code data-v="peer-deluge">6881</code>. This is the port the stack opens for Deluge.
+4. Click **Apply**.
 
-    In Ryokan's add-client form:
+</div>
 
-    - **Kind**: Deluge
-    - **URL**: `http://deluge:8112`
-    - **Password**: the password you set in Deluge's web UI
-    - **Label**: `ryokan-anime`
-    - **Default client**: on
+<div markdown data-when="client:transmission">
 
-=== "Transmission"
+### Transmission
 
-    Open <http://localhost:9091> and confirm Transmission is up. Auth is the `USER` and `PASS` you set in the compose file.
+1. Open <http://localhost:9091>. The stack runs Transmission without a login.
+2. Open the preferences and go to **Torrents**. Set **Download to** to `/srv/media/downloads`.
+3. Turn on **Use temporary folder** and set it to `/srv/media/downloads/incomplete`.
 
-    In Ryokan's add-client form:
+</div>
 
-    - **Kind**: Transmission
-    - **URL**: `http://transmission:9091`
-    - **Username**: `admin` (matches `USER` in the compose)
-    - **Password**: whatever you set `PASS` to in the compose
-    - **Label**: `ryokan-anime`
-    - **Default client**: on
+<div markdown data-when="client:rtorrent">
 
-=== "rTorrent"
+### rTorrent
 
-    Open <http://localhost:8082> to confirm ruTorrent's web UI loads. If you set up htpasswd in step 1, you'll be prompted for the credentials you generated; log in with `admin` and your password.
+rTorrent's image saves to its own folder, so its config file needs two changes. Open `/srv/docker/rutorrent/rtorrent/.rtorrent.rc` in an editor.
 
-    In Ryokan's add-client form:
+1. Add this line:
 
-    - **Kind**: rTorrent
-    - **URL**: `http://rutorrent:8000/RPC2` (port 8000 is the dedicated XML-RPC port inside the container; Ryokan reaches it via Docker's per-compose DNS without it needing a host-side mapping)
-    - **Username**: `admin` (matches the htpasswd you generated in step 1)
-    - **Password**: the password you put in the htpasswd file
-    - **Label**: `ryokan-anime`
-    - **Default client**: on
+    ```text
+    directory.default.set = /srv/media/downloads/temp
+    ```
 
-    If you skipped htpasswd in step 1 (you'll have to manually delete the `/srv/docker/rutorrent/passwd:/passwd` mount from the compose), leave Username and Password blank.
+2. Change the line that starts with `method.insert = d.get_finished_dir` to:
 
-=== "SABnzbd"
+    ```text
+    method.insert = d.get_finished_dir, simple, "cat=/srv/media/downloads/complete/,$d.custom1="
+    ```
 
-    Open <http://localhost:8081> and walk through SAB's first-run wizard. When you reach the final step, SAB shows you an API key; save it. (You can also pull it later from **Config → General → Security → API Key**; make sure it's the **full** API key, not the read-only `nzb_api_key`.)
+3. Restart it:
 
-    In Ryokan's add-client form:
+    ```sh
+    docker compose restart rutorrent
+    ```
 
-    - **Kind**: SABnzbd
-    - **URL**: `http://sabnzbd:8080` (the **container** port, not the 8081 host mapping. Ryokan reaches SAB through Docker's per-compose network where SAB is still on its native 8080; the 8081 in the compose is only for your browser to hit from the host.)
-    - **API Key**: paste the full API key
-    - **Category**: `ryokan-anime` (Ryokan auto-creates this in SAB if it doesn't exist)
-    - **Default client**: on
+The ruTorrent page is at <http://localhost:8082>. Log in as `admin` with the password from step 3.
 
-Click **Test connection** in Ryokan. You should see "Connected" with a version number. If not, the [Download clients page](download-clients.md) has per-client troubleshooting.
+</div>
 
-!!! tip "If container DNS doesn't resolve"
-    The URLs above (`http://qbittorrent:8080`, `http://sabnzbd:8080`, etc.) rely on Docker's per-compose DNS so containers can reach each other by service name. If you've split Ryokan and your download client into separate compose files, run them on different hosts, or have a network plugin that interferes with Docker DNS, swap the service name for your **host's LAN IP and the host-mapped port**. For example: instead of `http://qbittorrent:8080`, use `http://192.168.1.100:8080` (or whatever your host's IP is). It works because every container in the bundled compose publishes its port to the host, so anything that can reach the host can also reach those ports.
+<div markdown data-when="client:sabnzbd">
 
-Save the row.
+### SABnzbd
 
-## 5. (Optional) Connect Jellyfin to Ryokan
+1. Open <http://localhost:8081> and go through the setup wizard. This is where you enter your Usenet provider.
+2. Go to **Config → Folders**. Set **Temporary Download Folder** to `/srv/media/downloads/incomplete` and **Completed Download Folder** to `/srv/media/downloads/complete`.
+3. Go to **Config → Special** and add `sabnzbd` to **host_whitelist**. Save, and restart SABnzbd. Until you do, SABnzbd answers Ryokan with "Access denied".
+4. Go to **Config → General → Security** and copy the **API Key**. Use the full API key, not the NZB key. You need it in step 7.
 
-In Jellyfin, open **Dashboard → API Keys**, add a key named Ryokan, and copy it. In Ryokan, open **Settings → Connections**, set the Jellyfin **URL** to `http://jellyfin:8096`, paste the key into **API Key**, click **Test**, then **Save**. From then on Ryokan asks Jellyfin to rescan after each import, so a new episode shows up without waiting for the scheduled scan.
+</div>
 
-## 6. (Optional) Add an indexer
+## 5. Set up your media server
 
-Skip this for now if you want; Nyaa is built in and works out of the box. But if you have a Prowlarr or Jackett set up with private trackers, this is the moment to wire those in.
+<div markdown data-when="server:none">
 
-**Settings → Indexers → Add indexer**. Paste the URL Prowlarr or Jackett gave you (it ends in `/api`), the API key, and pick a name. The defaults handle the rest.
+You picked no media server, so there is nothing to do here. If you run one somewhere else, give it a library for shows that points at `/srv/media/anime`.
 
-Click **Test** to confirm Ryokan can reach it.
+</div>
 
-## 7. Add a show and watch it land
+<div markdown data-when="server:jellyfin">
 
-Go back to the library page, click **+ Add Series**, type the name of an anime you want, and pick the right one from the dropdown. Ryokan fetches metadata from AniList by default.
+Open <http://localhost:8096> and go through Jellyfin's setup wizard.
 
-When the series page opens, each episode row has two icon buttons: **Interactive search** lists the releases ranked by Ryokan's scoring so you can click **Grab** on one, and **Auto search** lets Ryokan grab the highest-scored release for you. **Search Monitored Episodes** at the top runs the automatic version for every monitored episode.
+1. Create an admin account. It is separate from Ryokan's.
+2. Add a library with the content type **Shows**, and give it the folder `/srv/media/anime`.
+3. Accept the defaults for everything else.
 
-The grab fires off to your download client. When it finishes:
+Then make a key for Ryokan. Go to **Dashboard → API Keys**, click **+**, and name it "Ryokan". Copy the key. You need it in the next step.
 
-1. Post-processing places the file at `/srv/media/anime/<show name>/Season 01/<episode>.mkv` on your host. These composes mount downloads and the library separately, and a hardlink can't cross mounts, so it's a copy. The shared `/data` layout in [Docker](docker.md#moving-ryokans-data-folder) keeps hardlinks.
-2. Jellyfin shows it right away if you connected it in step 5. Otherwise it appears after Jellyfin's next library scan (or immediately if you click **Scan All Libraries**).
-3. The episode is now playable from any Jellyfin client (web, mobile, TV).
+</div>
 
-## 8. (Optional) Link AniList or MAL
+<div markdown data-when="server:emby">
 
-If you want Ryokan to add new shows automatically when you mark them watching on AniList or MAL, the **[External accounts](external-accounts.md)** page walks through linking. You can do this any time; your existing manually-added series stay put.
+Open <http://localhost:8096> and go through Emby's setup wizard.
+
+1. Create an admin account. It is separate from Ryokan's.
+2. Add a library with the content type **TV shows**, and give it the folder `/srv/media/anime`.
+3. Accept the defaults for everything else.
+
+Then make a key for Ryokan. Open **Settings** (the gear), go to **Advanced → API Keys**, click **New API Key**, and name it "Ryokan". Copy the key. You need it in the next step.
+
+</div>
+
+<div markdown data-when="server:plex">
+
+Open <http://localhost:32400/web> and sign in with your Plex account.
+
+1. Give the server a name.
+2. Add a library of the type **TV Shows**, and give it the folder `/srv/media/anime`.
+
+Then find your token for Ryokan. Once the library has something in it, open any episode, click **⋯ → Get Info → View XML**, and look at the address of the page that opens. It ends in `X-Plex-Token=`. The value after it is the token. Until then, leave the media server fields in the next step empty and add them later.
+
+</div>
+
+<div markdown data-when="server:any">
+
+The library stays empty until Ryokan imports its first episode.
+
+</div>
+
+## 6. First login to Ryokan
+
+Open <http://localhost:8978>. Ryokan asks you to create an account. Choose a username and a password of 8 to 72 characters. Ryokan has a single user, and this is it.
+
+Next it asks where finished episodes should go:
+
+| Field | Value |
+|---|---|
+| Media Root Path | `/srv/media/anime` |
+| File operation mode | <span data-v="file-mode">Hardlink</span> |
+
+<div markdown data-when="server:jellyfin">
+
+The media server fields on the same page are optional, but filling them in means new episodes show up in Jellyfin straight away:
+
+| Field | Value |
+|---|---|
+| Type | Jellyfin |
+| URL | `http://jellyfin:8096` |
+| API Key | The key you made in step 5 |
+
+</div>
+
+<div markdown data-when="server:emby">
+
+The media server fields on the same page are optional, but filling them in means new episodes show up in Emby straight away:
+
+| Field | Value |
+|---|---|
+| Type | Emby |
+| URL | `http://emby:8096` |
+| API Key | The key you made in step 5 |
+
+</div>
+
+<div markdown data-when="server:plex">
+
+The media server fields on the same page are optional, but filling them in means new episodes show up in Plex straight away:
+
+| Field | Value |
+|---|---|
+| Type | Plex |
+| URL | `http://plex:32400` |
+| API Key | Your token from step 5 |
+
+</div>
+
+Click **Save and continue**.
+
+You can change any of this later under **Settings → General** and **Settings → Connections**. If you click **Skip for now** instead, Ryokan does not import finished downloads until you fill it in there.
+
+## 7. Add your download client to Ryokan
+
+In Ryokan, go to **Settings → Download Clients → Add download client**. Pick the client's kind, give it any name, and fill in the rest:
+
+<div markdown data-when="client:qbittorrent">
+
+**qBittorrent**
+
+| Field | Value |
+|---|---|
+| URL | <code data-v="url-qbittorrent">http://qbittorrent:8080</code> |
+| Username | `admin` |
+| Password | The password you set in step 4 |
+| Category | `anime` |
+| Download path | Leave empty |
+
+</div>
+
+<div markdown data-when="client:deluge">
+
+**Deluge**
+
+| Field | Value |
+|---|---|
+| URL | <code data-v="url-deluge">http://deluge:8112</code> |
+| Password | The password you set in step 4 |
+| Category | `anime` |
+| Download path | Leave empty |
+
+</div>
+
+<div markdown data-when="client:transmission">
+
+**Transmission**
+
+| Field | Value |
+|---|---|
+| URL | <code data-v="url-transmission">http://transmission:9091</code> |
+| Username and password | Leave empty |
+| Category | `anime` |
+| Download path | Leave empty |
+
+</div>
+
+<div markdown data-when="client:rtorrent">
+
+**rTorrent**
+
+| Field | Value |
+|---|---|
+| URL | <code data-v="url-rtorrent">http://rutorrent:8000/RPC2</code> |
+| Username | `admin` |
+| Password | The password you set in step 3 |
+| Category | `anime` |
+| Download path | Leave empty |
+
+</div>
+
+<div markdown data-when="client:sabnzbd">
+
+**SABnzbd**
+
+| Field | Value |
+|---|---|
+| URL | <code data-v="url-sabnzbd">http://sabnzbd:8080</code> |
+| API Key | The key you copied in step 4 |
+| Category | `anime` |
+| Download path | Leave empty |
+
+</div>
+
+Click **Test connection**. It should say Connected, with a version number. If it does not, see [Download clients](download-clients.md). Then save.
+
+The first torrent client you add becomes the default for torrents, and the first Usenet client the default for Usenet.
+
+!!! tip "If the client is not part of this stack"
+    The addresses above are names that only work between the apps in this stack. For a client running anywhere else, use the address you would type in a browser, for example `http://192.168.1.100:8080`.
+
+## 8. Add a show and watch it land
+
+On the library page, click **+ Add Series**, type a title, and pick the show from the results.
+
+On the series page, each episode has two buttons. **Interactive search** lists the available releases, best first, each with a **Grab** button. **Auto search** grabs the best one for you. **Search Monitored Episodes** at the top does the same for every monitored episode.
+
+When the download finishes:
+
+1. Ryokan places the file in `/srv/media/anime`, under `<show name>/Season 01/`. <span data-when="mode:hardlink">The file is hardlinked, so it takes no extra space and the client keeps seeding.</span><span data-when="mode:copy">The file is copied, so the client keeps seeding its own copy.</span><span data-when="mode:move">The file is moved out of the downloads folder, and Ryokan removes the finished download from the client.</span>
+2. The media server shows the episode straight away if you connected it in step 6. Otherwise it appears after the server's next library scan.
+
+That is a working install. The sections below are for the extras you picked, and for things you can add later.
+
+<div markdown data-when="requests:seerr">
+
+## Connect Seerr
+
+Seerr talks to Ryokan the way it would talk to Sonarr and Radarr. Ryokan plays both parts.
+
+**In Ryokan**, go to **Settings → Connections**. Under both Seerr sections, turn on **Enable Sonarr API** and **Enable Radarr API**, click **Generate** beside each API Key, and save. Both are off, with no key, on a new install.
+
+**In Seerr**, open <http://localhost:5055> and go through its setup. <span data-when="server:jellyfin">When it asks for your media server, the hostname is `jellyfin` and the port is `8096`.</span><span data-when="server:emby">When it asks for your media server, the hostname is `emby` and the port is `8096`.</span> When it asks for services, add both of these:
+
+| Field | Sonarr server (series) | Radarr server (films) |
+|---|---|---|
+| Hostname | `ryokan` | `ryokan` |
+| Port | `8978` | `8978` |
+| Use SSL | Off | Off |
+| API Key | The Sonarr key from Ryokan | The Radarr key from Ryokan |
+| URL Base | Leave empty | `/radarr` |
+| Quality Profile | Default | Default |
+| Root Folder | `/srv/media/anime` | `/srv/media/anime` |
+
+Click **Test** on each before saving. The profile and folder lists fill in once the test passes.
+
+</div>
+
+<div markdown data-when="vpn:gluetun">
+
+## VPN port forwarding
+
+Check first that the VPN is up:
+
+```sh
+docker compose logs gluetun | tail -n 20
+```
+
+Your torrent clients now download through the VPN, but other peers cannot connect to you until a port is forwarded. Downloads still work without one. Uploads are slow, and private trackers mark you as unconnectable.
+
+Port forwarding needs a provider that offers it. ProtonVPN, PIA, PrivateVPN and AirVPN do. Mullvad and NordVPN do not. If yours does not, remove the two `VPN_PORT_FORWARDING` lines from the file and skip this section.
+
+First, find the port Gluetun was given:
+
+```sh
+docker exec gluetun cat /tmp/gluetun/forwarded_port
+```
+
+An empty answer means no port yet. Look in the Gluetun log for the reason.
+
+Then enter that port in your torrent client:
+
+<div markdown data-when="client:qbittorrent">
+
+- **qBittorrent**: under **Tools → Options → Connection**, set **Port used for incoming connections** to the port and untick **Use UPnP / NAT-PMP port forwarding**. Under **Advanced**, set **Network Interface** to `tun0`.
+
+</div>
+
+<div markdown data-when="client:deluge">
+
+- **Deluge**: under **Preferences → Network**, set **Incoming Port** to the port, set **Interface** to `tun0`, and turn off UPnP and NAT-PMP.
+
+</div>
+
+<div markdown data-when="client:transmission">
+
+- **Transmission**: in the preferences under **Network**, set **Listening port** to the port and untick **Use UPnP or NAT-PMP port forwarding**.
+
+</div>
+
+<div markdown data-when="client:rtorrent">
+
+- **rTorrent**: in `/srv/docker/rutorrent/rtorrent/.rtorrent.rc`, set `network.port_range.set` to the port twice with a dash between, such as `51234-51234`, and set `network.port_random.set = no`. Then restart it.
+
+</div>
+
+Some providers change the port when the VPN reconnects. If uploads stop, read the port again and update the client.
+
+<div markdown data-when="client:sabnzbd">
+
+SABnzbd stays outside the VPN. Usenet is an encrypted connection to your provider, with no peers.
+
+</div>
+
+</div>
+
+<div markdown data-when="proxy:any">
+
+## Reverse proxy
+
+Once Ryokan opens on your domain over HTTPS, add this to the `environment` part of the `ryokan` service in the file and run `docker compose up -d` again:
+
+```yaml
+RYOKAN_TRUSTED_PROXY: "1"
+```
+
+Ryokan then reads the visitor's real address from the proxy, and marks the login cookie as secure. Only set it behind a proxy. See [Docker reference](docker.md).
+
+<div markdown data-when="hostcheck:on">
+
+The host check is on, so your domain has to be in the list of names in step 2. Without it, every page opened through the proxy answers with a "421" error.
+
+</div>
+
+</div>
+
+<div markdown data-when="indexer:none">
+
+## Add an indexer (optional)
+
+Nyaa is built in, so Ryokan can search for anime without a separate indexer.
+
+If you already run Prowlarr or Jackett, go to **Settings → Indexers → Add indexer** in Ryokan. Paste the indexer's URL, which ends in `/api`, and its API key, give it a name, and click **Test**. To run one as part of this stack, pick it under **More options** in step 2.
+
+</div>
+
+<div markdown data-when="indexer:prowlarr">
+
+## Add indexers with Prowlarr
+
+Nyaa is built in, so Ryokan already searches it. Prowlarr adds other trackers and Usenet indexers.
+
+**In Prowlarr**, open <http://localhost:9696> and create a login when it asks.
+
+1. Go to **Indexers → Add Indexer** and add the ones you use.
+2. Go to **Settings → General** and copy the **API Key**.
+
+**In Ryokan**, go to **Settings → Indexers → Add indexer**, once for each indexer in Prowlarr:
+
+| Field | Value |
+|---|---|
+| Name | Anything, such as the indexer's name |
+| Kind | `torznab` for a torrent indexer, `newznab` for a Usenet one |
+| URL | `http://prowlarr:9696/1/api` |
+| API Key | The key from Prowlarr |
+
+The `1` in the URL is the indexer's number in Prowlarr. To find it, click the indexer in Prowlarr's list. Its Torznab Url ends in a number and `/api`.
+
+Click **Test**, then save.
+
+</div>
+
+<div markdown data-when="indexer:jackett">
+
+## Add indexers with Jackett
+
+Nyaa is built in, so Ryokan already searches it. Jackett adds other trackers.
+
+**In Jackett**, open <http://localhost:9117>.
+
+1. Click **Add indexer** and add the ones you use.
+2. Copy the **API Key** from the top right of the page.
+
+**In Ryokan**, go to **Settings → Indexers → Add indexer**, once for each indexer in Jackett:
+
+| Field | Value |
+|---|---|
+| Name | Anything, such as the indexer's name |
+| Kind | `torznab` |
+| URL | `http://jackett:9117/api/v2.0/indexers/NAME/results/torznab/api` |
+| API Key | The key from Jackett |
+
+Put the indexer's own name in place of `NAME`. To find it, click **Copy Torznab Feed** beside the indexer in Jackett and look at the address it copies.
+
+Click **Test**, then save.
+
+</div>
+
+## Link AniList or MAL (optional)
+
+To have Ryokan add shows when you mark them as watching on AniList or MAL, see **[External accounts](external-accounts.md)**. Shows you added by hand are not affected.
+
+## If something goes wrong
+
+- **The media server cannot read the files.** Ryokan and the media server are then running as different users. Give every app the same user and group ID in step 2, and run the `chown` command from step 3 again. See [PUID and PGID](install.md#puid-and-pgid).
+- **An app keeps restarting.** `docker compose logs <name>` shows why. The usual cause is a settings folder that was not created in step 3.
+- **[Troubleshooting](troubleshooting.md)** covers the rest.
 
 ## What next?
 
-- **[Configuration](configuration.md)** explains every Settings tab so you can tune scoring, choose between hardlink and copy, set up a quality profile, and so on.
-- **[Importing an existing library](manual-import.md)** is the answer to "I already have 2 TB of anime". Point Ryokan at the folder, check the matches, and it hardlinks everything into place, no re-downloading.
-- **[Stack builder](stack-builder.md)** generates the rest of the homelab stack (Seerr for requests, Caddy / Traefik for HTTPS, Gluetun for VPN-routed grabs) in the same shape if you want to grow beyond the basics.
-- **[Troubleshooting](troubleshooting.md)** has the most common stumbles and their fixes.
+- **[Configuration](configuration.md)**: every Settings tab.
+- **[Importing an existing library](manual-import.md)**: bring in anime you already have without downloading it again.
+- **[How releases are scored](scoring.md)**: why Ryokan picks the release it picks.
 
 ---
 
-*Last updated: 2026-10-04.*
+*Last updated: 2026-11-18.*

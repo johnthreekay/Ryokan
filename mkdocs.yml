@@ -67,7 +67,6 @@ nav:
   - Getting started:
     - Welcome: index.md
     - Quick start: quick-start.md
-    - Stack builder: stack-builder.md
   - Installation:
     - Docker (recommended): install.md
     - Docker reference: docker.md

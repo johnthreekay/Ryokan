@@ -1,5 +1,6 @@
-// Stack-builder generator. Renders a docker-compose.yml + Ryokan
-// settings snippet from the form on `docs/stack-builder.md`. Pure
+// Stack picker. Renders a docker-compose.yml from the form in
+// `docs/quick-start.md` and fits the page's steps to the choices:
+// `data-when` blocks, `data-v` values and the paths in its text. Pure
 // vanilla JS, no framework — lives at the document level so the
 // site's `extra_javascript` config wires it in without a build step.
 //
@@ -13,7 +14,7 @@
   'use strict';
 
   // Per-client config matrix. The generator templates these into
-  // service blocks plus the Ryokan settings snippet. The URL Ryokan
+  // service blocks. The URL Ryokan
   // dials is built from the service name, `port` and `url_path`.
   const CLIENTS = {
     qbittorrent: {
@@ -35,7 +36,7 @@
       port: 8112,
       extra_ports: [],
       // No env for it: Deluge starts on a random port until the
-      // settings snippet's Incoming Port step pins this one.
+      // Quick start's Incoming Port step pins this one.
       peer_port: { udp_only: false, env: null },
       category: 'anime',
       config_dir: 'deluge',
@@ -122,11 +123,16 @@
     const radio = (name) =>
       form.querySelector(`input[name="${name}"]:checked`).value;
     return {
+      code: stackCode(form),
+      link: stackLink(form),
       dlclients,
       media_server: radio('media_server'),
       requests: radio('requests'),
       vpn: radio('vpn'),
       proxy: radio('proxy'),
+      indexer: radio('indexer'),
+      // Not part of the file: Ryokan's own setting, shown in the steps.
+      file_mode: radio('file_mode'),
       host_check: get('host_check').checked,
       // Host-name characters only, space-separated: the value lands in
       // a double-quoted YAML string.
@@ -454,9 +460,88 @@ ${dependsList}    restart: unless-stopped`;
     restart: unless-stopped`;
   }
 
+  function renderEmby(cfg) {
+    return `  emby:
+    image: lscr.io/linuxserver/emby:latest
+    container_name: emby
+    networks: [media]
+    ports:
+      - "8096:8096"
+    devices:
+      # /dev/dri enables Intel/AMD hardware transcode. Remove this
+      # line if your host has no iGPU or you don't need transcoding.
+      - /dev/dri:/dev/dri
+    volumes:
+      - ${cfg.paths.appdata}/emby:/config
+      - ${cfg.paths.media}:${cfg.paths.media}:ro
+    environment:
+      PUID: "${cfg.puid}"
+      PGID: "${cfg.pgid}"
+      TZ: "${cfg.tz}"
+    restart: unless-stopped`;
+  }
+
+  function renderPlex(cfg) {
+    return `  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    networks: [media]
+    ports:
+      - "32400:32400"
+    devices:
+      # /dev/dri enables Intel/AMD hardware transcode (Plex Pass).
+      # Remove this line if your host has no iGPU or you don't need it.
+      - /dev/dri:/dev/dri
+    volumes:
+      - ${cfg.paths.appdata}/plex:/config
+      - ${cfg.paths.media}:${cfg.paths.media}:ro
+    environment:
+      PUID: "${cfg.puid}"
+      PGID: "${cfg.pgid}"
+      TZ: "${cfg.tz}"
+      VERSION: docker
+      # Links the new server to your Plex account on first start. Get a
+      # token at https://www.plex.tv/claim (valid for four minutes) and
+      # paste it here. You can remove the line once the server is set up.
+      PLEX_CLAIM: ""
+    restart: unless-stopped`;
+  }
+
+  // Prowlarr or Jackett: where the user adds trackers and Usenet
+  // indexers, which Ryokan then searches over torznab / newznab.
+  const INDEXERS = {
+    prowlarr: { label: 'Prowlarr', image: 'lscr.io/linuxserver/prowlarr:latest', port: 9696 },
+    jackett: { label: 'Jackett', image: 'lscr.io/linuxserver/jackett:latest', port: 9117 },
+  };
+
+  function renderIndexer(cfg) {
+    const ix = INDEXERS[cfg.indexer];
+    if (!ix) return null;
+    return `  ${cfg.indexer}:
+    image: ${ix.image}
+    container_name: ${cfg.indexer}
+    networks: [media]
+    ports:
+      - "${ix.port}:${ix.port}"
+    volumes:
+      - ${cfg.paths.appdata}/${cfg.indexer}:/config
+    environment:
+      PUID: "${cfg.puid}"
+      PGID: "${cfg.pgid}"
+      TZ: "${cfg.tz}"
+    restart: unless-stopped`;
+  }
+
+  // The media server picked, as a compose service name, or null.
+  function mediaServerService(cfg) {
+    return ['jellyfin', 'emby', 'plex'].includes(cfg.media_server)
+      ? cfg.media_server
+      : null;
+  }
+
   function renderSeerr(cfg) {
     const deps = ['ryokan'];
-    if (cfg.media_server === 'jellyfin') deps.push('jellyfin');
+    if (mediaServerService(cfg)) deps.push(mediaServerService(cfg));
     return `  seerr:
     image: ghcr.io/seerr-team/seerr:latest
     container_name: seerr
@@ -466,9 +551,9 @@ ${dependsList}    restart: unless-stopped`;
       - "5055:5055"
     volumes:
       - ${cfg.paths.appdata}/seerr:/app/config
+    # Seerr has no PUID / PGID setting. This runs it as the same user.
+    user: "${cfg.puid}:${cfg.pgid}"
     environment:
-      PUID: "${cfg.puid}"
-      PGID: "${cfg.pgid}"
       TZ: "${cfg.tz}"
     depends_on:
 ${deps.map((d) => `      - ${d}`).join('\n')}
@@ -530,12 +615,12 @@ ${portsBlock}    volumes:
       # Gluetun writes the assigned port number to this file inside
       # its container. Read it with:
       #   docker exec gluetun cat /tmp/gluetun/forwarded_port
-      # See the "Port forwarding" section in the settings snippet
-      # below for the qBittorrent / Deluge plumbing.
+      # The Quick start's "VPN port forwarding" section has the steps
+      # for each torrent client.
       VPN_PORT_FORWARDING_STATUS_FILE: "/tmp/gluetun/forwarded_port"
     restart: unless-stopped
     # All torrent download clients in this stack share gluetun's
-    # network namespace via \`network_mode: "service:gluetun"\` and
+    # network namespace via network_mode: "service:gluetun" and
     # depend on gluetun starting first. SAB is left out of the VPN
     # because Usenet talks TLS to your provider, not to peers.`;
   }
@@ -551,16 +636,12 @@ ${portsBlock}    volumes:
       - "80:80"
       - "443:443"
     volumes:
-      - ${cfg.paths.appdata}/caddy/Caddyfile:/etc/caddy/Caddyfile
       - ${cfg.paths.appdata}/caddy/data:/data
       - ${cfg.paths.appdata}/caddy/config:/config
-    restart: unless-stopped
-    # Stub Caddyfile; drop your hostname in. Caddy auto-provisions
-    # Let's Encrypt certs once a real domain points at this host.
-    # Example:
-    #   ryokan.example.com {
-    #       reverse_proxy ryokan:8978
-    #   }`;
+    # Put your own hostname in place of ryokan.example.com. Caddy gets
+    # a Let's Encrypt certificate once that name points at this host.
+    command: caddy reverse-proxy --from ryokan.example.com --to ryokan:8978
+    restart: unless-stopped`;
     }
     if (cfg.proxy === 'traefik') {
       return `  traefik:
@@ -575,8 +656,8 @@ ${portsBlock}    volumes:
       - "8090:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${cfg.paths.appdata}/traefik/traefik.yml:/etc/traefik/traefik.yml
-      - ${cfg.paths.appdata}/traefik/acme.json:/acme.json
+      # Traefik keeps its certificates here.
+      - ${cfg.paths.appdata}/traefik:/letsencrypt
     command:
       - --api.insecure=true
       - --providers.docker=true
@@ -584,7 +665,7 @@ ${portsBlock}    volumes:
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.le.acme.email=you@example.com
-      - --certificatesresolvers.le.acme.storage=/acme.json
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.le.acme.tlschallenge=true
     restart: unless-stopped
     # Add Traefik labels to each service you want exposed, e.g.:
@@ -602,7 +683,6 @@ ${portsBlock}    volumes:
       - "80:80"
       - "443:443"
     volumes:
-      - ${cfg.paths.appdata}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ${cfg.paths.appdata}/nginx/conf.d:/etc/nginx/conf.d:ro
       - ${cfg.paths.appdata}/nginx/certs:/etc/nginx/certs:ro
     restart: unless-stopped
@@ -649,12 +729,13 @@ ${portsBlock}    volumes:
   function serviceDirs(cfg) {
     const dirs = ['ryokan'];
     cfg.dlclients.forEach((k) => dirs.push(CLIENTS[k].config_dir));
-    if (cfg.media_server === 'jellyfin') dirs.push('jellyfin');
+    if (mediaServerService(cfg)) dirs.push(mediaServerService(cfg));
+    if (INDEXERS[cfg.indexer]) dirs.push(cfg.indexer);
     if (cfg.requests === 'seerr') dirs.push('seerr');
     if (cfg.vpn === 'gluetun') dirs.push('gluetun');
-    if (cfg.proxy === 'caddy') dirs.push('caddy');
+    if (cfg.proxy === 'caddy') dirs.push('caddy/data', 'caddy/config');
     if (cfg.proxy === 'traefik') dirs.push('traefik');
-    if (cfg.proxy === 'nginx') dirs.push('nginx');
+    if (cfg.proxy === 'nginx') dirs.push('nginx/conf.d', 'nginx/certs');
     return dirs;
   }
 
@@ -670,6 +751,10 @@ ${portsBlock}    volumes:
     cfg.dlclients.forEach((kind) => services.push(renderClient(kind, cfg)));
     if (cfg.vpn === 'gluetun') services.push(renderGluetun(cfg));
     if (cfg.media_server === 'jellyfin') services.push(renderJellyfin(cfg));
+    if (cfg.media_server === 'emby') services.push(renderEmby(cfg));
+    if (cfg.media_server === 'plex') services.push(renderPlex(cfg));
+    const indexer = renderIndexer(cfg);
+    if (indexer) services.push(indexer);
     if (cfg.requests === 'seerr') services.push(renderSeerr(cfg));
     const proxy = renderProxy(cfg);
     if (proxy) services.push(proxy);
@@ -685,20 +770,28 @@ ${portsBlock}    volumes:
       .map((d) => `${cfg.paths.appdata}/${d}`)
       .join(' ');
 
+    // The code holds every choice in the form, so a file someone pastes
+    // when asking for help can be opened in the picker as they built it.
+    const origin = cfg.code
+      ? `# Ryokan stack\n# Open this exact stack in the picker:\n#   ${cfg.link}`
+      : '# Ryokan stack';
     const header = `# =============================================================================
-# Ryokan stack: generated from the picker
+${origin}
 # =============================================================================
 #
-# Before first \`docker compose up\`:
+# Before the first start, create the folders:
 #   sudo mkdir -p ${cfg.paths.downloads} ${cfg.paths.media} ${appdataPaths}
 #   sudo chown -R ${cfg.puid}:${cfg.pgid} ${cfg.paths.downloads} ${cfg.paths.media} ${appdataPaths}
+#
+# Then start the stack from the folder that holds this file:
+#   docker compose up -d
 #
 # Path layout: ${cfg.paths.shared} holds downloads/ and anime/ (the
 # library), and every container mounts it at that same path. A hardlink
 # needs both ends inside one mount, so this is what lets post-processing
 # hardlink instead of copy, and the clients report paths Ryokan can open
 # as they are. Point each client's download folder at
-# ${cfg.paths.downloads} (the settings below say where).
+# ${cfg.paths.downloads} (the Quick start says where).
 #
 # =============================================================================
 
@@ -711,394 +804,398 @@ services:
     return header + services.join('\n\n') + '\n';
   }
 
-  // What to change inside a client once it's up: its download folder
-  // (inside the shared mount, which no image uses by default) and, for
-  // Deluge and SAB, the port and hostname settings Ryokan needs.
-  function clientSteps(kind, cfg) {
-    const dl = cfg.paths.downloads;
-    const peer = peerPorts(cfg)[kind];
-    const out = ['  In the client:'];
-    if (kind === 'qbittorrent') {
-      out.push(`    Tools → Options → Downloads → Default Save Path: ${dl}`);
-    } else if (kind === 'deluge') {
-      out.push(`    Preferences → Downloads → Download to: ${dl}`);
-      out.push(`    Preferences → Network → Incoming Port: uncheck "Use Random Port", set ${peer}`);
-      out.push('    (the port the compose publishes; Deluge picks a random one until then)');
-    } else if (kind === 'transmission') {
-      out.push(`    Edit preferences → Torrents → Download to: ${dl}`);
-      out.push(`    and Use temporary folder: ${dl}/incomplete`);
-    } else if (kind === 'rtorrent') {
-      out.push(`    The image hardcodes /downloads. After the first start, edit`);
-      out.push(`    ${cfg.paths.appdata}/rutorrent/rtorrent/.rtorrent.rc:`);
-      out.push(`      add:     directory.default.set = ${dl}/temp`);
-      out.push('      change the d.get_finished_dir line to:');
-      out.push(`               method.insert = d.get_finished_dir, simple, "cat=${dl}/complete/,$d.custom1="`);
-      out.push('    then `docker compose restart rutorrent`.');
-    } else if (kind === 'sabnzbd') {
-      out.push(`    Config → Folders → Temporary Download Folder: ${dl}/incomplete`);
-      out.push(`    Config → Folders → Completed Download Folder: ${dl}/complete`);
-      out.push('    Config → Special → host_whitelist: add  sabnzbd  (the name Ryokan calls it by),');
-      out.push('    Save, and restart SAB. Until then SAB answers Ryokan with');
-      out.push('    "Access denied - Hostname verification failed".');
-    }
+  // The two commands to run before the first start, as their own block
+  // on the page (the compose file's header comment repeats them).
+  function prepCommands(cfg) {
+    if (cfg.dlclients.length === 0) return '# Pick at least one download client.';
+    if (sharedPathProblem(cfg)) return '# Fix the media folder above first.';
+    // One folder per line, so nothing runs off the side of the block.
+    const dirs = [cfg.paths.downloads, cfg.paths.media]
+      .concat(serviceDirs(cfg).map((d) => `${cfg.paths.appdata}/${d}`))
+      .map((d) => ` \\\n  ${d}`)
+      .join('');
+    return `sudo mkdir -p${dirs}\nsudo chown -R ${cfg.puid}:${cfg.pgid}${dirs}`;
+  }
+
+  const SERVER_LABELS = { jellyfin: 'Jellyfin', emby: 'Emby', plex: 'Plex' };
+  const PROXY_LABELS = {
+    caddy: 'Caddy',
+    traefik: 'Traefik',
+    nginx: 'nginx',
+    cloudflared: 'Cloudflare Tunnel',
+  };
+
+  // What the stack runs, in the order the steps set it up.
+  function summaryLabels(cfg) {
+    const out = ['Ryokan'];
+    cfg.dlclients.forEach((k) => out.push(CLIENTS[k].label));
+    if (cfg.vpn === 'gluetun') out.push('Gluetun');
+    if (mediaServerService(cfg)) out.push(SERVER_LABELS[cfg.media_server]);
+    if (INDEXERS[cfg.indexer]) out.push(INDEXERS[cfg.indexer].label);
+    if (cfg.requests === 'seerr') out.push('Seerr');
+    if (cfg.proxy !== 'none') out.push(PROXY_LABELS[cfg.proxy]);
     return out;
   }
 
-  function renderSettings(cfg) {
-    const problem = sharedPathProblem(cfg);
-    if (problem) return problem.replace(/\. /g, '.\n');
-    const lines = [];
-    // First: setup asks for these before anything else.
-    lines.push("--- Ryokan's first-run setup (\"Set up your library\") ---");
-    lines.push('');
-    lines.push('Right after you create your account, Ryokan asks for these. Saving turns on');
-    lines.push('post-processing, which places finished downloads in the library.');
-    lines.push('');
-    lines.push(`  Media Root Path:      ${cfg.paths.media}`);
-    lines.push('  File operation mode:  Hardlink');
-    if (cfg.media_server === 'jellyfin') {
-      lines.push('  Jellyfin:             the URL and API key below, or leave it empty there and');
-      lines.push('                        add it later under Settings → Connections');
-    }
-    lines.push('');
-
-    lines.push('--- Settings → Download Clients ---');
-    lines.push('');
-    if (cfg.dlclients.length === 0) {
-      lines.push('Add a download client first.');
-    } else {
-      cfg.dlclients.forEach((kind, i) => {
-        const c = CLIENTS[kind];
-        const url = urlForClient(kind, cfg);
-        const vpnNote = isBehindVpn(kind, cfg)
-          ? '   # behind gluetun: talk to it via the gluetun container'
-          : '';
-        lines.push(`${c.label}:`);
-        lines.push(`  URL:           ${url}${vpnNote}`);
-        if (kind === 'qbittorrent') {
-          // qBit 4.6.1+ removed the hardcoded admin/adminadmin default
-          // and instead generates a random temporary password on first
-          // start, printed only to stdout. Direct users to docker logs.
-          lines.push('  Username:      admin');
-          lines.push('  Password:      qBit 4.6.1+ generates a random temp password on first start.');
-          lines.push('                 Find it with:  docker logs qbittorrent | grep -i "temporary password"');
-          lines.push('                 Log in with that, set a permanent password under');
-          lines.push('                 Tools → Options → Web UI → Authentication, then paste it here.');
-        } else if (kind === 'rtorrent') {
-          // crazy-max image looks for /passwd/rutorrent.htpasswd (web UI)
-          // and /passwd/rpc.htpasswd (XML-RPC). Without files, both are
-          // unauthenticated. The compose mounts /passwd unconditionally
-          // so users can drop files in to enable auth without editing
-          // the compose; the post-loop block below shows how to generate.
-          lines.push('  Username:      admin     (matches /passwd/rpc.htpasswd; see "Generate htpasswd" below)');
-          lines.push('  Password:      whatever you put in rpc.htpasswd');
-        } else if (kind === 'sabnzbd') {
-          lines.push('  API Key:       (paste from SAB → Config → General → API Key)');
-        }
-        lines.push(`  Category:      ${c.category}`);
-        lines.push('  Download path: (leave empty; the client and Ryokan see the same paths)');
-        // First client of each protocol becomes the default for that
-        // protocol. Walk the list in order; first qbit/deluge/trans/
-        // rtorrent → torrent default; first sabnzbd → usenet default.
-        const isFirstOfProtocol =
-          cfg.dlclients
-            .slice(0, i + 1)
-            .filter((k) => CLIENTS[k].protocol === c.protocol).length === 1;
-        lines.push(
-          `  Default for ${c.protocol}: ${isFirstOfProtocol ? 'YES' : 'no'}`
-        );
-        clientSteps(kind, cfg).forEach((l) => lines.push(l));
-        lines.push('');
-      });
-
-      // Fallback for users whose Docker DNS doesn't resolve cross-
-      // service names (separate compose files, services on different
-      // hosts, custom network plugins, etc.). Host LAN IP plus the
-      // host-mapped port works wherever the service-name URL doesn't.
-      lines.push('If "Test connection" fails because the service-name URL above');
-      lines.push('does not resolve (separate compose files, different hosts, custom');
-      lines.push('Docker network plugins, etc.), use your host\'s LAN IP and the');
-      lines.push('host-mapped port instead. For example: http://192.168.1.100:8080');
-      lines.push('in place of http://qbittorrent:8080.');
-      lines.push('');
-    }
-
-    if (cfg.dlclients.includes('rtorrent')) {
-      lines.push('--- Generate htpasswd for rTorrent (before first compose up) ---');
-      lines.push('');
-      lines.push('The crazy-max rtorrent-rutorrent image enforces basic auth on the');
-      lines.push('web UI and the XML-RPC endpoint when /passwd/rutorrent.htpasswd');
-      lines.push('and /passwd/rpc.htpasswd exist. Without the files, both are open.');
-      lines.push('Generate both with the same credentials in one shot:');
-      lines.push('');
-      lines.push(`    sudo mkdir -p ${cfg.paths.appdata}/rutorrent/passwd`);
-      lines.push('    docker run --rm httpd:2.4-alpine htpasswd -Bbn admin "REPLACE-WITH-YOUR-PASSWORD" \\');
-      lines.push(`      | sudo tee ${cfg.paths.appdata}/rutorrent/passwd/rutorrent.htpasswd > /dev/null`);
-      lines.push(`    sudo cp ${cfg.paths.appdata}/rutorrent/passwd/rutorrent.htpasswd \\`);
-      lines.push(`        ${cfg.paths.appdata}/rutorrent/passwd/rpc.htpasswd`);
-      lines.push(`    sudo chown -R ${cfg.puid}:${cfg.pgid} ${cfg.paths.appdata}/rutorrent/passwd`);
-      lines.push('');
-      lines.push('Same credentials cover ruTorrent web UI and Ryokan XML-RPC.');
-      lines.push('');
-    }
-
-    if (cfg.media_server === 'jellyfin') {
-      // The API key is generated in Jellyfin and consumed by Ryokan —
-      // spelling out both ends so users don't get stuck looking for a
-      // key Ryokan would create itself.
-      lines.push('--- In Ryokan: Settings → Connections → Jellyfin ---');
-      lines.push('');
-      lines.push('  URL:     http://jellyfin:8096');
-      lines.push('  API Key: First, in Jellyfin: Dashboard → API Keys → "+" → name it "Ryokan".');
-      lines.push('           Copy the generated key, then paste it here in Ryokan and Save.');
-      lines.push('');
-    }
-
-
-    if (cfg.requests === 'seerr') {
-      // Both shims live on the same Ryokan host:port — Sonarr at the
-      // root, Radarr at the /radarr URL base. Seerr only allows two
-      // Sonarr + two Radarr indexer slots; you need both for series
-      // (Sonarr-shim) and films (Radarr-shim) requests to route to
-      // Ryokan. Each shim has its own API key in Ryokan's settings.
-      lines.push('--- Inside Seerr (after first-run setup at http://localhost:5055) ---');
-      lines.push('');
-      lines.push('Add Sonarr server (anibridge shim, for series):');
-      lines.push('  Hostname:        ryokan');
-      lines.push('  Port:            8978');
-      lines.push('  API Key:         (Ryokan → Settings → Connections → Sonarr API → API Key)');
-      lines.push('  Use SSL:         no');
-      lines.push('  Quality Profile: Default');
-      lines.push(`  Root Folder:     ${cfg.paths.media}`);
-      lines.push('');
-      lines.push('Add Radarr server (anibridge shim, for anime films; note the /radarr URL base):');
-      lines.push('  Hostname:        ryokan');
-      lines.push('  Port:            8978');
-      lines.push('  URL Base:        /radarr');
-      lines.push('  API Key:         (Ryokan → Settings → Connections → Radarr API → API Key)');
-      lines.push('  Use SSL:         no');
-      lines.push('  Quality Profile: Default');
-      lines.push(`  Root Folder:     ${cfg.paths.media}`);
-      lines.push('');
-    }
-
-    if (cfg.vpn === 'gluetun') {
-      lines.push('--- Gluetun reminders ---');
-      lines.push('');
-      lines.push('Edit the gluetun service env in the compose to point at your VPN provider.');
-      lines.push('Common providers: mullvad, protonvpn, pia, nordvpn, custom (paste-your-own-config).');
-      lines.push('Wireguard is faster than OpenVPN if your provider supports it.');
-      lines.push('');
-      const torrents = cfg.dlclients.filter(
-        (k) => CLIENTS[k].protocol === 'torrent'
-      );
-      if (torrents.length > 0) {
-        lines.push(
-          `${torrents.map((k) => CLIENTS[k].label).join(', ')} share gluetun's network namespace.`
-        );
-        lines.push("Their host ports are exposed on the gluetun container, not on themselves.");
-      }
-      if (cfg.dlclients.includes('sabnzbd')) {
-        lines.push('SAB stays outside the VPN (Usenet talks TLS to your provider, not to peers).');
-      }
-      lines.push('');
-
-      // Port forwarding only matters when there's a torrent client.
-      // SAB-only stacks don't need inbound ports.
-      if (torrents.length > 0) {
-        lines.push('--- Port forwarding (open the inbound torrent port through gluetun) ---');
-        lines.push('');
-        lines.push('Why: without this, peers can\'t dial in to your torrent client. You\'ll still');
-        lines.push('download (outbound connections work) but uploads stall and private trackers');
-        lines.push('mark you "unconnectable", killing ratio.');
-        lines.push('');
-        lines.push('1. In the gluetun env block above, confirm VPN_PORT_FORWARDING="on" and that');
-        lines.push('   your provider supports it (ProtonVPN, PIA, PrivateVPN, AirVPN; NOT Mullvad).');
-        lines.push('');
-        lines.push('2. Bring the stack up. Once gluetun connects, find the assigned port:');
-        lines.push('');
-        lines.push('     docker exec gluetun cat /tmp/gluetun/forwarded_port');
-        lines.push('');
-        lines.push('   Or scan the logs:');
-        lines.push('');
-        lines.push('     docker logs gluetun 2>&1 | grep -i "port forward"');
-        lines.push('');
-        lines.push('3. Paste that port number into your torrent client AND bind it to the tun0');
-        lines.push('   interface (the VPN tunnel device). The interface bind is a belt-and-');
-        lines.push('   suspenders kill switch: even though gluetun\'s built-in firewall blocks');
-        lines.push('   non-VPN traffic at the namespace level, binding the client to tun0 means');
-        lines.push('   if the tunnel drops, the client refuses to send packets at all rather');
-        lines.push('   than potentially leaking through gluetun\'s upstream interface.');
-        lines.push('');
-        const qbit = torrents.includes('qbittorrent');
-        const deluge = torrents.includes('deluge');
-        const trans = torrents.includes('transmission');
-        const rt = torrents.includes('rtorrent');
-        if (qbit) {
-          lines.push('   qBittorrent:');
-          lines.push('     Tools → Options → Advanced → "Network Interface" = tun0');
-          lines.push('     Tools → Options → Connection →');
-          lines.push('       "Port used for incoming connections" = <forwarded port>');
-          lines.push('       Uncheck "Use UPnP / NAT-PMP port forwarding"');
-          lines.push('     The green/red icon next to "Connection status" in the bottom bar');
-          lines.push('     turns green once peers can reach you. If it stays red after a');
-          lines.push('     restart, the tun0 bind is wrong; double-check the interface name');
-          lines.push('     with `docker exec gluetun ip a` (look for the tunnel device).');
-        }
-        if (deluge) {
-          lines.push('   Deluge:');
-          lines.push('     Preferences → Network → Interface = tun0');
-          lines.push('     Preferences → Network → Incoming Port: pin to <forwarded port>');
-          lines.push('     Disable UPnP / NAT-PMP under the same panel.');
-        }
-        if (trans) {
-          lines.push('   Transmission:');
-          lines.push('     Edit → Preferences → Network → "Listening port" = <forwarded port>');
-          lines.push('     Uncheck "Use UPnP or NAT-PMP port forwarding".');
-          lines.push('     Transmission has no GUI option for binding to a specific interface;');
-          lines.push('     gluetun\'s firewall already provides the kill switch at the namespace');
-          lines.push('     level, so this is fine for most users. If you want a hard bind, edit');
-          lines.push('     settings.json: "bind-address-ipv4": "<tun0 ip>" (find with');
-          lines.push('     `docker exec gluetun ip -4 -o addr show dev tun0`).');
-        }
-        if (rt) {
-          lines.push('   rTorrent: edit your .rtorrent.rc:');
-          lines.push('     network.port_range.set = <forwarded port>-<forwarded port>');
-          lines.push('     network.port_random.set = no');
-          lines.push('     network.bind_address.set = <tun0 ip>');
-          lines.push('     (find tun0 ip with `docker exec gluetun ip -4 -o addr show dev tun0`.)');
-        }
-        lines.push('');
-        lines.push('4. Caveats:');
-        lines.push('   - The forwarded port can rotate (especially PIA, AirVPN). For stability,');
-        lines.push('     run a sidecar script that polls /tmp/gluetun/forwarded_port and updates');
-        lines.push('     the client via its API on change. "gluetun qbittorrent port forward"');
-        lines.push('     turns up several ready-made ones.');
-        lines.push('   - Empty status file = no port assigned yet. Check `docker logs gluetun`');
-        lines.push('     for "port forwarded" entries; handshake errors usually mean wrong');
-        lines.push('     credentials or a server that doesn\'t support PF.');
-        lines.push('');
-      }
-    }
-
-    if (cfg.proxy !== 'none') {
-      lines.push('--- Reverse-proxy reminders ---');
-      lines.push('');
-      if (cfg.proxy === 'cloudflared') {
-        lines.push('Cloudflare Tunnel: paste your tunnel token into the cloudflared service env above.');
-        lines.push('Then in Cloudflare Zero Trust → Networks → Tunnels, configure a public hostname');
-        lines.push("pointing at http://ryokan:8978. Set RYOKAN_TRUSTED_PROXY=1 in Ryokan's env so it");
-        lines.push("trusts the X-Forwarded-* headers Cloudflare adds.");
-      } else {
-        lines.push(`Drop your real domain into the ${cfg.proxy} config (see comments in the compose).`);
-        lines.push("Set RYOKAN_TRUSTED_PROXY=1 in Ryokan's env once HTTPS is working; the login cookie");
-        lines.push("turns Secure on its own from the proxy's X-Forwarded-Proto header.");
-      }
-      if (cfg.host_check && !cfg.allowed_hosts) {
-        lines.push('');
-        lines.push("Host check is on: add your proxy's domain to RYOKAN_ALLOWED_HOSTS, or every page");
-        lines.push('opened through the proxy gets a "421" error.');
-      }
-    }
-
-    return lines.join('\n');
+  // The facts a `data-when` attribute is matched against. A block is
+  // shown when any of its space-separated tokens holds; `!token` holds
+  // when the fact is absent.
+  function stackFacts(cfg) {
+    const f = new Set();
+    cfg.dlclients.forEach((k) => f.add(`client:${k}`));
+    if (cfg.dlclients.some((k) => CLIENTS[k].protocol === 'torrent')) f.add('client:torrent');
+    f.add(`server:${cfg.media_server}`);
+    if (mediaServerService(cfg)) f.add('server:any');
+    f.add(`requests:${cfg.requests}`);
+    f.add(`indexer:${cfg.indexer}`);
+    f.add(`mode:${cfg.file_mode}`);
+    f.add(`vpn:${cfg.vpn}`);
+    f.add(`proxy:${cfg.proxy}`);
+    if (cfg.proxy !== 'none') f.add('proxy:any');
+    if (cfg.host_check) f.add('hostcheck:on');
+    return f;
   }
 
-  // The output `<pre>` blocks use `data-picker="..."` selectors rather
-  // than ids on purpose. The `content.code.copy` feature rewrites any
-  // `<pre id="x">` to `<pre id="__code_x">` so its own copy-button
-  // wiring can find it — which makes `getElementById('compose-output')`
-  // return null at runtime. Data attributes survive that rewrite.
+  function whenHolds(expr, facts) {
+    return expr
+      .split(/\s+/)
+      .filter(Boolean)
+      .some((t) => (t[0] === '!' ? !facts.has(t.slice(1)) : facts.has(t)));
+  }
+
+  // Single values a `data-v` element shows: the address Ryokan reaches
+  // each client at, and each client's peer port.
+  function stackValues(cfg) {
+    const v = {
+      'file-mode': { hardlink: 'Hardlink', copy: 'Copy', move: 'Move' }[cfg.file_mode],
+    };
+    Object.keys(CLIENTS).forEach((k) => {
+      v[`url-${k}`] = urlForClient(k, cfg);
+    });
+    const peers = peerPorts(cfg);
+    Object.keys(peers).forEach((k) => {
+      v[`peer-${k}`] = String(peers[k]);
+    });
+    return v;
+  }
+
+  // The page's prose is written with the default folders and IDs. In the
+  // article that holds the form those are swapped for what the form holds, so
+  // every command and path on the page is the reader's own.
+  const LIVE_DEFAULTS = sharedPaths('/srv/media', '/srv/docker');
+
+  function livePairs(cfg) {
+    return [
+      [LIVE_DEFAULTS.downloads, cfg.paths.downloads],
+      [LIVE_DEFAULTS.media, cfg.paths.media],
+      [LIVE_DEFAULTS.shared, cfg.paths.shared],
+      [LIVE_DEFAULTS.appdata, cfg.paths.appdata],
+      ['1000:1000', `${cfg.puid}:${cfg.pgid}`],
+    ];
+  }
+
+  // Replaces every `from` string with its `to` in one pass, longest
+  // first, so `/srv/media/anime` is never read as `/srv/media` + rest
+  // and a replacement is never replaced again.
+  function swapAll(text, pairs, from, to) {
+    const sorted = pairs
+      .filter((p) => p[from])
+      .sort((a, b) => b[from].length - a[from].length);
+    const map = new Map();
+    sorted.forEach((p) => {
+      if (!map.has(p[from])) map.set(p[from], p[to]);
+    });
+    const re = new RegExp(
+      sorted.map((p) => p[from].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+      'g'
+    );
+    return text.replace(re, (m) => map.get(m));
+  }
+
+  const liveShown = new WeakMap();
+  let lastPairs = null;
+
+  function applyLive(cfg) {
+    const pairs = livePairs(cfg);
+    const form = document.getElementById('stack-form');
+    const article = form && form.closest('article');
+    (article ? [article] : []).forEach((root) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach((node) => {
+        const parent = node.parentElement;
+        if (!parent || parent.closest('#stack-form, [data-picker], [data-v], script, style')) return;
+        // Text the script has not written (the page as served, or
+        // something typed since) is read back to the defaults first.
+        const known = liveShown.get(node);
+        let tpl = known ? known.tpl : node.nodeValue;
+        if (known && known.shown !== node.nodeValue) {
+          tpl = lastPairs ? swapAll(node.nodeValue, lastPairs, 1, 0) : node.nodeValue;
+        }
+        const shown = swapAll(tpl, pairs, 0, 1);
+        if (shown !== node.nodeValue) node.nodeValue = shown;
+        liveShown.set(node, { tpl, shown });
+      });
+    });
+    lastPairs = pairs;
+  }
+
+  // Hides the "On this page" entry of a heading whose section is hidden.
+  function syncToc() {
+    document.querySelectorAll('article [id]').forEach((h) => {
+      if (!/^H[2-6]$/.test(h.tagName)) return;
+      const hidden = !!h.closest('[hidden]');
+      document
+        .querySelectorAll(`.md-nav--secondary a[href$="#${CSS.escape(h.id)}"]`)
+        .forEach((a) => {
+          const li = a.closest('li');
+          if (li) li.hidden = hidden;
+        });
+    });
+  }
+
+  function setText(selector, text) {
+    document.querySelectorAll(selector).forEach((el) => {
+      if (el.textContent !== text) el.textContent = text;
+    });
+  }
+
+  // The output blocks use `data-picker="..."` selectors rather than ids
+  // on purpose: the `content.code.copy` feature rewrites a `<pre id>`.
   function rerender() {
-    // Wrapped in try/catch for the same reason `init()` is — the
-    // picker IS the page; a silent throw from inside renderCompose
-    // / renderSettings (malformed input value, future renderer
-    // edit, etc.) would freeze the output at its last good state
-    // with no diagnostic.
     try {
       const cfg = readForm();
       if (!cfg) return;
-      const composeEl = document.querySelector('[data-picker="compose"] code');
-      const settingsEl = document.querySelector('[data-picker="settings"] code');
-      if (composeEl) composeEl.textContent = renderCompose(cfg);
-      if (settingsEl) settingsEl.textContent = renderSettings(cfg);
-    } catch (err) {
-      const composeEl = document.querySelector('[data-picker="compose"] code');
-      if (composeEl) {
-        composeEl.textContent =
-          '# picker.js render error: ' +
-          (err && err.message ? err.message : String(err)) +
-          '\n# Open DevTools console for the full stack.';
+      const problem =
+        cfg.dlclients.length === 0
+          ? 'Pick at least one download client.'
+          : sharedPathProblem(cfg);
+
+      setText('[data-picker="compose"] code', renderCompose(cfg));
+      setText('[data-picker="prep"] code', prepCommands(cfg));
+
+      const summary = document.querySelector('[data-picker="summary"]');
+      if (summary) {
+        summary.textContent = '';
+        summaryLabels(cfg).forEach((label) => {
+          const chip = document.createElement('span');
+          chip.className = 'sf-chip';
+          chip.textContent = label;
+          summary.appendChild(chip);
+        });
       }
+      const problemEl = document.querySelector('[data-picker="problem"]');
+      if (problemEl) {
+        problemEl.textContent = problem || '';
+        problemEl.hidden = !problem;
+      }
+
+      const facts = stackFacts(cfg);
+      document.querySelectorAll('[data-when]').forEach((el) => {
+        el.hidden = !whenHolds(el.dataset.when, facts);
+      });
+      const values = stackValues(cfg);
+      document.querySelectorAll('[data-v]').forEach((el) => {
+        const value = values[el.dataset.v];
+        if (value !== undefined && el.textContent !== value) el.textContent = value;
+      });
+      // A folder that can't work stays out of the page's commands.
+      if (!sharedPathProblem(cfg)) applyLive(cfg);
+      syncToc();
+      saveForm();
+    } catch (err) {
+      setText(
+        '[data-picker="compose"] code',
+        '# picker.js render error: ' +
+          (err && err.message ? err.message : String(err)) +
+          '\n# Open DevTools console for the full stack.'
+      );
       // eslint-disable-next-line no-console
       console.error('[picker.js rerender]', err);
     }
   }
 
-  function copyCompose() {
-    const composeEl = document.querySelector('[data-picker="compose"] code');
-    if (!composeEl) return;
-    const text = composeEl.textContent;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard
-        .writeText(text)
-        .then(() => flashCopyButton('Copied!'))
-        .catch(() => flashCopyButton('Copy failed'));
-    } else {
-      flashCopyButton('Clipboard unavailable');
+  // The stack code: the form's state, minus whatever is still at its
+  // default, as base64url JSON behind a format version. `#stack=<code>`
+  // on the page's address loads it back into the form.
+  const CODE_VERSION = '1';
+
+  function formState(form, changedOnly) {
+    const state = {};
+    const changed = new Set();
+    form.querySelectorAll('input[name]').forEach((el) => {
+      if (el.type === 'checkbox') {
+        if (!state[el.name]) state[el.name] = [];
+        if (el.checked) state[el.name].push(el.value);
+        if (el.checked !== el.defaultChecked) changed.add(el.name);
+      } else if (el.type === 'radio') {
+        if (el.checked) state[el.name] = el.value;
+        if (el.checked !== el.defaultChecked) changed.add(el.name);
+      } else {
+        state[el.name] = el.value;
+        if (el.value !== el.defaultValue) changed.add(el.name);
+      }
+    });
+    if (changedOnly) {
+      Object.keys(state).forEach((name) => {
+        if (!changed.has(name)) delete state[name];
+      });
+    }
+    return state;
+  }
+
+  function stackCode(form) {
+    const json = JSON.stringify(formState(form, true));
+    const b64 = btoa(unescape(encodeURIComponent(json)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    return `${CODE_VERSION}-${b64}`;
+  }
+
+  function stackLink(form) {
+    const canonical = document.querySelector('link[rel="canonical"]');
+    const base = (canonical && canonical.href) || window.location.href.split('#')[0];
+    return `${base}#stack=${stackCode(form)}`;
+  }
+
+  // The state a `#stack=` link carries, or null. Anything that does not
+  // decode to an object is ignored, and applyState only ever ticks
+  // inputs and sets field values, so a made-up code can do no more than
+  // fill in the form.
+  function stateFromHash() {
+    const m = /^#stack=(\d+)-([A-Za-z0-9_-]*)$/.exec(window.location.hash || '');
+    if (!m || m[1] !== CODE_VERSION) return null;
+    try {
+      const json = decodeURIComponent(
+        escape(atob(m[2].replace(/-/g, '+').replace(/_/g, '/')))
+      );
+      const state = JSON.parse(json);
+      return state && typeof state === 'object' && !Array.isArray(state) ? state : null;
+    } catch (err) {
+      return null;
     }
   }
 
-  function flashCopyButton(label) {
-    const btn = document.getElementById('copy-compose');
-    if (!btn) return;
-    const original = btn.textContent;
-    btn.textContent = label;
-    setTimeout(() => {
-      btn.textContent = original;
-    }, 1500);
+  // The choices are remembered in this browser, so a reload keeps them.
+  const STORE_KEY = 'ryokan-stack-v1';
+
+  function saveForm() {
+    const form = document.getElementById('stack-form');
+    if (!form) return;
+    const state = formState(form, false);
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    } catch (err) {
+      // Private windows and blocked storage: the form still works.
+    }
+  }
+
+  function restoreForm(form) {
+    // A stack link wins over what this browser remembers, and starts
+    // from the defaults, since the code leaves those out.
+    const linked = stateFromHash();
+    if (linked) {
+      form.reset();
+      applyState(form, linked);
+      return;
+    }
+    let state = null;
+    try {
+      state = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    } catch (err) {
+      state = null;
+    }
+    if (!state || typeof state !== 'object') return;
+    applyState(form, state);
+  }
+
+  function applyState(form, state) {
+    form.querySelectorAll('input[name]').forEach((el) => {
+      const saved = state[el.name];
+      if (saved === undefined) return;
+      if (el.type === 'checkbox') {
+        el.checked = Array.isArray(saved) && saved.includes(el.value);
+      } else if (el.type === 'radio') {
+        el.checked = saved === el.value;
+      } else if (typeof saved === 'string') {
+        el.value = saved;
+      }
+    });
+    // A saved value that no longer exists must not leave a radio group
+    // with nothing picked.
+    new Set(
+      Array.from(form.querySelectorAll('input[type="radio"]')).map((el) => el.name)
+    ).forEach((name) => {
+      const group = form.querySelectorAll(`input[type="radio"][name="${name}"]`);
+      if (!Array.from(group).some((el) => el.checked)) {
+        (form.querySelector(`input[type="radio"][name="${name}"][checked]`) || group[0]).checked = true;
+      }
+    });
+  }
+
+  function copyBlock(btn) {
+    const src = document.querySelector(`[data-picker="${btn.dataset.copy}"] code`);
+    if (!src) return;
+    const flash = (label) => {
+      const original = btn.dataset.label || btn.textContent;
+      btn.dataset.label = original;
+      btn.textContent = label;
+      setTimeout(() => {
+        btn.textContent = original;
+      }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(src.textContent)
+        .then(() => flash('Copied!'))
+        .catch(() => flash('Copy failed'));
+    } else {
+      flash('Clipboard unavailable');
+    }
   }
 
   // Idempotent init. The site's `document$` observable can fire more
-  // than once (instant navigation, theme toggle, etc.) — guarding via
-  // a dataset flag so we don't stack duplicate listeners on the form.
+  // than once; the dataset flags keep listeners from stacking.
   function init() {
     try {
       const form = document.getElementById('stack-form');
       if (!form) return;
       if (form.dataset.pickerInit !== '1') {
         form.dataset.pickerInit = '1';
+        restoreForm(form);
         form.addEventListener('input', rerender);
         form.addEventListener('change', rerender);
+        // The form has nothing to submit; Enter in a field must not
+        // reload the page.
+        form.addEventListener('submit', (e) => e.preventDefault());
+        // A stack link opened while the page is already showing.
+        window.addEventListener('hashchange', () => {
+          if (stateFromHash()) {
+            restoreForm(form);
+            rerender();
+          }
+        });
       }
-      const copyBtn = document.getElementById('copy-compose');
-      if (copyBtn && copyBtn.dataset.pickerInit !== '1') {
-        copyBtn.dataset.pickerInit = '1';
-        copyBtn.addEventListener('click', copyCompose);
-      }
+      document.querySelectorAll('button[data-copy]').forEach((btn) => {
+        if (btn.dataset.pickerInit === '1') return;
+        btn.dataset.pickerInit = '1';
+        btn.addEventListener('click', () => copyBlock(btn));
+      });
       rerender();
     } catch (err) {
-      // Make failures visible without DevTools — the picker is the
-      // whole point of the page, a silent "Loading…" is worse than
-      // a stack trace in the output box.
-      const out = document.querySelector('[data-picker="compose"] code');
-      if (out) {
-        out.textContent =
-          '# picker.js init error: ' +
+      setText(
+        '[data-picker="compose"] code',
+        '# picker.js init error: ' +
           (err && err.message ? err.message : String(err)) +
-          '\n# Open DevTools console for the full stack.';
-      }
-      // Still surface to console for debugging.
+          '\n# Open DevTools console for the full stack.'
+      );
       // eslint-disable-next-line no-console
       console.error('[picker.js]', err);
     }
   }
 
-  // The site theme exposes a `document$` observable (an RxJS
-  // document-state subject) that fires once on initial load and
-  // again on instant-navigation transitions. Subscribing to it is
-  // the canonical integration pattern; fall back to DOMContentLoaded
-  // when the theme's runtime isn't present.
   if (typeof window !== 'undefined' && window.document$ &&
       typeof window.document$.subscribe === 'function') {
     window.document$.subscribe(init);

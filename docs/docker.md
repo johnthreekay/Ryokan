@@ -1,80 +1,80 @@
 # Docker reference
 
-Reference for environment variables, healthcheck behavior, volume layout, and update semantics. For step-by-step install, see [Installation](install.md).
+Environment variables, volumes, updating, and a few less common setups. For a step-by-step install, see [Docker installation](install.md).
 
 ## Environment variables
 
-Most users only need `PUID`, `PGID`, and `TZ`. The rest are for fine-tuning.
+Most installs only set `PUID`, `PGID` and `TZ`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LISTEN_ADDR` | `0.0.0.0:8978` | TCP bind. Change the port if 8978 conflicts with something else. |
-| `PUID` / `PGID` | `1000` / `1000` | Runtime UID/GID. Match your host's media-owning user. See [Installation → PUID and PGID](install.md#puid-and-pgid). |
-| `TZ` | unset (UTC) | Container timezone. Determines what timestamps look like in the UI and logs. Standard tzdata names like `America/Chicago` or `Europe/London`. |
-| `RUST_LOG` | `ryokan=info` (image) | Console log filter. Set to `ryokan=debug` for verbose output while debugging. |
-| `RYOKAN_TRUSTED_PROXY` | unset (off) | Trust `X-Forwarded-For` and `X-Real-IP` for client IP. Off by default. Flip on only behind a reverse proxy that overwrites these headers on ingress; otherwise an attacker can spoof a fresh IP per attempt and bypass the per-IP login throttle. |
-| `RYOKAN_COOKIE_SECURE` | unset (off) | Force the `Secure` flag onto the login cookie. Usually unnecessary: with `RYOKAN_TRUSTED_PROXY=1`, Ryokan sets the flag on its own whenever the proxy reports HTTPS. Set this only for an HTTPS proxy that doesn't send `X-Forwarded-Proto`. Leave it off for plain HTTP or you won't be able to stay logged in. |
-| `RYOKAN_FRAME_ANCESTORS` | unset (any site may embed Ryokan) | Limit which pages may show Ryokan inside a frame. `self` allows only Ryokan itself, `none` allows nothing, and an origin like `https://dash.example.com` allows that page; separate several with spaces or commas. If you embed Ryokan in a dashboard such as Organizr or Homarr, leave this unset or list the dashboard's origin. Entries Ryokan can't read are skipped with a warning in the log, and if none are left only Ryokan itself may frame it. |
-| `RYOKAN_HOST_CHECK` | unset (off) | Turn on the host check: the web UI answers only when you open it by an IP address, `localhost`, or a name in `RYOKAN_ALLOWED_HOSTS`. Other names get an error page, including your server's own name until you list it. Any value except `0`, `false`, `no` or `off` turns it on. See [Host check](#host-check). |
-| `RYOKAN_ALLOWED_HOSTS` | unset | Extra names the host check accepts, separated by spaces or commas: `ryokan.lan`, `*.example.com` (any name ending in `.example.com`). Setting it turns the host check on by itself. |
-| `RYOKAN_DATA_DIR` | `/data` (image) | The folder for Ryokan's own files: the database, the encryption key, the artwork and anibridge caches, and the default `backups/` folder. Change it when `/data` is already your shared media or downloads mount. See [Moving Ryokan's data folder](#moving-ryokans-data-folder). |
-| `RYOKAN_RESET_AUTH` | unset | Set to `1` *and* create a `.reset-auth` file next to `ryokan.db` to wipe users and sessions on next boot. Both required so a stuck-on env var can't silently wipe auth on every boot. See [Reset auth](#reset-auth). |
-| `RYOKAN_DB_LOG_LEVEL` | `info` | Write-side floor for the DB-backed logs table (separate from `RUST_LOG`). One of `trace`, `debug`, `info`, `warn`, `error`. Read-side filtering on the System → Logs page is independent. |
-| `RYOKAN_ENCRYPTION_KEY` | unset (file fallback) | Base64-encoded 32-byte AEAD key for encrypting OAuth tokens. Loading priority: env var, then key file, then auto-generated on first run. **Key rotation isn't supported**; changing it invalidates all stored OAuth tokens and you'll need to re-link external accounts. |
-| `DATABASE_URL` | unset (`<data folder>/ryokan.db`) | SQLite connection string. Overrides the database location only. Most installs leave it unset. |
-| `RYOKAN_KEY_FILE_PATH` | unset (`<data folder>/.ryokan-key`) | Where the auto-generated encryption key lives. Overrides this one path. Don't set it unless you have a specific reason. |
-| `RYOKAN_ANIBRIDGE_CACHE_DIR` | unset (`<data folder>/cache/anibridge`) | Where the TMDB-to-AniList mappings cache lives. Overrides this one path. |
-| `RYOKAN_MEDIA_CACHE_DIR` | unset (`<data folder>/cache/artwork`) | Artwork blob cache root. Overrides this one path. Content-addressed, so duplicate cover art doesn't re-store. |
+| `PUID` / `PGID` | `1000` / `1000` | The user and group Ryokan runs as. See [PUID and PGID](install.md#puid-and-pgid). |
+| `TZ` | UTC | Timezone for times in the UI and logs, such as `America/Chicago` or `Europe/London`. |
+| `LISTEN_ADDR` | `0.0.0.0:8978` | Address and port Ryokan listens on. |
+| `RUST_LOG` | `ryokan=info` | What is printed to the container log. `ryokan=debug` prints more. |
+| `RYOKAN_DB_LOG_LEVEL` | `info` | The log level for System → Logs: `trace`, `debug`, `info`, `warn` or `error`. Trace is the most verbose while error is the least verbose. |
+| `RYOKAN_DATA_DIR` | `/data` | The folder for Ryokan's own files. See [Moving Ryokan's data folder](#moving-ryokans-data-folder). |
+| `RYOKAN_TRUSTED_PROXY` | off | Set to `1` behind a reverse proxy. See [Running behind a reverse proxy](#running-behind-a-reverse-proxy). |
+| `RYOKAN_COOKIE_SECURE` | off | Forces the `Secure` flag on the login cookie. Only needed for an HTTPS proxy that does not send `X-Forwarded-Proto`. With this set you cannot stay logged in over plain HTTP. |
+| `RYOKAN_FRAME_ANCESTORS` | any site | Which pages may show Ryokan inside a frame: `self`, `none`, or one or more origins like `https://dash.example.com`, separated by spaces or commas. Leave it unset, or list your dashboard, if you embed Ryokan in Organizr or Homarr. |
+| `RYOKAN_HOST_CHECK` | off | Set to `1` to turn on the [host check](#host-check). Ryokan's pages will then only answer to an IP address, `localhost`, or a name listed in `RYOKAN_ALLOWED_HOSTS`. |
+| `RYOKAN_ALLOWED_HOSTS` | unset | The names you open Ryokan by, for the host check, separated by spaces or commas: `nas ryokan.lan *.example.com`. Leave out `http://` and the port. Setting this turns the host check on, even without `RYOKAN_HOST_CHECK`. |
+| `RYOKAN_RESET_AUTH` | unset | Used to reset a forgotten password. See [Reset auth](#reset-auth). |
+| `RYOKAN_ENCRYPTION_KEY` | unset | A base64-encoded 32-byte key used to encrypt linked account tokens. When unset, Ryokan generates one and stores it in the data folder. Changing the key will force you to link your accounts again. |
+
+These override where single files and folders are kept. Most installs should leave them unset and use `RYOKAN_DATA_DIR`.
+
+| Variable | Default |
+|---|---|
+| `DATABASE_URL` | `<data folder>/ryokan.db` |
+| `RYOKAN_KEY_FILE_PATH` | `<data folder>/.ryokan-key` |
+| `RYOKAN_ANIBRIDGE_CACHE_DIR` | `<data folder>/cache/anibridge` |
+| `RYOKAN_MEDIA_CACHE_DIR` | `<data folder>/cache/artwork` |
 
 ## Volume layout
 
 ```yaml
 volumes:
-  - ryokan-data:/data
-  - /srv/downloads:/downloads          # optional but required for post-processing
-  - /srv/media/anime:/media/anime      # optional but required for post-processing
+  - /srv/docker/ryokan:/config         # Ryokan's own files
+  - /srv/media:/srv/media              # downloads and library
+environment:
+  RYOKAN_DATA_DIR: /config
 ```
 
-**`/data` (required)** holds the SQLite database, the artwork blob cache, the encryption key, the anibridge mappings cache, the default `backups/` folder, and any sentinel files. Loss of `/data` means losing your library state, queued grabs, scoring history, and OAuth tokens. The named-volume default (`ryokan-data`) keeps it inside Docker. Bind-mount it to a host path if you want the database visible from the host filesystem.
+This is the layout the [Quick start](quick-start.md) generates.
 
-**`/downloads` and `/media/...`** are post-processing's source and destination. They're optional in the sense that Ryokan boots without them, but post-processing requires both to be visible inside the container at the same paths your download client uses for "complete" files and the path you set in Settings → General → Media Root Path.
+**`/config`** holds the database, the encryption key, caches and backups. If you lose it you lose your library, history and linked accounts. `RYOKAN_DATA_DIR` tells Ryokan to keep its files there. Without it, Ryokan uses `/data`.
 
-### Moving Ryokan's data folder
+**`/srv/media`** is one folder that holds both your downloads and your library, for example `/srv/media/downloads` and `/srv/media/anime`. Ryokan starts without it but cannot import anything. Mount the same folder at the same path in your download client, so both see a finished file at the same place.
 
-Many *arr setups mount one shared filesystem at `/data` so the download client and every app see the same paths and can hardlink. Ryokan's own files can live somewhere else so that `/data` stays free for that mount. Set `RYOKAN_DATA_DIR` and mount a volume at the same path:
+One folder for both matters because a hardlink only works inside a single mount. With hardlinks, an imported episode takes no extra space and the torrent keeps seeding.
+
+### Separate downloads and library folders
 
 ```yaml
 volumes:
-  - ryokan-config:/config
-  - /srv/data:/data                    # your shared downloads and media
-environment:
-  - RYOKAN_DATA_DIR=/config
+  - ryokan-data:/data
+  - /srv/downloads:/downloads
+  - /srv/media/anime:/media/anime
 ```
 
-On start, the container takes ownership of the folder `RYOKAN_DATA_DIR` names and nothing else. Your shared `/data` mount keeps its owner. Setting `RYOKAN_DATA_DIR` is what moves the state. Pointing only the single-path variables (`DATABASE_URL` and the rest) at another folder still leaves `/data` as the folder the container takes ownership of, and the container log warns about it on every start.
+This works, but Ryokan cannot hardlink between two mounts, even when both folders are on the same disk. It copies each file instead, so an episode takes its space twice for as long as the download stays in the client. If that's what you want, set the file operation mode to Copy or Move under Settings → General.
+
+### Moving Ryokan's data folder
+
+An install that keeps Ryokan's files in `/data` can move them, to free `/data` for a shared media folder or to match the layout above. The container takes ownership of the folder `RYOKAN_DATA_DIR` names and leaves every other mount alone.
 
 To move an existing install:
 
 1. Stop Ryokan.
-2. Copy everything from the old data volume into the new one, including the hidden `.ryokan-key` file. Without that file, linked AniList and MyAnimeList accounts have to be linked again.
-3. Remove `DATABASE_URL`, `RYOKAN_KEY_FILE_PATH`, `RYOKAN_MEDIA_CACHE_DIR`, and `RYOKAN_ANIBRIDGE_CACHE_DIR` from your compose file if you set them. Each one pins its own path and would keep it on the old volume.
-4. Set `RYOKAN_DATA_DIR`, update the volume line, and start Ryokan.
-5. If Settings → General → Backup folder is set to a path under the old data folder, such as `/data/backups`, clear it. Backups then go to `backups` in the new data folder.
-
-Cover art keeps working from the moved cache. A backup made in System → Backup restores into the new layout too.
+2. Copy everything from the old data volume to the new one, including the hidden `.ryokan-key` file. Without it you have to link your AniList and MyAnimeList accounts again.
+3. If your compose file sets `DATABASE_URL`, `RYOKAN_KEY_FILE_PATH`, `RYOKAN_MEDIA_CACHE_DIR` or `RYOKAN_ANIBRIDGE_CACHE_DIR`, remove them. They would keep pointing at the old location.
+4. Set `RYOKAN_DATA_DIR`, change the volume line, and start Ryokan.
+5. If Settings → General → Backup folder points into the old data folder, such as `/data/backups`, clear it.
 
 ## Healthcheck
 
-The image ships with:
-
-```dockerfile
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -fsS http://localhost:8978/login || exit 1
-```
-
-The probe targets `/login` because that's the canonical "is Ryokan up" endpoint. There is no `/healthz`. `/login` returns 200 once the auth UI is live, or 303 redirecting to `/setup` on a fresh container with no users yet. Both are valid "up" signals.
-
-`start-period=30s` covers cold-boot work: idempotent migrations, password-hash warmup, the multi-client cache rebuild, and optional Jellyfin client init. ARM64 first-runs occasionally bumped against an earlier 10-second budget; 30 seconds matches the CI smoke-test poll window.
+The image checks itself by requesting `/login` every 30 seconds, and `docker ps` shows the result as healthy or unhealthy.
 
 ## Updating
 
@@ -83,57 +83,95 @@ docker compose pull
 docker compose up -d
 ```
 
-The named volume preserves your data. The image's binary is replaced. Migrations run automatically on next boot and are idempotent: applying twice is a no-op.
-
-!!! danger "Don't `docker compose down -v`"
-    The `-v` flag removes named volumes. With the documented setup, that means deleting your DB, encryption key, OAuth tokens, and library state. There's no undo. `down` without `-v` is safe.
+!!! danger "Do not run `docker compose down -v`"
+    `-v` deletes named volumes, which means your database, encryption key and library. It cannot be undone. `docker compose down` without `-v` is safe.
 
 ## Branch and pull request images
 
-Every branch pushed to the repository publishes a multi-arch image tagged with the branch name, with `/` replaced by `-`. A branch called `feat/misgrab-guardrails` is pullable as:
+Every branch pushed to the repository is published as an image tagged with the branch name, with `/` replaced by `-`. For the example branch `feat/hello-bro`:
 
 ```bash
-docker pull ghcr.io/johnthreekay/ryokan:feat-misgrab-guardrails
+docker pull ghcr.io/johnthreekay/ryokan:feat-hello-bro
 ```
 
-`main` and `dev` keep their own tags, and releases keep `latest` and the version tags.
-
-A pull request from a fork cannot publish to the registry, so its build lands as a workflow artifact instead. Open the pull request's **Publish Docker image** run under Actions, download `ryokan-pr-<number>-linux-amd64` (or `-linux-arm64`), and load it:
+Pull requests from forks cannot publish images. Their build is attached to the pull request's **Publish Docker image** run under Actions, as `ryokan-pr-<number>-linux-amd64` or `-linux-arm64`, and is kept for 14 days. Download it and load it:
 
 ```bash
 docker load -i ryokan-pr-123-linux-amd64.tar
 docker run -p 8978:8978 -v ./data:/data ghcr.io/johnthreekay/ryokan:pr-123
 ```
 
-The artifact is kept for 14 days after the run.
-
 ## Reset auth
 
-If you forget your admin password and have no other recovery path, you can wipe the users and sessions tables and create a new admin account on next boot. Two steps are required so a stuck-on env var can't silently wipe auth on every restart:
+If you forget your password, you can delete the account and create a new one. Your library, settings and linked accounts are kept.
 
-1. Add `RYOKAN_RESET_AUTH=1` to your compose file's environment block.
-2. Create the sentinel file next to `ryokan.db`, which is in the data folder unless you set `DATABASE_URL`: `touch /path/to/your/data-volume/.reset-auth` on the host, or `docker exec ryokan touch /data/.reset-auth` (use your `RYOKAN_DATA_DIR` in place of `/data` if you changed it).
+1. Add `RYOKAN_RESET_AUTH=1` to the environment section of your compose file.
+2. Create an empty file named `.reset-auth` next to `ryokan.db`:
 
-Restart the container. On boot, Ryokan deletes both tables, removes the sentinel, and `/setup` opens for a fresh admin account. Remove `RYOKAN_RESET_AUTH` from your compose file afterwards.
+    ```sh
+    docker exec ryokan touch /data/.reset-auth
+    ```
 
-OAuth tokens, library state, scoring history, and Custom Formats are preserved. Only authentication state is wiped.
+    Use your `RYOKAN_DATA_DIR` in place of `/data` if you changed it.
+
+3. Start Ryokan again from the folder that holds your compose file:
+
+    ```sh
+    docker compose up -d
+    ```
+
+    This recreates the container with the new variable. You can optionally use `--force-recreate` to be absolutely certain the container is recreated.
+
+4. Open Ryokan. It asks you to create a new account.
+5. Remove `RYOKAN_RESET_AUTH` from the compose file and run `docker compose up -d` once more.
+
+Both the variable and the file are required, so that a variable left in the compose file cannot delete your account on every restart.
 
 ## Host check
 
-A web page on another site can point its own name at your Ryokan's address and then use Ryokan as if it were that site. Before the first account exists, that is enough to create the admin account. The host check (off by default, like Transmission's host whitelist) stops it: with `RYOKAN_HOST_CHECK=1`, the web UI answers only when you open it by an IP address (`http://192.168.1.20:8978`), `localhost`, or a name you list in `RYOKAN_ALLOWED_HOSTS`. Anything else gets a "421" page naming the setting.
+The host check makes the web UI answer only when it is opened by an IP address, by `localhost`, or by a name you have listed. It is off by default.
 
-- If you open Ryokan by a name, such as your server's name (`http://nas:8978`), `ryokan.lan` or a domain on your reverse proxy, add that name to `RYOKAN_ALLOWED_HOSTS`. Ryokan also accepts the name of the machine it runs on, but inside Docker that is the container's own name. Docker makes it a random ID unless the compose file sets `hostname:`, so your server's name still has to be listed.
-- Behind a reverse proxy with `RYOKAN_TRUSTED_PROXY=1`, the name in `X-Forwarded-Host` has to pass too, and so does the name the proxy uses to reach Ryokan, unless the proxy passes the original one through (nginx: `proxy_set_header Host $host;`).
-- Seerr, autobrr and calendar apps are not affected: the Sonarr / Radarr API, the autobrr webhook and the iCal feed check their API key instead, so other containers can keep calling Ryokan by its service name.
+It protects against DNS rebinding, where a web page on another site points its own name at your Ryokan's address and then acts as if it were Ryokan's own page.
+
+### Turning it on
+
+1. Work out every name you open Ryokan by. Look at the address bar on each device you use: `http://nas:8978` means `nas`, and `https://ryokan.example.com` means `ryokan.example.com`. IP addresses and `localhost` always work and do not need listing.
+2. Add the names to the environment section of your compose file:
+
+    ```yaml
+    environment:
+      - RYOKAN_HOST_CHECK=1
+      - RYOKAN_ALLOWED_HOSTS=nas ryokan.lan ryokan.example.com
+    ```
+
+    Separate the names with spaces or commas. Leave out `http://` and the port. `*.example.com` covers every name under `example.com`.
+
+3. Apply the change from the folder that holds your compose file:
+
+    ```sh
+    docker compose up -d
+    ```
+
+4. Open Ryokan by each of the names. A name you forgot gets a "421" error page instead of Ryokan. If that happens, open Ryokan by its IP address, which always works, add the name to the list, and run `docker compose up -d` again.
+
+If you only ever open Ryokan by IP address or `localhost`, set `RYOKAN_HOST_CHECK=1` on its own and leave `RYOKAN_ALLOWED_HOSTS` out.
+
+To turn the check off, remove both lines and run `docker compose up -d`.
+
+### Things to know
+
+- Ryokan also accepts the name of the machine it runs on. Inside Docker that is the container's name, which is a random ID unless your compose file sets `hostname:`. So your server's name still has to be listed.
+- Behind a reverse proxy with `RYOKAN_TRUSTED_PROXY=1`, the name the proxy uses to reach Ryokan has to be listed as well, unless the proxy passes the original host through (nginx: `proxy_set_header Host $host;`).
+- Seerr, autobrr and calendar apps are not affected. They use an API key and can keep calling Ryokan by its service name.
 
 ## Running behind a reverse proxy
 
-If you put Ryokan behind nginx, Caddy, Traefik, or similar, set `RYOKAN_TRUSTED_PROXY=1` so the per-IP login throttle reads `X-Forwarded-For` from the proxy instead of the proxy's own IP. The proxy must overwrite these headers on ingress (don't pass through whatever the client sent), or you've just added a header-spoofing bypass.
+Set `RYOKAN_TRUSTED_PROXY=1`. Ryokan then reads the visitor's address from `X-Forwarded-For`, which the login rate limit needs, and marks the login cookie `Secure` when the proxy reports HTTPS.
 
-With that set, the login cookie is marked `Secure` automatically whenever the proxy reports HTTPS (`X-Forwarded-Proto: https`), the same way Sonarr does it. `RYOKAN_COOKIE_SECURE=1` forces the flag for a proxy that doesn't send that header.
+Only set it behind a proxy that overwrites `X-Forwarded-For` itself. If the proxy passes along whatever the visitor sent, anyone can fake their address and get around the login rate limit.
 
-The [Stack builder](stack-builder.md) generates Caddy / Traefik / nginx config with the right header rewrites and env-var combinations.
+The [Quick start](quick-start.md#2-choose-your-stack) can add a proxy to your stack. Caddy works once you put your domain in. Traefik needs three labels added to Ryokan's service, and nginx needs a config you write yourself. The generated file has a starting point for each.
 
 ---
 
-*Last updated: 2026-10-04.*
+*Last updated: 2026-11-18.*

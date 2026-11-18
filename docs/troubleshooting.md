@@ -1,130 +1,141 @@
 # Troubleshooting
 
-Concrete diagnostic steps for the most common things that break. If the symptom isn't covered here, **System → Logs** ([System → Logs reference](system.md#logs)) is usually the next stop; almost every Ryokan operation writes a log line, filterable by subsystem.
-
 ## Things to check first
 
-Before drilling into a specific symptom below, three quick checks resolve most issues:
+Three places answer most questions:
 
-- **System → Logs**, filtered by category to whatever subsystem you suspect (AniList, Jikan, Kitsu, Grab, AutoSearch, Nyaa, DownloadClient, Jellyfin, PostProcess, etc.). Pick the one matching what you were doing when the issue appeared.
-- **Test connection** on each download-client row (Settings → Download Clients) and each indexer row (Settings → Indexers). Connection tests catch most config issues at config time rather than at grab time. The [Download clients](download-clients.md) page lists per-client gotchas.
-- **The grab-history modal** on each episode (click the episode on its series page, then the **Grab History** section of the episode modal) shows every release ever grabbed for that episode, with state (`grabbed` / `completed` / `failed` / `removed` / `replaced`) and timestamp. Useful for "why is this episode in this state?" questions.
+- **System → Logs.** Filter by the category for whatever went wrong: Grab, AutoSearch, Nyaa, DownloadClient, PostProcess, AniList, and so on. See [Logs](system.md#logs).
+- **Test connection** on each download client and indexer under Settings.
+- **Grab History.** Click an episode on its series page. The history lists every release grabbed for it, with its state and time.
 
-## SAB downloads disappear from Ryokan but still download in SAB
+## Downloads
 
-You'll see this in System → Logs as a debug-level line:
+### SAB downloads disappear from Ryokan but still download in SAB
 
-```
-sab list_scoped: dropped every slot via category filter — configured_category="anime" queue_slots=0 history_slots=1 seen_categories={"default"}
-```
+SABnzbd does not have the category Ryokan is set to use, so it put the download in its default category, where Ryokan does not look.
 
-What happened: SAB doesn't have the category Ryokan was configured to use. It accepted the NZB but landed it in the default bucket. Ryokan's `list_scoped` filters by category to avoid accidentally treating other tools' jobs as its own, so the job becomes invisible.
+Click **Test connection** on the SABnzbd client under Settings → Download Clients. Ryokan creates the category and moves the download into it.
 
-**Fix**: click Test connection on the SAB row in Settings → Download Clients. The auto-create path will create the missing category and re-tag the just-added job. After that, future grabs land correctly.
+If the test reports `SAB rejected category creation: HTTP 403`, you gave Ryokan the NZB key. Use the full API key from SABnzbd's **Config → General → Security**.
 
-If Test connection shows `(warning: SAB rejected category creation: HTTP 403 ...)`, your SAB API key is the read-only `nzb_api_key`. Use the **full API Key** from SAB → Config → General → Security → API Key.
+### Episode shows "Importing…" forever
 
-## Cancel Pending doesn't actually remove the SAB job
+The download finished but the file has not been placed in your library.
 
-Was a real bug as of 1.4.x; fixed in 1.5.x. Update Ryokan and try again. The bug was that the SAB delete code tried `mode=history&name=delete` first, which phantom-succeeds on unknown nzo_ids; for an in-flight grab (still in queue, not history), the delete would claim success without actually touching the queue. Queue-first ordering fixes it.
+- **Post-processing is off.** Turn it on under Settings → General. If it is off on purpose and the row still says "Importing…", reload the page.
+- **The import is failing.** Check System → Logs, category `PostProcess`. The usual causes:
+    - Ryokan cannot write to the media root
+    - the disk is full
+    - Ryokan cannot see the download folder at the path the client reports. See [Per-client download paths](download-clients.md#per-client-download-paths).
 
-## AniList keeps returning 429 Too Many Requests
+After 24 hours with nothing to import, Ryokan marks the download failed and puts the release on the blocklist. The limit is **Give up on stuck imports** under Settings → General. To try again, fix the cause, remove the release from Downloads → Blocklist, and search again. The download itself stays in the client, so delete it there if you no longer want it.
 
-Open the most recent failure in System → Logs. The detail line now carries diagnostic headers:
+### Finished downloads stay in the client
+
+Ryokan removes a download once it has been imported and has finished seeding. If one is still there:
+
+- **Remove completed downloads is off** for that client. Edit the client under Settings → Download Clients.
+- **It is still seeding.** A torrent is removed only after the client stops it at a ratio or time limit. Set a limit in the client, with pause or stop as the action, not delete. rTorrent needs a ratio group in `.rtorrent.rc`.
+- **You paused it yourself.** Those are left alone.
+- **The import failed or was partial.** Those stay so you can look at them.
+- **It only just finished.** Ryokan checks every five minutes.
+
+### Ryokan removed a download it decided was the wrong series
+
+Ryokan compares the file names in each download with the series it was grabbed for. When they clearly belong to another show, it removes the download, blocklists the release and searches again. **System → Misgrabs** shows what was caught and the file names it looked at.
+
+If the release was right, click **Restore**. Ryokan adds it back and does not flag it again.
+
+If one series keeps producing misgrabs, groups probably name it differently from AniList. Add the name they use under **Advanced search overrides → Alternate titles** on the series page. Ryokan stops searching again automatically after three misgrabs for a series in a day.
+
+To decide each case yourself, turn off **Remove and blocklist detected misgrabs** under Settings → General.
+
+### Files ending in `.ryokan-tmp` or `.ryokan-new` in the library
+
+These are left behind when an import is interrupted, for example by a restart while a large file was being copied. Ryokan cleans them up hourly once they are more than two hours old. A newer one may be a copy in progress, so leave it.
+
+A `.ryokan-new` file is a complete episode that was about to replace an older one. It goes to the recycle bin if you have one. To keep it, rename it in the season folder: remove the leading dot and the `.ryokan-new` ending.
+
+## Searching
+
+### Search returns no results
+
+Check System → Logs, categories `Search` and `AutoSearch`. Common causes:
+
+- **Your quality settings exclude everything on offer.** Loosen them under Settings → Quality & Releases, or use **Interactive search** on the episode to see everything.
+- **Minimum Score** under Settings → Custom Formats is filtering releases out of automatic searches. Interactive search still shows them.
+- **An indexer is down.** It simply adds nothing to the results. Run **Test** on each indexer.
+
+### Auto search saw releases but grabbed none
+
+Automatic search only takes a release whose name contains one of the series' titles exactly. When it skips releases that came close, the toast says "looked close but none named the series exactly" and lists some. System → Logs has them all.
+
+If one is right, add that name on the series page under **Advanced search overrides → Alternate titles** and search again. See [What automatic search will and will not grab](scoring.md#what-automatic-search-will-and-will-not-grab).
+
+### RSS skipped a release it used to grab
+
+Since 2.3.0, RSS is stricter about releases that use a shortened title, such as "Ano Hana", or that tag a first season `S01` when the series' titles name no season. System → RSS lists such a release as "No tracked series match".
+
+Add the name the release uses under **Advanced search overrides → Alternate titles** on the series page. The next sync takes it.
+
+### An adult title finds nothing
+
+Nyaa keeps adult releases on sukebei, which Ryokan's built-in search does not cover. You need an indexer that carries them, such as sukebei through Prowlarr or Jackett.
+
+If a search is still empty, run it in Prowlarr or Jackett directly. If it finds releases there, check that the indexer is enabled in Ryokan and passes its test. You can also set the indexer's **Categories** field yourself under Settings → Indexers.
+
+## AniList
+
+### AniList keeps returning 429 Too Many Requests
+
+AniList limits how many requests it accepts each minute. Open the latest failure in System → Logs. Its detail line looks like this:
 
 ```
 [limit=30 remaining=0 reset=1777813117 retry_after=6 ryokan_60s=27]
 ```
 
-- **`remaining=0` AND `ryokan_60s` close to 30** → Ryokan over-fired. This shouldn't happen with the rate-limit clamp, but if it does, file an issue.
-- **`remaining=0` AND `ryokan_60s` low** → the budget was burned outside Ryokan-this-process. Candidates: another tab on anilist.co (each profile-page render makes many GraphQL calls), a second Ryokan instance pointed at the same AL account, an extension or helper tool.
-- **`no rate-limit headers`** → the 429 came from somewhere other than AL's normal rate-limiter (Cloudflare, an upstream proxy, AL's auth layer misusing 429 for token issues).
+`ryokan_60s` is how many requests Ryokan itself made in the last minute.
 
-AL doesn't document a per-token quota, but in practice authenticated calls (`MediaListCollection`, `Viewer`) seem to have one separate from the global per-IP cap; unauthenticated search can succeed while authenticated calls 429.
+- **`ryokan_60s` is low**: something else used up the limit. This could be an anilist.co tab open in your browser, a second Ryokan using the same account, or another tool.
+- **`ryokan_60s` is close to 30**: Ryokan sent too many. That is a bug, so please report it.
+- **`no rate-limit headers`**: the 429 did not come from AniList's rate limit. It may be Cloudflare or a proxy in between.
 
-## AniList per-account cooldown stuck past 60s
+### AniList per-account cooldown stuck past 60s
 
-If `external_sync` keeps 429ing despite `ryokan_60s=1` and minutes between attempts, AL has likely flagged your account for an extended cooldown. The documented window is 60s rolling but the (undocumented) burst limiter can hold an account for hours.
+If syncs keep failing with 429 even though Ryokan is making very few requests, AniList has put your account in a longer cooldown. This can last hours.
 
-**What to do**:
+1. Stop any other Ryokan using the same account.
+2. Close any anilist.co tabs.
+3. Do not press **Sync now**. Ryokan retries less and less often by itself.
+4. Wait. The cooldown ends without you doing anything.
 
-1. Stop any other Ryokan instance you might have running (`pgrep -fa ryokan`, `docker ps`, `systemctl status`).
-2. Close any anilist.co tabs in your browser.
-3. Don't fire manual Sync Now / Search Missing; let the supervised loop's exponential backoff carry you (15 min × 2^errors, capped after 5 errors at ~8h between attempts).
-4. Wait. The cooldown clears on AL's end with no action from your side.
+Linking the account again does not help, because linking counts against the same limit.
 
-Re-linking the account during a cooldown won't help; the OAuth submit handler validates the new token via a `Viewer` probe that hits the same per-account quota. You'll get a "Link failed" with the same 429 in the surfaced error message.
+## Library
 
-## Episode shows "Importing…" forever
+### Series page shows something out of date
 
-The poller saw the torrent reach 100% but the post-processing tick hasn't moved the file into the library yet. Two real causes:
+The page updates download progress every 5 seconds. If something looks wrong, reload the page. If it is still wrong after a reload, open the episode's Grab History, which shows what Ryokan has recorded for it.
 
-- **Post-processing is disabled** in Settings → General. Ryokan correctly leaves the file at the download client's path; the row shouldn't be showing "Importing…" in this state. If it is, force-refresh the page (Ctrl+Shift+R); there's a known race where the per-row state can lag the global toggle.
-- **Post-processing is on but the import is failing.** Check System → Logs filtered to `PostProcess`. Common causes: `media_root` isn't writable by the runtime user, the media filesystem is full, or Ryokan can't see the download client's complete path (per-client `download_path` mismatch; see [Download clients → Per-client download paths](download-clients.md#per-client-download-paths)).
+### I deleted an episode or series by accident
 
-Ryokan does not wait forever. Once a finished download has gone 24 hours (Settings → General → Give up on stuck imports) with nothing to import, it is marked failed with a `PostProcess` log line saying how long it sat, the episode shows as failed, and the release appears under Downloads → Blocklist. Fix the path problem, remove the entry from the blocklist, and search again. The download itself stays in the client and Ryokan does not look at it again, so delete it there too if you no longer want it. After a restart Ryokan waits 15 minutes before giving up on anything, so a download folder that mounts after Ryokan starts gets its retries first.
+If you have a recycle bin set under Settings → General, open the Library page and click the recycle bin icon in the toolbar. Each deleted episode or series folder has a **Restore** button.
 
-## Files ending in `.ryokan-tmp` or `.ryokan-new` in the library
+Restoring a series folder brings back the files but not the library entry. Add the series again and Ryokan finds the files.
 
-These are partial copies from an import that stopped mid-copy (a restart or crash while moving a large file across filesystems, or while replacing a file during an upgrade). Media servers may index them as broken episodes. The hourly cleanup removes any that are older than two hours, waiting for a running import to finish first; a fresh one is a copy in progress, so leave it alone. A `.ryokan-tmp` is deleted outright because it is never the only copy. A `.ryokan-new` is a complete file that an upgrade was about to swap in, so it goes to the recycle bin when one is configured, listed under the name of its series folder. Restore puts the hidden temporary file back exactly as it was, and the next cleanup sweeps it again. To keep the file, rename it in the season folder instead: drop the leading dot and the `.ryokan-new` ending.
+Items are deleted for good after 14 days by default. If no recycle bin was set when you deleted, the files are gone.
 
-## Finished downloads stay in the client
+## Startup
 
-Since 1.9.3 Ryokan removes a download from its client once the download is imported and nothing is left to seed. If one is still there:
+### Ryokan fails to start with a database error
 
-- **The client's box is off.** Settings → Download Clients, edit the client, and check **Remove completed downloads**.
-- **The client has not finished seeding it.** In hardlink or copy mode a torrent leaves only when the client itself stops it at a ratio, seeding-time, or inactivity limit. Give the client a limit, and make sure its action when the limit is reached is to pause or stop the torrent, not delete it (Ryokan deletes after the import). rTorrent needs a ratio group in `.rtorrent.rc` with its default action, which closes the item and marks it. A torrent you paused or stopped by hand is left alone on purpose.
-- **The import was partial or failed.** Those stay in the client so you can look at them.
-- **It just finished.** The check runs every five minutes. System → Logs, category PostProcess, shows a "Removed ... from the download client" line for each one that went.
+The database file may have been damaged by an earlier crash. To check:
 
-## Series-page state is stale
+1. Stop Ryokan: `docker compose down ryokan`. Do not add `-v`.
+2. Copy the database somewhere safe: `cp /srv/docker/ryokan/ryokan.db /srv/docker/ryokan/ryokan.db.backup`. Use your own data folder's path.
+3. Run `sqlite3 /srv/docker/ryokan/ryokan.db "PRAGMA integrity_check;"`.
 
-Most live-state surfaces (download progress bars, season-size badge, modal-footer buttons) update via a 5s poller. A download the client has paused says **Paused** on its progress bar, and the episode's grab history (click the episode) shows what the client is doing with a torrent it still holds in the **State** column: `seeding` or `paused` in place of `grabbed` or `completed`, with the progress, speed, or the reason underneath. If something looks wrong:
-
-1. **Refresh the page** (F5). The server-rendered page is the ground truth; if refresh fixes it, it's a JS-side staleness bug worth filing.
-2. If refresh *doesn't* fix it, the underlying DB state is what you're seeing. Check the grab-history modal for an authoritative view of that episode's grab state.
-
-## Search returns no results
-
-Check System → Logs filtered to `Search` and `AutoSearch`. The most common causes:
-
-- **Profile mismatch**: your active quality profile doesn't accept any of the released qualities. Try widening the profile (Settings → Preferred Quality & Releases) or use the Interactive Search button on the episode for a one-off relaxed search.
-- **Custom Format scoring threshold**: if `custom_format_minimum_score` is set (Settings → Custom Formats), releases scoring below it are silently dropped from auto-search candidates. They still show up in interactive search.
-- **Indexer down**: an unreachable torznab indexer doesn't fail-fast; it just contributes nothing to the merged result set. Test connection on each indexer to verify.
-
-## An adult title finds nothing even with an indexer configured
-
-Nyaa keeps adult releases on sukebei, which Ryokan does not search, so an adult title (marked 18+ on its series page) depends on an indexer that carries them, such as sukebei through Prowlarr or Jackett. Indexers file those releases under the adult category rather than anime, and since 1.9.2 Ryokan asks for both categories whenever the title is adult. Movies ask for the Movies category too, since trackers disagree on where anime films go. Ryokan also never asks an indexer for a category it does not report, and the indexer's **Categories** field under Settings → Indexers overrides all of this when you know better. If a search still comes back empty, run the same search in Prowlarr or Jackett: if it finds releases there, check that the indexer is enabled under **Settings → Indexers** and that its test passes.
-
-## Migrations failing on first boot
-
-Ryokan's migrations are idempotent by design (each `ALTER TABLE … ADD COLUMN` swallows already-exists errors), so applying twice is a no-op. The thing that wedges them is a corrupt SQLite file from an earlier crash. To check:
-
-1. Stop Ryokan: `docker compose down ryokan` (no `-v`).
-2. Back up the DB: `cp /srv/docker/ryokan/ryokan.db /srv/docker/ryokan/ryokan.db.backup` (path is wherever you put `/data` in your compose).
-3. Check integrity: `sqlite3 /srv/docker/ryokan/ryokan.db "PRAGMA integrity_check;"`. If it returns `ok`, the DB itself is fine and the migration error is something else (network during migration? unusual). If it returns anything other than `ok`, the DB is corrupt; restore from your backup or accept losing the DB and starting fresh (delete the file, restart Ryokan, the first-run setup runs again).
-
-## Auto search saw releases but grabbed none
-
-Automatic search only takes a release whose name contains one of the series' titles as written, or an alternate title you added, and names nothing beyond it, so a sequel titled by subtitle ("Dr. Stone New World") is not mistaken for the first season. When the only releases on offer name the show some other way, the search toast reads "looked close but none named the series exactly" and lists examples, and System → Logs has the full list. If one of those is the right show, add that name on the series page under **Advanced search overrides**, **Alternate titles**, and search again. See [How releases are scored](scoring.md#what-automatic-search-will-and-will-not-grab).
-
-## RSS skipped a release it used to grab
-
-Since 2.3.0, RSS takes a release named by a shortened title only when the short name lines up with whole words of one of the series' titles, and the words left over are a season or part marker. Before, any run of letters inside a title counted, which sent releases to unrelated shows. Two kinds of names are affected. One is a short name for a long single title ("Ano Hana", "Mugen Gacha"). The other is a first season tagged `S01` when the series' titles name no season. System → RSS lists such a release as "No tracked series match". Add the name the release uses on the series page under **Advanced search overrides**, **Alternate titles**, and the next sync will take it.
-
-## Ryokan removed a download it decided was the wrong series
-
-Ryokan compares the files inside every download with the series it was grabbed for. When the file names clearly belong to a different show, it removes the download, blocklists the release, and searches again. Open System, Misgrabs to see what was caught and why: the row shows the file names Ryokan looked at.
-
-If the release was actually correct, click **Restore**. Ryokan adds it back to the download client and never flags that release again. If a series keeps producing misgrabs, its AniList titles probably do not match how groups name it; check the series page's title and any synonyms, and check which indexers you have configured, since any-word search on some indexers returns unrelated releases.
-
-Ryokan stops searching again automatically after three misgrabs for the same series in a day. Fix the cause, then search from the series page.
-
-If you would rather decide yourself, turn off "Remove and blocklist detected misgrabs" under Settings, General. Downloads are then held in the client and listed on the Misgrabs tab until you restore or dismiss them.
-
-## I deleted an episode or series by accident
-
-If a recycle bin path is configured under Settings → General, nothing is gone yet: open the Library page and click the recycle-bin icon in the toolbar (it appears once the bin has items), or go to `/library/recycle`. Each deleted episode (with its NFO, subtitles, and thumbnail) or series folder is listed by the day it was deleted with a **Restore** button that puts it back exactly where it came from. Restoring a series folder brings the files back but not the library entry. Re-add the series from Search afterwards and Ryokan will pick the files up on disk. Entries purge automatically after the configured number of days (14 by default), so restore before then. If the path was empty at the time of the delete, the files were removed permanently. If the path was set but not writable, the delete was refused and the file is still where it was.
+If it prints anything other than `ok`, the database is corrupt. Restore a backup, or delete the file and start again from first-run setup.
 
 ---
 
