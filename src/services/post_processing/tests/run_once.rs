@@ -1535,6 +1535,178 @@ async fn run_once_holds_the_stall_timer_during_the_boot_grace() {
     assert_eq!(reason, post_processing::IMPORT_STALLED_REASON);
 }
 
+// ── A complete download Ryokan cannot see (dogfood a4 #1) ────────────
+//
+// qBittorrent always answers `get_files`, so a download whose folder is
+// not mounted (or not mapped onto Ryokan's view) reached the file ops
+// with a full list, every one failed with ENOENT, and the grab was
+// failed and its release blocklisted on the first tick. It now waits
+// like the empty-list case above, on the same stall timer.
+
+struct UnseenDownload {
+    db: sqlx::SqlitePool,
+    state: crate::AppState,
+    grab_id: i64,
+    /// Where the client says the download is; not created.
+    source_dir: std::path::PathBuf,
+    media_root: tempfile::TempDir,
+    _parent: tempfile::TempDir,
+}
+
+const UNSEEN_FILE: &str = "Show Title - 01.mkv";
+
+async fn seed_unseen_download(hash: &str) -> UnseenDownload {
+    let media_root = tempfile::TempDir::new().expect("media_root tempdir");
+    let parent = tempfile::TempDir::new().expect("source parent tempdir");
+    let source_dir = parent.path().join("not-mounted-yet");
+
+    let db = in_memory_pool().await;
+    sqlx::query(
+        "INSERT INTO config (id, post_processing_enabled, media_root, post_processing_mode, \
+         auto_redownload_failed) VALUES (1, 1, ?, 'hardlink', 0)",
+    )
+    .bind(media_root.path().to_string_lossy().to_string())
+    .execute(&db)
+    .await
+    .expect("seed config row");
+    let series_id = seed_series(&db, 1, "Show Title").await;
+    let grab_id =
+        grabbed_torrents::record_grab(&db, hash, "Show Title - 01", series_id, &[1], false)
+            .await
+            .unwrap()
+            .unwrap();
+    grabbed_torrents::set_download_client(&db, grab_id, Some(1))
+        .await
+        .unwrap();
+    insert_dc(
+        &db,
+        DownloadClientForm {
+            name: "default",
+            kind: "qbittorrent",
+            url: "http://q",
+            username: "",
+            password: "",
+            label: "",
+            download_path: "",
+            enabled: true,
+            is_default: true,
+        },
+    )
+    .await
+    .unwrap();
+
+    let source = source_dir.to_string_lossy().to_string();
+    let client = Arc::new(ImportingClient {
+        torrent: DownloadItem {
+            hash: hash.into(),
+            name: "Show Title - 01".into(),
+            size: 13,
+            progress: 1.0,
+            dlspeed: 0,
+            state: "seeding".into(),
+            category: "anime".into(),
+            eta: 0,
+            save_path: source.clone(),
+            content_path: source,
+            state_kind: DownloadItemState::Seeding,
+            seeding_done: false,
+        },
+        files: vec![DownloadFile {
+            name: UNSEEN_FILE.to_string(),
+            size: 13,
+            progress: 1.0,
+            wanted: true,
+        }],
+    });
+    let state = build_test_app_state(db.clone(), None);
+    install_pool(&state, vec![(1, client as Arc<dyn DownloadClient>, true)]).await;
+    UnseenDownload {
+        db,
+        state,
+        grab_id,
+        source_dir,
+        media_root,
+        _parent: parent,
+    }
+}
+
+async fn waiting_warns(db: &sqlx::SqlitePool) -> i64 {
+    sqlx::query_scalar(
+        "SELECT COUNT(*) FROM logs WHERE level = 'warn' AND message LIKE 'Import waiting for%'",
+    )
+    .fetch_one(db)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn run_once_waits_for_a_complete_download_whose_files_it_cannot_see() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let fx = seed_unseen_download("unseenwaits").await;
+
+    post_processing::run_once(&fx.state).await;
+
+    let (state, reason, seen) = state_and_reason(&fx.db, fx.grab_id).await;
+    assert_eq!(
+        state, "pending",
+        "an unmounted download is not a failed one"
+    );
+    assert_eq!(reason, "");
+    assert!(seen.is_some(), "the stall clock starts");
+    assert!(
+        !grabbed_torrents::is_blocklisted(&fx.db, "unseenwaits")
+            .await
+            .unwrap(),
+        "the release is not blocklisted"
+    );
+    assert_eq!(
+        waiting_warns(&fx.db).await,
+        1,
+        "the log says what it waits on"
+    );
+
+    // The next tick waits again without repeating the line.
+    post_processing::run_once(&fx.state).await;
+    assert_eq!(state_and_reason(&fx.db, fx.grab_id).await.0, "pending");
+    assert_eq!(waiting_warns(&fx.db).await, 1);
+
+    // The mount shows up: the same grab imports, nothing to redo.
+    std::fs::create_dir_all(&fx.source_dir).unwrap();
+    std::fs::write(fx.source_dir.join(UNSEEN_FILE), b"video content").unwrap();
+    post_processing::run_once(&fx.state).await;
+
+    assert_eq!(state_and_reason(&fx.db, fx.grab_id).await.0, "imported");
+    let season_dir = fx.media_root.path().join("Show Title").join("Season 01");
+    let landed = std::fs::read_dir(&season_dir)
+        .expect("season dir exists after the import")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".mkv"))
+        .count();
+    assert_eq!(landed, 1);
+}
+
+#[tokio::test]
+async fn run_once_gives_up_on_an_unseen_download_only_after_the_stall_window() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let fx = seed_unseen_download("unseenstalls").await;
+
+    post_processing::run_once(&fx.state).await;
+    backdate_completed_seen(&fx.db, fx.grab_id, 23).await;
+    post_processing::run_once(&fx.state).await;
+    assert_eq!(
+        state_and_reason(&fx.db, fx.grab_id).await.0,
+        "pending",
+        "23h is inside the 24h default"
+    );
+
+    backdate_completed_seen(&fx.db, fx.grab_id, 25).await;
+    post_processing::run_once(&fx.state).await;
+
+    let (state, reason, _) = state_and_reason(&fx.db, fx.grab_id).await;
+    assert_eq!(state, "failed");
+    assert_eq!(reason, post_processing::IMPORT_STALLED_REASON);
+}
+
 // ── Multi-episode files (#246): the same-episodes rule at import ─────
 
 /// A single-episode release for an episode that a wider file on disk
