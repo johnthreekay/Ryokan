@@ -986,6 +986,16 @@ pub(super) async fn build_episodes(
     // For the unaired-vs-missing split below. Date-only, UTC: provider
     // air dates are calendar dates, not timestamps.
     let today = chrono::Utc::now().date_naive();
+    // For an episode with no air date: how many episodes the airing
+    // schedule says have aired, else the detail's next airing episode.
+    let scheduled_aired = match db_id {
+        Some(id) => local_metadata::scheduled_aired_bound(db, id)
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    }
+    .or_else(|| detail.next_airing_episode.map(|n| i64::from(n) - 1));
 
     for ep_num in 1..=ep_count.max(0) {
         // `holds`: a multi-episode file (issue #246) answers for every
@@ -1163,10 +1173,13 @@ pub(super) async fn build_episodes(
         }
         // Unaired-vs-missing split (display only). Date-only compare:
         // an episode whose air date is today counts as aired. Unknown
-        // air date defers to the series status — a still-airing or
-        // upcoming series usually lacks dates for episodes providers
-        // haven't seen yet, while a finished series with missing dates
-        // has certainly aired everything. `quality_state.is_empty()`
+        // air date defers to the airing schedule (a provider with no
+        // episode list leaves every date blank, and a season in
+        // progress then read as wholly unaired), and with no schedule
+        // to the series status: a still-airing or upcoming series
+        // usually lacks dates for episodes providers haven't seen yet,
+        // while a finished series with missing dates has certainly
+        // aired everything. `quality_state.is_empty()`
         // keeps failed grabs red: a failed grab on an unaired episode
         // means someone grabbed a release for it, so "actionable" is
         // the right read.
@@ -1175,7 +1188,10 @@ pub(super) async fn build_episodes(
             && match chrono::NaiveDate::parse_from_str(ep_aired.get(..10).unwrap_or(""), "%Y-%m-%d")
             {
                 Ok(d) => d > today,
-                Err(_) => !detail.is_finished(),
+                Err(_) => match scheduled_aired {
+                    Some(aired) => i64::from(ep_num) > aired,
+                    None => !detail.is_finished(),
+                },
             };
         episodes.push(Episode {
             number: ep_num,
