@@ -2,21 +2,11 @@
 # this repo (overrides ~/.cargo/config.toml in the standard cargo
 # precedence order).
 
-# Use mold (https://github.com/rui314/mold) as the linker on Linux.
-# Links faster than the default (rust-lld since Rust 1.90), and linking
-# dominates the edit-build-test loop once the dep graph is warm. Install: pacman -S mold
-# (Arch) / apt install mold (Ubuntu 22.04+).
-#
-# CI note: GitHub's ubuntu-latest runners ship with binutils ld and
-# don't have mold preinstalled — the `rust.yml` workflow installs it
-# via apt before the build steps so this config doesn't break CI.
-[target.x86_64-unknown-linux-gnu]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
-
-[target.aarch64-unknown-linux-gnu]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+# No linker override. Ryokan used to link with clang + mold on Linux;
+# measured on Rust 1.100 (2026-11) against the default linker
+# (rust-lld on x86_64 Linux since 1.90), rebuilding every test binary
+# after a lib edit took 14.0s with mold and 14.3s without, inside the
+# run-to-run noise, so the two extra prerequisites went.
 
 # Cargo aliases. `cargo t` becomes the canonical "run the test suite"
 # command and routes through nextest with the test-support feature

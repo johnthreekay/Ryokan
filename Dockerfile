@@ -4,7 +4,7 @@
 # serves at build time.
 
 # Build stage
-FROM rust:1-trixie@sha256:5d05167b28cef0fa3a6c781cd77949386848191f3382e82cf53bd1277a47a98f AS builder
+FROM rust:1-trixie@sha256:223cc32ddca8f3ee90c436dbc94b6b5f052ea7f9653c5201e9612f08ad7d21b8 AS builder
 
 WORKDIR /app
 
@@ -40,7 +40,7 @@ RUN touch src/main.rs && cargo build --release --locked
 # that release tarball, after checking its .asc signature against
 # FFmpeg's release key (https://ffmpeg.org/download.html#releases).
 # A new importable extension needs its demuxer added to the list.
-FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS ffprobe
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS ffprobe
 
 ARG FFMPEG_VERSION=9.0.2
 ARG FFMPEG_SHA256=8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
@@ -73,7 +73,7 @@ RUN ./configure \
     && ./ffprobe -hide_banner -version > /dev/null
 
 # Runtime stage
-FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 
 # ca-certificates: outbound HTTPS to AniList / Jikan / Kitsu / Nyaa.
 # curl:            used by the compose healthcheck.

@@ -40,27 +40,18 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: stable
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # mold is the linker pinned in `.cargo/config.toml` for linux
-      # targets; CI's ubuntu-latest doesn't ship it preinstalled, so
-      # without this step every link step would fail with
-      # "linker `clang` not found" / "ld.mold not found". apt install
-      # is fast (~5s) and mold itself cuts incremental link time
-      # 3-5x — pays for itself many times over across the four cargo
-      # invocations below.
-      - name: Install mold + clang
-        run: sudo apt-get update && sudo apt-get install -y mold clang
       # nextest is the parallel test runner pinned in `.config/nextest.toml`
       # — runs ~3,100 tests roughly 2x faster than `cargo test` thanks
       # to a process-per-test scheduler and a less serialized fixture
       # boot. taiki-e/install-action grabs a precompiled binary from
       # the GitHub release rather than building from source (~20s vs
       # ~2 min via cargo install).
-      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-nextest
       - name: Format check
@@ -110,16 +101,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: 1.95.0
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: msrv
-      # The repo's `.cargo/config.toml` pins clang+mold as the linker
-      # on linux targets; this job inherits that config and would fail
-      # at link-time without them.
-      - name: Install mold + clang
-        run: sudo apt-get update && sudo apt-get install -y mold clang
       - name: Build on MSRV
         run: cargo build --workspace --locked --verbose

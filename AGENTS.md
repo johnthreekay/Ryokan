@@ -33,7 +33,6 @@ cargo llvm-cov --workspace --features test-support                       # cover
 
 - **Rust 1.95+** (enforced via `package.rust-version`).
 - **C/C++ toolchain** + **`cmake`** — needed because `aws-lc-sys` builds aws-lc via cmake at build time (rustls' crypto provider since reqwest 0.13). Release titles are parsed in Rust (`services::release_title`); the `anitomy` C++ crate was dropped. SQLite is statically bundled by sqlx's `sqlite` feature; no system `libsqlite3` is needed at runtime. No OpenSSL headers either — TLS is pure-Rust rustls + aws-lc.
-- **`mold` + `clang`** — `.cargo/config.toml` pins `linker = "clang"` with `-fuse-ld=mold` for x86_64 + aarch64 Linux. Links faster than the default rust-lld; without them a build fails with `"linker 'clang' not found"` or `"ld.mold not found"`. Install: `sudo pacman -S mold clang` (Arch) / `sudo apt install mold clang` (Debian/Ubuntu). CI installs both via apt before the build steps.
 - **`cargo-nextest`** for `cargo t`. Required: a cargo alias has no fallback, so without nextest `cargo t` errors and you run `cargo test --features test-support` instead. Install: `cargo install cargo-nextest --locked`.
 - **`cargo-llvm-cov`** for coverage (optional). Install: `cargo install cargo-llvm-cov --locked`.
 
