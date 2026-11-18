@@ -157,11 +157,21 @@ pub struct AnimeIds {
     pub mal_id: Option<i64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct MappingCache {
     /// (TMDB show ID, season) → Vec of anime IDs. Every show key in the
     /// mappings names a season, and season 0 is the show's Specials.
     tmdb_to_anime: HashMap<(i64, i32), Vec<AnimeIds>>,
+    /// TMDB movie ID → the entries that movie is, lowest AniList id
+    /// first. TMDB numbers movies and shows separately (`tmdb_movie:128`
+    /// is Princess Mononoke, `tmdb_show:128` some series), so this is
+    /// its own table and the Radarr shim's only one.
+    tmdb_movie_to_anime: HashMap<i64, Vec<AnimeIds>>,
+    /// AniList ID → TMDB movie ID, the lowest when the mappings pair
+    /// the entry with several.
+    anilist_to_tmdb_movie: HashMap<i64, i64>,
+    /// MAL ID → TMDB movie ID, the same for MAL-only rows.
+    mal_to_tmdb_movie: HashMap<i64, i64>,
     /// (TVDB show ID, season) → Vec of anime IDs. Season 0 is Specials,
     /// as on TMDB.
     tvdb_to_anime: HashMap<(i64, i32), Vec<AnimeIds>>,
@@ -341,16 +351,17 @@ pub async fn reload() -> bool {
     }
 }
 
-/// Look up anime IDs by TMDB show ID and optional season.
-/// If a season is given, returns only entries for that season.
-/// Otherwise returns all entries across all seasons.
-pub async fn lookup_by_tmdb(tmdb_id: i64, season: Option<i32>) -> Vec<AnimeIds> {
+/// Look up anime IDs by TMDB **movie** ID, lowest AniList id first.
+/// The Radarr shim's lookup: Seerr sends a movie's TMDB id, which is
+/// never looked up among the shows (`tmdb_to_anime`). It used to be,
+/// and a movie request either found nothing or added the series whose
+/// show id happened to equal it.
+pub async fn lookup_by_tmdb_movie(tmdb_id: i64) -> Vec<AnimeIds> {
     let cache = CACHE.read().await;
-    let c = match cache.as_ref() {
-        Some(c) => c,
-        None => return Vec::new(),
-    };
-    lookup_show(&c.data.tmdb_to_anime, tmdb_id, season)
+    cache
+        .as_ref()
+        .and_then(|c| c.data.tmdb_movie_to_anime.get(&tmdb_id).cloned())
+        .unwrap_or_default()
 }
 
 /// Look up anime IDs by TVDB show ID and optional season.
@@ -575,6 +586,7 @@ pub async fn seed_mal_to_anilist_for_tests(pairs: &[(i64, i64)]) {
         mal_to_tvdb: HashMap::new(),
         anilist_tvdb_placements: HashMap::new(),
         anidb_to_anilist: HashMap::new(),
+        ..Default::default()
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -666,15 +678,49 @@ pub async fn seed_external_mappings_for_tests(
         mal_to_tvdb,
         anilist_tvdb_placements: HashMap::new(),
         anidb_to_anilist: HashMap::new(),
+        ..Default::default()
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
 }
 
+/// Test-only: add TMDB **movie** mappings, `(tmdb_movie_id, anilist_id,
+/// mal_id)`, to whatever is seeded (an empty cache when nothing is), so
+/// a Radarr-shim test can sit a movie beside a show of the same number
+/// from [`seed_external_mappings_for_tests`]. Call it after that one,
+/// which starts a fresh cache.
+#[cfg(any(test, feature = "test-support"))]
+pub async fn seed_tmdb_movies_for_tests(movies: &[(i64, Option<i64>, Option<i64>)]) {
+    let mut w = CACHE.write().await;
+    let data = &mut w
+        .get_or_insert_with(|| CacheState {
+            data: MappingCache::default(),
+        })
+        .data;
+    for &(movie, al, mal) in movies {
+        data.tmdb_movie_to_anime
+            .entry(movie)
+            .or_default()
+            .push(AnimeIds {
+                anilist_id: al,
+                mal_id: mal,
+            });
+        if let Some(al_id) = al {
+            data.anilist_to_tmdb_movie.insert(al_id, movie);
+        }
+        if let Some(mid) = mal {
+            data.mal_to_tmdb_movie.insert(mid, movie);
+        }
+        if let (Some(al_id), Some(mid)) = (al, mal) {
+            data.mal_to_anilist.insert(mid, al_id);
+        }
+    }
+}
+
 /// Test seeding for the episode-span table (#122). Each tuple is
 /// `(tmdb_id, season, tmdb_start, tmdb_end, anilist_id, anilist_start)`;
 /// the ID tables are filled in alongside so `lookup_tmdb_by_anilist`
-/// and `lookup_by_tmdb` agree with the spans.
+/// and `lookup_tmdb_seasons` agree with the spans.
 #[cfg(any(test, feature = "test-support"))]
 pub async fn seed_tmdb_episode_spans_for_tests(spans: &[(i64, i32, i32, i32, i64, i32)]) {
     let mut tmdb_to_anime: HashMap<(i64, i32), Vec<AnimeIds>> = HashMap::new();
@@ -713,6 +759,7 @@ pub async fn seed_tmdb_episode_spans_for_tests(spans: &[(i64, i32, i32, i32, i64
         mal_to_tvdb: HashMap::new(),
         anilist_tvdb_placements: HashMap::new(),
         anidb_to_anilist: HashMap::new(),
+        ..Default::default()
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -752,6 +799,7 @@ pub async fn seed_tvdb_placements_for_tests(placements: &[(i64, i64, i32, Option
         mal_to_tvdb: HashMap::new(),
         anilist_tvdb_placements,
         anidb_to_anilist: HashMap::new(),
+        ..Default::default()
     };
     let mut w = CACHE.write().await;
     *w = Some(CacheState { data });
@@ -779,6 +827,26 @@ pub async fn resolve_tmdb_id(anilist_id: i64, mal_id: impl Into<Option<i64>>) ->
         .into()
         .filter(|m| *m > 0 && mal_speaks_for(data, anilist_id, *m))
         .and_then(|m| data.mal_to_tmdb.get(&m))
+        .copied()
+        .unwrap_or(0)
+}
+
+/// The TMDB **movie** id the Radarr shim reports for a series, 0 when
+/// the mappings know none (a TV series, an unmapped film). Same lookup
+/// order and MAL rule as [`resolve_tmdb_id`], which answers with a show
+/// id: reported as a movie's, that named an unrelated film to Seerr.
+pub async fn resolve_tmdb_movie_id(anilist_id: i64, mal_id: impl Into<Option<i64>>) -> i64 {
+    let cache = CACHE.read().await;
+    let Some(data) = cache.as_ref().map(|c| &c.data) else {
+        return 0;
+    };
+    if let Some(tmdb) = data.anilist_to_tmdb_movie.get(&anilist_id) {
+        return *tmdb;
+    }
+    mal_id
+        .into()
+        .filter(|m| *m > 0 && mal_speaks_for(data, anilist_id, *m))
+        .and_then(|m| data.mal_to_tmdb_movie.get(&m))
         .copied()
         .unwrap_or(0)
 }
@@ -991,23 +1059,13 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
     // Seasons an entry is named in, for placements no span covers.
     let mut anilist_tvdb_seasons: HashMap<i64, Vec<(i64, i32)>> = HashMap::new();
     let mut anidb_to_anilist: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut tmdb_movie_to_anime: HashMap<i64, Vec<AnimeIds>> = HashMap::new();
+    let mut anilist_to_tmdb_movie: HashMap<i64, i64> = HashMap::new();
+    let mut mal_to_tmdb_movie: HashMap<i64, i64> = HashMap::new();
 
     let obj = match data.as_object() {
         Some(o) => o,
-        None => {
-            return MappingCache {
-                tmdb_to_anime,
-                tvdb_to_anime,
-                anilist_to_tmdb,
-                mal_to_tmdb,
-                mal_to_anilist,
-                tmdb_episode_spans,
-                anilist_to_tvdb,
-                mal_to_tvdb,
-                anilist_tvdb_placements,
-                anidb_to_anilist,
-            };
-        }
+        None => return MappingCache::default(),
     };
 
     for (source_key, targets) in obj {
@@ -1045,6 +1103,7 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
         let mut anidb_ids: Vec<i64> = Vec::new();
         let mut tmdb_ids: Vec<(i64, i32)> = Vec::new();
         let mut tvdb_ids: Vec<(i64, i32)> = Vec::new();
+        let mut tmdb_movie_ids: Vec<i64> = Vec::new();
 
         for key in &all_keys {
             if let Some(id) = parse_provider_id(key, "anidb") {
@@ -1062,6 +1121,10 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
             } else if let Some(id_season) = parse_show_id(key, "tmdb_show") {
                 if !tmdb_ids.contains(&id_season) {
                     tmdb_ids.push(id_season);
+                }
+            } else if let Some(id) = parse_provider_id(key, "tmdb_movie") {
+                if !tmdb_movie_ids.contains(&id) {
+                    tmdb_movie_ids.push(id);
                 }
             } else if let Some(id_season) = parse_show_id(key, "tvdb_show")
                 && !tvdb_ids.contains(&id_season)
@@ -1111,6 +1174,36 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
         for ids in &anime_entries {
             if let (Some(al), Some(m)) = (ids.anilist_id, ids.mal_id) {
                 mal_to_anilist.insert(m, al);
+            }
+        }
+
+        // Index by each TMDB movie, from the movie's own record or an
+        // entry's own only. A show season's record (`tvdb_show:N:s0`)
+        // lists every special of the show beside every movie of the
+        // franchise, and pairing those would hand one film's id to all.
+        let pairs_movies = ["tmdb_movie", "anilist", "mal"]
+            .iter()
+            .any(|provider| parse_provider_id(source_key, provider).is_some());
+        if pairs_movies {
+            for &movie in &tmdb_movie_ids {
+                let entry = tmdb_movie_to_anime.entry(movie).or_default();
+                for ids in &anime_entries {
+                    if let Some(al) = ids.anilist_id {
+                        let known = anilist_to_tmdb_movie.entry(al).or_insert(movie);
+                        *known = (*known).min(movie);
+                    }
+                    if let Some(m) = ids.mal_id {
+                        let known = mal_to_tmdb_movie.entry(m).or_insert(movie);
+                        *known = (*known).min(movie);
+                    }
+                    let listed = match (ids.anilist_id, ids.mal_id) {
+                        (Some(al), _) => entry.iter().any(|e| e.anilist_id == Some(al)),
+                        (None, mal) => entry.iter().any(|e| e.mal_id == mal),
+                    };
+                    if !listed {
+                        entry.push(ids.clone());
+                    }
+                }
             }
         }
 
@@ -1183,9 +1276,16 @@ fn build_cache(data: &serde_json::Value) -> MappingCache {
     for v in anidb_to_anilist.values_mut() {
         v.sort_unstable();
     }
+    // The Radarr shim adds the first entry of a movie.
+    for v in tmdb_movie_to_anime.values_mut() {
+        v.sort_by_key(|ids| (ids.anilist_id.unwrap_or(i64::MAX), ids.mal_id));
+    }
 
     MappingCache {
         tmdb_to_anime,
+        tmdb_movie_to_anime,
+        anilist_to_tmdb_movie,
+        mal_to_tmdb_movie,
         tvdb_to_anime,
         anilist_to_tmdb,
         mal_to_tmdb,
@@ -1527,6 +1627,91 @@ mod tests {
         assert_eq!(entry.len(), 1);
         assert_eq!(entry[0].anilist_id, Some(12345));
         assert_eq!(entry[0].mal_id, Some(67890));
+    }
+
+    #[test]
+    fn a_tmdb_movie_is_indexed_apart_from_the_show_of_the_same_number() {
+        // A8-2. The real records for Princess Mononoke (movie 128), plus
+        // an unrelated series whose TMDB *show* id is also 128. The
+        // Radarr shim looked the movie id up among the shows.
+        let raw = json!({
+            "tmdb_movie:128": {
+                "anidb:7:R": {"1": "1"},
+                "anilist:164": {"1": "1"},
+                "mal:164": {"1": "1"},
+                "tvdb_movie:791": {"1": "1"}
+            },
+            "anilist:164": {
+                "mal:164": {"1": "1"},
+                "tmdb_movie:128": {"1": "1"}
+            },
+            "tmdb_show:128:s1": {
+                "anilist:9001": {"1-12": "1-12"},
+                "mal:9001": {"1-12": "1-12"}
+            }
+        });
+        let cache = parse_bytes(&serde_json::to_vec(&raw).unwrap()).unwrap();
+
+        let movie = cache.tmdb_movie_to_anime.get(&128).expect("movie 128");
+        assert_eq!(movie.len(), 1, "{movie:?}");
+        assert_eq!(movie[0].anilist_id, Some(164));
+        assert_eq!(movie[0].mal_id, Some(164));
+        assert_eq!(cache.anilist_to_tmdb_movie.get(&164), Some(&128));
+        assert_eq!(cache.mal_to_tmdb_movie.get(&164), Some(&128));
+
+        // The show keeps its own table, and neither leaks into the other.
+        let show = cache.tmdb_to_anime.get(&(128, 1)).expect("show 128");
+        assert_eq!(show[0].anilist_id, Some(9001));
+        assert_eq!(cache.anilist_to_tmdb.get(&164), None);
+        assert_eq!(cache.anilist_to_tmdb_movie.get(&9001), None);
+    }
+
+    #[test]
+    fn a_show_seasons_record_pairs_no_movie_with_its_other_entries() {
+        // A show's Specials record lists every special beside every
+        // movie of the franchise (the real `tvdb_show:70865:s0` does).
+        // Only a movie's own record, or an entry's own, says which film
+        // an entry is.
+        let raw = json!({
+            "tvdb_show:70865:s0": {
+                "anilist:155": {"1": "1"},
+                "anilist:156": {"2": "1"},
+                "tmdb_movie:44587": {"1": "1"},
+                "tmdb_movie:44588": {"2": "1"}
+            },
+            "anilist:155": {"tmdb_movie:44587": {"1": "1"}},
+            "anilist:156": {"tmdb_movie:44588": {"1": "1"}}
+        });
+        let cache = parse_bytes(&serde_json::to_vec(&raw).unwrap()).unwrap();
+        let ids = |movie: i64| -> Vec<Option<i64>> {
+            cache.tmdb_movie_to_anime[&movie]
+                .iter()
+                .map(|e| e.anilist_id)
+                .collect()
+        };
+        assert_eq!(ids(44587), vec![Some(155)]);
+        assert_eq!(ids(44588), vec![Some(156)]);
+        assert_eq!(cache.anilist_to_tmdb_movie.get(&155), Some(&44587));
+        assert_eq!(cache.anilist_to_tmdb_movie.get(&156), Some(&44588));
+    }
+
+    #[test]
+    fn a_movie_with_two_entries_lists_the_lowest_anilist_id_first() {
+        // `tmdb_movie:54270` (Revival of Evangelion) is AniList 31 and
+        // 32; AniList 32 also has its own film, 18491. The shim adds
+        // the first entry and reports an entry's lowest movie id, so
+        // both are fixed whatever order the records are read in.
+        let raw = json!({
+            "tmdb_movie:54270": {"anilist:32": {}, "anilist:31": {}},
+            "anilist:32": {"tmdb_movie:54270": {}, "tmdb_movie:18491": {}}
+        });
+        let cache = parse_bytes(&serde_json::to_vec(&raw).unwrap()).unwrap();
+        let ids: Vec<Option<i64>> = cache.tmdb_movie_to_anime[&54270]
+            .iter()
+            .map(|e| e.anilist_id)
+            .collect();
+        assert_eq!(ids, vec![Some(31), Some(32)]);
+        assert_eq!(cache.anilist_to_tmdb_movie.get(&32), Some(&18491));
     }
 
     #[test]

@@ -55,7 +55,7 @@ pub(super) async fn lookup_by_tmdb_id(
     tmdb_id: i64,
 ) -> Result<Json<Vec<RadarrMovie>>, (StatusCode, String)> {
     anibridge::ensure_loaded().await;
-    let anime_ids = anibridge::lookup_by_tmdb(tmdb_id, None).await;
+    let anime_ids = anibridge::lookup_by_tmdb_movie(tmdb_id).await;
 
     if anime_ids.is_empty() {
         tracing::warn!(

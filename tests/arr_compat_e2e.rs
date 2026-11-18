@@ -829,7 +829,7 @@ async fn radarr_add_movie_creates_db_row_and_returns_payload() {
     let _gate = ENV_LOCK.lock().await;
     anilist::reset_state_for_tests();
     anibridge::clear_cache_for_tests().await;
-    anibridge::seed_external_mappings_for_tests(&[], &[(6060, 0, Some(11111), None)]).await;
+    anibridge::seed_tmdb_movies_for_tests(&[(6060, Some(11111), None)]).await;
 
     let mock = MockServer::start().await;
     Mock::given(method("POST"))
@@ -883,6 +883,100 @@ async fn radarr_add_movie_creates_db_row_and_returns_payload() {
 }
 
 #[tokio::test]
+async fn radarr_resolves_a_movie_id_among_the_movies_never_the_shows() {
+    // A8-2. TMDB numbers movies and shows separately. Movie 8080 is
+    // AniList 71002; an unrelated series has TMDB *show* id 8080. The
+    // shim read the show table, so this request added the series.
+    let _gate = ENV_LOCK.lock().await;
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+    anibridge::seed_external_mappings_for_tests(
+        &[],
+        &[(8080, 1, Some(71001), None), (9090, 1, Some(71003), None)],
+    )
+    .await;
+    anibridge::seed_tmdb_movies_for_tests(&[(8080, Some(71002), None)]).await;
+    let mock = mock_anilist_detail_by_id().await;
+    unsafe {
+        std::env::set_var("RYOKAN_ANILIST_API_BASE", mock.uri());
+    }
+
+    let db = in_memory_pool().await;
+    seed_radarr_state(&db).await;
+    // A TV series already in the library, known to TMDB as show 9090.
+    series::upsert(
+        &db,
+        series::SeriesCore {
+            anilist_id: 71003,
+            mal_id: None,
+            title: "Some Series",
+            title_romaji: "Some Series",
+            title_english: "Some Series",
+            title_native: "",
+            cover_url: "",
+            format: "TV",
+            status: "FINISHED",
+            episodes: Some(12),
+            season_year: Some(2020),
+            end_year: None,
+        },
+    )
+    .await
+    .unwrap();
+    let app = radarr_router_with_movie(build_test_app_state(db.clone(), None));
+
+    let found = get_json(
+        app.clone(),
+        "/radarr/api/v3/movie/lookup?term=tmdb:8080",
+        RADARR_KEY,
+    )
+    .await;
+    assert_eq!(found[0]["title"], "Fan Show 71002", "{found}");
+    assert_eq!(found[0]["tmdbId"], 8080);
+    // A number that is only a show's is no movie: the stub, as for any
+    // unmapped id.
+    let stub = get_json(
+        app.clone(),
+        "/radarr/api/v3/movie/lookup?term=tmdb:9090",
+        RADARR_KEY,
+    )
+    .await;
+    assert_eq!(stub[0]["titleSlug"], "tmdb-9090", "{stub}");
+
+    let (status, body) = post_json(
+        app.clone(),
+        "/radarr/api/v3/movie",
+        RADARR_KEY,
+        json!({ "tmdbId": 8080, "title": "The Real Movie", "monitored": true }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(tracked_anilist_ids(&db).await, vec![71002, 71003]);
+
+    // What Seerr's Radarr scan reads back: the movie under its movie
+    // id, and the series under none. Its show id reported here would
+    // mark whichever film has that number as available.
+    let listed = get_json(app, "/radarr/api/v3/movie", RADARR_KEY).await;
+    let tmdb_of = |slug: &str| -> serde_json::Value {
+        listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["titleSlug"] == slug)
+            .unwrap_or_else(|| panic!("{slug} listed: {listed}"))["tmdbId"]
+            .clone()
+    };
+    assert_eq!(tmdb_of("ryokan-71002"), 8080);
+    assert_eq!(tmdb_of("ryokan-71003"), 0);
+
+    unsafe {
+        std::env::remove_var("RYOKAN_ANILIST_API_BASE");
+    }
+    anilist::reset_state_for_tests();
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
 async fn radarr_add_movie_returns_400_when_no_mapping_and_no_title() {
     let _gate = ENV_LOCK.lock().await;
     anibridge::clear_cache_for_tests().await;
@@ -913,7 +1007,7 @@ async fn radarr_add_movie_pins_monitor_mode_to_none_when_seerr_unmonitors() {
     let _gate = ENV_LOCK.lock().await;
     anilist::reset_state_for_tests();
     anibridge::clear_cache_for_tests().await;
-    anibridge::seed_external_mappings_for_tests(&[], &[(7070, 0, Some(22222), None)]).await;
+    anibridge::seed_tmdb_movies_for_tests(&[(7070, Some(22222), None)]).await;
 
     let mock = MockServer::start().await;
     Mock::given(method("POST"))
@@ -1095,7 +1189,8 @@ async fn sonarr_add_never_lands_on_a_sibling_sharing_the_mal_id() {
 async fn radarr_add_never_lands_on_a_sibling_sharing_the_mal_id() {
     let _gate = ENV_LOCK.lock().await;
     anilist::reset_state_for_tests();
-    anibridge::seed_external_mappings_for_tests(&[], &[(5200, 1, Some(210482), Some(61469))]).await;
+    anibridge::clear_cache_for_tests().await;
+    anibridge::seed_tmdb_movies_for_tests(&[(5200, Some(210482), Some(61469))]).await;
     let db = in_memory_pool().await;
     seed_radarr_state(&db).await;
     let (_mock, first) = anilist_down_with_first_stage_tracked(&db).await;
