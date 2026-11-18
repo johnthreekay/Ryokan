@@ -177,19 +177,14 @@ pub struct GrabConfirmForm {
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct GrabConfirmResult {
     pub ok: bool,
-    /// Error messages for any `set_file_wanted` calls that didn't
-    /// land. The grab still commits on partial failure (per plan
-    /// decision #10 — best-effort + surface failures); failed files
-    /// are left at default priority and the modal can warn the user.
+    /// Error message for a `set_file_wanted(unwanted, false)` call
+    /// that didn't land. The grab still commits (per plan decision #10
+    /// — best-effort + surface failures); those files stay at the
+    /// client's default priority and the modal can warn the user. A
+    /// failed write of the *wanted* files is not reported here: it
+    /// fails the confirm with 502 and nothing commits.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub file_priority_errors: Vec<String>,
-    /// Error message from the final `resume` call, if any. Separate
-    /// from the per-file priority errors so the modal can distinguish
-    /// "some priorities didn't apply" (recoverable via client UI)
-    /// from "torrent may still be paused" (which matters because
-    /// the user expected the grab to start downloading).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resume_error: Option<String>,
 }
 
 /// POST body for `/api/grab/cancel`.
@@ -716,12 +711,12 @@ pub async fn grab_selection(
     description = "Applies wanted/unwanted priorities per the user's \
         selection, resumes the torrent, and deletes the pending_grabs \
         row. At least one file must be selected (400 otherwise; the \
-        picker disables Confirm at zero). Best-effort on per-file \
-        priority writes: partial failures \
-        (qBit down mid-apply, a priority write rejected) leave the \
-        failed files at default priority rather than rolling back \
-        the whole grab. Returns 404 if the preview was already \
-        committed or swept. \
+        picker disables Confirm at zero). A failed write of the \
+        unwanted files is best-effort: the grab still commits and the \
+        error is reported in the result. If the client rejects the \
+        wanted files or the resume, nothing is committed: the response \
+        is 502 and the preview stays, so Confirm can be sent again. \
+        Returns 404 if the preview was already committed or swept. \
         \
         NOTE: unlike grab_cancel, confirm does NOT gate on \
         we_added_torrent — the user consciously submitted their \
@@ -736,7 +731,8 @@ pub async fn grab_selection(
         (status = 200, description = "Grab committed", body = GrabConfirmResult),
         (status = 400, description = "preview_id missing, file list not yet populated, or no file selected"),
         (status = 404, description = "Preview not found"),
-        (status = 500, description = "Download client error"),
+        (status = 502, description = "The download client rejected the selection or the resume; nothing was committed"),
+        (status = 503, description = "The preview's download client is no longer available"),
     ),
 )]
 pub async fn grab_confirm(
@@ -823,15 +819,33 @@ pub async fn grab_confirm(
     {
         file_priority_errors.push(format!("mark unwanted: {}", e));
     }
-    if !wanted.is_empty()
-        && let Err(e) = client.set_file_wanted(&row.info_hash, &wanted, true).await
-    {
-        file_priority_errors.push(format!("mark wanted: {}", e));
+    // The wanted write and the resume decide whether anything will
+    // download: qBittorrent's paused add leaves every file skipped, and
+    // the other clients sit paused until resumed. When either fails the
+    // grab is not recorded and the preview stays, so the user can send
+    // Confirm again from the open picker (the walkaway sweep refuses to
+    // record a grab in the same two cases). Recording it anyway left a
+    // `pending` grab and `grabbed` episodes for a torrent with nothing
+    // selected, and no picker to retry from.
+    if let Err(e) = client.set_file_wanted(&row.info_hash, &wanted, true).await {
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "The download client did not accept the file selection, so nothing was grabbed. Try Confirm again. ({e})"
+            ),
+        ));
     }
     // Resume starts downloading on Deluge / Transmission / rTorrent
     // (they were added paused). On qBit the torrent is already
     // running — resume is idempotent.
-    let resume_error = client.resume(&row.info_hash).await.err();
+    if let Err(e) = client.resume(&row.info_hash).await {
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "The download client did not start the torrent, so nothing was grabbed. Try Confirm again. ({e})"
+            ),
+        ));
+    }
 
     // Library attribution. Writes the `grabbed_torrents` row
     // and kicks off sibling auto-expand on the user-selected subset —
@@ -899,9 +913,8 @@ pub async fn grab_confirm(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     Ok(Json(GrabConfirmResult {
-        ok: file_priority_errors.is_empty() && resume_error.is_none(),
+        ok: file_priority_errors.is_empty(),
         file_priority_errors,
-        resume_error,
     }))
 }
 
@@ -1684,8 +1697,9 @@ mod tests {
 
     // ── Confirm must not record a grab that will not download ────────
     //
-    // Dogfood a3: an empty selection used to end in a `pending` grab
-    // row and `grabbed` episodes for a torrent with every file skipped.
+    // Dogfood a3: an empty selection, or a client that rejects the
+    // selection, used to end in a `pending` grab row and `grabbed`
+    // episodes for a torrent with every file skipped.
 
     /// A client whose picker calls can be made to fail one at a time.
     #[derive(Default)]
@@ -1839,6 +1853,110 @@ mod tests {
             client.calls.lock().unwrap().is_empty(),
             "the client is not told to skip every file"
         );
+    }
+
+    #[tokio::test]
+    async fn confirm_keeps_the_preview_when_the_client_rejects_the_wanted_files() {
+        let db = in_memory_pool().await;
+        seed_pack_preview(&db, "pid-flaky").await;
+        let client = std::sync::Arc::new(FlakyClient::default());
+        client
+            .fail_wanted
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let state = build_test_app_state(db.clone(), Some(client.clone()));
+        let confirm = || {
+            grab_confirm(
+                State(state.clone()),
+                Json(GrabConfirmForm {
+                    preview_id: "pid-flaky".into(),
+                    wanted_indices: vec![0, 1],
+                    unblock: false,
+                }),
+            )
+        };
+
+        let res = confirm().await;
+        let Err((status, message)) = res else {
+            panic!("a rejected selection is not a grab: {res:?}");
+        };
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert!(message.contains("qbit filePrio failed"), "{message}");
+        assert_eq!(
+            commit_footprint(&db, "pid-flaky").await,
+            (0, 0, true),
+            "nothing recorded, and the preview stays for a retry"
+        );
+        assert!(
+            !client.calls.lock().unwrap().contains(&"resume".to_string()),
+            "a torrent with nothing selected is not resumed"
+        );
+
+        // The client is back: the same Confirm goes through.
+        client
+            .fail_wanted
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        let res = confirm().await.expect("the retry commits");
+        assert!(res.ok);
+        let (grabs, tags, preview) = commit_footprint(&db, "pid-flaky").await;
+        assert_eq!((grabs, preview), (1, false));
+        assert_eq!(tags, 2, "episodes 1 and 2 read as grabbed");
+    }
+
+    #[tokio::test]
+    async fn confirm_keeps_the_preview_when_the_client_does_not_resume() {
+        let db = in_memory_pool().await;
+        seed_pack_preview(&db, "pid-paused").await;
+        let client = std::sync::Arc::new(FlakyClient::default());
+        client
+            .fail_resume
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let state = build_test_app_state(db.clone(), Some(client));
+
+        let res = grab_confirm(
+            State(state),
+            Json(GrabConfirmForm {
+                preview_id: "pid-paused".into(),
+                wanted_indices: vec![0, 1, 2],
+                unblock: false,
+            }),
+        )
+        .await;
+
+        assert!(
+            matches!(res, Err((StatusCode::BAD_GATEWAY, _))),
+            "a torrent left paused is not a grab: {res:?}"
+        );
+        assert_eq!(commit_footprint(&db, "pid-paused").await, (0, 0, true));
+    }
+
+    #[tokio::test]
+    async fn confirm_still_commits_when_only_the_unwanted_write_fails() {
+        // Plan decision #10 stands for the files the user unticked: the
+        // wanted ones are set and running, so the grab is real and the
+        // result carries the warning.
+        let db = in_memory_pool().await;
+        seed_pack_preview(&db, "pid-partial").await;
+        let client = std::sync::Arc::new(FlakyClient::default());
+        client
+            .fail_unwanted
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let state = build_test_app_state(db.clone(), Some(client));
+
+        let res = grab_confirm(
+            State(state),
+            Json(GrabConfirmForm {
+                preview_id: "pid-partial".into(),
+                wanted_indices: vec![0],
+                unblock: false,
+            }),
+        )
+        .await
+        .expect("a partial priority failure still commits");
+
+        assert!(!res.ok);
+        assert_eq!(res.file_priority_errors.len(), 1, "{res:?}");
+        let (grabs, _, preview) = commit_footprint(&db, "pid-partial").await;
+        assert_eq!((grabs, preview), (1, false));
     }
 
     #[tokio::test]
