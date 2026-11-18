@@ -24,6 +24,8 @@ function addSeries() {
             format: SD.format,
             status: SD.status,
             episodes: SD.episodes ? parseInt(SD.episodes) : null,
+            // Needed at add time for the folder name; see index.js.
+            season_year: SD.seasonYear ? parseInt(SD.seasonYear) : null,
         })
     })
     .then(async r => {

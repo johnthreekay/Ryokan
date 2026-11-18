@@ -196,6 +196,11 @@ function addSeries(anilistId, btn) {
             format: entry.format,
             status: entry.status,
             episodes: entry.episodes,
+            // The series folder is named once, at add time, and a
+            // template with {series.year} (or two series sharing a
+            // title) needs the year then: left out, the folder had
+            // no year for good although the search result carried it.
+            season_year: entry.season_year || null,
         })
     })
     .then(async r => {

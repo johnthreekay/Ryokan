@@ -780,6 +780,7 @@
     data-format="{{ detail.format }}"
     data-status="{{ detail.status }}"
     data-episodes="{% if let Some(eps) = detail.episodes %}{{ eps }}{% endif %}"
+    data-season-year="{% if let Some(year) = detail.season_year %}{{ year }}{% endif %}"
     data-db-id="{% if let Some(id) = db_id %}{{ id }}{% endif %}"
     data-provider-id="{{ detail.id }}"
     data-mal-id="{% if let Some(id) = detail.id_mal %}{{ id }}{% endif %}"
