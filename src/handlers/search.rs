@@ -2,7 +2,7 @@ use askama::Template;
 use axum::{
     Form,
     extract::{Query, State},
-    response::{Html, Json},
+    response::{Html, IntoResponse, Json, Response},
 };
 use serde::Deserialize;
 
@@ -722,43 +722,42 @@ pub async fn grab_release(
     })))
 }
 
+/// Set on `/api/torrents` when some, but not all, download clients
+/// failed to list: the percent-encoded notice the Downloads page shows
+/// above the rows that did load.
+pub const QUEUE_WARNING_HEADER: &str = "x-ryokan-queue-warning";
+
 #[utoipa::path(
     get,
     path = "/api/torrents",
     tag = "Downloads",
     summary = "List active torrents",
-    description = "Returns all torrents currently in the download client's queue.",
+    description = "Returns the queue of every configured download client. When one client fails and another answers, the list holds what answered and the `X-Ryokan-Queue-Warning` response header carries a percent-encoded notice naming the client that failed. When no client answers the response is 502 with that notice as its body: an empty list would read as an empty queue.",
     responses(
         (status = 200, description = "Torrent list", body = Vec<crate::services::download_client::DownloadItem>),
         (status = 400, description = "Download client not configured"),
+        (status = 502, description = "No download client could be reached"),
     ),
 )]
-pub async fn get_torrents(
-    State(state): State<AppState>,
-) -> Result<
-    Json<Vec<crate::services::download_client::DownloadItem>>,
-    (axum::http::StatusCode, String),
-> {
-    // Fan out across every enabled client so SAB / Usenet jobs
-    // appear in the queue alongside torrent jobs. Mirrors the
-    // server-rendered queue tab in `handlers::downloads`.
-    let pool = state.download_clients.read().await.clone();
-    if pool.clients.is_empty() {
-        return Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            "Download client not configured".to_string(),
-        ));
+pub async fn get_torrents(State(state): State<AppState>) -> Response {
+    // The same loader the server-rendered queue tab uses
+    // (`handlers::downloads`), so the page and its poll agree.
+    let loaded = crate::handlers::downloads::load_queue(&state).await;
+    if loaded.nothing_loaded {
+        let status = if state.download_clients.read().await.clients.is_empty() {
+            axum::http::StatusCode::BAD_REQUEST
+        } else {
+            axum::http::StatusCode::BAD_GATEWAY
+        };
+        return (status, loaded.error).into_response();
     }
-    let mut torrents: Vec<crate::services::download_client::DownloadItem> = Vec::new();
-    for c in pool.clients.values() {
-        match c.list_scoped().await {
-            Ok(mut items) => torrents.append(&mut items),
-            Err(e) => {
-                tracing::warn!("get_torrents: client list_scoped failed: {e}");
-            }
-        }
+    let mut response = Json(loaded.items).into_response();
+    if !loaded.error.is_empty()
+        && let Ok(value) = axum::http::HeaderValue::from_str(&urlencoding::encode(&loaded.error))
+    {
+        response.headers_mut().insert(QUEUE_WARNING_HEADER, value);
     }
-    Ok(Json(torrents))
+    response
 }
 
 #[cfg(test)]

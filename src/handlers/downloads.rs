@@ -163,6 +163,129 @@ fn normalize_tab(tab: Option<String>) -> String {
     }
 }
 
+/// The queue of every configured download client, and what to tell
+/// the user about the ones that did not answer.
+pub(crate) struct QueueLoad {
+    /// Downloading first, then by progress; whatever answered.
+    pub items: Vec<crate::services::download_client::DownloadItem>,
+    /// Interface-voice notice, empty when every client answered (and
+    /// at least one is configured).
+    pub error: String,
+    /// No client answered (or none is configured): `items` is empty
+    /// because nothing could be read, not because nothing is queued.
+    pub nothing_loaded: bool,
+}
+
+/// Fan out across every enabled client so SAB / Usenet jobs appear
+/// alongside torrent jobs in the queue. A single client erroring (e.g.
+/// SAB unreachable) doesn't blank the queue: the others still list,
+/// and `error` names the one that failed. Shared by the Downloads page
+/// and its poll (`/api/torrents`) so the two cannot disagree: the page
+/// used to show the notice and no rows, and the poll five seconds
+/// later replaced it with "No active downloads" while every client was
+/// down.
+pub(crate) async fn load_queue(state: &AppState) -> QueueLoad {
+    let pool = state.download_clients.read().await.clone();
+    if pool.clients.is_empty() {
+        return QueueLoad {
+            items: Vec::new(),
+            error: "No download client is configured. Add one under Settings → Download Clients to see its queue here.".to_string(),
+            nothing_loaded: true,
+        };
+    }
+    let mut torrents: Vec<crate::services::download_client::DownloadItem> = Vec::new();
+    let mut errors: Vec<(i64, String)> = Vec::new();
+    for (id, c) in pool.clients.iter() {
+        match c.list_scoped().await {
+            Ok(mut items) => torrents.append(&mut items),
+            Err(e) => errors.push((*id, e)),
+        }
+    }
+    let is_downloading = |k: DownloadItemState| {
+        matches!(
+            k,
+            DownloadItemState::Downloading
+                | DownloadItemState::DownloadingStalled
+                | DownloadItemState::DownloadingQueued
+                | DownloadItemState::CheckingDownload
+        )
+    };
+    torrents.sort_by(|a, b| {
+        let a_down = if is_downloading(a.state_kind) { 0 } else { 1 };
+        let b_down = if is_downloading(b.state_kind) { 0 } else { 1 };
+        a_down.cmp(&b_down).then(
+            b.progress
+                .partial_cmp(&a.progress)
+                .unwrap_or(std::cmp::Ordering::Equal),
+        )
+    });
+    if errors.is_empty() {
+        return QueueLoad {
+            items: torrents,
+            error: String::new(),
+            nothing_loaded: false,
+        };
+    }
+    // Interface-voice summary: identify the failing client(s) by
+    // configured name AND kind — with a multi-client pool a bare row
+    // name like "qbit" is ambiguous — and say whether the rest of the
+    // queue still rendered. The raw transport error (reqwest URL,
+    // connect detail) goes to the DB log instead of the page; it's
+    // diagnostic material, not direction.
+    let rows = crate::models::download_clients::list_all(&state.db)
+        .await
+        .unwrap_or_default();
+    let describe = |id: i64| {
+        rows.iter()
+            .find(|r| r.id == id)
+            .map(|r| format!("\"{}\" ({})", r.name, client_kind_display(&r.kind)))
+            .unwrap_or_else(|| format!("download client #{}", id))
+    };
+    let names = errors
+        .iter()
+        .map(|(id, _)| describe(*id))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // The page's poll comes through here every five seconds: one log
+    // row a minute per set of failing clients, not one per poll.
+    if crate::services::logger::first_in_window(
+        &format!("queue-load-failed:{names}"),
+        std::time::Duration::from_secs(60),
+    ) {
+        let detail = errors
+            .iter()
+            .map(|(id, e)| format!("{}: {}", describe(*id), e))
+            .collect::<Vec<_>>()
+            .join("; ");
+        crate::services::logger::warn(
+            &state.db,
+            crate::models::log::LogCategory::DownloadClient,
+            "Queue load failed for one or more download clients",
+            &detail,
+        )
+        .await;
+    }
+    let lead = if errors.len() == 1 {
+        format!("Can't reach the download client {}.", names)
+    } else {
+        format!("Can't reach {} download clients: {}.", errors.len(), names)
+    };
+    let nothing_loaded = errors.len() == pool.clients.len();
+    let partial = if nothing_loaded {
+        ""
+    } else {
+        " Queues from the other clients are still shown."
+    };
+    QueueLoad {
+        items: torrents,
+        error: format!(
+            "{}{} Check the connection details under Settings → Download Clients; the full error is in System → Logs.",
+            lead, partial
+        ),
+        nothing_loaded,
+    }
+}
+
 pub async fn downloads_page(
     State(state): State<AppState>,
     Query(params): Query<DownloadsQuery>,
@@ -180,97 +303,9 @@ pub async fn downloads_page(
         .unwrap_or_else(|| "english".to_string());
 
     let (queue, queue_error) = if tab == "queue" {
-        // Fan out across every enabled client so SAB / Usenet jobs
-        // appear alongside torrent jobs in the queue. A single
-        // client erroring (e.g. SAB unreachable) doesn't blank the
-        // whole tab — it logs and the other clients still render.
-        let pool = state.download_clients.read().await.clone();
-        if pool.clients.is_empty() {
-            (
-                Vec::new(),
-                "No download client is configured. Add one under Settings → Download Clients to see its queue here.".to_string(),
-            )
-        } else {
-            let mut torrents: Vec<crate::services::download_client::DownloadItem> = Vec::new();
-            let mut errors: Vec<(i64, String)> = Vec::new();
-            for (id, c) in pool.clients.iter() {
-                match c.list_scoped().await {
-                    Ok(mut items) => torrents.append(&mut items),
-                    Err(e) => errors.push((*id, e)),
-                }
-            }
-            let is_downloading = |k: DownloadItemState| {
-                matches!(
-                    k,
-                    DownloadItemState::Downloading
-                        | DownloadItemState::DownloadingStalled
-                        | DownloadItemState::DownloadingQueued
-                        | DownloadItemState::CheckingDownload
-                )
-            };
-            torrents.sort_by(|a, b| {
-                let a_down = if is_downloading(a.state_kind) { 0 } else { 1 };
-                let b_down = if is_downloading(b.state_kind) { 0 } else { 1 };
-                a_down.cmp(&b_down).then(
-                    b.progress
-                        .partial_cmp(&a.progress)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                )
-            });
-            let views = torrents.iter().map(torrent_to_view).collect();
-            let error_msg = if errors.is_empty() {
-                String::new()
-            } else {
-                // Interface-voice summary: identify the failing
-                // client(s) by configured name AND kind — with a
-                // multi-client pool a bare row name like "qbit" is
-                // ambiguous — and say whether the rest of the queue
-                // still rendered. The raw transport error (reqwest
-                // URL, connect detail) goes to the DB log instead of
-                // the page; it's diagnostic material, not direction.
-                let rows = crate::models::download_clients::list_all(&state.db)
-                    .await
-                    .unwrap_or_default();
-                let describe = |id: i64| {
-                    rows.iter()
-                        .find(|r| r.id == id)
-                        .map(|r| format!("\"{}\" ({})", r.name, client_kind_display(&r.kind)))
-                        .unwrap_or_else(|| format!("download client #{}", id))
-                };
-                let detail = errors
-                    .iter()
-                    .map(|(id, e)| format!("{}: {}", describe(*id), e))
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                crate::services::logger::warn(
-                    &state.db,
-                    crate::models::log::LogCategory::DownloadClient,
-                    "Queue load failed for one or more download clients",
-                    &detail,
-                )
-                .await;
-                let names = errors
-                    .iter()
-                    .map(|(id, _)| describe(*id))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let lead = if errors.len() == 1 {
-                    format!("Can't reach the download client {}.", names)
-                } else {
-                    format!("Can't reach {} download clients: {}.", errors.len(), names)
-                };
-                let partial = if errors.len() < pool.clients.len() {
-                    " Queues from the other clients are still shown."
-                } else {
-                    ""
-                };
-                format!(
-                    "{}{} Check the connection details under Settings → Download Clients; the full error is in System → Logs.",
-                    lead, partial
-                )
-            };
-            (views, error_msg)
-        }
+        let loaded = load_queue(&state).await;
+        let views = loaded.items.iter().map(torrent_to_view).collect();
+        (views, loaded.error)
     } else {
         (Vec::new(), String::new())
     };
@@ -438,6 +473,176 @@ pub async fn api_blocklist_remove(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::download_client::{
+        AddOutcome, DownloadClient, DownloadFile, DownloadItem, SelectiveOutcome,
+    };
+    use crate::test_support::{build_test_app_state, in_memory_pool};
+    use async_trait::async_trait;
+    use std::sync::Arc;
+
+    /// A client whose queue either lists one item or fails.
+    struct QueueClient {
+        item: Option<&'static str>,
+    }
+
+    #[async_trait]
+    impl DownloadClient for QueueClient {
+        async fn test(&self) -> Result<String, String> {
+            Ok("mock".into())
+        }
+        async fn add_torrent(&self, _url: &str, _hash: &str) -> Result<AddOutcome, String> {
+            Ok(AddOutcome::Added)
+        }
+        async fn add_torrent_with_file_filter(
+            &self,
+            _url: &str,
+            _hash: &str,
+            _pick: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
+        ) -> Result<SelectiveOutcome, String> {
+            Ok(SelectiveOutcome::FullDownload)
+        }
+        async fn list_scoped(&self) -> Result<Vec<DownloadItem>, String> {
+            match self.item {
+                None => Err("SAB returned HTTP 500 Internal Server Error".into()),
+                Some(name) => Ok(vec![DownloadItem {
+                    hash: "aabbccddeeff00112233445566778899aabbccdd".into(),
+                    name: name.into(),
+                    size: 1000,
+                    progress: 0.5,
+                    dlspeed: 0,
+                    state: "downloading".into(),
+                    category: "anime".into(),
+                    eta: 0,
+                    save_path: String::new(),
+                    content_path: String::new(),
+                    state_kind: DownloadItemState::Downloading,
+                    seeding_done: false,
+                }]),
+            }
+        }
+        async fn get_files(&self, _hash: &str) -> Result<Vec<DownloadFile>, String> {
+            Ok(vec![])
+        }
+        async fn pause(&self, _hash: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn resume(&self, _hash: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn delete(&self, _hash: &str, _delete_files: bool) -> Result<(), String> {
+            Ok(())
+        }
+        async fn set_file_wanted(
+            &self,
+            _hash: &str,
+            _files: &[usize],
+            _wanted: bool,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+        fn sonarr_impl_name(&self) -> &'static str {
+            "QBittorrent"
+        }
+    }
+
+    /// App state whose pool holds one client per entry: `Some(name)`
+    /// lists that item, `None` fails.
+    async fn state_with_clients(clients: &[Option<&'static str>]) -> AppState {
+        let state = build_test_app_state(in_memory_pool().await, None);
+        let mut pool = crate::DownloadClientPool {
+            clients: std::collections::HashMap::new(),
+            default_torrent_id: Some(1),
+            default_usenet_id: None,
+        };
+        for (i, item) in clients.iter().enumerate() {
+            let client: Arc<dyn DownloadClient> = Arc::new(QueueClient { item: *item });
+            pool.clients.insert(i as i64 + 1, client);
+        }
+        *state.download_clients.write().await = Arc::new(pool);
+        state
+    }
+
+    async fn queue_page(state: &AppState) -> String {
+        downloads_page(State(state.clone()), Query(DownloadsQuery { tab: None }))
+            .await
+            .0
+    }
+
+    async fn poll(state: &AppState) -> (axum::http::StatusCode, Option<String>, String) {
+        let response = crate::handlers::search::get_torrents(State(state.clone())).await;
+        let status = response.status();
+        let warning = response
+            .headers()
+            .get(crate::handlers::search::QUEUE_WARNING_HEADER)
+            .map(|v| {
+                urlencoding::decode(v.to_str().unwrap())
+                    .unwrap()
+                    .into_owned()
+            });
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, warning, String::from_utf8_lossy(&body).into_owned())
+    }
+
+    // Dogfood a4. The page showed the notice and no rows whenever any
+    // client failed, and its poll answered `[]` when all of them did,
+    // which the page drew as "No active downloads."
+
+    #[tokio::test]
+    async fn one_failing_client_leaves_the_other_queue_on_the_page_and_in_the_poll() {
+        let state = state_with_clients(&[Some("[G] Show - 01.mkv"), None]).await;
+
+        let html = queue_page(&state).await;
+        assert!(
+            html.contains("Can&#39;t reach the download client")
+                || html.contains("Can't reach the download client"),
+            "{html}"
+        );
+        assert!(html.contains("Queues from the other clients are still shown."));
+        assert!(
+            html.contains("[G] Show - 01.mkv"),
+            "the client that answered is listed, as the notice says"
+        );
+
+        let (status, warning, body) = poll(&state).await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        assert!(body.contains("[G] Show - 01.mkv"), "{body}");
+        let warning = warning.expect("the poll carries the notice");
+        assert!(
+            warning.contains("Queues from the other clients are still shown."),
+            "{warning}"
+        );
+    }
+
+    #[tokio::test]
+    async fn no_client_answering_is_never_an_empty_queue() {
+        let state = state_with_clients(&[None, None]).await;
+
+        let html = queue_page(&state).await;
+        assert!(html.contains("download clients"), "{html}");
+        assert!(!html.contains("No active downloads."), "{html}");
+
+        let (status, warning, body) = poll(&state).await;
+        assert_eq!(status, axum::http::StatusCode::BAD_GATEWAY);
+        assert_eq!(warning, None);
+        assert!(body.starts_with("Can't reach 2 download clients"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn a_healthy_empty_queue_still_says_so_without_a_notice() {
+        let state = state_with_clients(&[Some("x")]).await;
+        let (status, warning, _) = poll(&state).await;
+        assert_eq!((status, warning), (axum::http::StatusCode::OK, None));
+
+        let none = build_test_app_state(in_memory_pool().await, None);
+        let (status, _, body) = poll(&none).await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+        assert!(
+            body.starts_with("No download client is configured"),
+            "{body}"
+        );
+    }
 
     // Mirror of the exhaustive-match pattern in
     // `services::download_client::tests::all_variants_with_slugs` —
