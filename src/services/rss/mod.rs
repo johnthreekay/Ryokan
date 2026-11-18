@@ -969,24 +969,12 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         let item_key = build_item_key(&item);
         let (src_str, src_id) = source_dedup_key(&item.source);
         if already_grabbed.contains(&(item_key.clone(), src_str.to_string(), src_id)) {
+            // Counted, never recorded: the `grabbed` row is this
+            // check's own tombstone and the log's record of the grab.
+            // Writing "skipped" over it dropped the item from
+            // `already_grabbed`, so every second sync grabbed it again
+            // for as long as it stayed in the feed.
             skipped += 1;
-            let _ = rss::record_decision(
-                &state.db,
-                rss::DecisionRecord {
-                    item_key: &item_key,
-                    title: &item.title,
-                    link: &item.link,
-                    series_id: None,
-                    series_title: "",
-                    group_name: &item.group,
-                    is_batch: item.is_batch,
-                    decision: "skipped",
-                    reason: "Already grabbed earlier; skipping duplicate RSS item",
-                    source: src_str,
-                    source_id: src_id,
-                },
-            )
-            .await;
             continue;
         }
 
