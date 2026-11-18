@@ -390,7 +390,13 @@ impl QbitClient {
         let endpoint = if self.category.is_empty() {
             "/api/v2/torrents/info".to_string()
         } else {
-            format!("/api/v2/torrents/info?category={}", self.category)
+            // Encoded: a label like `Anime & Co+1#x` otherwise asked for
+            // category `Anime`, listing another category's torrents and
+            // never this client's own.
+            format!(
+                "/api/v2/torrents/info?category={}",
+                urlencoding::encode(&self.category)
+            )
         };
 
         let resp = self.do_get(&endpoint).await?;
