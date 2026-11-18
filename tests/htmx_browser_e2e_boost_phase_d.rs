@@ -125,9 +125,16 @@ async fn boost_navigates_pentagon_via_body_level_opt_in() {
                 .find(|p| p.1 == origin_label)
                 .map(|p| p.0)
                 .unwrap();
-            click_top_nav(&client, origin_path, origin_path)
-                .await
-                .unwrap_or_else(|e| panic!("nav to origin {origin_label}: {e}"));
+            // Only when not already there. Clicking the link of the
+            // page we are on starts a boosted reload whose path wait
+            // passes at once, so the next click raced that reload's
+            // response and the late response put the page back.
+            let here = client.current_url().await.expect("current url");
+            if here.path() != origin_path {
+                click_top_nav(&client, origin_path, origin_path)
+                    .await
+                    .unwrap_or_else(|e| panic!("nav to origin {origin_label}: {e}"));
+            }
             // Now the discriminating boost-click: origin → dest.
             click_top_nav(&client, dest_path, dest_path)
                 .await
