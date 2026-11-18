@@ -119,10 +119,13 @@ pub struct BackupManifest {
     pub ryokan_version: String,
     /// Unix seconds.
     pub backup_timestamp: i64,
-    /// `MAX(id)` of `schema_migrations` at backup time. Restore refuses
-    /// a backup whose value is above the running binary's: a newer
-    /// schema can't be read by an older build. Monotonic, unlike the
-    /// version string.
+    /// [`migration_level`] at backup time: how many one-shot migrations
+    /// the database had recorded. Restore refuses a backup whose value
+    /// is above the running database's: a newer schema can't be read
+    /// by an older build. Monotonic, unlike the version string. The
+    /// key keeps its first name for archives already written (which
+    /// all carry 0: the ledger's ids are text, and the `MAX(id)` this
+    /// was read from never decoded).
     pub max_migration_id: i64,
     pub includes_artwork: bool,
     pub includes_key: bool,
@@ -362,14 +365,19 @@ pub(crate) async fn vacuum_into(db: &SqlitePool, path: &Path) -> Result<(), Stri
     Ok(())
 }
 
-/// `MAX(id)` of `schema_migrations`, 0 when the table is empty or
-/// missing.
-pub async fn max_migration_id(db: &SqlitePool) -> i64 {
-    sqlx::query_scalar::<_, Option<i64>>("SELECT MAX(id) FROM schema_migrations")
+/// How many one-shot migrations `schema_migrations` records, 0 when
+/// the table is empty or missing. Every build marks each of its
+/// one-shot migrations on boot and none is ever taken out, so a
+/// database from a newer build counts higher.
+///
+/// The ledger's ids are names (`sessions_hashed_v1`), not numbers.
+/// This used to read `MAX(id)` as an integer, which failed to decode
+/// on every database; the error was swallowed into 0, every manifest
+/// said 0, and the restore gate comparing the two could never fire.
+pub async fn migration_level(db: &SqlitePool) -> i64 {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM schema_migrations")
         .fetch_one(db)
         .await
-        .ok()
-        .flatten()
         .unwrap_or(0)
 }
 
@@ -445,7 +453,7 @@ async fn build_backup(
     let manifest = BackupManifest {
         ryokan_version: env!("CARGO_PKG_VERSION").to_string(),
         backup_timestamp: now_unix(),
-        max_migration_id: max_migration_id(db).await,
+        max_migration_id: migration_level(db).await,
         includes_artwork: include_artwork,
         includes_key: include_key,
         sanitized: opts.sanitize,
@@ -758,7 +766,7 @@ async fn stage_into(
     let manifest = read_manifest(staging)?;
     check_database_file(&staging.join("ryokan.db"))?;
 
-    let running = max_migration_id(db).await;
+    let running = migration_level(db).await;
     if manifest.max_migration_id > running {
         return Err(RestoreError::Incompatible(format!(
             "This backup was made by a newer Ryokan (schema {} vs {} here). Update Ryokan first.",
