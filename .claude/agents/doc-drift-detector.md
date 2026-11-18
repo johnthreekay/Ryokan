@@ -70,7 +70,7 @@ A tight punch list grouped by outcome. One line per item: claim → status → f
 ```
 ## Verified clean
 - `MIN_BACKOFF = 5s` matches `src/main.rs:233`
-- `static/vendor/htmx-4.0.0.min.js` present
+- `static/vendor/htmx-4.0.2.min.js` present
 
 ## Drift / stale claims
 - AGENTS.md:165 "18-variant LogCategory" — the enum in `src/models/log.rs:20-40` has 19 variants (Notifications added)

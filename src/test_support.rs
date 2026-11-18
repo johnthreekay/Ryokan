@@ -313,7 +313,7 @@ mod e2e {
 <meta charset="utf-8">
 <title>Browser-e2e fixture</title>
 <script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 </head>
 <body>
 <button class="ep-mon-btn {% if monitored %}ep-mon-yes{% else %}ep-mon-no{% endif %}"
@@ -350,7 +350,7 @@ mod e2e {
 <meta charset="utf-8">
 <title>Connection-test fixture</title>
 <script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 </head>
 <body>
 <form id="jellyfin-form">
@@ -434,7 +434,7 @@ document.body.addEventListener('ryokan-dc-test-result', function (ev) {
 <div id="ryokan-toast-stack"></div>
 {# Same shape as base.html: the scripts sit at the end of the body,
    so a boosted swap re-executes them with the new body. #}
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 <script src="/static/js/page_lifecycle.js" defer></script>
 <script src="/static/js/base.js" defer></script>
 <script>
@@ -514,7 +514,7 @@ window.addEventListener('DOMContentLoaded', function () {
 <meta charset="utf-8">
 <title>hx-on fixture</title>
 <script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 </head>
 <body>
 <label>
@@ -574,7 +574,7 @@ window.addEventListener('DOMContentLoaded', function () {
 <meta charset="utf-8">
 <title>Episode-delete listener fixture</title>
 <script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 <script src="/static/js/page_lifecycle.js" defer></script>
 <script src="/static/js/base.js" defer></script>
 </head>

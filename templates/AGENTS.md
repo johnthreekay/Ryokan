@@ -2,7 +2,7 @@
 
 Askama 0.16 (Jinja2-like, compiled into the binary at build time via proc-macro). Templates live here; handlers call `template.render()` and wrap in `Html(...)` themselves — there's no `axum`-integration crate (Askama 0.13 merged with rinja and dropped per-framework wrappers).
 
-**htmx 4.0.0** is vendored under `static/vendor/` (issue #130, migrated from 2.0.9). **Body-wide `<body hx-boost:inherited="true">` is active** — every plain `<a>` and `<form>` runs through htmx by default. No extensions are loaded: the progress toast streams over native `EventSource`, and the `<head>` never changes across a boosted nav (all CSS is bundled in `base.html`; htmx 4 core carries `<title>` on its own), so the 2.x SSE and head-support extensions are gone.
+**htmx 4.0.2** is vendored under `static/vendor/` (issue #130, migrated from 2.0.9). **Body-wide `<body hx-boost:inherited="true">` is active** — every plain `<a>` and `<form>` runs through htmx by default. No extensions are loaded: the progress toast streams over native `EventSource`, and the `<head>` never changes across a boosted nav (all CSS is bundled in `base.html`; htmx 4 core carries `<title>` on its own), so the 2.x SSE and head-support extensions are gone.
 
 ## htmx 4 rules (what changed from 2.x, and what pins it)
 

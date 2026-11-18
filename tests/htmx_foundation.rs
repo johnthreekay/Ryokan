@@ -40,7 +40,7 @@
 
 use std::path::Path;
 
-const HTMX_CORE_PATH: &str = "static/vendor/htmx-4.0.0.min.js";
+const HTMX_CORE_PATH: &str = "static/vendor/htmx-4.0.2.min.js";
 
 /// Vendored htmx core exists and looks like htmx 4 (not, e.g., a 404
 /// page captured from a bad fetch, and not the 2.x bundle).
@@ -54,10 +54,10 @@ fn htmx_core_vendored_with_expected_shape() {
         &body[..body.len().min(32)]
     );
     assert!(
-        body.contains("version=\"4.0.0\"") || body.contains("version='4.0.0'"),
-        "asset at {HTMX_CORE_PATH} does not report version 4.0.0"
+        body.contains("version=\"4.0.2\"") || body.contains("version='4.0.2'"),
+        "asset at {HTMX_CORE_PATH} does not report version 4.0.2"
     );
-    // The 4.0.0 minified bundle is ~37KB; the unminified one is ~100KB.
+    // The 4.0.2 minified bundle is ~37KB; the unminified one is ~100KB.
     let len = body.len();
     assert!(
         (25_000..=60_000).contains(&len),
@@ -94,7 +94,7 @@ fn base_template_wires_htmx_correctly() {
         "base.html must include the vendored script tag for /{HTMX_CORE_PATH}"
     );
     let htmx_pos = body
-        .find("htmx-4.0.0.min.js")
+        .find("htmx-4.0.2.min.js")
         .expect("htmx core tag present");
     let base_js_pos = body
         .find("/static/js/base.js")
