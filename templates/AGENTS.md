@@ -79,6 +79,7 @@ Under htmx 2's implicit inheritance a plain `<a href>` inside a form with `hx-ta
 
 - **Use `var` at module scope, not `let` / `const`.** Top-level `let` / `const` throws "redeclaration" SyntaxError on body-swap re-execute.
 - **Module-scope DOM snapshots go stale** after a body swap. Cache via a Proxy or re-query inside the handler.
+- **Anything a script registers on `document`, `window` or `htmx`, and any timer it starts, is registered again on every re-execution**, `base.js` included (it sits in the swapped body). Guard it with a `window.__ryokan…` flag and reach the newest copy through a `window` hook (`bindModalKeys`, `window.ryokanRefreshTimestamps`, `__ryokanGrabPickerEscape`), and keep a timer's handle on `window`, never in a module-scope `var x = null`, which the re-execution resets while the timer keeps running (`system.js`'s Logs poller did this: one more 3 s poll per return to the tab).
 
 ## CSS gotcha: `background:` shorthand on `<select>`
 
