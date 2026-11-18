@@ -291,29 +291,33 @@ pub async fn delete(
 ) -> Result<StatusCode, (StatusCode, String)> {
     // Look up the name first so the audit log line is meaningful;
     // best-effort — a missing row still proceeds to the (idempotent)
-    // delete below.
-    let name_for_log = api_key::list(&state.db)
-        .await
-        .ok()
-        .and_then(|rows| rows.into_iter().find(|r| r.id == id))
-        .map(|r| r.name)
-        .unwrap_or_else(|| format!("id={id}"));
+    // delete below. `None` is "no such key": the delete is still a 204,
+    // but the Auth log must not record a deletion that never happened
+    // (every repeat of the request used to add an "API key deleted"
+    // row for an id that was already gone, or never existed). A failed
+    // lookup logs by id, since a key may well have been deleted.
+    let name_for_log = match api_key::list(&state.db).await {
+        Ok(rows) => rows.into_iter().find(|r| r.id == id).map(|r| r.name),
+        Err(_) => Some(format!("id={id}")),
+    };
 
     api_key::delete(&state.db, id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    logger::info(
-        &state.db,
-        LogCategory::Auth,
-        "API key deleted",
-        &format!(
-            "id={} name={}",
-            id,
-            crate::handlers::auth::sanitize_for_log(&name_for_log)
-        ),
-    )
-    .await;
+    if let Some(name_for_log) = name_for_log {
+        logger::info(
+            &state.db,
+            LogCategory::Auth,
+            "API key deleted",
+            &format!(
+                "id={} name={}",
+                id,
+                crate::handlers::auth::sanitize_for_log(&name_for_log)
+            ),
+        )
+        .await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -456,6 +460,37 @@ mod tests {
         assert_eq!(status, StatusCode::NO_CONTENT);
         let Json(views) = list(State(state)).await.unwrap();
         assert!(views.is_empty());
+    }
+
+    #[tokio::test]
+    async fn delete_logs_a_deletion_only_when_a_key_was_deleted() {
+        // Dogfood a1: `POST /api/api-keys/99/delete`, eight times, left
+        // eight "API key deleted" rows in the Auth log.
+        let pool = in_memory_pool().await;
+        let state = build_test_app_state(pool.clone(), None);
+        let Json(created) = create(
+            State(state.clone()),
+            Form(CreateApiKeyForm {
+                name: "Cal".into(),
+                scopes: "calendar".into(),
+            }),
+        )
+        .await
+        .unwrap();
+        let audit_rows = || async {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM logs WHERE message = 'API key deleted'",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        };
+
+        for id in [99, created.view.id, created.view.id] {
+            let status = delete(State(state.clone()), Path(id)).await.unwrap();
+            assert_eq!(status, StatusCode::NO_CONTENT);
+        }
+        assert_eq!(audit_rows().await, 1, "one key existed, once");
     }
 
     #[tokio::test]
