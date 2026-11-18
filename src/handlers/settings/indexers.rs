@@ -932,7 +932,8 @@ pub async fn settings_indexers_test_stateless(
     };
     let indexer: std::sync::Arc<dyn crate::services::indexers::Indexer> = match cached {
         Some(cached) => cached,
-        None => match build_transient_indexer(0, kind, url, &api_key) {
+        None => match build_transient_indexer(transient_indexer_id(kind, url), kind, url, &api_key)
+        {
             Ok(c) => c,
             Err(e) => {
                 return indexer_test_trigger(
@@ -1000,11 +1001,25 @@ fn indexer_test_trigger(ok: bool, message: &str) -> Response {
     resp
 }
 
+/// The id an unsaved indexer is tested under, which is the key of its
+/// 429 cooldown (`services::indexers::cooldown`): negative, so never a
+/// saved row's, and derived from what is being tested. They all used
+/// `0`, so one 429 from any address put the Test of every other unsaved
+/// address into "rate-limited (cooldown ...)" for up to five minutes
+/// without contacting it. The same address still meets its own
+/// cooldown, which is what a cooldown is for.
+fn transient_indexer_id(kind: &str, url: &str) -> i64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (kind, url).hash(&mut hasher);
+    -((hasher.finish() >> 1) as i64) - 1
+}
+
 /// Build a transient TorznabIndexer for the stateless test path.
 /// Mirrors the production `from_row` constructor, but synthesizes
 /// the `Indexer` row in-memory from the form fields so unsaved
-/// configurations can be probed. Test-only id is `0` since this
-/// indexer never goes through the dedup pass.
+/// configurations can be probed. The id is [`transient_indexer_id`];
+/// this indexer never goes through the dedup pass.
 fn build_transient_indexer(
     id: i64,
     kind: &str,
@@ -1096,6 +1111,31 @@ fn parse_optional_secs(raw: &Option<String>) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unsaved_indexers_under_test_do_not_share_a_cooldown() {
+        // Dogfood a6: every unsaved indexer was tested as id 0, so a
+        // 429 from one address rate-limited the Test of all the others.
+        use crate::services::indexers::cooldown;
+        let limited = transient_indexer_id("torznab", "http://one.example/429/api");
+        let other = transient_indexer_id("torznab", "http://two.example/ok/api");
+        assert!(limited < 0 && other < 0, "never a saved row's id");
+        assert_ne!(limited, other);
+        assert_eq!(
+            limited,
+            transient_indexer_id("torznab", "http://one.example/429/api"),
+            "the same address keeps its own cooldown"
+        );
+
+        cooldown::record_429(limited, Some(300));
+        assert!(cooldown::remaining(limited).is_some());
+        assert!(
+            cooldown::remaining(other).is_none(),
+            "another address is still contacted"
+        );
+        assert!(cooldown::remaining(0).is_none());
+        cooldown::remove_for_tests(limited);
+    }
 
     #[test]
     fn parse_priority_clamps_into_sonarr_range() {
