@@ -1,13 +1,15 @@
 //! Wiremock coverage for the RSS sync loop's own dedup
 //! (`services::rss::sync_once`): an item grabbed by one sync must stay
-//! grabbed for as long as it sits in the feed.
+//! grabbed for as long as it sits in the feed, and a grab's recorded
+//! hash is the feed's `<nyaa:infoHash>` even when the download link is
+//! a `.torrent` URL that names none.
 //!
 //! Same shape as `rss_sync_blocklist_e2e.rs`: a direct feed row points
 //! at the mock, Nyaa's own RSS is switched off in the seeded config.
 
 use async_trait::async_trait;
 use ryokan::models::direct_rss_feeds::{self, DirectRssFeedForm};
-use ryokan::models::rss;
+use ryokan::models::{grabbed_torrents, rss};
 use ryokan::services::download_client::{
     AddOutcome, DownloadClient, DownloadFile, DownloadItem, SelectiveOutcome,
 };
@@ -202,4 +204,45 @@ async fn an_item_grabbed_once_is_not_grabbed_again_while_it_stays_in_the_feed() 
         .await
         .unwrap();
     assert_eq!(rows, 2, "one grab row per release");
+}
+
+/// A8-4. The grab's hash is the feed's `<nyaa:infoHash>`, not whatever
+/// the download URL happens to contain: the `.torrent` link wins over
+/// the magnet and names no hash, and a grab recorded with an empty one
+/// is invisible to every hash-keyed check after it.
+#[tokio::test]
+async fn a_grab_from_a_torrent_link_records_the_feeds_info_hash() {
+    let _serial = SYNC_SERIAL.lock().await;
+    let mock = mock_feed().await;
+    let db = in_memory_pool().await;
+    seed(&db, &format!("{}/feed", mock.uri())).await;
+    let client = Arc::new(RecordingClient {
+        add_calls: Mutex::new(Vec::new()),
+    });
+    let state = build_test_app_state(db.clone(), Some(client.clone() as Arc<dyn DownloadClient>));
+
+    let summary = sync_once(&state, "manual").await.expect("sync runs");
+    assert_eq!(summary.grabbed, 2, "{summary:?}");
+
+    let calls = client.add_calls();
+    let hashed = calls
+        .iter()
+        .find(|(url, _)| url.ends_with("/torrent/1.torrent"))
+        .expect("the hashed item went to the client by its .torrent link");
+    assert_eq!(hashed.1, FEED_HASH, "the client is told the hash");
+    let hashless = calls
+        .iter()
+        .find(|(url, _)| url.ends_with("/torrent/2.torrent"))
+        .expect("the hashless item went to the client");
+    assert_eq!(
+        hashless.1, "",
+        "no hash is invented for an item without one"
+    );
+
+    let pending = grabbed_torrents::get_all_pending(&db).await.unwrap();
+    let row = pending
+        .iter()
+        .find(|g| g.torrent_name == HASHED_TITLE)
+        .expect("a grab row for the hashed item");
+    assert_eq!(row.hash, FEED_HASH);
 }
