@@ -820,6 +820,10 @@ pub async fn csrf_public(req: Request<Body>, next: Next) -> Response {
 pub(crate) const MIN_PASSWORD_CHARS: usize = 8;
 /// Longest: bcrypt ignores everything past byte 72.
 pub(crate) const MAX_PASSWORD_BYTES: usize = 72;
+/// Longest admin username `/setup` accepts, in characters. The name is
+/// stored, logged, and sent back with every System page; unbounded, a
+/// megabyte of it made every one of those a megabyte.
+pub(crate) const MAX_USERNAME_CHARS: usize = 100;
 
 pub async fn setup_page(State(state): State<AppState>) -> impl IntoResponse {
     // If users already exist, redirect to login.
@@ -857,6 +861,16 @@ pub async fn setup_submit(
     if form.username.trim().is_empty() || form.password.is_empty() {
         let template = SetupTemplate {
             error: Some("Username and password are required.".into()),
+        };
+        return Html(template.render().unwrap_or_default()).into_response();
+    }
+
+    let username = form.username.trim();
+    if username.chars().count() > MAX_USERNAME_CHARS || username.chars().any(char::is_control) {
+        let template = SetupTemplate {
+            error: Some(format!(
+                "Use a username of at most {MAX_USERNAME_CHARS} characters, without control characters."
+            )),
         };
         return Html(template.render().unwrap_or_default()).into_response();
     }
@@ -910,7 +924,10 @@ pub async fn setup_submit(
             logger::info(
                 &state.db,
                 LogCategory::Auth,
-                &format!("Account created: {}", form.username.trim()),
+                &format!(
+                    "Account created: {}",
+                    sanitize_for_log(form.username.trim())
+                ),
                 "",
             )
             .await;

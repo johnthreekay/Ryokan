@@ -60,7 +60,7 @@ Usernames are passed through `sanitize_for_log()` (strip control chars, cap at 6
 
 ## One admin, even under concurrent setup
 
-`setup_submit` creates the account through `models::user::create_first_user`, an `INSERT ... SELECT ... WHERE NOT EXISTS (SELECT 1 FROM users)`, never `create_user`. Its `has_users` gate runs before the ~50ms bcrypt hash, so two submissions in flight at once both pass it; with a plain insert both landed and a second admin with a different username slipped in beside the first (`UNIQUE(username)` only catches a repeated name). The loser gets `Ok(None)`, an `Auth` warn line, and a redirect to `/login`. `create_user` stays for tests that seed users. `tests/setup.rs::concurrent_setup_posts_create_exactly_one_account` pins it.
+`setup_submit` refuses a username over `MAX_USERNAME_CHARS` (100) or holding control characters, and logs it through `sanitize_for_log` like `login_submit` does. `setup_submit` creates the account through `models::user::create_first_user`, an `INSERT ... SELECT ... WHERE NOT EXISTS (SELECT 1 FROM users)`, never `create_user`. Its `has_users` gate runs before the ~50ms bcrypt hash, so two submissions in flight at once both pass it; with a plain insert both landed and a second admin with a different username slipped in beside the first (`UNIQUE(username)` only catches a repeated name). The loser gets `Ok(None)`, an `Auth` warn line, and a redirect to `/login`. `create_user` stays for tests that seed users. `tests/setup.rs::concurrent_setup_posts_create_exactly_one_account` pins it.
 
 ## Sonarr/Radarr shim auth (out of scope)
 
