@@ -146,6 +146,11 @@
     color: var(--bg);
 }
 
+/* A disabled button says so. With no rule here it kept its full color
+   and the pointer cursor: the file picker's Confirm with nothing
+   ticked looked ready to press. Same treatment as `.btn-grab`. */
+.btn:disabled { opacity: 0.6; cursor: default; }
+
 .btn-primary {
     background: var(--accent);
     color: var(--bg);
