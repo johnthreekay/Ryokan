@@ -1543,11 +1543,12 @@ async fn run_once_holds_the_stall_timer_during_the_boot_grace() {
 // failed and its release blocklisted on the first tick. It now waits
 // like the empty-list case above, on the same stall timer.
 
-struct UnseenDownload {
+struct ImportFixture {
     db: sqlx::SqlitePool,
     state: crate::AppState,
+    series_id: i64,
     grab_id: i64,
-    /// Where the client says the download is; not created.
+    /// Where the client says the download is. Not created here.
     source_dir: std::path::PathBuf,
     media_root: tempfile::TempDir,
     _parent: tempfile::TempDir,
@@ -1555,10 +1556,19 @@ struct UnseenDownload {
 
 const UNSEEN_FILE: &str = "Show Title - 01.mkv";
 
-async fn seed_unseen_download(hash: &str) -> UnseenDownload {
+/// One complete grab of `title` for "Show Title" whose client lists
+/// `files` (all wanted, all done) under a folder the caller decides
+/// whether to create.
+async fn seed_import_fixture(
+    hash: &str,
+    title: &str,
+    episodes: &[i32],
+    is_batch: bool,
+    files: &[&str],
+) -> ImportFixture {
     let media_root = tempfile::TempDir::new().expect("media_root tempdir");
     let parent = tempfile::TempDir::new().expect("source parent tempdir");
-    let source_dir = parent.path().join("not-mounted-yet");
+    let source_dir = parent.path().join("download");
 
     let db = in_memory_pool().await;
     sqlx::query(
@@ -1570,11 +1580,10 @@ async fn seed_unseen_download(hash: &str) -> UnseenDownload {
     .await
     .expect("seed config row");
     let series_id = seed_series(&db, 1, "Show Title").await;
-    let grab_id =
-        grabbed_torrents::record_grab(&db, hash, "Show Title - 01", series_id, &[1], false)
-            .await
-            .unwrap()
-            .unwrap();
+    let grab_id = grabbed_torrents::record_grab(&db, hash, title, series_id, episodes, is_batch)
+        .await
+        .unwrap()
+        .unwrap();
     grabbed_torrents::set_download_client(&db, grab_id, Some(1))
         .await
         .unwrap();
@@ -1599,7 +1608,7 @@ async fn seed_unseen_download(hash: &str) -> UnseenDownload {
     let client = Arc::new(ImportingClient {
         torrent: DownloadItem {
             hash: hash.into(),
-            name: "Show Title - 01".into(),
+            name: title.into(),
             size: 13,
             progress: 1.0,
             dlspeed: 0,
@@ -1611,23 +1620,31 @@ async fn seed_unseen_download(hash: &str) -> UnseenDownload {
             state_kind: DownloadItemState::Seeding,
             seeding_done: false,
         },
-        files: vec![DownloadFile {
-            name: UNSEEN_FILE.to_string(),
-            size: 13,
-            progress: 1.0,
-            wanted: true,
-        }],
+        files: files
+            .iter()
+            .map(|name| DownloadFile {
+                name: (*name).to_string(),
+                size: 13,
+                progress: 1.0,
+                wanted: true,
+            })
+            .collect(),
     });
     let state = build_test_app_state(db.clone(), None);
     install_pool(&state, vec![(1, client as Arc<dyn DownloadClient>, true)]).await;
-    UnseenDownload {
+    ImportFixture {
         db,
         state,
+        series_id,
         grab_id,
         source_dir,
         media_root,
         _parent: parent,
     }
+}
+
+async fn seed_unseen_download(hash: &str) -> ImportFixture {
+    seed_import_fixture(hash, "Show Title - 01", &[1], false, &[UNSEEN_FILE]).await
 }
 
 async fn waiting_warns(db: &sqlx::SqlitePool) -> i64 {
@@ -1705,6 +1722,121 @@ async fn run_once_gives_up_on_an_unseen_download_only_after_the_stall_window() {
     let (state, reason, _) = state_and_reason(&fx.db, fx.grab_id).await;
     assert_eq!(state, "failed");
     assert_eq!(reason, post_processing::IMPORT_STALLED_REASON);
+}
+
+// ── A failed import fails the grab's tag rows too (dogfood a4 #5) ────
+//
+// `AllFailed` and an import error mark the grab failed. The `grabbed`
+// tag rows it wrote at grab time stayed, so the library card read
+// "Downloading" and the episode kept the release's quality chip with
+// nothing on the way.
+
+impl ImportFixture {
+    /// The tag and history rows the grab paths write at grab time.
+    async fn seed_grab_tags(&self, title: &str, episodes: &[i32]) {
+        let class = crate::services::source::classify_release_sync(title, Some("1080p"));
+        for ep in episodes {
+            crate::models::episode_tags::record_grab(
+                &self.db,
+                self.series_id,
+                *ep,
+                &class,
+                title,
+                "Group",
+                13,
+                episodes.len() > 1,
+            )
+            .await
+            .unwrap();
+        }
+    }
+
+    async fn tag_states(&self) -> Vec<(i32, String)> {
+        sqlx::query_as(
+            "SELECT episode_number, state FROM episode_quality_tags \
+             WHERE series_id = ? ORDER BY episode_number",
+        )
+        .bind(self.series_id)
+        .fetch_all(&self.db)
+        .await
+        .unwrap()
+    }
+
+    async fn history_states(&self) -> Vec<String> {
+        sqlx::query_scalar(
+            "SELECT state FROM episode_grab_history WHERE series_id = ? ORDER BY episode_number",
+        )
+        .bind(self.series_id)
+        .fetch_all(&self.db)
+        .await
+        .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn run_once_fails_the_tags_of_a_grab_whose_every_file_errored() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let title = "[Group] Show Title - 01 (1080p)";
+    let fx = seed_import_fixture("allfailedtags", title, &[1], false, &[UNSEEN_FILE]).await;
+    fx.seed_grab_tags(title, &[1]).await;
+    // The source is there but cannot be linked or copied: a folder
+    // under the video's name fails the file op for any user.
+    std::fs::create_dir_all(fx.source_dir.join(UNSEEN_FILE)).unwrap();
+    assert_eq!(fx.tag_states().await, vec![(1, "grabbed".to_string())]);
+
+    post_processing::run_once(&fx.state).await;
+
+    let (state, _, _) = state_and_reason(&fx.db, fx.grab_id).await;
+    assert_eq!(state, "failed", "every file errored");
+    assert_eq!(
+        fx.tag_states().await,
+        vec![(1, "failed".to_string())],
+        "the episode no longer reads as downloading"
+    );
+    assert_eq!(fx.history_states().await, vec!["failed".to_string()]);
+}
+
+#[tokio::test]
+async fn run_once_fails_the_tags_of_a_grab_whose_import_errored() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // Two files of equal version on one slot: the batch preflight
+    // refuses the whole grab with an error before anything moves.
+    let title = "[Group] Show Title - 01-02 (1080p)";
+    let files = ["[Group] Show Title - 01.mkv", "[Other] Show Title - 01.mkv"];
+    let fx = seed_import_fixture("importerrtags", title, &[1, 2], true, &files).await;
+    fx.seed_grab_tags(title, &[1, 2]).await;
+    std::fs::create_dir_all(&fx.source_dir).unwrap();
+    for name in files {
+        std::fs::write(fx.source_dir.join(name), b"video content").unwrap();
+    }
+
+    post_processing::run_once(&fx.state).await;
+
+    let (state, _, _) = state_and_reason(&fx.db, fx.grab_id).await;
+    assert_eq!(state, "failed", "the preflight refused the grab");
+    assert_eq!(
+        fx.tag_states().await,
+        vec![(1, "failed".to_string()), (2, "failed".to_string())]
+    );
+}
+
+#[tokio::test]
+async fn run_once_leaves_another_releases_tag_alone_when_a_grab_fails() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    // The failed grab's rows are found by its release title. Episode 1
+    // was taken over by a later grab of another release, whose row
+    // must keep saying `grabbed`.
+    let title = "[Group] Show Title - 01 (1080p)";
+    let fx = seed_import_fixture("otherstag", title, &[1], false, &[UNSEEN_FILE]).await;
+    fx.seed_grab_tags(title, &[1]).await;
+    fx.seed_grab_tags("[Later] Show Title - 01 (1080p)", &[1])
+        .await;
+    std::fs::create_dir_all(fx.source_dir.join(UNSEEN_FILE)).unwrap();
+
+    post_processing::run_once(&fx.state).await;
+
+    assert_eq!(state_and_reason(&fx.db, fx.grab_id).await.0, "failed");
+    assert_eq!(fx.tag_states().await, vec![(1, "grabbed".to_string())]);
 }
 
 // ── Multi-episode files (#246): the same-episodes rule at import ─────

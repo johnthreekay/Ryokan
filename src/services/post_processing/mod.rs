@@ -3772,6 +3772,7 @@ pub async fn run_once(state: &AppState) {
                 )
                 .await;
                 let _ = grabbed_torrents::mark_failed(&state.db, grab.id).await;
+                fail_grab_tags(state, grab).await;
             }
             Ok(ImportOutcome::NotReady) => {
                 // Torrent complete but no video files yet — leave as pending.
@@ -3791,6 +3792,7 @@ pub async fn run_once(state: &AppState) {
                 )
                 .await;
                 let _ = grabbed_torrents::mark_failed(&state.db, grab.id).await;
+                fail_grab_tags(state, grab).await;
             }
         }
     }
@@ -3814,6 +3816,20 @@ pub async fn run_once(state: &AppState) {
             .await;
         }
     }
+}
+
+/// A grab that just failed at import leaves no download behind it, so
+/// the `grabbed` rows it wrote at grab time fail with it, as the stall
+/// timer and the errored-in-client branch already do. Left `grabbed`,
+/// the library card kept saying "Downloading" and the episode kept the
+/// release's quality chip with nothing on the way. Only rows still
+/// `grabbed` under this release's title change: an episode that did
+/// land is `completed`, and one a later grab took over is that grab's.
+/// Parent series only, the same limit the stall path has.
+async fn fail_grab_tags(state: &AppState, grab: &grabbed_torrents::GrabbedTorrent) {
+    let _ =
+        episode_tags::mark_grab_failed_for_release(&state.db, grab.series_id, &grab.torrent_name)
+            .await;
 }
 
 /// Import robustness (#205): give up on a grab the download client has
