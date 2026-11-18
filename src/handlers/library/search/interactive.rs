@@ -98,7 +98,7 @@ pub(super) struct InteractiveSearchTablePartial {
     /// Direction line under the lead — what to try next, in the same
     /// voice as the calendar's empty state. An empty result with no
     /// next step is a dead end.
-    empty_hint: &'static str,
+    empty_hint: std::borrow::Cow<'static, str>,
     /// Wanted-page rendering: data attributes on the Grab buttons, no
     /// inline handlers. See `InteractiveOrigin`.
     wanted: bool,
@@ -162,10 +162,53 @@ fn build_interactive_search_partial(
     InteractiveSearchTablePartial {
         rows,
         empty_message,
-        empty_hint,
+        empty_hint: empty_hint.into(),
         wanted,
         show_episode: false,
     }
+}
+
+/// What an interactive search answers when it found nothing *and* a
+/// Nyaa query failed while it ran (`nyaa::search_failure_since`): the
+/// list is empty because Nyaa did not answer, which is not "no
+/// releases". The modal gets the table partial saying so (a 200, since
+/// error statuses are not swapped), an API caller a 502. `None` when
+/// the search found something or Nyaa answered every query.
+fn nyaa_failure_response(
+    found_nothing: bool,
+    started: std::time::Instant,
+    is_htmx: bool,
+    wanted: bool,
+) -> Option<Result<Response, (StatusCode, String)>> {
+    if !found_nothing {
+        return None;
+    }
+    let error = crate::services::nyaa::search_failure_since(started)?;
+    Some(search_failed_response(error, is_htmx, wanted))
+}
+
+fn search_failed_response(
+    error: String,
+    is_htmx: bool,
+    wanted: bool,
+) -> Result<Response, (StatusCode, String)> {
+    if !is_htmx {
+        return Err((StatusCode::BAD_GATEWAY, error));
+    }
+    let partial = InteractiveSearchTablePartial {
+        rows: Vec::new(),
+        empty_message: "Nyaa could not be searched.",
+        empty_hint: format!(
+            "{error}. This is not an empty result: close this and search again in a moment."
+        )
+        .into(),
+        wanted,
+        show_episode: false,
+    };
+    partial
+        .render()
+        .map(|html| Html(html).into_response())
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 /// The episode-set flow's table: one row per release, an Episode
@@ -191,7 +234,7 @@ fn build_episode_set_partial(
     InteractiveSearchTablePartial {
         rows,
         empty_message: "No single-episode releases found.",
-        empty_hint: "Batch releases are left out of this list on purpose. Pick Batch releases at the top to look for a season pack, or search one episode at a time.",
+        empty_hint: "Batch releases are left out of this list on purpose. Pick Batch releases at the top to look for a season pack, or search one episode at a time.".into(),
         wanted,
         show_episode: true,
     }
@@ -248,6 +291,13 @@ pub(super) mod test_helpers {
 
     pub fn episode_range_label(episodes: &[i32]) -> String {
         super::episode_range_label(episodes)
+    }
+
+    pub fn search_failed_response(
+        error: &str,
+        is_htmx: bool,
+    ) -> Result<axum::response::Response, (axum::http::StatusCode, String)> {
+        super::search_failed_response(error.to_string(), is_htmx, false)
     }
 }
 
@@ -337,6 +387,7 @@ pub async fn interactive_search_episodes(
     ) {
         Some(cached) => (*cached).clone(),
         None => {
+            let started = std::time::Instant::now();
             let results = auto_search::search_episode_set(
                 &state.db,
                 &detail,
@@ -346,6 +397,13 @@ pub async fn interactive_search_episodes(
                 &state.indexers,
             )
             .await;
+            // Before the cache: an outage's empty list would otherwise
+            // be served for the next five minutes.
+            if let Some(response) =
+                nyaa_failure_response(results.is_empty(), started, is_htmx, wanted)
+            {
+                return response;
+            }
             crate::services::interactive_search_cache::insert(
                 &state.interactive_search_cache,
                 cache_key,
@@ -746,6 +804,7 @@ pub async fn interactive_search_episode(
     // Same single-entry collapse as auto_search_episode — the interactive
     // picker otherwise returns zero results for movies.
     let target = auto_search::SearchTarget::for_episode(&detail, episode_number);
+    let started = std::time::Instant::now();
     let mut results = auto_search::find_all_for_target(
         &state.db,
         &detail,
@@ -756,6 +815,13 @@ pub async fn interactive_search_episode(
         &state.indexers,
     )
     .await;
+    // Before the cache: an outage's empty list would otherwise be
+    // served for the next five minutes.
+    if let Some(response) =
+        nyaa_failure_response(results.is_empty(), started, is_htmx, origin.wanted())
+    {
+        return response;
+    }
 
     // Layer 3 (group-map) enrichment. Auto-search already runs the full
     // source pipeline so its classification is complete, but the interactive
@@ -794,7 +860,7 @@ pub async fn interactive_search_episode(
     ),
     responses(
         (status = 200, description = "Batch search results", body = Vec<crate::services::nyaa::SearchResult>),
-        (status = 502, description = "Metadata fetch failed"),
+        (status = 502, description = "Metadata fetch failed, or nothing was found and Nyaa did not answer the search"),
     ),
 )]
 pub async fn interactive_search_batches(
@@ -828,6 +894,7 @@ pub async fn interactive_search_batches(
 
     let cfs = state.custom_formats.read().await.clone();
 
+    let started = std::time::Instant::now();
     let mut results = auto_search::collect_scored_batches_for_target(
         &state.db,
         &detail,
@@ -838,6 +905,11 @@ pub async fn interactive_search_batches(
         auto_search::BatchList::Interactive,
     )
     .await;
+    if let Some(response) =
+        nyaa_failure_response(results.is_empty(), started, is_htmx, origin.wanted())
+    {
+        return response;
+    }
 
     crate::services::nyaa::enrich_results_with_group_map(&state.db, &mut results).await;
 

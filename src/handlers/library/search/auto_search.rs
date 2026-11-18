@@ -499,6 +499,7 @@ async fn run_auto_search_targets_with_upgrades(
             false,
         )
         .await;
+        let search_started = std::time::Instant::now();
         let (best_pick, fuzzy_only) = auto_search::find_best_for_target_with_diag(
             &state.db,
             &detail,
@@ -972,8 +973,32 @@ async fn run_auto_search_targets_with_upgrades(
                     "",
                 )
                 .await;
+                // Nothing found while Nyaa was failing is not "no
+                // release": say which, here and in the log. The
+                // collectors drop failed queries, and an outage or a
+                // rate limit used to read exactly like an empty Nyaa.
+                let nyaa_failure = crate::services::nyaa::search_failure_since(search_started);
+                if let Some(error) = &nyaa_failure
+                    && logger::first_in_window(
+                        "auto-search-nyaa-failed",
+                        std::time::Duration::from_secs(60),
+                    )
+                {
+                    logger::warn(
+                        &state.db,
+                        LogCategory::Nyaa,
+                        "Nyaa could not be searched; the search may have missed releases",
+                        error,
+                    )
+                    .await;
+                }
                 match fuzzy_only.describe("release") {
-                    None => skipped.push(format!("{}: no matching release found", label)),
+                    None => skipped.push(match &nyaa_failure {
+                        Some(error) => {
+                            format!("{label}: Nyaa could not be searched ({error})")
+                        }
+                        None => format!("{label}: no matching release found"),
+                    }),
                     Some(message) => {
                         skipped.push(format!("{}: {}", label, message));
                         logger::info(

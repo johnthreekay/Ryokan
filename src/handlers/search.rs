@@ -23,6 +23,9 @@ struct SearchTemplate {
     /// can bypass the modal when the user's set it to `never`.
     grab_preview_mode: String,
     title_language: String,
+    /// Why the search has no results when Nyaa did not answer it; the
+    /// page says so instead of "No results". Empty otherwise.
+    search_error: String,
 }
 
 async fn load_grab_preview_mode(state: &AppState) -> String {
@@ -166,6 +169,7 @@ pub async fn search_page(State(state): State<AppState>) -> Html<String> {
         has_next: false,
         grab_preview_mode,
         title_language,
+        search_error: String::new(),
     };
     Html(template.render().unwrap_or_default())
 }
@@ -183,6 +187,7 @@ pub async fn search_submit(
     )
     .await;
 
+    let mut search_error = String::new();
     let mut response = match nyaa::search(&opts, 1).await {
         Ok(resp) => {
             logger::debug(
@@ -202,6 +207,7 @@ pub async fn search_submit(
                 &e,
             )
             .await;
+            search_error = e;
             nyaa::SearchResponse {
                 results: Vec::new(),
                 page: 1,
@@ -235,6 +241,7 @@ pub async fn search_submit(
         has_next: response.has_next,
         grab_preview_mode,
         title_language,
+        search_error,
     };
     Html(template.render().unwrap_or_default())
 }
@@ -265,9 +272,10 @@ pub async fn search_page_api(
     )
     .await;
 
+    // Nyaa's failure, not Ryokan's: 502, like the other upstream errors.
     let mut response = nyaa::search(&opts, params.p)
         .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
 
     // Mirror search_submit — keep the expander/scores consistent across
     // page 1 (server-rendered) and page 2+ (JSON-appended via loadMore).
