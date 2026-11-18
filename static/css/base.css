@@ -314,6 +314,17 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* Form controls do not inherit the page's font by default: a button,
+   input or select without a recipe class rendered in the browser's own
+   (Arial on most desktops, which also has no Japanese glyphs). Family
+   only; each recipe sets its own size. */
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
+}
+
 @media (max-width: 640px) {
     html, body {
         overflow-x: hidden;
