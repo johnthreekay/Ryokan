@@ -19,6 +19,75 @@ async fn test_returns_the_version_body() {
     assert_eq!(version, "v5.1.4");
 }
 
+/// A server whose login and version endpoints answer as given.
+async fn server_answering(
+    login: ResponseTemplate,
+    version: ResponseTemplate,
+) -> (MockServer, QbitClient) {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v2/auth/login"))
+        .respond_with(login)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/app/version"))
+        .respond_with(version)
+        .mount(&server)
+        .await;
+    let client = QbitClient::new(&server.uri(), "admin", "hunter2", "ryokan-test");
+    (server, client)
+}
+
+#[tokio::test]
+async fn test_fails_when_the_login_is_refused_by_status() {
+    // Dogfood a4: a banned address (403), a proxy (401) and a broken
+    // server (500) all answered the Test button with "Connected".
+    for status in [403, 401, 500] {
+        let (_server, client) = server_answering(
+            ResponseTemplate::new(status).set_body_string("Forbidden"),
+            ResponseTemplate::new(status).set_body_string("Forbidden"),
+        )
+        .await;
+        let err = client
+            .test()
+            .await
+            .expect_err("a refused login is not connected");
+        assert!(
+            err.contains(&format!("qbit login failed: HTTP {status}")),
+            "{status}: {err}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_fails_when_the_version_endpoint_errors() {
+    let (_server, client) = server_answering(
+        ResponseTemplate::new(200).set_body_string("Ok."),
+        ResponseTemplate::new(500).set_body_string("injected"),
+    )
+    .await;
+    let err = client.test().await.expect_err("a 500 is not a version");
+    assert!(err.contains("HTTP 500"), "{err}");
+}
+
+#[tokio::test]
+async fn test_fails_when_the_server_is_not_qbittorrent() {
+    // Another web app at the URL: every path answers 200 with a page.
+    for body in ["<!DOCTYPE html><html><body>Sign in</body></html>", ""] {
+        let (_server, client) = server_answering(
+            ResponseTemplate::new(200).set_body_string(body),
+            ResponseTemplate::new(200).set_body_string(body),
+        )
+        .await;
+        let err = client
+            .test()
+            .await
+            .expect_err("a login page is not a version");
+        assert!(err.contains("not like qBittorrent"), "{err}");
+    }
+}
+
 #[tokio::test]
 async fn login_fails_body_surfaces_as_error() {
     // A fresh client without a prior successful login. Override the
