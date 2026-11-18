@@ -80,11 +80,33 @@
     z-index: 1100;
     pointer-events: none;
     max-width: calc(100vw - 48px);
+    /* Never taller than the room under the top bar: a run of toasts
+       (eight on a phone was 1,500px) put the lower ones and their
+       close buttons below the screen with no way to reach them. Past
+       that the stack scrolls; it stays click-through itself, and a
+       wheel or a drag over any toast moves it. `dvh` where supported,
+       so a phone's URL bar is accounted for. */
+    max-height: calc(100vh - 72px - 16px);
+    max-height: calc(100dvh - 72px - 16px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+}
+
+@media (max-width: 640px) {
+    /* Stop above the bottom tab bar (the body's 56px bottom padding). */
+    .ryokan-toast-stack {
+        max-height: calc(100vh - 72px - 56px - 8px);
+        max-height: calc(100dvh - 72px - 56px - 8px);
+    }
 }
 
 .ryokan-toast {
     position: relative;
     display: flex;
+    /* In a height-bounded column the toasts would otherwise shrink to
+       fit rather than let the stack scroll. */
+    flex-shrink: 0;
     align-items: flex-start;
     gap: 12px;
     min-width: 280px;
