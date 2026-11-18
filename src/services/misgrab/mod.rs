@@ -548,6 +548,20 @@ pub async fn sweep_once_with(
 mod tests {
     use super::*;
 
+    /// The sweep takes the process-wide [`MISGRAB_LOCK`] with
+    /// `try_lock` and errors when it is held. Tests that share a
+    /// process (plain `cargo test`; nextest gives each its own) would
+    /// overlap, so this wrapper, which shadows the real function for
+    /// this module, runs one sweep at a time.
+    async fn sweep_once_with(
+        state: &AppState,
+        research: bool,
+    ) -> Result<MisgrabSweepSummary, String> {
+        static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let _serial = SERIAL.lock().await;
+        super::sweep_once_with(state, research).await
+    }
+
     async fn pool() -> SqlitePool {
         let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
         crate::models::migrate(&db).await.unwrap();

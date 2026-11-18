@@ -23,6 +23,13 @@ use serde_json::json;
 use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+/// One-at-a-time gate around `RYOKAN_ANILIST_API_BASE`, which every
+/// test here points at its own wiremock. The variable is process-wide,
+/// so tests sharing a process (plain `cargo test`; nextest gives each
+/// its own) sent their requests to each other's mock. Same pattern as
+/// `tests/library_link_e2e.rs::ENV_LOCK`.
+static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// AL `MediaListCollection` response: one entry, status CURRENT
 /// (Watching), AL id 999, no custom lists.
 fn media_list_collection_response() -> serde_json::Value {
@@ -99,6 +106,7 @@ fn page_media_response() -> serde_json::Value {
 
 #[tokio::test]
 async fn watch_list_sync_imports_series_with_resolved_monitor_mode() {
+    let _gate = ENV_LOCK.lock().await;
     // SAFETY: setting env vars in tests is single-threaded within
     // this test (no other test sets RYOKAN_ANILIST_API_BASE) and the
     // override is the entire point of the seam — no race risk in this
@@ -264,6 +272,7 @@ async fn watch_list_sync_imports_series_with_resolved_monitor_mode() {
 /// flag stayed false and the banner never fired.
 #[tokio::test]
 async fn watch_list_sync_flips_auth_failed_on_400_invalid_token_response() {
+    let _gate = ENV_LOCK.lock().await;
     anilist::reset_state_for_tests();
 
     let mock = MockServer::start().await;
@@ -346,6 +355,7 @@ async fn watch_list_sync_flips_auth_failed_on_400_invalid_token_response() {
 /// reason.
 #[tokio::test]
 async fn watch_list_sync_emits_relink_notification_only_on_false_to_true_transition() {
+    let _gate = ENV_LOCK.lock().await;
     use async_trait::async_trait;
     use ryokan::services::notifications::{NotificationEvent, NotificationProvider};
     use std::sync::Arc;
@@ -550,6 +560,7 @@ async fn watch_list_sync_emits_relink_notification_only_on_false_to_true_transit
 /// cycle and never re-emit.
 #[tokio::test]
 async fn watch_list_sync_clears_auth_failed_flag_on_successful_tick() {
+    let _gate = ENV_LOCK.lock().await;
     anilist::reset_state_for_tests();
     let mock = MockServer::start().await;
     Mock::given(method("POST"))

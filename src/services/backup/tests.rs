@@ -2,6 +2,33 @@ use super::*;
 use std::collections::HashMap;
 use std::io::Read;
 
+/// `create_backup` and `stage_restore` take the process-wide
+/// [`BACKUP_LOCK`] with `try_lock` and answer `Busy` when it is held.
+/// Tests that share a process (plain `cargo test`; nextest gives each
+/// its own) would trip over each other, so the two wrappers below,
+/// which shadow the real functions for this module, run one at a time.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn create_backup(
+    db: &SqlitePool,
+    paths: &BackupPaths,
+    opts: BackupOptions,
+    out: &Path,
+) -> Result<BackupManifest, BackupError> {
+    let _serial = SERIAL.lock().await;
+    super::create_backup(db, paths, opts, out).await
+}
+
+async fn stage_restore(
+    db: &SqlitePool,
+    paths: &BackupPaths,
+    backup_dir: &Path,
+    upload: &Path,
+) -> Result<StagedRestore, RestoreError> {
+    let _serial = SERIAL.lock().await;
+    super::stage_restore(db, paths, backup_dir, upload).await
+}
+
 /// A data dir laid out like a real install: a key file and an artwork
 /// dir; the database is created by [`pool_at`].
 fn temp_paths(tag: &str) -> BackupPaths {
@@ -181,8 +208,12 @@ async fn sanitized_backup_omits_key_and_hostname_and_trims_logs() {
 async fn busy_lock_refuses_a_second_backup() {
     let paths = temp_paths("busy");
     let db = pool_at(&paths).await;
+    // Held for the whole test: while this test holds the real lock,
+    // no other test may start a backup. The real function is called
+    // directly because the wrapper would wait on `SERIAL` forever.
+    let _serial = SERIAL.lock().await;
     let _held = BACKUP_LOCK.lock().await;
-    let err = create_backup(
+    let err = super::create_backup(
         &db,
         &paths,
         BackupOptions::default(),
