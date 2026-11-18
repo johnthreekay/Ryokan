@@ -43,6 +43,7 @@ function stateLabel(kind) {
         'checking-seed': 'Checking',
         'paused': 'Paused',
         'paused-complete': 'Paused',
+        'warning': 'Warning',
         'errored': 'Error',
     };
     if (map[kind] === undefined) {
@@ -55,7 +56,7 @@ function stateLabel(kind) {
 function stateBadgeClass(kind) {
     if (['seeding', 'seeding-stalled', 'paused-complete'].includes(kind)) return 'log-badge-info';
     if (kind === 'downloading') return 'log-badge-debug';
-    if (['downloading-stalled', 'downloading-queued', 'seeding-queued', 'paused'].includes(kind)) return 'log-badge-warn';
+    if (['downloading-stalled', 'downloading-queued', 'seeding-queued', 'paused', 'warning'].includes(kind)) return 'log-badge-warn';
     if (kind === 'errored') return 'log-badge-error';
     return '';
 }
