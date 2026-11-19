@@ -24,7 +24,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.73">
+      <meta name="generator" content="zensical-0.1.2">
     
     
       
@@ -35,7 +35,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ebb7f775.min.css">
       
         
           
@@ -443,33 +443,6 @@
 
                 
               
-                
-                  
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../stack-builder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Stack builder
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-                
-              
             </ul>
           </nav>
         
@@ -818,6 +791,23 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Backup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1211,6 +1201,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Backup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1300,92 +1307,90 @@
 
 
 <h1 id="system">System<a class="headerlink" href="#system" title="Anchor link">&para;</a></h1>
-<p>The <strong>System</strong> page is Ryokan's operational view: logs, background-task health, recent RSS activity, episodes flagged for review, notification destinations, a link to these docs, and debug toggles. Settings (the things that change behavior) live under <strong>Settings</strong>; System is where you go to see what Ryokan has been doing or to flip a runtime toggle.</p>
-<p>The page has a left sidebar with eleven entries (it collapses to a strip on narrow screens). Each gets its own section below.</p>
+<p>The <strong>System</strong> page shows what Ryokan has been doing: logs, RSS activity, background tasks, backups, and a few other tools. Settings that change how Ryokan behaves are under <strong>Settings</strong> instead.</p>
 <h2 id="logs">Logs<a class="headerlink" href="#logs" title="Anchor link">&para;</a></h2>
-<p>DB-backed log of everything Ryokan does, filterable by category, level, and free-text search. This is where most "why didn't this work?" questions get answered.</p>
+<p>Everything Ryokan does is logged here. When something did not work, this is the first place to look.</p>
 <ul>
-<li><strong>Category filter</strong>: 19 categories, one per subsystem (Search, Grab, AutoSearch, AniList, DownloadClient, PostProcess, Quality, etc.). Pick the one matching what you were doing when the issue appeared.</li>
-<li><strong>Level filter</strong>: trace / debug / info / warn / error. The DB-side floor is set by <code>RYOKAN_DB_LOG_LEVEL</code> (default <code>info</code>). Setting the filter to <code>trace</code> or <code>debug</code> won't surface entries Ryokan never persisted; bump the env var if you need that detail. See <a href="../docker/#environment-variables">Docker reference → Environment variables</a>.</li>
-<li><strong>Search box</strong>: substring match against the message and detail columns. Useful for finding a specific release title, hash, or filename.</li>
-<li><strong>Pages</strong>: 200 entries per page, newest first. Use the numbered links, <strong>Newer</strong> / <strong>Older</strong>, or type a page number in the <strong>Page</strong> box to jump. Filters and the page are kept in the address bar, so a reload or a shared link lands on the same view. <strong>Live</strong> shows new entries as they arrive, on the first page only. Logs older than ~30 days are pruned by the <code>cleanup</code> background task.</li>
+<li><strong>Category</strong>: one per part of Ryokan (Search, Grab, AniList, DownloadClient, PostProcess, and so on).</li>
+<li><strong>Level</strong>: trace, debug, info, warn or error. Ryokan only stores <code>info</code> and above unless you lower <code>RYOKAN_DB_LOG_LEVEL</code>. See <a href="../docker/#environment-variables">Environment variables</a>.</li>
+<li><strong>Search</strong>: matches text in the message and detail columns, so you can look for a release title or file name.</li>
+<li><strong>Live</strong>: shows new entries as they arrive.</li>
 </ul>
-<p>For specific diagnostic walkthroughs, see <a href="../troubleshooting/">Troubleshooting</a>.</p>
+<p>Entries are listed newest first, 200 to a page. Filters and the page number are kept in the address bar, so you can reload or share the link. Logs older than about 30 days are deleted.</p>
+<p><a href="../troubleshooting/">Troubleshooting</a> covers what to look for in specific cases.</p>
 <h2 id="rss">RSS<a class="headerlink" href="#rss" title="Anchor link">&para;</a></h2>
-<p>Recent RSS poll history, one row per feed per tick. Shows item count pulled, latest item title, and the most recent error if a poll failed.</p>
-<p>When to come here:</p>
-<ul>
-<li>A scheduled grab didn't fire and you want to confirm Ryokan saw the release on RSS.</li>
-<li>A feed silently broke (host moved, auth changed) and the configured indexer isn't reporting errors elsewhere.</li>
-<li>You want to see how often a feed actually surfaces new items before committing to it.</li>
-</ul>
-<p>The RSS poll cadence is set in <strong>Settings → General → RSS Sync Interval</strong>. Manual sync is the <strong>Sync RSS Now</strong> button on this tab, or <strong>Run now</strong> on the <code>rss_sync</code> row under Scheduled Tasks.</p>
+<p>The history of RSS checks, one row per feed each time it was checked: how many items came back, the newest title, and the error if the check failed.</p>
+<p>Use it to see whether Ryokan saw a release you expected it to grab, or whether a feed has stopped working.</p>
+<p><strong>Sync RSS Now</strong> checks all feeds immediately. The schedule is set under <strong>Settings → General → RSS Sync Interval</strong>.</p>
 <h2 id="scheduled-tasks">Scheduled Tasks<a class="headerlink" href="#scheduled-tasks" title="Anchor link">&para;</a></h2>
-<p>Status of Ryokan's background tasks: external_sync (watch-list sync), post_processing (move imported files into the library), grab_sweep (reconcile pending grabs against the download client's state), upgrade_search (look for better releases of already-grabbed episodes), library_classify, metadata_refresh, airing_refresh (refreshes the air times that show up on the <a href="../calendar/">Calendar</a>), and a handful more.</p>
-<p>Each row shows the schedule, whether the task is enabled, the last run's status and detail, when it last started and finished, and a <strong>Run now</strong> button.</p>
-<p>When to come here:</p>
-<ul>
-<li>A feature feels "stuck" and you want to see if its background task is alive (running the loop) or wedged (crash-looping with restarts).</li>
-<li>After updating Ryokan, to confirm tasks resumed cleanly on the new image.</li>
-<li>A specific recurring action (watch-list sync, upgrade search) hasn't happened recently and you want to confirm timing.</li>
-</ul>
+<p>Ryokan's background tasks, such as the watch-list sync, post-processing, the upgrade search, and metadata refresh. Each row shows the schedule, the result of the last run and when it ran, and a <strong>Run now</strong> button.</p>
+<p>If a feature seems stuck, check here whether its task is running and what the last run reported.</p>
 <h2 id="import-library">Import Library<a class="headerlink" href="#import-library" title="Anchor link">&para;</a></h2>
-<p>A one-time wizard for anime you already have on disk: it walks a folder, matches each series on AniList, previews what would happen to every file, then imports. It has its own page: <a href="../manual-import/">Manual import</a>.</p>
+<p>A wizard for anime you already have on disk. See <a href="../manual-import/">Importing an existing library</a>.</p>
 <h2 id="backup">Backup<a class="headerlink" href="#backup" title="Anchor link">&para;</a></h2>
-<p>Download a backup, keep scheduled ones in a folder, and restore from one.</p>
-<p>A backup is a <code>.tar.gz</code> holding a consistent snapshot of the database (<code>ryokan.db</code>), the encryption key (<code>.ryokan-key</code>) that protects linked AniList and MyAnimeList tokens, a <code>manifest.json</code> with the Ryokan version and schema level, and, when you tick the option, the cached artwork. The snapshot is taken with SQLite's <code>VACUUM INTO</code>, so it is complete even while Ryokan is busy; copying <code>ryokan.db</code> by hand while Ryokan runs is not, because recent writes live in <code>ryokan.db-wal</code> until a checkpoint.</p>
-<p><strong>A backup is a password export.</strong> It contains the key, the encrypted account tokens, every download client password, and the activity log. Keep it where you keep secrets. For sharing with support, tick <strong>Sanitize</strong> instead: passwords, API keys, tokens, and the keys inside indexer download links and feed addresses are blanked, the log is trimmed to its last 1000 lines, and the key and hostname stay out.</p>
+<p>Create backups, keep them in a folder, and restore from one.</p>
+<p>A backup is a <code>.tar.gz</code> containing the database, the encryption key that protects your linked AniList and MyAnimeList accounts, and the cached artwork if you tick that option.</p>
+<div class="admonition warning">
+<p class="admonition-title">A backup contains your passwords</p>
+<p>It holds the encryption key, your account tokens, and every download client password. Store it as you would any secret.</p>
+<p>To send a backup to someone for support, tick <strong>Sanitize</strong>. Passwords, API keys and tokens are blanked, the log is cut to its last 1000 lines, and the encryption key is left out.</p>
+</div>
 <ul>
-<li><strong>Download backup</strong> builds the archive and sends it to the browser.</li>
-<li><strong>Save to backup folder</strong> writes one to the folder from Settings → General, the same as a scheduled run, and prunes older ones past the retention count. The folder's contents are listed below the buttons with per-file Download and Delete.</li>
-<li><strong>Scheduled backups</strong> (off by default) run daily or weekly from the same folder settings. They show up in <a href="#scheduled-tasks">Scheduled Tasks</a> as <code>backup</code> with a Run now button.</li>
+<li><strong>Download backup</strong> builds a backup and downloads it in your browser.</li>
+<li><strong>Save to backup folder</strong> writes one to the folder set under Settings → General and deletes old ones beyond the number you keep. The folder's backups are listed below, each with Download and Delete.</li>
+<li><strong>Scheduled backups</strong> are off by default. Turn them on under Settings → General.</li>
 </ul>
-<p><strong>Restore</strong> is two steps. Upload a backup: Ryokan checks that it is a Ryokan archive from this or an older version, saves a backup of the current state to the folder first (<code>auto-pre-restore-&lt;time&gt;.tar.gz</code>, never pruned), and stages the files. Then restart Ryokan. The staged files are swapped in before the database opens, the previous database stays next to the restored one as <code>ryokan.db.pre-restore-&lt;time&gt;</code> for a manual rollback, and everyone is signed out. Until the restart, the tab shows the staged backup with a <strong>Cancel restore</strong> button. A backup made by a newer Ryokan is refused. A sanitized backup restores but needs passwords and account links entered again.</p>
-<p>The <code>ryokan.db.pre-restore-&lt;time&gt;</code> file (and <code>.ryokan-key.pre-restore-&lt;time&gt;</code> / <code>artwork.pre-restore-&lt;time&gt;</code> when those were replaced) is never cleaned up automatically. Delete it yourself once you are sure the restore is what you wanted. A sanitized download is named <code>ryokan-backup-&lt;time&gt;-sanitized.tar.gz</code> so it cannot be mistaken for the key-bearing kind.</p>
-<p>Ryokan does not restart itself. In Docker, <code>docker compose restart ryokan</code>. Backups land under <code>/data/backups</code> by default there, on the same volume as the database, so point the folder at another disk or a mounted share if the goal is surviving that volume.</p>
+<p>By default the backup folder is <code>/data/backups</code>, on the same volume as the database. Point it at another disk if the backup should survive losing that volume.</p>
+<h3 id="restoring">Restoring<a class="headerlink" href="#restoring" title="Anchor link">&para;</a></h3>
+<ol>
+<li>Upload a backup. Ryokan checks it, saves a backup of the current state to the backup folder (<code>auto-pre-restore-&lt;time&gt;.tar.gz</code>), and stages the restore.</li>
+<li>Restart Ryokan. In Docker: <code>docker compose restart ryokan</code>. Ryokan does not restart itself.</li>
+</ol>
+<p>Until you restart, the tab shows the staged backup and a <strong>Cancel restore</strong> button. After the restart everyone is signed out.</p>
+<p>Things to know:</p>
+<ul>
+<li>A backup made by a newer version of Ryokan is refused.</li>
+<li>A sanitized backup restores, but you have to enter passwords and link accounts again.</li>
+<li>The previous database is kept next to the restored one as <code>ryokan.db.pre-restore-&lt;time&gt;</code>. Delete it once you are happy with the restore.</li>
+</ul>
 <h2 id="needs-review">Needs Review<a class="headerlink" href="#needs-review" title="Anchor link">&para;</a></h2>
-<p>Episodes the source classifier flagged as low-confidence, where the heuristics couldn't confidently decide BD vs. WEB or what release group it came from. Each row gives you the chance to manually accept the classifier's verdict, override it, or re-classify.</p>
-<p>When to come here:</p>
-<ul>
-<li>After a big batch grab where some files used unusual naming conventions.</li>
-<li>After importing files from outside Ryokan (e.g. legacy library scan).</li>
-<li>Periodically, to keep your library's quality_tag accurate so upgrade-search behaves predictably.</li>
-</ul>
-<p>This list is opt-in noise: each "needs review" entry is also written to the <code>Quality</code> log category, and notifications can fire on each one (off by default for a new provider, toggled per provider on <strong>System → Notifications</strong>, because reclassify sweeps can produce hundreds of entries at once).</p>
+<p>Episodes where Ryokan was not sure of the source (BluRay or WEB) or the release group. For each one you can accept its guess or set the right value.</p>
+<p>Keeping these correct matters for upgrades, since Ryokan compares new releases against the quality it thinks you have. Unusual file names and imported libraries produce most of the entries.</p>
+<p>Notifications for these are off by default, because a reclassify run can produce hundreds at once.</p>
 <h2 id="misgrabs">Misgrabs<a class="headerlink" href="#misgrabs" title="Anchor link">&para;</a></h2>
-<p>Ryokan checks every download against the list of files the download client reports. When those files clearly name a different series than the one the release was grabbed for, the download is a misgrab. By default Ryokan removes it from the download client, adds the release to the blocklist so it is never grabbed again, sends a notification, and searches again for the episode it was supposed to fill.</p>
-<p>The Misgrabs tab lists what was caught: the series, the release name, a sample of the file names inside it, when it was detected, and what happened to it. Each row has two actions.</p>
+<p>A misgrab is a download whose files clearly belong to a different series than the one it was grabbed for. By default Ryokan removes it from the download client, blocklists the release, notifies you, and searches again.</p>
+<p>This tab lists what was caught: the series, the release, some of its file names, and what happened to it.</p>
 <ul>
-<li><strong>Restore</strong> says the release was right after all. Ryokan stops treating it as a misgrab for good, and if the download was removed it is added back to the download client.</li>
-<li><strong>Dismiss</strong> confirms the misgrab. The release stays on the blocklist and the row leaves this tab. If the download was only flagged and is still in the client, it is removed now.</li>
+<li><strong>Restore</strong>: the release was right after all. Ryokan stops treating it as a misgrab and adds the download back if it was removed.</li>
+<li><strong>Dismiss</strong>: it was a misgrab. The release stays blocklisted and the row is removed. If the download is still in the client, it is removed now.</li>
 </ul>
-<p>Downloads whose file names carry no title at all (for example <code>01.mkv</code> inside an unnamed folder) are never treated as misgrabs, and neither are files that share a word with the series title, so abbreviated fansub names are safe.</p>
-<p>You can turn off automatic removal under Settings, General, "Remove and blocklist detected misgrabs". Ryokan then keeps the download in the client, never imports it, and lists it here as held until you restore or dismiss it.</p>
+<p>Downloads whose file names contain no title, like <code>01.mkv</code>, are never treated as misgrabs. Neither are files that share a word with the series title, so abbreviated fansub names are safe.</p>
+<p>To keep misgrabs in the download client until you decide, turn off <strong>Remove and blocklist detected misgrabs</strong> under Settings → General. They are then listed here and never imported.</p>
 <h2 id="notifications">Notifications<a class="headerlink" href="#notifications" title="Anchor link">&para;</a></h2>
-<p>CRUD UI for outbound notification destinations. Two provider kinds:</p>
+<p>Where Ryokan sends notifications.</p>
 <ul>
-<li><strong>Webhook</strong>: posts JSON to any HTTPS endpoint you configure (ntfy, Apprise, n8n, custom). Optional HMAC secret signs the body so receivers can verify it came from your Ryokan. <code>X-Ryokan-Signature</code> is <code>sha256=</code> plus the HMAC-SHA256 of the body. <code>X-Ryokan-Signature-V2</code> is <code>t=&lt;timestamp&gt;,sha256=&lt;hex&gt;</code> over <code>&lt;timestamp&gt;.&lt;body&gt;</code>; verify that one and reject old timestamps to refuse replayed deliveries.</li>
-<li><strong>Discord</strong>: posts an embed to a Discord webhook URL you provide.</li>
+<li><strong>Discord</strong>: posts to a Discord webhook URL.</li>
+<li><strong>Webhook</strong>: posts JSON to any URL, for ntfy, Apprise, n8n or your own receiver.</li>
 </ul>
-<p>Per-event opt-in matrix per provider: Grabbed, Imported, Import failed, Classifier needs review, Indexer down, Download client unreachable, Re-link required, Health (test).</p>
-<p>When to come here:</p>
+<p>For each one, choose which events it receives: Grabbed, Imported, Import failed, Classifier needs review, Indexer down, Download client unreachable, Re-link required. <strong>Send test</strong> sends a test event.</p>
+<details class="info">
+<summary>Verifying webhook signatures</summary>
+<p>Set a secret and Ryokan signs each request so the receiver can check where it came from.</p>
 <ul>
-<li>First-time setup of a Discord channel or a webhook receiver.</li>
-<li>Tweaking which events fire to which destination (you might want imports going to Discord but classifier-needs-review only going to a quiet ntfy channel).</li>
-<li>Sending a test event to confirm the destination is wired up correctly (the <strong>Send test</strong> button on each provider's modal).</li>
+<li><code>X-Ryokan-Signature</code> is <code>sha256=</code> followed by the HMAC-SHA256 of the body.</li>
+<li><code>X-Ryokan-Signature-V2</code> is <code>t=&lt;timestamp&gt;,sha256=&lt;hex&gt;</code>, computed over <code>&lt;timestamp&gt;.&lt;body&gt;</code>. Check this one and reject old timestamps to guard against replays.</li>
 </ul>
-<p>The receiving side of <code>/api/webhook/autobrr</code> is <em>inbound</em>; that's a separate concept from these <em>outbound</em> notifications. The autobrr inbound webhook lives in <strong>Settings → Indexers</strong>.</p>
+</details>
+<p>The autobrr webhook is something else: it sends releases <em>to</em> Ryokan, and is set up under <strong>Settings → Indexers</strong>.</p>
 <h2 id="docs">Docs<a class="headerlink" href="#docs" title="Anchor link">&para;</a></h2>
-<p>Opens this documentation site in a new tab. The scoring reference that used to live here is now <a href="../scoring/">How releases are scored</a>.</p>
+<p>Opens this site.</p>
 <h2 id="credits">Credits<a class="headerlink" href="#credits" title="Anchor link">&para;</a></h2>
-<p>Where Ryokan's data and releases come from (AniList, MyAnimeList through Tenrai, Kitsu, Nyaa, your indexers and feeds, SeaDex, anibridge-mappings, TRaSH Guides), the libraries it is built on, and the font it uses, each with a link and its license. The full list of Rust crates with their license texts is the third-party notices file in the repository, linked from this tab.</p>
+<p>The services, data sources, libraries and fonts Ryokan uses, with their licenses.</p>
 <h2 id="debug">Debug<a class="headerlink" href="#debug" title="Anchor link">&para;</a></h2>
-<p>Diagnostic switches and one-shot actions. The grabbing switches that used to live here (non-English releases, searching when a series is added) are under Settings, General, Grabbing.</p>
 <ul>
-<li><strong>Force MAL/Tenrai fallback for search and tracked fallback entries</strong>: temporarily skip AniList and go straight to the MAL provider (Tenrai; any Jikan-v4-compatible API via <code>JIKAN_API_BASE</code>) for metadata fetches. Useful when AniList is rate-limited or returning stale data; flip back off after the issue clears.</li>
-<li><strong>Force Kitsu fallback</strong>: same idea, for the Kitsu provider further down the metadata chain.</li>
+<li><strong>Force MAL/Tenrai fallback</strong>: skip AniList and fetch metadata from MyAnimeList. Use it while AniList is rate-limiting you or down, and turn it off afterwards.</li>
+<li><strong>Force Kitsu fallback</strong>: the same, using Kitsu.</li>
 </ul>
-<p>Toast feedback appears on this tab when a debug action succeeds or fails. Backup and Notifications toast too; the read-only tabs don't.</p>
 <hr />
 <p><em>Last updated: 2026-09-04.</em></p>
 
@@ -1449,10 +1454,10 @@
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.77dd0ce9.min.js"></script>
+      <script src="../assets/javascripts/bundle.3cb411a8.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

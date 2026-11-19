@@ -24,7 +24,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.73">
+      <meta name="generator" content="zensical-0.1.2">
     
     
       
@@ -35,7 +35,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ebb7f775.min.css">
       
         
           
@@ -443,33 +443,6 @@
 
                 
               
-                
-                  
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../stack-builder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Stack builder
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-                
-              
             </ul>
           </nav>
         
@@ -650,6 +623,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#separate-downloads-and-library-folders" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Separate downloads and library folders
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#moving-ryokans-data-folder" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -717,6 +701,34 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Host check">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#turning-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Turning it on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#things-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Things to know
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1166,6 +1178,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#separate-downloads-and-library-folders" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Separate downloads and library folders
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#moving-ryokans-data-folder" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1234,6 +1257,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Host check">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#turning-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Turning it on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#things-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Things to know
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1268,9 +1319,9 @@
 
 
 <h1 id="docker-reference">Docker reference<a class="headerlink" href="#docker-reference" title="Anchor link">&para;</a></h1>
-<p>Reference for environment variables, healthcheck behavior, volume layout, and update semantics. For step-by-step install, see <a href="../install/">Installation</a>.</p>
+<p>Environment variables, volumes, updating, and a few less common setups. For a step-by-step install, see <a href="../install/">Docker installation</a>.</p>
 <h2 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Anchor link">&para;</a></h2>
-<p>Most users only need <code>PUID</code>, <code>PGID</code>, and <code>TZ</code>. The rest are for fine-tuning.</p>
+<p>Most installs only set <code>PUID</code>, <code>PGID</code> and <code>TZ</code>.</p>
 <table>
 <thead>
 <tr>
@@ -1281,165 +1332,204 @@
 </thead>
 <tbody>
 <tr>
-<td><code>LISTEN_ADDR</code></td>
-<td><code>0.0.0.0:8978</code></td>
-<td>TCP bind. Change the port if 8978 conflicts with something else.</td>
-</tr>
-<tr>
 <td><code>PUID</code> / <code>PGID</code></td>
 <td><code>1000</code> / <code>1000</code></td>
-<td>Runtime UID/GID. Match your host's media-owning user. See <a href="../install/#puid-and-pgid">Installation → PUID and PGID</a>.</td>
+<td>The user and group Ryokan runs as. See <a href="../install/#puid-and-pgid">PUID and PGID</a>.</td>
 </tr>
 <tr>
 <td><code>TZ</code></td>
-<td>unset (UTC)</td>
-<td>Container timezone. Determines what timestamps look like in the UI and logs. Standard tzdata names like <code>America/Chicago</code> or <code>Europe/London</code>.</td>
+<td>UTC</td>
+<td>Timezone for times in the UI and logs, such as <code>America/Chicago</code> or <code>Europe/London</code>.</td>
+</tr>
+<tr>
+<td><code>LISTEN_ADDR</code></td>
+<td><code>0.0.0.0:8978</code></td>
+<td>Address and port Ryokan listens on.</td>
 </tr>
 <tr>
 <td><code>RUST_LOG</code></td>
-<td><code>ryokan=info</code> (image)</td>
-<td>Console log filter. Set to <code>ryokan=debug</code> for verbose output while debugging.</td>
-</tr>
-<tr>
-<td><code>RYOKAN_TRUSTED_PROXY</code></td>
-<td>unset (off)</td>
-<td>Trust <code>X-Forwarded-For</code> and <code>X-Real-IP</code> for client IP. Off by default. Flip on only behind a reverse proxy that overwrites these headers on ingress; otherwise an attacker can spoof a fresh IP per attempt and bypass the per-IP login throttle.</td>
-</tr>
-<tr>
-<td><code>RYOKAN_COOKIE_SECURE</code></td>
-<td>unset (off)</td>
-<td>Force the <code>Secure</code> flag onto the login cookie. Usually unnecessary: with <code>RYOKAN_TRUSTED_PROXY=1</code>, Ryokan sets the flag on its own whenever the proxy reports HTTPS. Set this only for an HTTPS proxy that doesn't send <code>X-Forwarded-Proto</code>. Leave it off for plain HTTP or you won't be able to stay logged in.</td>
-</tr>
-<tr>
-<td><code>RYOKAN_FRAME_ANCESTORS</code></td>
-<td>unset (any site may embed Ryokan)</td>
-<td>Limit which pages may show Ryokan inside a frame. <code>self</code> allows only Ryokan itself, <code>none</code> allows nothing, and an origin like <code>https://dash.example.com</code> allows that page; separate several with spaces or commas. If you embed Ryokan in a dashboard such as Organizr or Homarr, leave this unset or list the dashboard's origin. Entries Ryokan can't read are skipped with a warning in the log, and if none are left only Ryokan itself may frame it.</td>
-</tr>
-<tr>
-<td><code>RYOKAN_HOST_CHECK</code></td>
-<td>unset (off)</td>
-<td>Turn on the host check: the web UI answers only when you open it by an IP address, <code>localhost</code>, or a name in <code>RYOKAN_ALLOWED_HOSTS</code>. Other names get an error page, including your server's own name until you list it. Any value except <code>0</code>, <code>false</code>, <code>no</code> or <code>off</code> turns it on. See <a href="#host-check">Host check</a>.</td>
-</tr>
-<tr>
-<td><code>RYOKAN_ALLOWED_HOSTS</code></td>
-<td>unset</td>
-<td>Extra names the host check accepts, separated by spaces or commas: <code>ryokan.lan</code>, <code>*.example.com</code> (any name ending in <code>.example.com</code>). Setting it turns the host check on by itself.</td>
-</tr>
-<tr>
-<td><code>RYOKAN_DATA_DIR</code></td>
-<td><code>/data</code> (image)</td>
-<td>The folder for Ryokan's own files: the database, the encryption key, the artwork and anibridge caches, and the default <code>backups/</code> folder. Change it when <code>/data</code> is already your shared media or downloads mount. See <a href="#moving-ryokans-data-folder">Moving Ryokan's data folder</a>.</td>
-</tr>
-<tr>
-<td><code>RYOKAN_RESET_AUTH</code></td>
-<td>unset</td>
-<td>Set to <code>1</code> <em>and</em> create a <code>.reset-auth</code> file next to <code>ryokan.db</code> to wipe users and sessions on next boot. Both required so a stuck-on env var can't silently wipe auth on every boot. See <a href="#reset-auth">Reset auth</a>.</td>
+<td><code>ryokan=info</code></td>
+<td>What is printed to the container log. <code>ryokan=debug</code> prints more.</td>
 </tr>
 <tr>
 <td><code>RYOKAN_DB_LOG_LEVEL</code></td>
 <td><code>info</code></td>
-<td>Write-side floor for the DB-backed logs table (separate from <code>RUST_LOG</code>). One of <code>trace</code>, <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code>. Read-side filtering on the System → Logs page is independent.</td>
+<td>The log level for System → Logs: <code>trace</code>, <code>debug</code>, <code>info</code>, <code>warn</code> or <code>error</code>. Trace is the most verbose while error is the least verbose.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_DATA_DIR</code></td>
+<td><code>/data</code></td>
+<td>The folder for Ryokan's own files. See <a href="#moving-ryokans-data-folder">Moving Ryokan's data folder</a>.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_TRUSTED_PROXY</code></td>
+<td>off</td>
+<td>Set to <code>1</code> behind a reverse proxy. See <a href="#running-behind-a-reverse-proxy">Running behind a reverse proxy</a>.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_COOKIE_SECURE</code></td>
+<td>off</td>
+<td>Forces the <code>Secure</code> flag on the login cookie. Only needed for an HTTPS proxy that does not send <code>X-Forwarded-Proto</code>. With this set you cannot stay logged in over plain HTTP.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_FRAME_ANCESTORS</code></td>
+<td>any site</td>
+<td>Which pages may show Ryokan inside a frame: <code>self</code>, <code>none</code>, or one or more origins like <code>https://dash.example.com</code>, separated by spaces or commas. Leave it unset, or list your dashboard, if you embed Ryokan in Organizr or Homarr.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_HOST_CHECK</code></td>
+<td>off</td>
+<td>Set to <code>1</code> to turn on the <a href="#host-check">host check</a>. Ryokan's pages will then only answer to an IP address, <code>localhost</code>, or a name listed in <code>RYOKAN_ALLOWED_HOSTS</code>.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_ALLOWED_HOSTS</code></td>
+<td>unset</td>
+<td>The names you open Ryokan by, for the host check, separated by spaces or commas: <code>nas ryokan.lan *.example.com</code>. Leave out <code>http://</code> and the port. Setting this turns the host check on, even without <code>RYOKAN_HOST_CHECK</code>.</td>
+</tr>
+<tr>
+<td><code>RYOKAN_RESET_AUTH</code></td>
+<td>unset</td>
+<td>Used to reset a forgotten password. See <a href="#reset-auth">Reset auth</a>.</td>
 </tr>
 <tr>
 <td><code>RYOKAN_ENCRYPTION_KEY</code></td>
-<td>unset (file fallback)</td>
-<td>Base64-encoded 32-byte AEAD key for encrypting OAuth tokens. Loading priority: env var, then key file, then auto-generated on first run. <strong>Key rotation isn't supported</strong>; changing it invalidates all stored OAuth tokens and you'll need to re-link external accounts.</td>
+<td>unset</td>
+<td>A base64-encoded 32-byte key used to encrypt linked account tokens. When unset, Ryokan generates one and stores it in the data folder. Changing the key will force you to link your accounts again.</td>
 </tr>
+</tbody>
+</table>
+<p>These override where single files and folders are kept. Most installs should leave them unset and use <code>RYOKAN_DATA_DIR</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
 <tr>
 <td><code>DATABASE_URL</code></td>
-<td>unset (<code>&lt;data folder&gt;/ryokan.db</code>)</td>
-<td>SQLite connection string. Overrides the database location only. Most installs leave it unset.</td>
+<td><code>&lt;data folder&gt;/ryokan.db</code></td>
 </tr>
 <tr>
 <td><code>RYOKAN_KEY_FILE_PATH</code></td>
-<td>unset (<code>&lt;data folder&gt;/.ryokan-key</code>)</td>
-<td>Where the auto-generated encryption key lives. Overrides this one path. Don't set it unless you have a specific reason.</td>
+<td><code>&lt;data folder&gt;/.ryokan-key</code></td>
 </tr>
 <tr>
 <td><code>RYOKAN_ANIBRIDGE_CACHE_DIR</code></td>
-<td>unset (<code>&lt;data folder&gt;/cache/anibridge</code>)</td>
-<td>Where the TMDB-to-AniList mappings cache lives. Overrides this one path.</td>
+<td><code>&lt;data folder&gt;/cache/anibridge</code></td>
 </tr>
 <tr>
 <td><code>RYOKAN_MEDIA_CACHE_DIR</code></td>
-<td>unset (<code>&lt;data folder&gt;/cache/artwork</code>)</td>
-<td>Artwork blob cache root. Overrides this one path. Content-addressed, so duplicate cover art doesn't re-store.</td>
+<td><code>&lt;data folder&gt;/cache/artwork</code></td>
 </tr>
 </tbody>
 </table>
 <h2 id="volume-layout">Volume layout<a class="headerlink" href="#volume-layout" title="Anchor link">&para;</a></h2>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ryokan-data:/data</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/downloads:/downloads</span><span class="w">          </span><span class="c1"># optional but required for post-processing</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span><span class="w">      </span><span class="c1"># optional but required for post-processing</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/ryokan:/config</span><span class="w">         </span><span class="c1"># Ryokan's own files</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media:/srv/media</span><span class="w">              </span><span class="c1"># downloads and library</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">RYOKAN_DATA_DIR</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/config</span>
 </span></code></pre></div>
-<p><strong><code>/data</code> (required)</strong> holds the SQLite database, the artwork blob cache, the encryption key, the anibridge mappings cache, the default <code>backups/</code> folder, and any sentinel files. Loss of <code>/data</code> means losing your library state, queued grabs, scoring history, and OAuth tokens. The named-volume default (<code>ryokan-data</code>) keeps it inside Docker. Bind-mount it to a host path if you want the database visible from the host filesystem.</p>
-<p><strong><code>/downloads</code> and <code>/media/...</code></strong> are post-processing's source and destination. They're optional in the sense that Ryokan boots without them, but post-processing requires both to be visible inside the container at the same paths your download client uses for "complete" files and the path you set in Settings → General → Media Root Path.</p>
-<h3 id="moving-ryokans-data-folder">Moving Ryokan's data folder<a class="headerlink" href="#moving-ryokans-data-folder" title="Anchor link">&para;</a></h3>
-<p>Many *arr setups mount one shared filesystem at <code>/data</code> so the download client and every app see the same paths and can hardlink. Ryokan's own files can live somewhere else so that <code>/data</code> stays free for that mount. Set <code>RYOKAN_DATA_DIR</code> and mount a volume at the same path:</p>
+<p>This is the layout the <a href="../quick-start/">Quick start</a> generates.</p>
+<p><strong><code>/config</code></strong> holds the database, the encryption key, caches and backups. If you lose it you lose your library, history and linked accounts. <code>RYOKAN_DATA_DIR</code> tells Ryokan to keep its files there. Without it, Ryokan uses <code>/data</code>.</p>
+<p><strong><code>/srv/media</code></strong> is one folder that holds both your downloads and your library, for example <code>/srv/media/downloads</code> and <code>/srv/media/anime</code>. Ryokan starts without it but cannot import anything. Mount the same folder at the same path in your download client, so both see a finished file at the same place.</p>
+<p>One folder for both matters because a hardlink only works inside a single mount. With hardlinks, an imported episode takes no extra space and the torrent keeps seeding.</p>
+<h3 id="separate-downloads-and-library-folders">Separate downloads and library folders<a class="headerlink" href="#separate-downloads-and-library-folders" title="Anchor link">&para;</a></h3>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ryokan-config:/config</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/data:/data</span><span class="w">                    </span><span class="c1"># your shared downloads and media</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RYOKAN_DATA_DIR=/config</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ryokan-data:/data</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/downloads:/downloads</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
 </span></code></pre></div>
-<p>On start, the container takes ownership of the folder <code>RYOKAN_DATA_DIR</code> names and nothing else. Your shared <code>/data</code> mount keeps its owner. Setting <code>RYOKAN_DATA_DIR</code> is what moves the state. Pointing only the single-path variables (<code>DATABASE_URL</code> and the rest) at another folder still leaves <code>/data</code> as the folder the container takes ownership of, and the container log warns about it on every start.</p>
+<p>This works, but Ryokan cannot hardlink between two mounts, even when both folders are on the same disk. It copies each file instead, so an episode takes its space twice for as long as the download stays in the client. If that's what you want, set the file operation mode to Copy or Move under Settings → General.</p>
+<h3 id="moving-ryokans-data-folder">Moving Ryokan's data folder<a class="headerlink" href="#moving-ryokans-data-folder" title="Anchor link">&para;</a></h3>
+<p>An install that keeps Ryokan's files in <code>/data</code> can move them, to free <code>/data</code> for a shared media folder or to match the layout above. The container takes ownership of the folder <code>RYOKAN_DATA_DIR</code> names and leaves every other mount alone.</p>
 <p>To move an existing install:</p>
 <ol>
 <li>Stop Ryokan.</li>
-<li>Copy everything from the old data volume into the new one, including the hidden <code>.ryokan-key</code> file. Without that file, linked AniList and MyAnimeList accounts have to be linked again.</li>
-<li>Remove <code>DATABASE_URL</code>, <code>RYOKAN_KEY_FILE_PATH</code>, <code>RYOKAN_MEDIA_CACHE_DIR</code>, and <code>RYOKAN_ANIBRIDGE_CACHE_DIR</code> from your compose file if you set them. Each one pins its own path and would keep it on the old volume.</li>
-<li>Set <code>RYOKAN_DATA_DIR</code>, update the volume line, and start Ryokan.</li>
-<li>If Settings → General → Backup folder is set to a path under the old data folder, such as <code>/data/backups</code>, clear it. Backups then go to <code>backups</code> in the new data folder.</li>
+<li>Copy everything from the old data volume to the new one, including the hidden <code>.ryokan-key</code> file. Without it you have to link your AniList and MyAnimeList accounts again.</li>
+<li>If your compose file sets <code>DATABASE_URL</code>, <code>RYOKAN_KEY_FILE_PATH</code>, <code>RYOKAN_MEDIA_CACHE_DIR</code> or <code>RYOKAN_ANIBRIDGE_CACHE_DIR</code>, remove them. They would keep pointing at the old location.</li>
+<li>Set <code>RYOKAN_DATA_DIR</code>, change the volume line, and start Ryokan.</li>
+<li>If Settings → General → Backup folder points into the old data folder, such as <code>/data/backups</code>, clear it.</li>
 </ol>
-<p>Cover art keeps working from the moved cache. A backup made in System → Backup restores into the new layout too.</p>
 <h2 id="healthcheck">Healthcheck<a class="headerlink" href="#healthcheck" title="Anchor link">&para;</a></h2>
-<p>The image ships with:</p>
-<div class="language-dockerfile highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">HEALTHCHECK</span><span class="w"> </span>--interval<span class="o">=</span>30s<span class="w"> </span>--timeout<span class="o">=</span>5s<span class="w"> </span>--start-period<span class="o">=</span>30s<span class="w"> </span>--retries<span class="o">=</span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span>CMD<span class="w"> </span>curl<span class="w"> </span>-fsS<span class="w"> </span>http://localhost:8978/login<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
-</span></code></pre></div>
-<p>The probe targets <code>/login</code> because that's the canonical "is Ryokan up" endpoint. There is no <code>/healthz</code>. <code>/login</code> returns 200 once the auth UI is live, or 303 redirecting to <code>/setup</code> on a fresh container with no users yet. Both are valid "up" signals.</p>
-<p><code>start-period=30s</code> covers cold-boot work: idempotent migrations, password-hash warmup, the multi-client cache rebuild, and optional Jellyfin client init. ARM64 first-runs occasionally bumped against an earlier 10-second budget; 30 seconds matches the CI smoke-test poll window.</p>
+<p>The image checks itself by requesting <code>/login</code> every 30 seconds, and <code>docker ps</code> shows the result as healthy or unhealthy.</p>
 <h2 id="updating">Updating<a class="headerlink" href="#updating" title="Anchor link">&para;</a></h2>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>pull
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>pull
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
 </span></code></pre></div>
-<p>The named volume preserves your data. The image's binary is replaced. Migrations run automatically on next boot and are idempotent: applying twice is a no-op.</p>
 <div class="admonition danger">
-<p class="admonition-title">Don't <code>docker compose down -v</code></p>
-<p>The <code>-v</code> flag removes named volumes. With the documented setup, that means deleting your DB, encryption key, OAuth tokens, and library state. There's no undo. <code>down</code> without <code>-v</code> is safe.</p>
+<p class="admonition-title">Do not run <code>docker compose down -v</code></p>
+<p><code>-v</code> deletes named volumes, which means your database, encryption key and library. It cannot be undone. <code>docker compose down</code> without <code>-v</code> is safe.</p>
 </div>
 <h2 id="branch-and-pull-request-images">Branch and pull request images<a class="headerlink" href="#branch-and-pull-request-images" title="Anchor link">&para;</a></h2>
-<p>Every branch pushed to the repository publishes a multi-arch image tagged with the branch name, with <code>/</code> replaced by <code>-</code>. A branch called <code>feat/misgrab-guardrails</code> is pullable as:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/johnthreekay/ryokan:feat-misgrab-guardrails
+<p>Every branch pushed to the repository is published as an image tagged with the branch name, with <code>/</code> replaced by <code>-</code>. For the example branch <code>feat/hello-bro</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/johnthreekay/ryokan:feat-hello-bro
 </span></code></pre></div>
-<p><code>main</code> and <code>dev</code> keep their own tags, and releases keep <code>latest</code> and the version tags.</p>
-<p>A pull request from a fork cannot publish to the registry, so its build lands as a workflow artifact instead. Open the pull request's <strong>Publish Docker image</strong> run under Actions, download <code>ryokan-pr-&lt;number&gt;-linux-amd64</code> (or <code>-linux-arm64</code>), and load it:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>load<span class="w"> </span>-i<span class="w"> </span>ryokan-pr-123-linux-amd64.tar
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>docker<span class="w"> </span>run<span class="w"> </span>-p<span class="w"> </span><span class="m">8978</span>:8978<span class="w"> </span>-v<span class="w"> </span>./data:/data<span class="w"> </span>ghcr.io/johnthreekay/ryokan:pr-123
+<p>Pull requests from forks cannot publish images. Their build is attached to the pull request's <strong>Publish Docker image</strong> run under Actions, as <code>ryokan-pr-&lt;number&gt;-linux-amd64</code> or <code>-linux-arm64</code>, and is kept for 14 days. Download it and load it:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>load<span class="w"> </span>-i<span class="w"> </span>ryokan-pr-123-linux-amd64.tar
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>docker<span class="w"> </span>run<span class="w"> </span>-p<span class="w"> </span><span class="m">8978</span>:8978<span class="w"> </span>-v<span class="w"> </span>./data:/data<span class="w"> </span>ghcr.io/johnthreekay/ryokan:pr-123
 </span></code></pre></div>
-<p>The artifact is kept for 14 days after the run.</p>
 <h2 id="reset-auth">Reset auth<a class="headerlink" href="#reset-auth" title="Anchor link">&para;</a></h2>
-<p>If you forget your admin password and have no other recovery path, you can wipe the users and sessions tables and create a new admin account on next boot. Two steps are required so a stuck-on env var can't silently wipe auth on every restart:</p>
+<p>If you forget your password, you can delete the account and create a new one. Your library, settings and linked accounts are kept.</p>
 <ol>
-<li>Add <code>RYOKAN_RESET_AUTH=1</code> to your compose file's environment block.</li>
-<li>Create the sentinel file next to <code>ryokan.db</code>, which is in the data folder unless you set <code>DATABASE_URL</code>: <code>touch /path/to/your/data-volume/.reset-auth</code> on the host, or <code>docker exec ryokan touch /data/.reset-auth</code> (use your <code>RYOKAN_DATA_DIR</code> in place of <code>/data</code> if you changed it).</li>
+<li>Add <code>RYOKAN_RESET_AUTH=1</code> to the environment section of your compose file.</li>
+<li>
+<p>Create an empty file named <code>.reset-auth</code> next to <code>ryokan.db</code>:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ryokan<span class="w"> </span>touch<span class="w"> </span>/data/.reset-auth
+</span></code></pre></div>
+<p>Use your <code>RYOKAN_DATA_DIR</code> in place of <code>/data</code> if you changed it.</p>
+</li>
+<li>
+<p>Start Ryokan again from the folder that holds your compose file:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</span></code></pre></div>
+<p>This recreates the container with the new variable. You can optionally use <code>--force-recreate</code> to be absolutely certain the container is recreated.</p>
+</li>
+<li>
+<p>Open Ryokan. It asks you to create a new account.</p>
+</li>
+<li>Remove <code>RYOKAN_RESET_AUTH</code> from the compose file and run <code>docker compose up -d</code> once more.</li>
 </ol>
-<p>Restart the container. On boot, Ryokan deletes both tables, removes the sentinel, and <code>/setup</code> opens for a fresh admin account. Remove <code>RYOKAN_RESET_AUTH</code> from your compose file afterwards.</p>
-<p>OAuth tokens, library state, scoring history, and Custom Formats are preserved. Only authentication state is wiped.</p>
+<p>Both the variable and the file are required, so that a variable left in the compose file cannot delete your account on every restart.</p>
 <h2 id="host-check">Host check<a class="headerlink" href="#host-check" title="Anchor link">&para;</a></h2>
-<p>A web page on another site can point its own name at your Ryokan's address and then use Ryokan as if it were that site. Before the first account exists, that is enough to create the admin account. The host check (off by default, like Transmission's host whitelist) stops it: with <code>RYOKAN_HOST_CHECK=1</code>, the web UI answers only when you open it by an IP address (<code>http://192.168.1.20:8978</code>), <code>localhost</code>, or a name you list in <code>RYOKAN_ALLOWED_HOSTS</code>. Anything else gets a "421" page naming the setting.</p>
+<p>The host check makes the web UI answer only when it is opened by an IP address, by <code>localhost</code>, or by a name you have listed. It is off by default.</p>
+<p>It protects against DNS rebinding, where a web page on another site points its own name at your Ryokan's address and then acts as if it were Ryokan's own page.</p>
+<h3 id="turning-it-on">Turning it on<a class="headerlink" href="#turning-it-on" title="Anchor link">&para;</a></h3>
+<ol>
+<li>Work out every name you open Ryokan by. Look at the address bar on each device you use: <code>http://nas:8978</code> means <code>nas</code>, and <code>https://ryokan.example.com</code> means <code>ryokan.example.com</code>. IP addresses and <code>localhost</code> always work and do not need listing.</li>
+<li>
+<p>Add the names to the environment section of your compose file:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RYOKAN_HOST_CHECK=1</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RYOKAN_ALLOWED_HOSTS=nas ryokan.lan ryokan.example.com</span>
+</span></code></pre></div>
+<p>Separate the names with spaces or commas. Leave out <code>http://</code> and the port. <code>*.example.com</code> covers every name under <code>example.com</code>.</p>
+</li>
+<li>
+<p>Apply the change from the folder that holds your compose file:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</span></code></pre></div>
+</li>
+<li>
+<p>Open Ryokan by each of the names. A name you forgot gets a "421" error page instead of Ryokan. If that happens, open Ryokan by its IP address, which always works, add the name to the list, and run <code>docker compose up -d</code> again.</p>
+</li>
+</ol>
+<p>If you only ever open Ryokan by IP address or <code>localhost</code>, set <code>RYOKAN_HOST_CHECK=1</code> on its own and leave <code>RYOKAN_ALLOWED_HOSTS</code> out.</p>
+<p>To turn the check off, remove both lines and run <code>docker compose up -d</code>.</p>
+<h3 id="things-to-know">Things to know<a class="headerlink" href="#things-to-know" title="Anchor link">&para;</a></h3>
 <ul>
-<li>If you open Ryokan by a name, such as your server's name (<code>http://nas:8978</code>), <code>ryokan.lan</code> or a domain on your reverse proxy, add that name to <code>RYOKAN_ALLOWED_HOSTS</code>. Ryokan also accepts the name of the machine it runs on, but inside Docker that is the container's own name. Docker makes it a random ID unless the compose file sets <code>hostname:</code>, so your server's name still has to be listed.</li>
-<li>Behind a reverse proxy with <code>RYOKAN_TRUSTED_PROXY=1</code>, the name in <code>X-Forwarded-Host</code> has to pass too, and so does the name the proxy uses to reach Ryokan, unless the proxy passes the original one through (nginx: <code>proxy_set_header Host $host;</code>).</li>
-<li>Seerr, autobrr and calendar apps are not affected: the Sonarr / Radarr API, the autobrr webhook and the iCal feed check their API key instead, so other containers can keep calling Ryokan by its service name.</li>
+<li>Ryokan also accepts the name of the machine it runs on. Inside Docker that is the container's name, which is a random ID unless your compose file sets <code>hostname:</code>. So your server's name still has to be listed.</li>
+<li>Behind a reverse proxy with <code>RYOKAN_TRUSTED_PROXY=1</code>, the name the proxy uses to reach Ryokan has to be listed as well, unless the proxy passes the original host through (nginx: <code>proxy_set_header Host $host;</code>).</li>
+<li>Seerr, autobrr and calendar apps are not affected. They use an API key and can keep calling Ryokan by its service name.</li>
 </ul>
 <h2 id="running-behind-a-reverse-proxy">Running behind a reverse proxy<a class="headerlink" href="#running-behind-a-reverse-proxy" title="Anchor link">&para;</a></h2>
-<p>If you put Ryokan behind nginx, Caddy, Traefik, or similar, set <code>RYOKAN_TRUSTED_PROXY=1</code> so the per-IP login throttle reads <code>X-Forwarded-For</code> from the proxy instead of the proxy's own IP. The proxy must overwrite these headers on ingress (don't pass through whatever the client sent), or you've just added a header-spoofing bypass.</p>
-<p>With that set, the login cookie is marked <code>Secure</code> automatically whenever the proxy reports HTTPS (<code>X-Forwarded-Proto: https</code>), the same way Sonarr does it. <code>RYOKAN_COOKIE_SECURE=1</code> forces the flag for a proxy that doesn't send that header.</p>
-<p>The <a href="../stack-builder/">Stack builder</a> generates Caddy / Traefik / nginx config with the right header rewrites and env-var combinations.</p>
+<p>Set <code>RYOKAN_TRUSTED_PROXY=1</code>. Ryokan then reads the visitor's address from <code>X-Forwarded-For</code>, which the login rate limit needs, and marks the login cookie <code>Secure</code> when the proxy reports HTTPS.</p>
+<p>Only set it behind a proxy that overwrites <code>X-Forwarded-For</code> itself. If the proxy passes along whatever the visitor sent, anyone can fake their address and get around the login rate limit.</p>
+<p>The <a href="../quick-start/#2-choose-your-stack">Quick start</a> can add a proxy to your stack. Caddy works once you put your domain in. Traefik needs three labels added to Ryokan's service, and nginx needs a config you write yourself. The generated file has a starting point for each.</p>
 <hr />
-<p><em>Last updated: 2026-10-04.</em></p>
+<p><em>Last updated: 2026-11-18.</em></p>
 
 
 
@@ -1501,10 +1591,10 @@
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.77dd0ce9.min.js"></script>
+      <script src="../assets/javascripts/bundle.3cb411a8.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

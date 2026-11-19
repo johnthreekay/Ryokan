@@ -24,7 +24,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.73">
+      <meta name="generator" content="zensical-0.1.2">
     
     
       
@@ -35,7 +35,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ebb7f775.min.css">
       
         
           
@@ -431,33 +431,6 @@
     
   
   Quick start
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-                
-              
-                
-                  
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../stack-builder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Stack builder
 
     
   </span>
@@ -1194,25 +1167,23 @@
 <h2 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Anchor link">&para;</a></h2>
 <ul>
 <li><strong>Rust 1.95 or later</strong>.</li>
-<li><strong>A C/C++ compiler and <code>cmake</code></strong>. Two of Ryokan's dependencies build native code (the anime title parser and the TLS library).</li>
-<li><strong><code>mold</code> and <code>clang</code></strong> on Linux. Ryokan links with them on Linux because it makes rebuilds much faster. Without them the first build stops with <code>linker 'clang' not found</code> or <code>ld.mold not found</code>.</li>
+<li><strong>A C/C++ compiler and <code>cmake</code></strong>. Two of Ryokan's dependencies build native code (the TLS library and SQLite).</li>
 <li><strong><code>cargo-nextest</code></strong> (optional) for the <code>cargo t</code> test shortcut. Plain <code>cargo test</code> works without it.</li>
 </ul>
 <h2 id="install-the-toolchain">Install the toolchain<a class="headerlink" href="#install-the-toolchain" title="Anchor link">&para;</a></h2>
 <p>Debian or Ubuntu:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>mold<span class="w"> </span>clang<span class="w"> </span>cmake
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>build-essential<span class="w"> </span>cmake
 </span></code></pre></div>
 <p>Fedora:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>mold<span class="w"> </span>clang<span class="w"> </span>cmake
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>gcc<span class="w"> </span>gcc-c++<span class="w"> </span>make<span class="w"> </span>cmake
 </span></code></pre></div>
 <p>Arch:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sudo<span class="w"> </span>pacman<span class="w"> </span>-S<span class="w"> </span>mold<span class="w"> </span>clang<span class="w"> </span>cmake
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sudo<span class="w"> </span>pacman<span class="w"> </span>-S<span class="w"> </span>base-devel<span class="w"> </span>cmake
 </span></code></pre></div>
 <p>macOS:</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>xcode-select<span class="w"> </span>--install<span class="w">     </span><span class="c1"># Apple's compiler, once</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>brew<span class="w"> </span>install<span class="w"> </span>cmake
 </span></code></pre></div>
-<p>The mold linker setting only applies to Linux, so macOS builds use Apple's linker and need nothing else.</p>
 <div class="admonition note">
 <p class="admonition-title">macOS builds are untested</p>
 <p>Ryokan's automated builds and tests run on Linux only, so a native macOS build may work but nothing checks it. On a Mac, including Apple Silicon, the supported way to run Ryokan is the Docker image. Docker Desktop, OrbStack, and Colima run its arm64 build natively, without emulation.</p>
@@ -1353,10 +1324,10 @@
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.77dd0ce9.min.js"></script>
+      <script src="../assets/javascripts/bundle.3cb411a8.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

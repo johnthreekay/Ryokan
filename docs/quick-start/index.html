@@ -17,14 +17,14 @@
         <link rel="prev" href="./..">
       
       
-        <link rel="next" href="../stack-builder/">
+        <link rel="next" href="../install/">
       
       
         
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.73">
+      <meta name="generator" content="zensical-0.1.2">
     
     
       
@@ -35,7 +35,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ebb7f775.min.css">
       
         
           
@@ -487,10 +487,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-youll-need" class="md-nav__link">
+  <a href="#1-install-docker" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        What you'll need
+        1. Install Docker
       </span>
     </span>
   </a>
@@ -498,10 +498,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#1-run-ryokan-jellyfin-and-your-download-client" class="md-nav__link">
+  <a href="#2-choose-your-stack" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        1. Run Ryokan, Jellyfin, and your download client
+        2. Choose your stack
       </span>
     </span>
   </a>
@@ -509,10 +509,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-first-login-to-ryokan" class="md-nav__link">
+  <a href="#3-create-the-folders-and-start-the-stack" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        2. First login to Ryokan
+        3. Create the folders and start the stack
       </span>
     </span>
   </a>
@@ -520,10 +520,82 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-set-up-jellyfin" class="md-nav__link">
+  <a href="#4-set-up-your-download-client" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        3. Set up Jellyfin
+        4. Set up your download client
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Set up your download client">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#qbittorrent" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        qBittorrent
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deluge" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Deluge
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transmission" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Transmission
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rtorrent" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        rTorrent
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sabnzbd" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SABnzbd
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-set-up-your-media-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Set up your media server
       </span>
     </span>
   </a>
@@ -531,10 +603,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-add-a-download-client-to-ryokan" class="md-nav__link">
+  <a href="#6-first-login-to-ryokan" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        4. Add a download client to Ryokan
+        6. First login to Ryokan
       </span>
     </span>
   </a>
@@ -542,10 +614,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-optional-connect-jellyfin-to-ryokan" class="md-nav__link">
+  <a href="#7-add-your-download-client-to-ryokan" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        5. (Optional) Connect Jellyfin to Ryokan
+        7. Add your download client to Ryokan
       </span>
     </span>
   </a>
@@ -553,10 +625,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6-optional-add-an-indexer" class="md-nav__link">
+  <a href="#8-add-a-show-and-watch-it-land" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        6. (Optional) Add an indexer
+        8. Add a show and watch it land
       </span>
     </span>
   </a>
@@ -564,10 +636,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-add-a-show-and-watch-it-land" class="md-nav__link">
+  <a href="#connect-seerr" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        7. Add a show and watch it land
+        Connect Seerr
       </span>
     </span>
   </a>
@@ -575,10 +647,76 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-optional-link-anilist-or-mal" class="md-nav__link">
+  <a href="#vpn-port-forwarding" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        8. (Optional) Link AniList or MAL
+        VPN port forwarding
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reverse-proxy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reverse proxy
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-an-indexer-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Add an indexer (optional)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-indexers-with-prowlarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Add indexers with Prowlarr
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-indexers-with-jackett" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Add indexers with Jackett
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#link-anilist-or-mal-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Link AniList or MAL (optional)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-something-goes-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        If something goes wrong
       </span>
     </span>
   </a>
@@ -600,33 +738,6 @@
   
 </nav>
       
-    </li>
-  
-
-                
-              
-                
-                  
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../stack-builder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Stack builder
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -1148,10 +1259,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-youll-need" class="md-nav__link">
+  <a href="#1-install-docker" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        What you'll need
+        1. Install Docker
       </span>
     </span>
   </a>
@@ -1159,10 +1270,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#1-run-ryokan-jellyfin-and-your-download-client" class="md-nav__link">
+  <a href="#2-choose-your-stack" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        1. Run Ryokan, Jellyfin, and your download client
+        2. Choose your stack
       </span>
     </span>
   </a>
@@ -1170,10 +1281,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-first-login-to-ryokan" class="md-nav__link">
+  <a href="#3-create-the-folders-and-start-the-stack" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        2. First login to Ryokan
+        3. Create the folders and start the stack
       </span>
     </span>
   </a>
@@ -1181,10 +1292,82 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-set-up-jellyfin" class="md-nav__link">
+  <a href="#4-set-up-your-download-client" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        3. Set up Jellyfin
+        4. Set up your download client
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Set up your download client">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#qbittorrent" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        qBittorrent
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deluge" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Deluge
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transmission" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Transmission
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rtorrent" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        rTorrent
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sabnzbd" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SABnzbd
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-set-up-your-media-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Set up your media server
       </span>
     </span>
   </a>
@@ -1192,10 +1375,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-add-a-download-client-to-ryokan" class="md-nav__link">
+  <a href="#6-first-login-to-ryokan" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        4. Add a download client to Ryokan
+        6. First login to Ryokan
       </span>
     </span>
   </a>
@@ -1203,10 +1386,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-optional-connect-jellyfin-to-ryokan" class="md-nav__link">
+  <a href="#7-add-your-download-client-to-ryokan" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        5. (Optional) Connect Jellyfin to Ryokan
+        7. Add your download client to Ryokan
       </span>
     </span>
   </a>
@@ -1214,10 +1397,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6-optional-add-an-indexer" class="md-nav__link">
+  <a href="#8-add-a-show-and-watch-it-land" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        6. (Optional) Add an indexer
+        8. Add a show and watch it land
       </span>
     </span>
   </a>
@@ -1225,10 +1408,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-add-a-show-and-watch-it-land" class="md-nav__link">
+  <a href="#connect-seerr" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        7. Add a show and watch it land
+        Connect Seerr
       </span>
     </span>
   </a>
@@ -1236,10 +1419,76 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-optional-link-anilist-or-mal" class="md-nav__link">
+  <a href="#vpn-port-forwarding" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        8. (Optional) Link AniList or MAL
+        VPN port forwarding
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reverse-proxy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reverse proxy
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-an-indexer-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Add an indexer (optional)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-indexers-with-prowlarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Add indexers with Prowlarr
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-indexers-with-jackett" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Add indexers with Jackett
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#link-anilist-or-mal-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Link AniList or MAL (optional)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-something-goes-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        If something goes wrong
       </span>
     </span>
   </a>
@@ -1278,443 +1527,755 @@
 
 
 <h1 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Anchor link">&para;</a></h1>
-<p>End-to-end: deploy Ryokan + Jellyfin + a download client, configure them, add a show, watch it land in your library.</p>
-<p>If you want a complete stack with extras (Seerr, reverse proxy, VPN), use the <strong><a href="../stack-builder/">Stack builder</a></strong> instead. It generates the whole <code>docker-compose.yml</code> for you.</p>
-<h2 id="what-youll-need">What you'll need<a class="headerlink" href="#what-youll-need" title="Anchor link">&para;</a></h2>
-<ul>
-<li><strong>Docker</strong> and <strong>Docker Compose</strong> installed (<code>docker --version</code> and <code>docker compose version</code> should both work at the terminal). New to Docker? Read <a href="https://docs.docker.com/get-started/docker-overview/">Docker's overview</a> first; it covers what containers, images, and volumes are, which the rest of this page assumes you know.</li>
-</ul>
-<p>You don't need a download client running in advance; we'll deploy one alongside Ryokan and Jellyfin in the next step. You also don't need a Prowlarr or AniList account; the built-in Nyaa search works without either.</p>
-<h2 id="1-run-ryokan-jellyfin-and-your-download-client">1. Run Ryokan, Jellyfin, and your download client<a class="headerlink" href="#1-run-ryokan-jellyfin-and-your-download-client" title="Anchor link">&para;</a></h2>
-<p>Set up the host paths. The compose file lives in <code>/srv/stack/</code>; per-service config and state go under <code>/srv/docker/&lt;service&gt;/</code>; downloads and the media library go under <code>/srv/media/</code>.</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/stack<span class="w"> </span>/srv/media/<span class="o">{</span>downloads,anime<span class="o">}</span><span class="w"> </span>/srv/docker
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/media/downloads<span class="w"> </span>/srv/media/anime
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">cd</span><span class="w"> </span>/srv/stack
-</span></code></pre></div>
-<p>Adjust <code>1000:1000</code> if your host user has different IDs (<code>id -u</code> and <code>id -g</code> to check). Pick the download client you want to use, create its per-service folder, and save the matching <code>docker-compose.yml</code> in <code>/srv/stack/</code>. All five composes deploy Ryokan + Jellyfin alongside the chosen client; the three services share <code>/srv/media/anime</code> so files Ryokan imports show up in Jellyfin automatically.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:5"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><input id="__tabbed_1_5" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">qBittorrent</label><label for="__tabbed_1_2">Deluge</label><label for="__tabbed_1_3">Transmission</label><label for="__tabbed_1_4">rTorrent</label><label for="__tabbed_1_5">SABnzbd</label></div>
+<p>This guide takes you from a bare Linux server to a full installation of Ryokan and its connectors.</p>
+<h2 id="1-install-docker">1. Install Docker<a class="headerlink" href="#1-install-docker" title="Anchor link">&para;</a></h2>
+<p>Skip this step if you already have Docker + Docker Compose.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:5"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><input id="__tabbed_1_5" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Debian-based</label><label for="__tabbed_1_2">Fedora and RHEL-based</label><label for="__tabbed_1_3">Arch-based</label><label for="__tabbed_1_4">openSUSE</label><label for="__tabbed_1_5">Unraid, Synology, TrueNAS</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,qbittorrent<span class="o">}</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,qbittorrent<span class="o">}</span>
-</span></code></pre></div>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/johnthreekay/ryokan:latest</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ryokan</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8978:8978"</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/ryokan:/data</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">  </span><span class="nt">jellyfin</span><span class="p">:</span>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin/jellyfin:latest</span>
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin</span>
-</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8096:8096"</span>
-</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/config:/config</span>
-</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/cache:/cache</span>
-</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-2-27"><a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-2-28"><a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-2-29"><a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-2-30"><a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-2-31"><a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>
-</span><span id="__span-2-32"><a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="w">  </span><span class="nt">qbittorrent</span><span class="p">:</span>
-</span><span id="__span-2-33"><a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">lscr.io/linuxserver/qbittorrent:latest</span>
-</span><span id="__span-2-34"><a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">qbittorrent</span>
-</span><span id="__span-2-35"><a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-2-36"><a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8080:8080"</span><span class="w">        </span><span class="c1"># web UI</span>
-</span><span id="__span-2-37"><a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"6881:6881"</span><span class="w">        </span><span class="c1"># BT</span>
-</span><span id="__span-2-38"><a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"6881:6881/udp"</span>
-</span><span id="__span-2-39"><a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-2-40"><a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/qbittorrent:/config</span>
-</span><span id="__span-2-41"><a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span>
-</span><span id="__span-2-42"><a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-2-43"><a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-2-44"><a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-2-45"><a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-2-46"><a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WEBUI_PORT=8080</span>
-</span><span id="__span-2-47"><a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://get.docker.com<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>sh
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,deluge<span class="o">}</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,deluge<span class="o">}</span>
-</span></code></pre></div>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/johnthreekay/ryokan:latest</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ryokan</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8978:8978"</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/ryokan:/data</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>
-</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">  </span><span class="nt">jellyfin</span><span class="p">:</span>
-</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin/jellyfin:latest</span>
-</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin</span>
-</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8096:8096"</span>
-</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/config:/config</span>
-</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/cache:/cache</span>
-</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-4-27"><a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-4-28"><a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-4-29"><a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-4-30"><a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-4-31"><a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>
-</span><span id="__span-4-32"><a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="w">  </span><span class="nt">deluge</span><span class="p">:</span>
-</span><span id="__span-4-33"><a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">lscr.io/linuxserver/deluge:latest</span>
-</span><span id="__span-4-34"><a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deluge</span>
-</span><span id="__span-4-35"><a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-4-36"><a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8112:8112"</span><span class="w">        </span><span class="c1"># web UI</span>
-</span><span id="__span-4-37"><a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"6881:6881"</span><span class="w">        </span><span class="c1"># BT</span>
-</span><span id="__span-4-38"><a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"6881:6881/udp"</span>
-</span><span id="__span-4-39"><a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-4-40"><a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/deluge:/config</span>
-</span><span id="__span-4-41"><a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span>
-</span><span id="__span-4-42"><a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-4-43"><a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-4-44"><a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-4-45"><a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-4-46"><a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://get.docker.com<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>sh
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>docker
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,transmission<span class="o">}</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,transmission<span class="o">}</span>
-</span></code></pre></div>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/johnthreekay/ryokan:latest</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ryokan</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8978:8978"</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/ryokan:/data</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>
-</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">  </span><span class="nt">jellyfin</span><span class="p">:</span>
-</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin/jellyfin:latest</span>
-</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin</span>
-</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8096:8096"</span>
-</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/config:/config</span>
-</span><span id="__span-6-24"><a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/cache:/cache</span>
-</span><span id="__span-6-25"><a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-6-26"><a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-6-27"><a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-6-28"><a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-6-29"><a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-6-30"><a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-6-31"><a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a>
-</span><span id="__span-6-32"><a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a><span class="w">  </span><span class="nt">transmission</span><span class="p">:</span>
-</span><span id="__span-6-33"><a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">lscr.io/linuxserver/transmission:latest</span>
-</span><span id="__span-6-34"><a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">transmission</span>
-</span><span id="__span-6-35"><a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-6-36"><a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"9091:9091"</span><span class="w">        </span><span class="c1"># web UI</span>
-</span><span id="__span-6-37"><a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"51413:51413"</span><span class="w">      </span><span class="c1"># BT</span>
-</span><span id="__span-6-38"><a id="__codelineno-6-38" name="__codelineno-6-38" href="#__codelineno-6-38"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"51413:51413/udp"</span>
-</span><span id="__span-6-39"><a id="__codelineno-6-39" name="__codelineno-6-39" href="#__codelineno-6-39"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-6-40"><a id="__codelineno-6-40" name="__codelineno-6-40" href="#__codelineno-6-40"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/transmission:/config</span>
-</span><span id="__span-6-41"><a id="__codelineno-6-41" name="__codelineno-6-41" href="#__codelineno-6-41"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span>
-</span><span id="__span-6-42"><a id="__codelineno-6-42" name="__codelineno-6-42" href="#__codelineno-6-42"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-6-43"><a id="__codelineno-6-43" name="__codelineno-6-43" href="#__codelineno-6-43"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-6-44"><a id="__codelineno-6-44" name="__codelineno-6-44" href="#__codelineno-6-44"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-6-45"><a id="__codelineno-6-45" name="__codelineno-6-45" href="#__codelineno-6-45"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-6-46"><a id="__codelineno-6-46" name="__codelineno-6-46" href="#__codelineno-6-46"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">USER=admin</span>
-</span><span id="__span-6-47"><a id="__codelineno-6-47" name="__codelineno-6-47" href="#__codelineno-6-47"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PASS=changeme</span><span class="w">      </span><span class="c1"># change before first start</span>
-</span><span id="__span-6-48"><a id="__codelineno-6-48" name="__codelineno-6-48" href="#__codelineno-6-48"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sudo<span class="w"> </span>pacman<span class="w"> </span>-S<span class="w"> </span>docker<span class="w"> </span>docker-compose
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>docker
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,rutorrent/passwd<span class="o">}</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,rutorrent<span class="o">}</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>sudo<span class="w"> </span>zypper<span class="w"> </span>install<span class="w"> </span>docker<span class="w"> </span>docker-compose
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>docker
 </span></code></pre></div>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/johnthreekay/ryokan:latest</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ryokan</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8978:8978"</span>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/ryokan:/data</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span>
-</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>
-</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="w">  </span><span class="nt">jellyfin</span><span class="p">:</span>
-</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin/jellyfin:latest</span>
-</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin</span>
-</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8096:8096"</span>
-</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-8-23"><a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/config:/config</span>
-</span><span id="__span-8-24"><a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/cache:/cache</span>
-</span><span id="__span-8-25"><a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-8-26"><a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-8-27"><a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-8-28"><a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-8-29"><a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-8-30"><a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-8-31"><a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a>
-</span><span id="__span-8-32"><a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a><span class="w">  </span><span class="nt">rutorrent</span><span class="p">:</span>
-</span><span id="__span-8-33"><a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">crazymax/rtorrent-rutorrent:latest</span>
-</span><span id="__span-8-34"><a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rutorrent</span>
-</span><span id="__span-8-35"><a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-8-36"><a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8082:8080"</span><span class="w">        </span><span class="c1"># ruTorrent web UI (host:container; 8082 picked to leave 8080 free for other clients)</span>
-</span><span id="__span-8-37"><a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"50000:50000"</span><span class="w">      </span><span class="c1"># BT incoming peer connections</span>
-</span><span id="__span-8-38"><a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"6881:6881/udp"</span><span class="w">    </span><span class="c1"># DHT</span>
-</span><span id="__span-8-39"><a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a><span class="w">    </span><span class="c1"># XML-RPC (port 8000 inside the container) isn't host-exposed.</span>
-</span><span id="__span-8-40"><a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a><span class="w">    </span><span class="c1"># Ryokan talks to it via Docker's per-compose network at</span>
-</span><span id="__span-8-41"><a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a><span class="w">    </span><span class="c1"># `http://rutorrent:8000/RPC2`. Add `- "8000:8000"` here only if</span>
-</span><span id="__span-8-42"><a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a><span class="w">    </span><span class="c1"># you want to hit it from the host with curl for debugging.</span>
-</span><span id="__span-8-43"><a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-8-44"><a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/rutorrent:/data</span>
-</span><span id="__span-8-45"><a id="__codelineno-8-45" name="__codelineno-8-45" href="#__codelineno-8-45"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span><span class="w">      </span><span class="c1"># contains /downloads/temp and /downloads/complete after first start</span>
-</span><span id="__span-8-46"><a id="__codelineno-8-46" name="__codelineno-8-46" href="#__codelineno-8-46"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/rutorrent/passwd:/passwd</span><span class="w">  </span><span class="c1"># htpasswd files for web UI + RPC auth</span>
-</span><span id="__span-8-47"><a id="__codelineno-8-47" name="__codelineno-8-47" href="#__codelineno-8-47"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-8-48"><a id="__codelineno-8-48" name="__codelineno-8-48" href="#__codelineno-8-48"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-8-49"><a id="__codelineno-8-49" name="__codelineno-8-49" href="#__codelineno-8-49"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-8-50"><a id="__codelineno-8-50" name="__codelineno-8-50" href="#__codelineno-8-50"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-8-51"><a id="__codelineno-8-51" name="__codelineno-8-51" href="#__codelineno-8-51"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span></code></pre></div>
-<p><strong>Set up basic auth before bringing the stack up.</strong> The crazy-max image looks for htpasswd files at <code>/passwd/rutorrent.htpasswd</code> (web UI) and <code>/passwd/rpc.htpasswd</code> (XML-RPC, the endpoint Ryokan uses). When the files exist, nginx enforces auth in front of both; when they don't, both are unauthenticated. Generate both with the same credentials in one shot:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>httpd:2.4-alpine<span class="w"> </span>htpasswd<span class="w"> </span>-Bbn<span class="w"> </span>admin<span class="w"> </span><span class="s2">"REPLACE-WITH-YOUR-PASSWORD"</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>tee<span class="w"> </span>/srv/docker/rutorrent/passwd/rutorrent.htpasswd<span class="w"> </span>&gt;<span class="w"> </span>/dev/null
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>sudo<span class="w"> </span>cp<span class="w"> </span>/srv/docker/rutorrent/passwd/rutorrent.htpasswd<span class="w"> </span>/srv/docker/rutorrent/passwd/rpc.htpasswd
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/rutorrent/passwd
-</span></code></pre></div>
-<p>Replace <code>REPLACE-WITH-YOUR-PASSWORD</code> with whatever you want; same credentials work for ruTorrent's web UI and the connection Ryokan makes. Step 4 walks through plugging them into Ryokan.</p>
 </div>
 <div class="tabbed-block">
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,sabnzbd/<span class="o">{</span>config,incomplete<span class="o">}}</span>
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>/srv/docker/<span class="o">{</span>ryokan,jellyfin,sabnzbd<span class="o">}</span>
+<p>Docker is already part of the system. On Synology, install <strong>Container Manager</strong> from the Package Center. On Unraid, install the <strong>Compose Manager</strong> plugin from Community Applications.</p>
+<p>Use a folder on your storage pool for the two folders in step 2, for example <code>/mnt/user/media</code> on Unraid or <code>/volume1/media</code> on Synology.</p>
+</div>
+</div>
+</div>
+<p>Then let your own user run Docker without <code>sudo</code>:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>docker<span class="w"> </span><span class="nv">$USER</span>
 </span></code></pre></div>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">ryokan</span><span class="p">:</span>
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/johnthreekay/ryokan:latest</span>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ryokan</span>
-</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8978:8978"</span>
-</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/ryokan:/data</span>
-</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span>
-</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>
-</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="w">  </span><span class="nt">jellyfin</span><span class="p">:</span>
-</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin/jellyfin:latest</span>
-</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jellyfin</span>
-</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8096:8096"</span>
-</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/config:/config</span>
-</span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/jellyfin/cache:/cache</span>
-</span><span id="__span-11-25"><a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/anime:/media/anime</span>
-</span><span id="__span-11-26"><a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-11-27"><a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-11-28"><a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-11-29"><a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-11-30"><a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-11-31"><a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a>
-</span><span id="__span-11-32"><a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a><span class="w">  </span><span class="nt">sabnzbd</span><span class="p">:</span>
-</span><span id="__span-11-33"><a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">lscr.io/linuxserver/sabnzbd:latest</span>
-</span><span id="__span-11-34"><a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sabnzbd</span>
-</span><span id="__span-11-35"><a id="__codelineno-11-35" name="__codelineno-11-35" href="#__codelineno-11-35"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-11-36"><a id="__codelineno-11-36" name="__codelineno-11-36" href="#__codelineno-11-36"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8081:8080"</span><span class="w">          </span><span class="c1"># host:container; SAB lives on 8080 internally</span>
-</span><span id="__span-11-37"><a id="__codelineno-11-37" name="__codelineno-11-37" href="#__codelineno-11-37"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-11-38"><a id="__codelineno-11-38" name="__codelineno-11-38" href="#__codelineno-11-38"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/sabnzbd/config:/config</span>
-</span><span id="__span-11-39"><a id="__codelineno-11-39" name="__codelineno-11-39" href="#__codelineno-11-39"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/docker/sabnzbd/incomplete:/incomplete-downloads</span><span class="w">   </span><span class="c1"># in-progress</span>
-</span><span id="__span-11-40"><a id="__codelineno-11-40" name="__codelineno-11-40" href="#__codelineno-11-40"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/media/downloads:/downloads</span><span class="w">                        </span><span class="c1"># completed (shared with Ryokan + Jellyfin)</span>
-</span><span id="__span-11-41"><a id="__codelineno-11-41" name="__codelineno-11-41" href="#__codelineno-11-41"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-11-42"><a id="__codelineno-11-42" name="__codelineno-11-42" href="#__codelineno-11-42"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PUID=1000</span>
-</span><span id="__span-11-43"><a id="__codelineno-11-43" name="__codelineno-11-43" href="#__codelineno-11-43"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PGID=1000</span>
-</span><span id="__span-11-44"><a id="__codelineno-11-44" name="__codelineno-11-44" href="#__codelineno-11-44"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TZ=Etc/UTC</span>
-</span><span id="__span-11-45"><a id="__codelineno-11-45" name="__codelineno-11-45" href="#__codelineno-11-45"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+<p>You'll have to log out and log back in for that to take effect. Check that it works:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>hello-world
 </span></code></pre></div>
-<div class="admonition note">
-<p class="admonition-title">Why two folders?</p>
-<p>SAB splits in-progress (<code>/incomplete-downloads</code>) from completed (<code>/downloads</code>). The compose puts the in-progress side under SAB's own config tree so it's tucked out of the way; only completed downloads land in <code>/srv/media/downloads</code> where Ryokan reads them.</p>
+<p>It should print "Hello from Docker!" along with the steps it took to generate the message.</p>
+<h2 id="2-choose-your-stack">2. Choose your stack<a class="headerlink" href="#2-choose-your-stack" title="Anchor link">&para;</a></h2>
+<p>The defaults are a good start if you have no preference. You can always come back and change them later.</p>
+<form id="stack-form" class="stack-form" autocomplete="off">
+<div class="sf-group">
+  <div class="sf-head"><span class="sf-title">Download client</span><span class="sf-sub">Pick one or more.</span></div>
+  <div class="sf-grid">
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="qbittorrent" checked><span class="sf-name">qBittorrent</span><span class="sf-desc">Recommended.</span></label>
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="deluge"><span class="sf-name">Deluge</span></label>
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="transmission"><span class="sf-name">Transmission</span></label>
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="rtorrent"><span class="sf-name">rTorrent</span><span class="sf-desc">Comes with the ruTorrent web UI.</span></label>
+    <label class="sf-opt"><input type="checkbox" name="dlclient" value="sabnzbd"><span class="sf-name">SABnzbd</span><span class="sf-desc">Usenet. Needs a Usenet provider and indexer.</span></label>
+  </div>
 </div>
+<div class="sf-group">
+  <div class="sf-head"><span class="sf-title">Media server</span><span class="sf-sub">Allows you to stream your library to other devices.</span></div>
+  <div class="sf-grid">
+    <label class="sf-opt"><input type="radio" name="media_server" value="jellyfin" checked><span class="sf-name">Jellyfin</span><span class="sf-desc">Recommended. Free and open source.</span></label>
+    <label class="sf-opt"><input type="radio" name="media_server" value="emby"><span class="sf-name">Emby</span><span class="sf-desc">Some features need Emby Premiere.</span></label>
+    <label class="sf-opt"><input type="radio" name="media_server" value="plex"><span class="sf-name">Plex</span><span class="sf-desc">Needs a Plex account.</span></label>
+    <label class="sf-opt"><input type="radio" name="media_server" value="none"><span class="sf-name">None</span><span class="sf-desc">You already have one, or don't want one.</span></label>
+  </div>
 </div>
+<div class="sf-group">
+  <div class="sf-head"><span class="sf-title">Requests</span><span class="sf-sub">A page where you or your friends/family request anime.</span></div>
+  <div class="sf-grid">
+    <label class="sf-opt"><input type="radio" name="requests" value="none" checked><span class="sf-name">None</span></label>
+    <label class="sf-opt"><input type="radio" name="requests" value="seerr"><span class="sf-name">Seerr</span><span class="sf-desc">Sends requests to Ryokan.</span></label>
+  </div>
 </div>
+<div class="sf-group">
+  <div class="sf-head"><span class="sf-title">Folders and user</span></div>
+  <div class="sf-fields">
+    <label class="sf-field sf-wide"><span class="sf-label">Media folder</span><input type="text" name="shared_path" value="/srv/media" spellcheck="false"><span class="sf-help">Holds your downloads and your library. Use a full path.</span></label>
+    <label class="sf-field sf-wide"><span class="sf-label">Settings folder</span><input type="text" name="appdata_path" value="/srv/docker" spellcheck="false"><span class="sf-help">Each app keeps its settings in a folder under this one.</span></label>
+    <label class="sf-field"><span class="sf-label">User ID</span><input type="number" name="puid" value="1000" min="0"><span class="sf-help"><code>id -u</code> prints yours.</span></label>
+    <label class="sf-field"><span class="sf-label">Group ID</span><input type="number" name="pgid" value="1000" min="0"><span class="sf-help"><code>id -g</code> prints yours.</span></label>
+    <label class="sf-field"><span class="sf-label">Time zone</span><input type="text" name="tz" value="UTC" placeholder="America/Chicago" spellcheck="false"><span class="sf-help">Such as <code>America/Chicago</code>.</span></label>
+  </div>
 </div>
-<p>Bring it up:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
-</span></code></pre></div>
-<p>Ryokan is now on port 8978, Jellyfin on 8096, your download client on its default port. Per-service config and state live at <code>/srv/docker/&lt;service&gt;/</code>; downloads land at <code>/srv/media/downloads</code>; the library lives at <code>/srv/media/anime</code>. Everything the stack writes is inspectable from the host (no Docker named volumes to dig through).</p>
-<details class="info">
-<summary>How each client uses <code>/srv/media/downloads</code></summary>
-<p>The five clients structure that folder differently. Ryokan only reads completed files, so all five layouts work transparently.</p>
-<ul>
-<li><strong>qBittorrent / Deluge</strong>: write files directly to <code>/downloads/&lt;category&gt;/&lt;file&gt;</code> inside the container (or <code>/downloads/&lt;file&gt;</code> if no category is set). Single shared folder.</li>
-<li><strong>Transmission</strong>: writes everything to <code>/downloads/</code>, with a <code>.part</code> suffix on the filename while the torrent is in flight; renames on completion.</li>
-<li><strong>rTorrent</strong>: splits <code>/downloads/temp/</code> (in-progress) and <code>/downloads/complete/</code> (completed); files move from temp to complete when the torrent finishes.</li>
-<li><strong>SABnzbd</strong>: uses a separate folder for in-progress (<code>/incomplete-downloads/</code>, bind-mounted to <code>/srv/docker/sabnzbd/incomplete</code> on the host) and <code>/downloads/</code> for completed.</li>
-</ul>
+<details class="sf-more">
+  <summary>More options: file handling, indexers, VPN, HTTPS, host check</summary>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">File operation mode</span><span class="sf-sub">How a finished download gets into your library.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="radio" name="file_mode" value="hardlink" checked><span class="sf-name">Hardlink</span><span class="sf-desc">Recommended. No extra disk space, and torrents keep seeding.</span></label>
+      <label class="sf-opt"><input type="radio" name="file_mode" value="copy"><span class="sf-name">Copy</span><span class="sf-desc">Torrents keep seeding. Each episode takes its space twice.</span></label>
+      <label class="sf-opt"><input type="radio" name="file_mode" value="move"><span class="sf-name">Move</span><span class="sf-desc">No extra disk space. Torrents stop seeding.</span></label>
+    </div>
+  </div>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">Indexer manager</span><span class="sf-sub">Lets Ryokan search trackers and Usenet indexers besides Nyaa, which is built in.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="radio" name="indexer" value="none" checked><span class="sf-name">None</span><span class="sf-desc">Nyaa only.</span></label>
+      <label class="sf-opt"><input type="radio" name="indexer" value="prowlarr"><span class="sf-name">Prowlarr</span><span class="sf-desc">Torrents and Usenet. The usual choice.</span></label>
+      <label class="sf-opt"><input type="radio" name="indexer" value="jackett"><span class="sf-name">Jackett</span><span class="sf-desc">Torrents only.</span></label>
+    </div>
+  </div>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">VPN</span><span class="sf-sub">Sends your torrent clients through a VPN with Gluetun. You need a VPN subscription.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="radio" name="vpn" value="none" checked><span class="sf-name">None</span><span class="sf-desc">Torrents use your own connection.</span></label>
+      <label class="sf-opt"><input type="radio" name="vpn" value="gluetun"><span class="sf-name">Gluetun</span><span class="sf-desc">ProtonVPN, Mullvad, PIA, NordVPN and others.</span></label>
+    </div>
+  </div>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">Reverse proxy</span><span class="sf-sub">Puts Ryokan on your own domain with HTTPS. You need a domain.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="radio" name="proxy" value="none" checked><span class="sf-name">None</span><span class="sf-desc">Reach Ryokan by address and port.</span></label>
+      <label class="sf-opt"><input type="radio" name="proxy" value="caddy"><span class="sf-name">Caddy</span><span class="sf-desc">Gets certificates on its own. The easy one.</span></label>
+      <label class="sf-opt"><input type="radio" name="proxy" value="traefik"><span class="sf-name">Traefik</span><span class="sf-desc">Configured with labels.</span></label>
+      <label class="sf-opt"><input type="radio" name="proxy" value="nginx"><span class="sf-name">nginx</span><span class="sf-desc">You write the config and bring the certificates.</span></label>
+      <label class="sf-opt"><input type="radio" name="proxy" value="cloudflared"><span class="sf-name">Cloudflare Tunnel</span><span class="sf-desc">No open ports on your router.</span></label>
+    </div>
+  </div>
+  <div class="sf-group">
+    <div class="sf-head"><span class="sf-title">Host check</span><span class="sf-sub">Ryokan's pages then only answer to an IP address, <code>localhost</code>, or the names you list. See <a href="../../docker/#host-check">Host check</a>.</span></div>
+    <div class="sf-grid">
+      <label class="sf-opt"><input type="checkbox" name="host_check"><span class="sf-name">Turn on the host check</span><span class="sf-desc">Off by default.</span></label>
+    </div>
+    <div class="sf-fields">
+      <label class="sf-field sf-wide"><span class="sf-label">Names you open Ryokan by</span><input type="text" name="allowed_hosts" value="" placeholder="nas ryokan.lan ryokan.example.com" spellcheck="false"><span class="sf-help">Separate them with spaces.</span></label>
+    </div>
+  </div>
 </details>
+<div class="sf-summary">
+  <span class="sf-summary-label">Your stack</span>
+  <span class="sf-chips" data-picker="summary"><span class="sf-chip">Ryokan</span><span class="sf-chip">qBittorrent</span><span class="sf-chip">Jellyfin</span></span>
+</div>
+<p class="sf-error" data-picker="problem" hidden></p>
+</form>
+
 <div class="admonition tip">
-<p class="admonition-title">Already running Jellyfin or your download client elsewhere?</p>
-<p>Drop the relevant service block from the compose and skip the corresponding setup step below. Make sure the existing instance can read <code>/srv/media/anime</code> (Jellyfin) or write to <code>/srv/media/downloads</code> (download client), or adjust paths accordingly.</p>
+<p class="admonition-title">Already running one of these?</p>
+<p>Pick <strong>None</strong> for the media server if you have one, or untick the download client and remove it from the file in step 3. Your existing media server has to be able to read <code>/srv/media/anime</code>, and your existing download client has to save into <code>/srv/media/downloads</code>.</p>
 </div>
-<h2 id="2-first-login-to-ryokan">2. First login to Ryokan<a class="headerlink" href="#2-first-login-to-ryokan" title="Anchor link">&para;</a></h2>
-<p>Open <a href="http://localhost:8978">http://localhost:8978</a> in a browser. You'll be redirected to a setup page. Pick a username and a password of at least 8 characters, type it twice, and submit. A password can be up to 72 characters long. Accented letters, Japanese characters and emoji count as two to four each toward that limit. That account is your admin account; Ryokan is single-user, so this is the only one you'll create.</p>
-<p>Ryokan then asks where to put finished episodes. Set <strong>Media Root Path</strong> to <code>/media/anime</code>. That's the path inside Ryokan's container; it maps to <code>/srv/media/anime</code> on your host, the same folder Jellyfin reads from. Leave the file operation mode on Hardlink and the Jellyfin fields empty for now (step 5 connects it), and click <strong>Save and continue</strong>. Saving turns on post-processing, which renames each finished download and places it in that folder. <strong>Skip for now</strong> leaves post-processing off, and Settings → General has the same settings for later.</p>
-<div class="admonition warning">
-<p class="admonition-title">PUID and PGID matter for shared folders</p>
-<p>The <code>1000:1000</code> defaults work for most homelabs but not all. If files Ryokan writes show up with the wrong owner and Jellyfin can't read them, run <code>id -u</code> and <code>id -g</code> on your media-owning user and update both services' <code>PUID</code> / <code>PGID</code>. <a href="../install/#puid-and-pgid">Installation → PUID and PGID</a> explains why.</p>
-</div>
-<p>After that you'll see an empty library page. That's expected; we haven't told Ryokan about any shows yet.</p>
-<h2 id="3-set-up-jellyfin">3. Set up Jellyfin<a class="headerlink" href="#3-set-up-jellyfin" title="Anchor link">&para;</a></h2>
-<p>Open <a href="http://localhost:8096">http://localhost:8096</a> in another tab. Walk through Jellyfin's first-run wizard:</p>
-<ol>
-<li>Pick your display language.</li>
-<li>Create a Jellyfin admin account (separate from Ryokan's).</li>
-<li><strong>Add a media library</strong>:<ul>
-<li><strong>Content type</strong>: Shows</li>
-<li><strong>Display name</strong>: Anime (or whatever you like)</li>
-<li><strong>Folder</strong>: click the <code>+</code> and add <code>/media/anime</code>. This is the path Jellyfin sees inside its container; it maps to <code>/srv/media/anime</code> on your host, the same folder Ryokan writes to.</li>
-</ul>
-</li>
-<li>Accept the metadata defaults; you can tweak per-library later.</li>
-<li>Finish the wizard.</li>
-</ol>
-<p>Jellyfin's library will be empty for now. That's fine; once Ryokan grabs and imports its first episode, Jellyfin's scheduled scan will pick it up. You can also click <strong>Scan All Libraries</strong> in Dashboard → Libraries to force one immediately after a grab.</p>
-<h2 id="4-add-a-download-client-to-ryokan">4. Add a download client to Ryokan<a class="headerlink" href="#4-add-a-download-client-to-ryokan" title="Anchor link">&para;</a></h2>
-<p>In Ryokan, go to <strong>Settings → Download Clients → Add download client</strong>. Fill in the values for your chosen client below.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:5"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><input id="__tabbed_2_3" name="__tabbed_2" type="radio" /><input id="__tabbed_2_4" name="__tabbed_2" type="radio" /><input id="__tabbed_2_5" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">qBittorrent</label><label for="__tabbed_2_2">Deluge</label><label for="__tabbed_2_3">Transmission</label><label for="__tabbed_2_4">rTorrent</label><label for="__tabbed_2_5">SABnzbd</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<p>First, fetch qBit's randomly-generated initial password from its logs:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>qbittorrent<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">"temporary password"</span>
+<h2 id="3-create-the-folders-and-start-the-stack">3. Create the folders and start the stack<a class="headerlink" href="#3-create-the-folders-and-start-the-stack" title="Anchor link">&para;</a></h2>
+<p>Create the folders the stack uses, owned by the user from step 2:</p>
+<p><button type="button" data-copy="prep" class="stack-copy">Copy commands</button></p>
+<pre data-picker="prep" class="stack-output"><code>sudo mkdir -p \
+  /srv/media/downloads \
+  /srv/media/anime \
+  /srv/docker/ryokan \
+  /srv/docker/qbittorrent \
+  /srv/docker/jellyfin
+sudo chown -R 1000:1000 \
+  /srv/media/downloads \
+  /srv/media/anime \
+  /srv/docker/ryokan \
+  /srv/docker/qbittorrent \
+  /srv/docker/jellyfin</code></pre>
+
+<p>Next, make a folder for the stack itself, for example <code>/srv/stack</code>, and save this in it as <code>docker-compose.yml</code>:</p>
+<p><button type="button" data-copy="compose" class="stack-copy">Copy file</button></p>
+<pre data-picker="compose" class="stack-output"><code class="language-yaml">Loading…</code></pre>
+
+<div data-when="client:rtorrent">
+<p><strong>rTorrent: set a password before the first start.</strong> Without these two files, the ruTorrent page and the address Ryokan uses are open to anyone on your network. Put your own password in place of <code>REPLACE-WITH-YOUR-PASSWORD</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>sudo mkdir -p /srv/docker/rutorrent/passwd
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>docker run --rm httpd:2.4-alpine htpasswd -Bbn admin "REPLACE-WITH-YOUR-PASSWORD" \
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  | sudo tee /srv/docker/rutorrent/passwd/rutorrent.htpasswd &gt; /dev/null
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>sudo cp /srv/docker/rutorrent/passwd/rutorrent.htpasswd /srv/docker/rutorrent/passwd/rpc.htpasswd
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>sudo chown -R 1000:1000 /srv/docker/rutorrent/passwd
 </span></code></pre></div>
-<p>Open <a href="http://localhost:8080">http://localhost:8080</a> and log in (<code>admin</code> / that temporary password). qBit will prompt you to set a real password; do that, then come back to Ryokan.</p>
-<p>In Ryokan's add-client form:</p>
-<ul>
-<li><strong>Kind</strong>: qBittorrent</li>
-<li><strong>URL</strong>: <code>http://qbittorrent:8080</code></li>
-<li><strong>Username</strong>: <code>admin</code></li>
-<li><strong>Password</strong>: the password you just set in qBit</li>
-<li><strong>Category</strong>: <code>ryokan-anime</code></li>
-<li><strong>Default client</strong>: on</li>
-</ul>
+<p>The username is <code>admin</code>.</p>
 </div>
-<div class="tabbed-block">
-<p>Open <a href="http://localhost:8112">http://localhost:8112</a>. The default Deluge web UI password is <code>deluge</code>; set a real one when prompted.</p>
-<p>In Ryokan's add-client form:</p>
-<ul>
-<li><strong>Kind</strong>: Deluge</li>
-<li><strong>URL</strong>: <code>http://deluge:8112</code></li>
-<li><strong>Password</strong>: the password you set in Deluge's web UI</li>
-<li><strong>Label</strong>: <code>ryokan-anime</code></li>
-<li><strong>Default client</strong>: on</li>
-</ul>
+<div data-when="server:plex">
+<p><strong>Plex: add a claim token before the first start.</strong> Plex only lets you set up a new server from the same machine, or with a claim token. Get one at <a href="https://www.plex.tv/claim/">plex.tv/claim</a>, paste it into <code>PLEX_CLAIM</code> in the file, and start the stack within four minutes.</p>
 </div>
-<div class="tabbed-block">
-<p>Open <a href="http://localhost:9091">http://localhost:9091</a> and confirm Transmission is up. Auth is the <code>USER</code> and <code>PASS</code> you set in the compose file.</p>
-<p>In Ryokan's add-client form:</p>
-<ul>
-<li><strong>Kind</strong>: Transmission</li>
-<li><strong>URL</strong>: <code>http://transmission:9091</code></li>
-<li><strong>Username</strong>: <code>admin</code> (matches <code>USER</code> in the compose)</li>
-<li><strong>Password</strong>: whatever you set <code>PASS</code> to in the compose</li>
-<li><strong>Label</strong>: <code>ryokan-anime</code></li>
-<li><strong>Default client</strong>: on</li>
-</ul>
+<div data-when="vpn:gluetun">
+<p><strong>VPN: add your provider's details before the first start.</strong> In the <code>gluetun</code> part of the file, set <code>VPN_SERVICE_PROVIDER</code> and the keys or login your provider gave you. The <a href="https://github.com/qdm12/gluetun-wiki">Gluetun wiki</a> lists what each provider needs. If they are wrong, your torrent clients have no connection at all.</p>
 </div>
-<div class="tabbed-block">
-<p>Open <a href="http://localhost:8082">http://localhost:8082</a> to confirm ruTorrent's web UI loads. If you set up htpasswd in step 1, you'll be prompted for the credentials you generated; log in with <code>admin</code> and your password.</p>
-<p>In Ryokan's add-client form:</p>
-<ul>
-<li><strong>Kind</strong>: rTorrent</li>
-<li><strong>URL</strong>: <code>http://rutorrent:8000/RPC2</code> (port 8000 is the dedicated XML-RPC port inside the container; Ryokan reaches it via Docker's per-compose DNS without it needing a host-side mapping)</li>
-<li><strong>Username</strong>: <code>admin</code> (matches the htpasswd you generated in step 1)</li>
-<li><strong>Password</strong>: the password you put in the htpasswd file</li>
-<li><strong>Label</strong>: <code>ryokan-anime</code></li>
-<li><strong>Default client</strong>: on</li>
-</ul>
-<p>If you skipped htpasswd in step 1 (you'll have to manually delete the <code>/srv/docker/rutorrent/passwd:/passwd</code> mount from the compose), leave Username and Password blank.</p>
+<div data-when="proxy:caddy">
+<p><strong>Caddy: put your domain in the file.</strong> Replace <code>ryokan.example.com</code> in the <code>caddy</code> part of the file with your own name, and point that name at this server.</p>
 </div>
-<div class="tabbed-block">
-<p>Open <a href="http://localhost:8081">http://localhost:8081</a> and walk through SAB's first-run wizard. When you reach the final step, SAB shows you an API key; save it. (You can also pull it later from <strong>Config → General → Security → API Key</strong>; make sure it's the <strong>full</strong> API key, not the read-only <code>nzb_api_key</code>.)</p>
-<p>In Ryokan's add-client form:</p>
-<ul>
-<li><strong>Kind</strong>: SABnzbd</li>
-<li><strong>URL</strong>: <code>http://sabnzbd:8080</code> (the <strong>container</strong> port, not the 8081 host mapping. Ryokan reaches SAB through Docker's per-compose network where SAB is still on its native 8080; the 8081 in the compose is only for your browser to hit from the host.)</li>
-<li><strong>API Key</strong>: paste the full API key</li>
-<li><strong>Category</strong>: <code>ryokan-anime</code> (Ryokan auto-creates this in SAB if it doesn't exist)</li>
-<li><strong>Default client</strong>: on</li>
-</ul>
+<div data-when="proxy:traefik">
+<p><strong>Traefik: put your email and domain in the file.</strong> Replace <code>you@example.com</code> in the <code>traefik</code> part of the file. Then add the three labels from the comment under it to the <code>ryokan</code> service, with your own name in place of <code>ryokan.example.com</code>.</p>
 </div>
+<div data-when="proxy:nginx">
+<p><strong>nginx: write the config before the first start.</strong> The comment in the <code>nginx</code> part of the file has a config to start from. Save it as <code>/srv/docker/nginx/conf.d/ryokan.conf</code>, and put your certificate files in <code>/srv/docker/nginx/certs</code>.</p>
 </div>
+<div data-when="proxy:cloudflared">
+<p><strong>Cloudflare Tunnel: paste your tunnel token into the file.</strong> Create a tunnel in Cloudflare Zero Trust under <strong>Networks → Tunnels</strong>, and paste its token into <code>TUNNEL_TOKEN</code>. In the tunnel's settings, add a public hostname that points at <code>http://ryokan:8978</code>.</p>
 </div>
-<p>Click <strong>Test connection</strong> in Ryokan. You should see "Connected" with a version number. If not, the <a href="../download-clients/">Download clients page</a> has per-client troubleshooting.</p>
-<div class="admonition tip">
-<p class="admonition-title">If container DNS doesn't resolve</p>
-<p>The URLs above (<code>http://qbittorrent:8080</code>, <code>http://sabnzbd:8080</code>, etc.) rely on Docker's per-compose DNS so containers can reach each other by service name. If you've split Ryokan and your download client into separate compose files, run them on different hosts, or have a network plugin that interferes with Docker DNS, swap the service name for your <strong>host's LAN IP and the host-mapped port</strong>. For example: instead of <code>http://qbittorrent:8080</code>, use <code>http://192.168.1.100:8080</code> (or whatever your host's IP is). It works because every container in the bundled compose publishes its port to the host, so anything that can reach the host can also reach those ports.</p>
-</div>
-<p>Save the row.</p>
-<h2 id="5-optional-connect-jellyfin-to-ryokan">5. (Optional) Connect Jellyfin to Ryokan<a class="headerlink" href="#5-optional-connect-jellyfin-to-ryokan" title="Anchor link">&para;</a></h2>
-<p>In Jellyfin, open <strong>Dashboard → API Keys</strong>, add a key named Ryokan, and copy it. In Ryokan, open <strong>Settings → Connections</strong>, set the Jellyfin <strong>URL</strong> to <code>http://jellyfin:8096</code>, paste the key into <strong>API Key</strong>, click <strong>Test</strong>, then <strong>Save</strong>. From then on Ryokan asks Jellyfin to rescan after each import, so a new episode shows up without waiting for the scheduled scan.</p>
-<h2 id="6-optional-add-an-indexer">6. (Optional) Add an indexer<a class="headerlink" href="#6-optional-add-an-indexer" title="Anchor link">&para;</a></h2>
-<p>Skip this for now if you want; Nyaa is built in and works out of the box. But if you have a Prowlarr or Jackett set up with private trackers, this is the moment to wire those in.</p>
-<p><strong>Settings → Indexers → Add indexer</strong>. Paste the URL Prowlarr or Jackett gave you (it ends in <code>/api</code>), the API key, and pick a name. The defaults handle the rest.</p>
-<p>Click <strong>Test</strong> to confirm Ryokan can reach it.</p>
-<h2 id="7-add-a-show-and-watch-it-land">7. Add a show and watch it land<a class="headerlink" href="#7-add-a-show-and-watch-it-land" title="Anchor link">&para;</a></h2>
-<p>Go back to the library page, click <strong>+ Add Series</strong>, type the name of an anime you want, and pick the right one from the dropdown. Ryokan fetches metadata from AniList by default.</p>
-<p>When the series page opens, each episode row has two icon buttons: <strong>Interactive search</strong> lists the releases ranked by Ryokan's scoring so you can click <strong>Grab</strong> on one, and <strong>Auto search</strong> lets Ryokan grab the highest-scored release for you. <strong>Search Monitored Episodes</strong> at the top runs the automatic version for every monitored episode.</p>
-<p>The grab fires off to your download client. When it finishes:</p>
+<p>Start the stack from the folder that holds the file:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</span></code></pre></div>
+<p>The first start downloads every app, which can take a few minutes. <code>docker compose ps</code> should then list each one as running.</p>
+<p>The addresses below use <code>localhost</code>. If the server is another machine, use its name or IP address in place of <code>localhost</code>.</p>
+<h2 id="4-set-up-your-download-client">4. Set up your download client<a class="headerlink" href="#4-set-up-your-download-client" title="Anchor link">&para;</a></h2>
+<p>Each client needs to save into <code>/srv/media/downloads</code>. <span data-when="mode:hardlink">Ryokan can only hardlink a finished file when the client saved it there.</span><span data-when="mode:copy mode:move">That is where Ryokan picks finished files up from.</span></p>
+<div data-when="client:qbittorrent">
+<h3 id="qbittorrent">qBittorrent<a class="headerlink" href="#qbittorrent" title="Anchor link">&para;</a></h3>
 <ol>
-<li>Post-processing places the file at <code>/srv/media/anime/&lt;show name&gt;/Season 01/&lt;episode&gt;.mkv</code> on your host. These composes mount downloads and the library separately, and a hardlink can't cross mounts, so it's a copy. The shared <code>/data</code> layout in <a href="../docker/#moving-ryokans-data-folder">Docker</a> keeps hardlinks.</li>
-<li>Jellyfin shows it right away if you connected it in step 5. Otherwise it appears after Jellyfin's next library scan (or immediately if you click <strong>Scan All Libraries</strong>).</li>
-<li>The episode is now playable from any Jellyfin client (web, mobile, TV).</li>
+<li>
+<p>qBittorrent prints a temporary password to its log the first time it starts. Find it with:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>qbittorrent<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">"temporary password"</span>
+</span></code></pre></div>
+</li>
+<li>
+<p>Open <a href="http://localhost:8080">http://localhost:8080</a> and log in as <code>admin</code> with your temp password.</p>
+</li>
+<li>Go to <strong>Tools → Options → Web UI</strong> and set your own password under Authentication.</li>
+<li>Go to <strong>Tools → Options → Downloads</strong> and set <strong>Default Save Path</strong> to <code>/srv/media/downloads</code>.</li>
+<li>Click <strong>Save</strong>.</li>
 </ol>
-<h2 id="8-optional-link-anilist-or-mal">8. (Optional) Link AniList or MAL<a class="headerlink" href="#8-optional-link-anilist-or-mal" title="Anchor link">&para;</a></h2>
-<p>If you want Ryokan to add new shows automatically when you mark them watching on AniList or MAL, the <strong><a href="../external-accounts/">External accounts</a></strong> page walks through linking. You can do this any time; your existing manually-added series stay put.</p>
+</div>
+<div data-when="client:deluge">
+<h3 id="deluge">Deluge<a class="headerlink" href="#deluge" title="Anchor link">&para;</a></h3>
+<ol>
+<li>Open <a href="http://localhost:8112">http://localhost:8112</a> and log in with the default password <code>deluge</code>. Change it when Deluge asks.</li>
+<li>Go to <strong>Preferences → Downloads</strong> and set <strong>Download to</strong> to <code>/srv/media/downloads</code>.</li>
+<li>Go to <strong>Preferences → Network</strong>. Under Incoming Port, untick <strong>Use Random Port</strong> and set the port to <code data-v="peer-deluge">6881</code>. This is the port the stack opens for Deluge.</li>
+<li>Click <strong>Apply</strong>.</li>
+</ol>
+</div>
+<div data-when="client:transmission">
+<h3 id="transmission">Transmission<a class="headerlink" href="#transmission" title="Anchor link">&para;</a></h3>
+<ol>
+<li>Open <a href="http://localhost:9091">http://localhost:9091</a>. The stack runs Transmission without a login.</li>
+<li>Open the preferences and go to <strong>Torrents</strong>. Set <strong>Download to</strong> to <code>/srv/media/downloads</code>.</li>
+<li>Turn on <strong>Use temporary folder</strong> and set it to <code>/srv/media/downloads/incomplete</code>.</li>
+</ol>
+</div>
+<div data-when="client:rtorrent">
+<h3 id="rtorrent">rTorrent<a class="headerlink" href="#rtorrent" title="Anchor link">&para;</a></h3>
+<p>rTorrent's image saves to its own folder, so its config file needs two changes. Open <code>/srv/docker/rutorrent/rtorrent/.rtorrent.rc</code> in an editor.</p>
+<ol>
+<li>
+<p>Add this line:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>directory.default.set = /srv/media/downloads/temp
+</span></code></pre></div>
+</li>
+<li>
+<p>Change the line that starts with <code>method.insert = d.get_finished_dir</code> to:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>method.insert = d.get_finished_dir, simple, "cat=/srv/media/downloads/complete/,$d.custom1="
+</span></code></pre></div>
+</li>
+<li>
+<p>Restart it:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>restart<span class="w"> </span>rutorrent
+</span></code></pre></div>
+</li>
+</ol>
+<p>The ruTorrent page is at <a href="http://localhost:8082">http://localhost:8082</a>. Log in as <code>admin</code> with the password from step 3.</p>
+</div>
+<div data-when="client:sabnzbd">
+<h3 id="sabnzbd">SABnzbd<a class="headerlink" href="#sabnzbd" title="Anchor link">&para;</a></h3>
+<ol>
+<li>Open <a href="http://localhost:8081">http://localhost:8081</a> and go through the setup wizard. This is where you enter your Usenet provider.</li>
+<li>Go to <strong>Config → Folders</strong>. Set <strong>Temporary Download Folder</strong> to <code>/srv/media/downloads/incomplete</code> and <strong>Completed Download Folder</strong> to <code>/srv/media/downloads/complete</code>.</li>
+<li>Go to <strong>Config → Special</strong> and add <code>sabnzbd</code> to <strong>host_whitelist</strong>. Save, and restart SABnzbd. Until you do, SABnzbd answers Ryokan with "Access denied".</li>
+<li>Go to <strong>Config → General → Security</strong> and copy the <strong>API Key</strong>. Use the full API key, not the NZB key. You need it in step 7.</li>
+</ol>
+</div>
+<h2 id="5-set-up-your-media-server">5. Set up your media server<a class="headerlink" href="#5-set-up-your-media-server" title="Anchor link">&para;</a></h2>
+<div data-when="server:none">
+<p>You picked no media server, so there is nothing to do here. If you run one somewhere else, give it a library for shows that points at <code>/srv/media/anime</code>.</p>
+</div>
+<div data-when="server:jellyfin">
+<p>Open <a href="http://localhost:8096">http://localhost:8096</a> and go through Jellyfin's setup wizard.</p>
+<ol>
+<li>Create an admin account. It is separate from Ryokan's.</li>
+<li>Add a library with the content type <strong>Shows</strong>, and give it the folder <code>/srv/media/anime</code>.</li>
+<li>Accept the defaults for everything else.</li>
+</ol>
+<p>Then make a key for Ryokan. Go to <strong>Dashboard → API Keys</strong>, click <strong>+</strong>, and name it "Ryokan". Copy the key. You need it in the next step.</p>
+</div>
+<div data-when="server:emby">
+<p>Open <a href="http://localhost:8096">http://localhost:8096</a> and go through Emby's setup wizard.</p>
+<ol>
+<li>Create an admin account. It is separate from Ryokan's.</li>
+<li>Add a library with the content type <strong>TV shows</strong>, and give it the folder <code>/srv/media/anime</code>.</li>
+<li>Accept the defaults for everything else.</li>
+</ol>
+<p>Then make a key for Ryokan. Open <strong>Settings</strong> (the gear), go to <strong>Advanced → API Keys</strong>, click <strong>New API Key</strong>, and name it "Ryokan". Copy the key. You need it in the next step.</p>
+</div>
+<div data-when="server:plex">
+<p>Open <a href="http://localhost:32400/web">http://localhost:32400/web</a> and sign in with your Plex account.</p>
+<ol>
+<li>Give the server a name.</li>
+<li>Add a library of the type <strong>TV Shows</strong>, and give it the folder <code>/srv/media/anime</code>.</li>
+</ol>
+<p>Then find your token for Ryokan. Once the library has something in it, open any episode, click <strong>⋯ → Get Info → View XML</strong>, and look at the address of the page that opens. It ends in <code>X-Plex-Token=</code>. The value after it is the token. Until then, leave the media server fields in the next step empty and add them later.</p>
+</div>
+<div data-when="server:any">
+<p>The library stays empty until Ryokan imports its first episode.</p>
+</div>
+<h2 id="6-first-login-to-ryokan">6. First login to Ryokan<a class="headerlink" href="#6-first-login-to-ryokan" title="Anchor link">&para;</a></h2>
+<p>Open <a href="http://localhost:8978">http://localhost:8978</a>. Ryokan asks you to create an account. Choose a username and a password of 8 to 72 characters. Ryokan has a single user, and this is it.</p>
+<p>Next it asks where finished episodes should go:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Media Root Path</td>
+<td><code>/srv/media/anime</code></td>
+</tr>
+<tr>
+<td>File operation mode</td>
+<td><span data-v="file-mode">Hardlink</span></td>
+</tr>
+</tbody>
+</table>
+<div data-when="server:jellyfin">
+<p>The media server fields on the same page are optional, but filling them in means new episodes show up in Jellyfin straight away:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Type</td>
+<td>Jellyfin</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>http://jellyfin:8096</code></td>
+</tr>
+<tr>
+<td>API Key</td>
+<td>The key you made in step 5</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div data-when="server:emby">
+<p>The media server fields on the same page are optional, but filling them in means new episodes show up in Emby straight away:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Type</td>
+<td>Emby</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>http://emby:8096</code></td>
+</tr>
+<tr>
+<td>API Key</td>
+<td>The key you made in step 5</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div data-when="server:plex">
+<p>The media server fields on the same page are optional, but filling them in means new episodes show up in Plex straight away:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Type</td>
+<td>Plex</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>http://plex:32400</code></td>
+</tr>
+<tr>
+<td>API Key</td>
+<td>Your token from step 5</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Click <strong>Save and continue</strong>.</p>
+<p>You can change any of this later under <strong>Settings → General</strong> and <strong>Settings → Connections</strong>. If you click <strong>Skip for now</strong> instead, Ryokan does not import finished downloads until you fill it in there.</p>
+<h2 id="7-add-your-download-client-to-ryokan">7. Add your download client to Ryokan<a class="headerlink" href="#7-add-your-download-client-to-ryokan" title="Anchor link">&para;</a></h2>
+<p>In Ryokan, go to <strong>Settings → Download Clients → Add download client</strong>. Pick the client's kind, give it any name, and fill in the rest:</p>
+<div data-when="client:qbittorrent">
+<p><strong>qBittorrent</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code data-v="url-qbittorrent">http://qbittorrent:8080</code></td>
+</tr>
+<tr>
+<td>Username</td>
+<td><code>admin</code></td>
+</tr>
+<tr>
+<td>Password</td>
+<td>The password you set in step 4</td>
+</tr>
+<tr>
+<td>Category</td>
+<td><code>anime</code></td>
+</tr>
+<tr>
+<td>Download path</td>
+<td>Leave empty</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div data-when="client:deluge">
+<p><strong>Deluge</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code data-v="url-deluge">http://deluge:8112</code></td>
+</tr>
+<tr>
+<td>Password</td>
+<td>The password you set in step 4</td>
+</tr>
+<tr>
+<td>Category</td>
+<td><code>anime</code></td>
+</tr>
+<tr>
+<td>Download path</td>
+<td>Leave empty</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div data-when="client:transmission">
+<p><strong>Transmission</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code data-v="url-transmission">http://transmission:9091</code></td>
+</tr>
+<tr>
+<td>Username and password</td>
+<td>Leave empty</td>
+</tr>
+<tr>
+<td>Category</td>
+<td><code>anime</code></td>
+</tr>
+<tr>
+<td>Download path</td>
+<td>Leave empty</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div data-when="client:rtorrent">
+<p><strong>rTorrent</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code data-v="url-rtorrent">http://rutorrent:8000/RPC2</code></td>
+</tr>
+<tr>
+<td>Username</td>
+<td><code>admin</code></td>
+</tr>
+<tr>
+<td>Password</td>
+<td>The password you set in step 3</td>
+</tr>
+<tr>
+<td>Category</td>
+<td><code>anime</code></td>
+</tr>
+<tr>
+<td>Download path</td>
+<td>Leave empty</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div data-when="client:sabnzbd">
+<p><strong>SABnzbd</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code data-v="url-sabnzbd">http://sabnzbd:8080</code></td>
+</tr>
+<tr>
+<td>API Key</td>
+<td>The key you copied in step 4</td>
+</tr>
+<tr>
+<td>Category</td>
+<td><code>anime</code></td>
+</tr>
+<tr>
+<td>Download path</td>
+<td>Leave empty</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Click <strong>Test connection</strong>. It should say Connected, with a version number. If it does not, see <a href="../download-clients/">Download clients</a>. Then save.</p>
+<p>The first torrent client you add becomes the default for torrents, and the first Usenet client the default for Usenet.</p>
+<div class="admonition tip">
+<p class="admonition-title">If the client is not part of this stack</p>
+<p>The addresses above are names that only work between the apps in this stack. For a client running anywhere else, use the address you would type in a browser, for example <code>http://192.168.1.100:8080</code>.</p>
+</div>
+<h2 id="8-add-a-show-and-watch-it-land">8. Add a show and watch it land<a class="headerlink" href="#8-add-a-show-and-watch-it-land" title="Anchor link">&para;</a></h2>
+<p>On the library page, click <strong>+ Add Series</strong>, type a title, and pick the show from the results.</p>
+<p>On the series page, each episode has two buttons. <strong>Interactive search</strong> lists the available releases, best first, each with a <strong>Grab</strong> button. <strong>Auto search</strong> grabs the best one for you. <strong>Search Monitored Episodes</strong> at the top does the same for every monitored episode.</p>
+<p>When the download finishes:</p>
+<ol>
+<li>Ryokan places the file in <code>/srv/media/anime</code>, under <code>&lt;show name&gt;/Season 01/</code>. <span data-when="mode:hardlink">The file is hardlinked, so it takes no extra space and the client keeps seeding.</span><span data-when="mode:copy">The file is copied, so the client keeps seeding its own copy.</span><span data-when="mode:move">The file is moved out of the downloads folder, and Ryokan removes the finished download from the client.</span></li>
+<li>The media server shows the episode straight away if you connected it in step 6. Otherwise it appears after the server's next library scan.</li>
+</ol>
+<p>That is a working install. The sections below are for the extras you picked, and for things you can add later.</p>
+<div data-when="requests:seerr">
+<h2 id="connect-seerr">Connect Seerr<a class="headerlink" href="#connect-seerr" title="Anchor link">&para;</a></h2>
+<p>Seerr talks to Ryokan the way it would talk to Sonarr and Radarr. Ryokan plays both parts.</p>
+<p><strong>In Ryokan</strong>, go to <strong>Settings → Connections</strong>. Under both Seerr sections, turn on <strong>Enable Sonarr API</strong> and <strong>Enable Radarr API</strong>, click <strong>Generate</strong> beside each API Key, and save. Both are off, with no key, on a new install.</p>
+<p><strong>In Seerr</strong>, open <a href="http://localhost:5055">http://localhost:5055</a> and go through its setup. <span data-when="server:jellyfin">When it asks for your media server, the hostname is <code>jellyfin</code> and the port is <code>8096</code>.</span><span data-when="server:emby">When it asks for your media server, the hostname is <code>emby</code> and the port is <code>8096</code>.</span> When it asks for services, add both of these:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Sonarr server (series)</th>
+<th>Radarr server (films)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hostname</td>
+<td><code>ryokan</code></td>
+<td><code>ryokan</code></td>
+</tr>
+<tr>
+<td>Port</td>
+<td><code>8978</code></td>
+<td><code>8978</code></td>
+</tr>
+<tr>
+<td>Use SSL</td>
+<td>Off</td>
+<td>Off</td>
+</tr>
+<tr>
+<td>API Key</td>
+<td>The Sonarr key from Ryokan</td>
+<td>The Radarr key from Ryokan</td>
+</tr>
+<tr>
+<td>URL Base</td>
+<td>Leave empty</td>
+<td><code>/radarr</code></td>
+</tr>
+<tr>
+<td>Quality Profile</td>
+<td>Default</td>
+<td>Default</td>
+</tr>
+<tr>
+<td>Root Folder</td>
+<td><code>/srv/media/anime</code></td>
+<td><code>/srv/media/anime</code></td>
+</tr>
+</tbody>
+</table>
+<p>Click <strong>Test</strong> on each before saving. The profile and folder lists fill in once the test passes.</p>
+</div>
+<div data-when="vpn:gluetun">
+<h2 id="vpn-port-forwarding">VPN port forwarding<a class="headerlink" href="#vpn-port-forwarding" title="Anchor link">&para;</a></h2>
+<p>Check first that the VPN is up:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>gluetun<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">20</span>
+</span></code></pre></div>
+<p>Your torrent clients now download through the VPN, but other peers cannot connect to you until a port is forwarded. Downloads still work without one. Uploads are slow, and private trackers mark you as unconnectable.</p>
+<p>Port forwarding needs a provider that offers it. ProtonVPN, PIA, PrivateVPN and AirVPN do. Mullvad and NordVPN do not. If yours does not, remove the two <code>VPN_PORT_FORWARDING</code> lines from the file and skip this section.</p>
+<p>First, find the port Gluetun was given:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>gluetun<span class="w"> </span>cat<span class="w"> </span>/tmp/gluetun/forwarded_port
+</span></code></pre></div>
+<p>An empty answer means no port yet. Look in the Gluetun log for the reason.</p>
+<p>Then enter that port in your torrent client:</p>
+<div data-when="client:qbittorrent">
+<ul>
+<li><strong>qBittorrent</strong>: under <strong>Tools → Options → Connection</strong>, set <strong>Port used for incoming connections</strong> to the port and untick <strong>Use UPnP / NAT-PMP port forwarding</strong>. Under <strong>Advanced</strong>, set <strong>Network Interface</strong> to <code>tun0</code>.</li>
+</ul>
+</div>
+<div data-when="client:deluge">
+<ul>
+<li><strong>Deluge</strong>: under <strong>Preferences → Network</strong>, set <strong>Incoming Port</strong> to the port, set <strong>Interface</strong> to <code>tun0</code>, and turn off UPnP and NAT-PMP.</li>
+</ul>
+</div>
+<div data-when="client:transmission">
+<ul>
+<li><strong>Transmission</strong>: in the preferences under <strong>Network</strong>, set <strong>Listening port</strong> to the port and untick <strong>Use UPnP or NAT-PMP port forwarding</strong>.</li>
+</ul>
+</div>
+<div data-when="client:rtorrent">
+<ul>
+<li><strong>rTorrent</strong>: in <code>/srv/docker/rutorrent/rtorrent/.rtorrent.rc</code>, set <code>network.port_range.set</code> to the port twice with a dash between, such as <code>51234-51234</code>, and set <code>network.port_random.set = no</code>. Then restart it.</li>
+</ul>
+</div>
+<p>Some providers change the port when the VPN reconnects. If uploads stop, read the port again and update the client.</p>
+<div data-when="client:sabnzbd">
+<p>SABnzbd stays outside the VPN. Usenet is an encrypted connection to your provider, with no peers.</p>
+</div>
+</div>
+<div data-when="proxy:any">
+<h2 id="reverse-proxy">Reverse proxy<a class="headerlink" href="#reverse-proxy" title="Anchor link">&para;</a></h2>
+<p>Once Ryokan opens on your domain over HTTPS, add this to the <code>environment</code> part of the <code>ryokan</code> service in the file and run <code>docker compose up -d</code> again:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">RYOKAN_TRUSTED_PROXY</span><span class="p">:</span><span class="w"> </span><span class="s">"1"</span>
+</span></code></pre></div>
+<p>Ryokan then reads the visitor's real address from the proxy, and marks the login cookie as secure. Only set it behind a proxy. See <a href="../docker/">Docker reference</a>.</p>
+<div data-when="hostcheck:on">
+<p>The host check is on, so your domain has to be in the list of names in step 2. Without it, every page opened through the proxy answers with a "421" error.</p>
+</div>
+</div>
+<div data-when="indexer:none">
+<h2 id="add-an-indexer-optional">Add an indexer (optional)<a class="headerlink" href="#add-an-indexer-optional" title="Anchor link">&para;</a></h2>
+<p>Nyaa is built in, so Ryokan can search for anime without a separate indexer.</p>
+<p>If you already run Prowlarr or Jackett, go to <strong>Settings → Indexers → Add indexer</strong> in Ryokan. Paste the indexer's URL, which ends in <code>/api</code>, and its API key, give it a name, and click <strong>Test</strong>. To run one as part of this stack, pick it under <strong>More options</strong> in step 2.</p>
+</div>
+<div data-when="indexer:prowlarr">
+<h2 id="add-indexers-with-prowlarr">Add indexers with Prowlarr<a class="headerlink" href="#add-indexers-with-prowlarr" title="Anchor link">&para;</a></h2>
+<p>Nyaa is built in, so Ryokan already searches it. Prowlarr adds other trackers and Usenet indexers.</p>
+<p><strong>In Prowlarr</strong>, open <a href="http://localhost:9696">http://localhost:9696</a> and create a login when it asks.</p>
+<ol>
+<li>Go to <strong>Indexers → Add Indexer</strong> and add the ones you use.</li>
+<li>Go to <strong>Settings → General</strong> and copy the <strong>API Key</strong>.</li>
+</ol>
+<p><strong>In Ryokan</strong>, go to <strong>Settings → Indexers → Add indexer</strong>, once for each indexer in Prowlarr:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Name</td>
+<td>Anything, such as the indexer's name</td>
+</tr>
+<tr>
+<td>Kind</td>
+<td><code>torznab</code> for a torrent indexer, <code>newznab</code> for a Usenet one</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>http://prowlarr:9696/1/api</code></td>
+</tr>
+<tr>
+<td>API Key</td>
+<td>The key from Prowlarr</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>1</code> in the URL is the indexer's number in Prowlarr. To find it, click the indexer in Prowlarr's list. Its Torznab Url ends in a number and <code>/api</code>.</p>
+<p>Click <strong>Test</strong>, then save.</p>
+</div>
+<div data-when="indexer:jackett">
+<h2 id="add-indexers-with-jackett">Add indexers with Jackett<a class="headerlink" href="#add-indexers-with-jackett" title="Anchor link">&para;</a></h2>
+<p>Nyaa is built in, so Ryokan already searches it. Jackett adds other trackers.</p>
+<p><strong>In Jackett</strong>, open <a href="http://localhost:9117">http://localhost:9117</a>.</p>
+<ol>
+<li>Click <strong>Add indexer</strong> and add the ones you use.</li>
+<li>Copy the <strong>API Key</strong> from the top right of the page.</li>
+</ol>
+<p><strong>In Ryokan</strong>, go to <strong>Settings → Indexers → Add indexer</strong>, once for each indexer in Jackett:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Name</td>
+<td>Anything, such as the indexer's name</td>
+</tr>
+<tr>
+<td>Kind</td>
+<td><code>torznab</code></td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>http://jackett:9117/api/v2.0/indexers/NAME/results/torznab/api</code></td>
+</tr>
+<tr>
+<td>API Key</td>
+<td>The key from Jackett</td>
+</tr>
+</tbody>
+</table>
+<p>Put the indexer's own name in place of <code>NAME</code>. To find it, click <strong>Copy Torznab Feed</strong> beside the indexer in Jackett and look at the address it copies.</p>
+<p>Click <strong>Test</strong>, then save.</p>
+</div>
+<h2 id="link-anilist-or-mal-optional">Link AniList or MAL (optional)<a class="headerlink" href="#link-anilist-or-mal-optional" title="Anchor link">&para;</a></h2>
+<p>To have Ryokan add shows when you mark them as watching on AniList or MAL, see <strong><a href="../external-accounts/">External accounts</a></strong>. Shows you added by hand are not affected.</p>
+<h2 id="if-something-goes-wrong">If something goes wrong<a class="headerlink" href="#if-something-goes-wrong" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong>The media server cannot read the files.</strong> Ryokan and the media server are then running as different users. Give every app the same user and group ID in step 2, and run the <code>chown</code> command from step 3 again. See <a href="../install/#puid-and-pgid">PUID and PGID</a>.</li>
+<li><strong>An app keeps restarting.</strong> <code>docker compose logs &lt;name&gt;</code> shows why. The usual cause is a settings folder that was not created in step 3.</li>
+<li><strong><a href="../troubleshooting/">Troubleshooting</a></strong> covers the rest.</li>
+</ul>
 <h2 id="what-next">What next?<a class="headerlink" href="#what-next" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong><a href="../configuration/">Configuration</a></strong> explains every Settings tab so you can tune scoring, choose between hardlink and copy, set up a quality profile, and so on.</li>
-<li><strong><a href="../manual-import/">Importing an existing library</a></strong> is the answer to "I already have 2 TB of anime". Point Ryokan at the folder, check the matches, and it hardlinks everything into place, no re-downloading.</li>
-<li><strong><a href="../stack-builder/">Stack builder</a></strong> generates the rest of the homelab stack (Seerr for requests, Caddy / Traefik for HTTPS, Gluetun for VPN-routed grabs) in the same shape if you want to grow beyond the basics.</li>
-<li><strong><a href="../troubleshooting/">Troubleshooting</a></strong> has the most common stumbles and their fixes.</li>
+<li><strong><a href="../configuration/">Configuration</a></strong>: every Settings tab.</li>
+<li><strong><a href="../manual-import/">Importing an existing library</a></strong>: bring in anime you already have without downloading it again.</li>
+<li><strong><a href="../scoring/">How releases are scored</a></strong>: why Ryokan picks the release it picks.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-10-04.</em></p>
+<p><em>Last updated: 2026-11-18.</em></p>
 
 
 
@@ -1776,10 +2337,10 @@
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.77dd0ce9.min.js"></script>
+      <script src="../assets/javascripts/bundle.3cb411a8.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

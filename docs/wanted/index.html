@@ -24,7 +24,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.73">
+      <meta name="generator" content="zensical-0.1.2">
     
     
       
@@ -35,7 +35,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ebb7f775.min.css">
       
         
           
@@ -431,33 +431,6 @@
     
   
   Quick start
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-                
-              
-                
-                  
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../stack-builder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Stack builder
 
     
   </span>
@@ -878,6 +851,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Searching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#interactive-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Interactive search
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#older-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Older gaps
+      </span>
+    </span>
+  </a>
+  
 </li>
       
     </ul>
@@ -1101,6 +1102,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Searching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#interactive-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Interactive search
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#older-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Older gaps
+      </span>
+    </span>
+  </a>
+  
 </li>
       
     </ul>
@@ -1124,22 +1153,34 @@
 
 
 <h1 id="wanted">Wanted<a class="headerlink" href="#wanted" title="Anchor link">&para;</a></h1>
-<p>The Wanted page lists what the library is still after, the way Sonarr's Wanted page does. It lives at <code>/wanted</code> in the top nav next to Calendar.</p>
+<p>The Wanted page lists the episodes Ryokan still needs. It has two tabs.</p>
 <h2 id="missing">Missing<a class="headerlink" href="#missing" title="Anchor link">&para;</a></h2>
-<p>Every monitored episode that has already aired and is not on disk or downloading, grouped by series. A series whose monitoring is off does not appear, and neither do episodes that have not aired yet. Each row links to the series page and shows the episode numbers it is short of.</p>
+<p>Monitored episodes that have aired and are neither in your library nor downloading, grouped by series. Episodes that have not aired yet are not listed, and neither are series you do not monitor.</p>
 <h2 id="quality-cutoff-unmet">Quality cutoff unmet<a class="headerlink" href="#quality-cutoff-unmet" title="Anchor link">&para;</a></h2>
-<p>Every episode on disk whose quality is below your cutoff (Settings → Quality &amp; Releases), for series that allow upgrades. Each entry shows the quality of the file you have. This is the same list the daily upgrade search works through.</p>
+<p>Episodes you have whose quality is below your cutoff (Settings → Quality &amp; Releases), with the quality of the current file. Only series that allow upgrades are listed. The daily upgrade search works through this same list.</p>
 <h2 id="searching">Searching<a class="headerlink" href="#searching" title="Anchor link">&para;</a></h2>
-<p>Each row has the same pair of buttons the series page offers for an episode. <strong>Auto search</strong> runs the series' automatic search and grabs the best release for every listed episode. <strong>Interactive</strong> opens the release list so you can pick one yourself.</p>
-<p>The <strong>Search for</strong> menu at the top of that window decides what is listed:</p>
+<p>Each row has two buttons:</p>
 <ul>
-<li><strong>Batch releases</strong> looks for season packs and complete releases. Grabbing one opens the file picker with only the files for the episodes you are missing ticked, so a twelve-episode pack for two missing episodes downloads two files. Tick more if you want the rest. Each file shows the episode its name parses to. Picking a single episode from the menu and grabbing a batch from its results ticks that episode's file only. With the file picker turned off in Settings, a batch from this page is grabbed whole, as it is from the series page. Closing the picker without confirming still grabs the files that were ticked, a couple of minutes later; with nothing ticked, the grab is cancelled instead. The picker is for torrents. A Usenet batch has no per-file selection and downloads whole.</li>
-<li><strong>Episodes 3-11</strong> (the whole wanted range, the default when more than one episode is wanted) runs one search and lists every single-episode release for those episodes, with an Episode column and the list ordered by episode. Batches are left out of this list on purpose, so a season pack only shows up when you ask for one. The first twelve wanted episodes each get their own query; past that only the series-wide search runs, so a series missing hundreds of episodes is a batch case. The per-episode entries stay the thorough option for one gap.</li>
-<li><strong>Episode N</strong> searches that one episode, as on the series page.</li>
+<li><strong>Auto search</strong> grabs the best release for every episode listed in the row.</li>
+<li><strong>Interactive</strong> opens a list of releases for you to choose from.</li>
 </ul>
-<p>Press <strong>Grab</strong> on the release you want. A grabbed episode leaves the list once it is downloading.</p>
-<p>Tick several rows and press <strong>Search selected</strong>, or press <strong>Search all</strong> for every row on the current tab. Both run the automatic search. The searches run one series at a time in the background, and the toast in the corner follows along and reports how many releases were grabbed at the end. Only one such run goes at a time; a second request while one is running is refused rather than queued.</p>
-<p>There is no scheduled search for missing episodes. RSS picks up new episodes as they are released, and the upgrade search runs daily. This page is the way to go back for older gaps.</p>
+<p>To search several series at once, tick their rows and press <strong>Search selected</strong>, or press <strong>Search all</strong>. Both run automatic searches, one series at a time. A toast shows the progress and how many releases were grabbed. A second run cannot start while one is going.</p>
+<h3 id="interactive-search">Interactive search<a class="headerlink" href="#interactive-search" title="Anchor link">&para;</a></h3>
+<p>The <strong>Search for</strong> menu at the top of the window sets what is listed:</p>
+<ul>
+<li><strong>Episodes 3-11</strong> (the default when a series is missing more than one episode): single-episode releases for all the wanted episodes, sorted by episode. Batches are not shown here.</li>
+<li><strong>Episode N</strong>: releases for that one episode.</li>
+<li><strong>Batch releases</strong>: season packs and complete releases.</li>
+</ul>
+<p>Press <strong>Grab</strong> on the release you want.</p>
+<p>Grabbing a batch opens the file picker with only the files for your missing episodes ticked. A twelve-episode pack for two missing episodes downloads two files, unless you tick more.</p>
+<div class="admonition warning">
+<p class="admonition-title">Closing the picker does not cancel the grab</p>
+<p>If you close the picker without confirming, the ticked files are grabbed a couple of minutes later. To cancel, untick everything and then close it.</p>
+</div>
+<p>When a series is missing a large number of episodes, search for a batch. The <strong>Episodes</strong> search runs a separate query for each of the first twelve wanted episodes only.</p>
+<h2 id="older-gaps">Older gaps<a class="headerlink" href="#older-gaps" title="Anchor link">&para;</a></h2>
+<p>Ryokan does not search for missing episodes on a schedule. RSS picks up new episodes as they are released, and the upgrade search runs daily. For anything older, search from this page.</p>
 
 
 
@@ -1201,10 +1242,10 @@
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.77dd0ce9.min.js"></script>
+      <script src="../assets/javascripts/bundle.3cb411a8.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

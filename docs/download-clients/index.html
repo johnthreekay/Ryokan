@@ -24,7 +24,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.73">
+      <meta name="generator" content="zensical-0.1.2">
     
     
       
@@ -35,7 +35,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ebb7f775.min.css">
       
         
           
@@ -431,33 +431,6 @@
     
   
   Quick start
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-                
-              
-                
-                  
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../stack-builder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Stack builder
 
     
   </span>
@@ -902,10 +875,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#per-client-setup" class="md-nav__link">
+  <a href="#setting-up-each-client" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Per-client setup
+        Setting up each client
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-test-connection-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        If "Test connection" fails
       </span>
     </span>
   </a>
@@ -921,16 +905,33 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#if-test-connection-fails" class="md-nav__link">
+    <nav class="md-nav" aria-label="Seeding rules and removal after import">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#seeding-rules" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        If "Test connection" fails
+        Seeding rules
       </span>
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#removing-downloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Removing downloads
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1093,10 +1094,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#per-client-setup" class="md-nav__link">
+  <a href="#setting-up-each-client" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Per-client setup
+        Setting up each client
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-test-connection-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        If "Test connection" fails
       </span>
     </span>
   </a>
@@ -1112,16 +1124,33 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#if-test-connection-fails" class="md-nav__link">
+    <nav class="md-nav" aria-label="Seeding rules and removal after import">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#seeding-rules" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        If "Test connection" fails
+        Seeding rules
       </span>
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#removing-downloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Removing downloads
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1168,151 +1197,164 @@
 
 
 <h1 id="download-clients">Download clients<a class="headerlink" href="#download-clients" title="Anchor link">&para;</a></h1>
-<p>Ryokan supports five download clients: <strong>qBittorrent</strong>, <strong>Deluge</strong>, <strong>Transmission</strong>, <strong>rTorrent</strong>, and <strong>SABnzbd</strong>. You can run more than one at once and Ryokan routes per-grab; the bundled <a href="../quick-start/">quick start</a> walks through deploying one alongside Ryokan and Jellyfin in a single compose.</p>
-<p>This page is the deeper reference: per-client setup walkthroughs, the fields Ryokan needs, common gotchas, plus how Ryokan picks which client to send each grab to. Use it when you're connecting Ryokan to a client you already have running, or when you're trying to figure out why a connection isn't working.</p>
-<h2 id="per-client-setup">Per-client setup<a class="headerlink" href="#per-client-setup" title="Anchor link">&para;</a></h2>
-<p>Pick the tab for your client. Each one covers preparation steps inside the client itself, the fields to fill in under <strong>Settings → Download Clients → Add download client</strong> in Ryokan, and the gotchas worth knowing about.</p>
+<p>Ryokan works with <strong>qBittorrent</strong>, <strong>Deluge</strong>, <strong>Transmission</strong>, <strong>rTorrent</strong> and <strong>SABnzbd</strong>. You can add more than one.</p>
+<p>The <a href="../quick-start/">quick start</a> sets up a client together with Ryokan. This page is for connecting a client you already run, and for working out why a connection fails.</p>
+<h2 id="setting-up-each-client">Setting up each client<a class="headerlink" href="#setting-up-each-client" title="Anchor link">&para;</a></h2>
+<p>Clients are added under <strong>Settings → Download Clients → Add download client</strong>.</p>
+<p>The URLs below use the service name from a compose file, such as <code>http://qbittorrent:8080</code>. That works when Ryokan and the client are in the same compose file. Otherwise use the address you open the client with in a browser.</p>
+<p>Give Ryokan its own category or label, such as <code>ryokan-anime</code>. Ryokan only looks at downloads with that category, so it leaves everything else in the client alone.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:5"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><input id="__tabbed_1_5" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">qBittorrent</label><label for="__tabbed_1_2">Deluge</label><label for="__tabbed_1_3">Transmission</label><label for="__tabbed_1_4">rTorrent</label><label for="__tabbed_1_5">SABnzbd</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<p><strong>Tested against</strong>: qBittorrent 4.x and 5.x. Ryokan auto-detects 5.x's renamed <code>stop</code>/<code>start</code> endpoints (was <code>pause</code>/<code>resume</code> in 4.x) by trying the new names first and falling back, so you don't have to tell Ryokan which version you're on.</p>
-<p><strong>Prepare qBit:</strong></p>
-<ol>
-<li>Open qBit's web UI (default port 8080) and create your admin password if it's still on the random first-run password.</li>
-<li>Nothing to change for qBit's host check. It's on by default, but its <strong>Server domains</strong> list (Tools → Options → Web UI) defaults to <code>*</code>, which accepts <code>qbittorrent:8080</code>. Only if you narrowed that list, add the name Ryokan calls qBit by; otherwise qBit answers 401 even for correct credentials, and Settings → Download Clients shows "qBittorrent Unauthorized" while the web UI works from your browser.</li>
-</ol>
-<p><strong>Add it to Ryokan</strong> (Settings → Download Clients):</p>
+<p>Works with qBittorrent 4.x and 5.x.</p>
 <ul>
 <li><strong>Kind</strong>: qBittorrent</li>
-<li><strong>URL</strong>: <code>http://qbittorrent:8080</code> if Ryokan and qBit share a Docker compose, else your host's LAN IP and the host-mapped port.</li>
-<li><strong>Username</strong> / <strong>Password</strong>: what you log in to the web UI with. qBit re-auths on 403 via session cookie, so Ryokan won't pester you about expired tokens.</li>
-<li><strong>Category</strong>: a distinctive label like <code>ryokan-anime</code>. Ryokan only sees torrents in this category, which keeps it from accidentally touching torrents added by other tools.</li>
+<li><strong>URL</strong>: <code>http://qbittorrent:8080</code></li>
+<li><strong>Username</strong> / <strong>Password</strong>: your web UI login</li>
+<li><strong>Category</strong>: <code>ryokan-anime</code></li>
 </ul>
 <div class="admonition warning">
-<p class="admonition-title">Silent grab failures</p>
-<p>qBit's <code>POST /torrents/add</code> returns <code>Ok.</code> and fetches the <code>.torrent</code> URL <strong>server-side</strong>. A silent fetch failure (tracker timeout, indexer 404) looks identical to a successful add from Ryokan's perspective. If a grab "vanishes" without showing up in qBit, check qBit's own logs first; that's where the failure lives. <code>docker compose logs qbittorrent | tail -50</code> is usually enough.</p>
+<p class="admonition-title">If a grab never appears in qBittorrent</p>
+<p>qBittorrent fetches the <code>.torrent</code> file itself and reports success to Ryokan before it has done so. If the fetch fails, the grab looks fine in Ryokan and is missing from qBittorrent. Check qBittorrent's log: <code>docker compose logs qbittorrent | tail -50</code>.</p>
 </div>
+<p>If Test connection says "Unauthorized" with the right password, look at <strong>Tools → Options → Web UI → Server domains</strong> in qBittorrent. It has to be <code>*</code> or include the name in Ryokan's URL.</p>
 </div>
 <div class="tabbed-block">
-<p><strong>Prepare Deluge:</strong></p>
-<ol>
-<li>Open Deluge's web UI (default port 8112) and set a real password; the default is <code>deluge</code>.</li>
-<li>The <strong>Label plugin</strong> is bundled but disabled by default. Ryokan's Test connection enables it automatically on first connect. There's a known upstream Deluge bug where an enabled-but-not-restarted Label plugin leaves RPC methods unregistered for one session; if it doesn't take, click Test connection again.</li>
-</ol>
-<p><strong>Add it to Ryokan</strong> (Settings → Download Clients):</p>
+<p>Set a web UI password first. The default is <code>deluge</code>.</p>
 <ul>
 <li><strong>Kind</strong>: Deluge</li>
-<li><strong>URL</strong>: <code>http://deluge:8112</code> for in-compose, else LAN IP plus port.</li>
-<li><strong>Password</strong>: the web UI password you set above. Deluge has no per-user auth at the API layer; the password is the only credential.</li>
-<li><strong>Label</strong>: <code>ryokan-anime</code> (or your chosen tag). Ryokan adds and filters by this label.</li>
+<li><strong>URL</strong>: <code>http://deluge:8112</code></li>
+<li><strong>Password</strong>: the web UI password</li>
+<li><strong>Label</strong>: <code>ryokan-anime</code></li>
 </ul>
+<p>Ryokan turns on Deluge's Label plugin the first time it connects. If Test connection fails with "Unknown method", click it again.</p>
 <div class="admonition info">
 <p class="admonition-title">Two-step connect</p>
-<p><code>auth.login(password)</code> establishes a session, but the freshly-authenticated session isn't connected to any daemon. Every <code>core.*</code> call fails with <code>Unknown method</code> until <code>web.connect(host_id)</code> runs. Ryokan handles this in the connection-test path. If you see "Unknown method" errors after configuring Deluge, it usually means the daemon side restarted and the web process needs a re-connect; clicking Test connection again refreshes it.</p>
+<p>Logging in to Deluge's web UI does not connect it to the Deluge daemon. That is a second step, and until it happens every request fails with "Unknown method". Ryokan does both steps when you click Test connection. If the errors come back later, the daemon has probably restarted. Click Test connection again.</p>
 </div>
 </div>
 <div class="tabbed-block">
-<p><strong>Prepare Transmission:</strong></p>
-<ol>
-<li>Open Transmission's web UI (default port 9091) and confirm it loads.</li>
-<li>Set credentials. The linuxserver/transmission image takes them from the <code>USER</code> and <code>PASS</code> environment variables; without them, Transmission accepts unauthenticated connections, which is fine on a localhost-only setup but a problem the moment you expose the web UI.</li>
-</ol>
-<p><strong>Add it to Ryokan</strong> (Settings → Download Clients):</p>
+<p>Set a username and password. The linuxserver image takes them from the <code>USER</code> and <code>PASS</code> environment variables. Without them, anyone who can reach Transmission can control it.</p>
 <ul>
 <li><strong>Kind</strong>: Transmission</li>
-<li><strong>URL</strong>: <code>http://transmission:9091</code> for in-compose, else LAN IP plus port.</li>
-<li><strong>Username</strong> / <strong>Password</strong>: matches the <code>USER</code> and <code>PASS</code> env vars (HTTP Basic auth, not RPC-level). Wrong credentials surface as 401, not as an RPC envelope error.</li>
-<li><strong>Label</strong>: <code>ryokan-anime</code>. Native labels work in Transmission 4.x; on 3.x and earlier Ryokan falls back to a save-path prefix to scope its torrents.</li>
+<li><strong>URL</strong>: <code>http://transmission:9091</code></li>
+<li><strong>Username</strong> / <strong>Password</strong>: your <code>USER</code> and <code>PASS</code></li>
+<li><strong>Label</strong>: <code>ryokan-anime</code></li>
 </ul>
+<p>Labels need Transmission 4.x. On 3.x and earlier, Ryokan tells its torrents apart by their save folder instead.</p>
 <div class="admonition info">
-<p class="admonition-title">Session-ID handshake</p>
-<p>Transmission requires a CSRF session ID on every RPC call. Ryokan handles this transparently. Daemon restart rotates the session ID; mid-stream 409s are retried once automatically.</p>
+<p class="admonition-title">Session IDs</p>
+<p>Transmission requires a session ID with every request and issues a new one when it restarts. Ryokan fetches it and retries by itself, so a restart of Transmission needs nothing from you.</p>
 </div>
 </div>
 <div class="tabbed-block">
-<p>The recommended Docker image is <code>crazymax/rtorrent-rutorrent</code> (linuxserver's rutorrent image was deprecated by its maintainers).</p>
-<p><strong>Prepare rTorrent:</strong></p>
-<ol>
-<li>Set up htpasswd files for the web UI and XML-RPC; the image enforces basic auth when the files exist and runs without auth when they don't. The <a href="../quick-start/#1-run-ryokan-jellyfin-and-your-download-client">quick start's rTorrent tab</a> shows the one-liner that generates both with the same credentials.</li>
-<li>Open ruTorrent's web UI (typically port 8082 host-side in the bundled compose) and confirm it loads with your htpasswd credentials.</li>
-</ol>
-<p><strong>Add it to Ryokan</strong> (Settings → Download Clients):</p>
+<p>Use the <code>crazymax/rtorrent-rutorrent</code> image. Set a password first: the <a href="../quick-start/">Quick start</a> shows the command when you pick rTorrent.</p>
 <ul>
 <li><strong>Kind</strong>: rTorrent</li>
-<li><strong>URL</strong>: <code>http://rutorrent:8000/RPC2</code> for in-compose. Port 8000 is the dedicated XML-RPC port inside the container; <code>/RPC2</code> is the path. Ryokan reaches it via Docker DNS so the XML-RPC port doesn't need a host-side mapping.</li>
-<li><strong>Username</strong> / <strong>Password</strong>: matches <code>/passwd/rpc.htpasswd</code>. Leave both blank if you skipped htpasswd setup.</li>
-<li><strong>Label</strong>: <code>ryokan-anime</code>. Stored in the <code>custom1</code> field per the ruTorrent label convention.</li>
+<li><strong>URL</strong>: <code>http://rutorrent:8000/RPC2</code></li>
+<li><strong>Username</strong> / <strong>Password</strong>: the login from <code>rpc.htpasswd</code>. Leave both blank if you did not set one.</li>
+<li><strong>Label</strong>: <code>ryokan-anime</code></li>
 </ul>
 <div class="admonition warning">
-<p class="admonition-title"><code>d.erase</code> doesn't touch disk</p>
-<p>rTorrent's docs are explicit: removing a torrent leaves the data in place. Ryokan reads <code>content_path</code> first, calls <code>d.erase</code>, then recursively removes the filesystem path. There's a guard preventing a multi-file torrent dumped at the save root from nuking the entire download directory, but if you've configured rTorrent in an unusual way (no save-path subfolder, all torrents share <code>/downloads</code>) this is the bit to double-check.</p>
+<p class="admonition-title">Give each torrent its own folder</p>
+<p>When Ryokan removes a torrent from rTorrent it also deletes the torrent's files, because rTorrent does not. If rTorrent saves every torrent straight into one shared folder, check that setup before you let Ryokan remove downloads.</p>
 </div>
-<div class="admonition info">
-<p class="admonition-title">Cold-DHT metadata fetches are slow</p>
-<p>rTorrent's metadata-fetch budget is 60s here vs. 10s for the BT clients with trackers; the longer budget is real, not a Ryokan-side throttle. If a magnet-only release without trackers takes a minute to start downloading, that's expected.</p>
-</div>
+<p>A magnet link without trackers can take up to a minute to start in rTorrent.</p>
 </div>
 <div class="tabbed-block">
-<p><strong>Prepare SAB:</strong></p>
 <ol>
-<li>Open SAB's web UI (default port 8080 inside the container; in the bundled compose that's host port 8081). Walk through the first-run wizard.</li>
-<li><strong>Get the API key</strong>: SAB shows it on the wizard's final step, or from <strong>Config → General → Security → API Key</strong> later. Make sure it's the <strong>full</strong> API key, not the read-only <code>nzb_api_key</code>. The Test-connection probe in Ryokan catches a wrong/missing key at config time instead of at first grab.</li>
-<li><strong>Allow the name Ryokan uses</strong>: SAB checks the hostname it is called by. Add <code>sabnzbd</code> (or whatever name is in Ryokan's URL) under <strong>Config → Special → host_whitelist</strong>, Save, and restart SAB. Until then SAB answers Ryokan with "Access denied - Hostname verification failed", which Test connection shows as a 403.</li>
+<li>Copy the API key from <strong>Config → General → Security</strong>. Use the full API key, not the NZB key.</li>
+<li>
+<p>Add <code>sabnzbd</code>, or whatever name is in Ryokan's URL, to <strong>Config → Special → host_whitelist</strong>. Save and restart SABnzbd. Without this, Test connection fails with a 403.</p>
+</li>
+<li>
+<p><strong>Kind</strong>: SABnzbd</p>
+</li>
+<li><strong>URL</strong>: <code>http://sabnzbd:8080</code>. This is SABnzbd's own port, not the host port you may have mapped it to.</li>
+<li><strong>API Key</strong>: the full API key</li>
+<li><strong>Category</strong>: <code>ryokan-anime</code>. Ryokan creates it in SABnzbd when you click Test connection.</li>
 </ol>
-<p><strong>Add it to Ryokan</strong> (Settings → Download Clients):</p>
-<ul>
-<li><strong>Kind</strong>: SABnzbd</li>
-<li><strong>URL</strong>: <code>http://sabnzbd:8080</code> for in-compose. Note this is the <strong>container</strong> port, not whatever host port you mapped SAB to. Ryokan reaches SAB through Docker's per-compose network where SAB still listens on its native 8080; the host mapping only matters for your browser.</li>
-<li><strong>API Key</strong>: paste the full key.</li>
-<li><strong>Category</strong>: <code>ryokan-anime</code>. SAB auto-creates this category on first connect if it doesn't exist (Ryokan's Test connection handles the create via <code>set_config</code>).</li>
-</ul>
-<div class="admonition info">
-<p class="admonition-title">No per-file selection on the wire</p>
-<p>NZBs are opaque blobs until SAB extracts them. Ryokan's interactive picker still works (it shows the file list for selection if SAB has parsed the headers), but the actual file selection is a no-op at the wire level. SAB downloads the whole NZB, then post-processing imports the files Ryokan wanted and skips the rest.</p>
-</div>
-<div class="admonition tip">
-<p class="admonition-title">Disappearing downloads</p>
-<p>If grabs "vanish" from Ryokan but you can see them downloading in SAB, the category Ryokan was configured to use probably doesn't exist in SAB. Click Test connection to auto-create it; the <a href="../troubleshooting/#sab-downloads-disappear-from-ryokan-but-still-download-in-sab">troubleshooting page</a> has the full diagnosis.</p>
+<p>SABnzbd always downloads a whole release. Ryokan then imports the files it wants and ignores the rest.</p>
+<p>If downloads disappear from Ryokan but are still running in SABnzbd, see <a href="../troubleshooting/#sab-downloads-disappear-from-ryokan-but-still-download-in-sab">Troubleshooting</a>.</p>
 </div>
 </div>
 </div>
-</div>
-<h2 id="seeding-rules-and-removal-after-import">Seeding rules and removal after import<a class="headerlink" href="#seeding-rules-and-removal-after-import" title="Anchor link">&para;</a></h2>
-<p>An indexer row can carry a <strong>Seed Ratio</strong> and a <strong>Seed Time</strong> (minutes). Ryokan passes them to the download client when it adds a grab from that indexer, and its own delete actions (deleting an episode, replacing it with an upgrade) leave such a torrent in the client so the client's rules decide when seeding ends. The one exception is a torrent imported in Move mode, which cannot seed once its file has moved. What the client does with the rules, and what "finished seeding" means to it, differs per client:</p>
-<ul>
-<li><strong>qBittorrent</strong>: both rules become per-torrent share limits. A rule you leave empty keeps qBittorrent's global limit for that dimension (before 1.9.3 it switched the limit off for the torrent). Finished means qBittorrent stopped the torrent at its ratio, seeding-time, or inactivity limit. If qBittorrent is set to remove torrents itself when a limit is reached, that works too.</li>
-<li><strong>Transmission</strong>: the ratio becomes a per-torrent ratio limit. Transmission has no total seeding-time limit, so Seed Time becomes its idle limit: the torrent stops after that many minutes without upload activity, which is never earlier than the same number of minutes of seeding and can be later while peers are still pulling. Finished means Transmission stopped the torrent at its ratio or idle limit.</li>
-<li><strong>Deluge</strong>: the ratio becomes a per-torrent stop ratio. Deluge has no seeding-time limit, so Seed Time is ignored. Finished means Deluge paused the torrent at its stop ratio.</li>
-<li><strong>rTorrent</strong>: has no per-torrent limits at all, so neither rule is applied and Ryokan logs a warning for each such grab. Configure a ratio group in <code>.rtorrent.rc</code> instead; the group's rules apply to every item in it. Finished means the ratio group closed the item. A torrent you stopped in ruTorrent stays open and is left alone.</li>
-<li><strong>SABnzbd</strong>: nothing seeds. A job leaves SAB's history as soon as Ryokan has imported it.</li>
-</ul>
-<p>Each client row has a <strong>Remove completed downloads</strong> box, on by default. With it on, a torrent is removed from that client, files included, once it has been imported and the client reports it finished; usenet jobs and Move-mode torrents go right after import. Ryokan checks every five minutes. The library keeps its own copy in every mode. Partial and failed imports, and torrents you paused by hand, stay.</p>
-<p>Each row also has a <strong>Remove failed downloads</strong> box, on by default. When the client itself reports a download as failed (SABnzbd's Failed, qBittorrent's error state), Ryokan removes it from the client, files included, before it searches for a replacement. With the box off the failed download stays in the client so you can look at it; the release is blocklisted and the search runs either way.</p>
-<p>For this to work the client has to keep finished downloads long enough for Ryokan to import them, the same requirement Sonarr and Radarr have: SABnzbd should keep completed jobs in its history (its History Retention setting), and a torrent client should pause or stop a torrent when its limit is reached rather than delete it. Ryokan does the deleting once the import is done. If the client removes a download first, Ryokan never sees it finish.</p>
 <h2 id="if-test-connection-fails">If "Test connection" fails<a class="headerlink" href="#if-test-connection-fails" title="Anchor link">&para;</a></h2>
-<p>The most common causes:</p>
 <ul>
-<li><strong>Wrong URL host</strong>: container-name URLs like <code>http://qbittorrent:8080</code> rely on Docker's per-compose DNS. If Ryokan and the client are in separate compose files, run on different hosts, or you have a network plugin that interferes with Docker DNS, swap the container name for your host's LAN IP and the host-mapped port.</li>
-<li><strong>Wrong port</strong>: container port vs. host port matters. The URLs above use container ports (because Ryokan reaches the client over Docker's internal network); the host-mapped port is only for your browser.</li>
-<li><strong>Stuck-on credentials</strong>: qBit's "Unauthorized" with right credentials means its Server domains list leaves out the name Ryokan uses (see the qBittorrent tab above). SAB's "Unauthorized" usually means the read-only <code>nzb_api_key</code> was pasted instead of the full key, and its 403 means the name Ryokan uses isn't in <code>host_whitelist</code> (see the SABnzbd tab).</li>
+<li><strong>Cannot connect</strong>: a URL with a service name only works inside the same compose file. Try the client's IP address and published port.</li>
+<li><strong>Wrong port</strong>: inside a compose file, use the client's own port (SABnzbd's 8080), not the host port you mapped it to (8081 in the quick start).</li>
+<li><strong>qBittorrent says Unauthorized</strong>: see the qBittorrent tab above.</li>
+<li><strong>SABnzbd says Unauthorized</strong>: you pasted the NZB key. Use the full API key.</li>
+<li><strong>SABnzbd returns 403</strong>: the name in Ryokan's URL is not in <code>host_whitelist</code>.</li>
 </ul>
+<h2 id="seeding-rules-and-removal-after-import">Seeding rules and removal after import<a class="headerlink" href="#seeding-rules-and-removal-after-import" title="Anchor link">&para;</a></h2>
+<h3 id="seeding-rules">Seeding rules<a class="headerlink" href="#seeding-rules" title="Anchor link">&para;</a></h3>
+<p>An indexer can have a <strong>Seed Ratio</strong> and a <strong>Seed Time</strong> (minutes). Ryokan passes them to the download client with each grab from that indexer. What happens next depends on the client:</p>
+<table>
+<thead>
+<tr>
+<th>Client</th>
+<th>Seed Ratio</th>
+<th>Seed Time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>qBittorrent</td>
+<td>Per-torrent ratio limit</td>
+<td>Per-torrent seeding time limit</td>
+</tr>
+<tr>
+<td>Transmission</td>
+<td>Per-torrent ratio limit</td>
+<td>Idle limit: the torrent stops after that many minutes without uploading</td>
+</tr>
+<tr>
+<td>Deluge</td>
+<td>Per-torrent stop ratio</td>
+<td>Ignored</td>
+</tr>
+<tr>
+<td>rTorrent</td>
+<td>Ignored</td>
+<td>Ignored</td>
+</tr>
+<tr>
+<td>SABnzbd</td>
+<td>Not applicable</td>
+<td>Not applicable</td>
+</tr>
+</tbody>
+</table>
+<p>For qBittorrent, a rule you leave empty uses qBittorrent's global limit. Before Ryokan 1.9.3, an empty rule turned that limit off for the torrent. For rTorrent, set up a ratio group in <code>.rtorrent.rc</code> instead.</p>
+<p>A torrent with seeding rules is left in the client when you delete or upgrade its episode in Ryokan, so it can finish seeding.</p>
+<h3 id="removing-downloads">Removing downloads<a class="headerlink" href="#removing-downloads" title="Anchor link">&para;</a></h3>
+<p>Each client has two boxes, both on by default:</p>
+<ul>
+<li><strong>Remove completed downloads</strong>: once a download has been imported and the client reports it has finished seeding, Ryokan removes it from the client along with its files. Your library keeps its own copy. Usenet downloads, and torrents imported in Move mode, are removed straight after import.</li>
+<li><strong>Remove failed downloads</strong>: when the client reports a download as failed, Ryokan removes it before searching for a replacement. With the box off, the failed download stays in the client. The release is blocklisted either way.</li>
+</ul>
+<p>Downloads that were only partly imported, and torrents you paused yourself, are never removed.</p>
+<div class="admonition warning">
+<p class="admonition-title">Let Ryokan do the removing</p>
+<p>The client has to keep a finished download until Ryokan has imported it. Set torrent clients to pause or stop at their limit, not to delete, and set SABnzbd to keep completed jobs in its history. If the client removes a download first, Ryokan never sees it finish.</p>
+</div>
 <h2 id="per-client-download-paths">Per-client download paths<a class="headerlink" href="#per-client-download-paths" title="Anchor link">&para;</a></h2>
-<p>Each client gets its own <code>download_path</code> config field for cases where Ryokan and the client see the filesystem differently. Common reasons:</p>
+<p>Fill in a client's <strong>Download path</strong> when Ryokan and the client see the download folder at different paths. For example:</p>
 <ul>
-<li>Docker volumes mounted at different host paths.</li>
-<li>Seedboxes accessed over SSHFS where the local mount point doesn't match the seedbox's internal path.</li>
-<li>Existing setups where the client was using <code>/data/torrents</code> and Ryokan's compose mounts at <code>/downloads</code>.</li>
+<li>the client saves to <code>/data/torrents</code>, but Ryokan has the same folder mounted at <code>/downloads</code></li>
+<li>the client runs on a seedbox that you have mounted locally</li>
 </ul>
-<p>The translation works as a prefix substitution: when the client reports a path, Ryokan replaces the client's <code>save_path</code> prefix with the configured <code>download_path</code> to get a path Ryokan itself can read. If the client-reported path doesn't start with the expected prefix, Ryokan returns the path unchanged rather than silently rewriting; silent rewrite would mask misconfiguration as a "file not found" error later.</p>
-<p>In the bundled compose (<a href="../quick-start/">quick start</a>), Ryokan and the download client both bind-mount the same host folder at <code>/downloads</code>, so the path is identical on both sides and <code>download_path</code> stays empty.</p>
+<p>Ryokan replaces the start of each path the client reports with this value.</p>
+<p>Leave it empty when both use the same path, as in the <a href="../quick-start/">quick start</a>.</p>
 <h2 id="routing-which-client-gets-each-grab">Routing: which client gets each grab<a class="headerlink" href="#routing-which-client-gets-each-grab" title="Anchor link">&para;</a></h2>
-<p>When you have multiple download clients configured, Ryokan picks one per-grab based on this chain:</p>
+<p>With more than one client, Ryokan chooses in this order:</p>
 <ol>
-<li><strong>Per-indexer pin</strong>. A torznab or newznab indexer row has an optional <code>download_client_id</code>. Grabs from that indexer always go to the pinned client, overriding everything below.</li>
-<li><strong>Per-protocol default</strong>. Without a pin, torznab grabs (torrent metadata) go to the torrent default; newznab grabs (NZB metadata) go to the usenet default. Both defaults can coexist (one row per protocol marked <code>is_default</code>).</li>
-<li><strong>Nyaa</strong>. Has its own <code>nyaa_download_client_id</code> config field. Always falls back to the torrent default if unset; Nyaa items are magnets or <code>.torrent</code> URLs, so routing them to a usenet client would just trip the protocol guard at add-time.</li>
+<li>The client set on the indexer, if any.</li>
+<li>For Nyaa, the client set on the Nyaa card.</li>
+<li>The default client for the type of download: the torrent default for torznab indexers and Nyaa, the Usenet default for newznab indexers.</li>
 </ol>
-<p>At grab time the chosen client ID is stamped on the <code>grabbed_torrents</code> row, so post-processing routes back through the same client even if you change defaults later.</p>
+<p>The download keeps the client it was sent to, so changing a default later does not affect downloads already running.</p>
 <hr />
 <p><em>Last updated: 2026-09-06.</em></p>
 
@@ -1376,10 +1418,10 @@
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.77dd0ce9.min.js"></script>
+      <script src="../assets/javascripts/bundle.3cb411a8.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

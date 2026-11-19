@@ -24,7 +24,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.73">
+      <meta name="generator" content="zensical-0.1.2">
     
     
       
@@ -35,7 +35,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ebb7f775.min.css">
       
         
           
@@ -431,33 +431,6 @@
     
   
   Quick start
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-                
-              
-                
-                  
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../stack-builder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Stack builder
 
     
   </span>
@@ -1190,37 +1163,35 @@
 
 
 <h1 id="external-accounts">External accounts<a class="headerlink" href="#external-accounts" title="Anchor link">&para;</a></h1>
-<p>Link your AniList or MyAnimeList account and Ryokan adds the anime you mark as watching (or planning, completed, and so on) to your library for you. New entries on the linked side show up in Ryokan on the next sync, and status changes carry over.</p>
-<p>Both accounts are set up under <strong>Settings → Connections</strong>.</p>
+<p>Link your AniList or MyAnimeList account and Ryokan adds the anime on your lists to your library, and keeps up with changes you make there.</p>
+<p>Accounts are linked under <strong>Settings → Connections</strong>.</p>
 <h2 id="linking-anilist">Linking AniList<a class="headerlink" href="#linking-anilist" title="Anchor link">&para;</a></h2>
 <ol>
 <li>In Ryokan, go to <strong>Settings → Connections</strong> and click <strong>Link AniList</strong>.</li>
 <li>AniList opens in a new tab. Sign in if you need to, then click <strong>Approve</strong>.</li>
-<li>Come back to Ryokan. The account links itself; you can close the other tab.</li>
+<li>Return to Ryokan. The account is linked and you can close the AniList tab.</li>
 </ol>
-<p>If your browser blocked the new tab, allow pop-ups for Ryokan and click <strong>Link AniList</strong> again. If the tab opened but the link never completed, the page AniList sent you to shows the token and state; paste them into the box that is still open in Ryokan.</p>
-<p>The link lasts about a year; after that Ryokan asks you to link again. Your AniList score format (10-point, 100-point, and so on) is picked up automatically, so changing it on AniList needs no re-link.</p>
+<p>If the new tab was blocked, allow pop-ups for Ryokan and click <strong>Link AniList</strong> again. If the tab opened but Ryokan still shows the linking box, copy the token and state from the page AniList sent you to and paste them into that box.</p>
+<p>An AniList link lasts about a year. After that Ryokan asks you to link again.</p>
 <h2 id="linking-myanimelist">Linking MyAnimeList<a class="headerlink" href="#linking-myanimelist" title="Anchor link">&para;</a></h2>
-<p>Same steps: click <strong>Link MyAnimeList</strong>, approve on MyAnimeList, and come back to Ryokan. The same fallback applies if the tab was blocked.</p>
-<p>MyAnimeList links renew themselves in the background. You only need to link again if you remove Ryokan from your MyAnimeList apps or change your MyAnimeList password.</p>
+<p>The steps are the same: click <strong>Link MyAnimeList</strong>, approve, and return to Ryokan.</p>
+<p>A MyAnimeList link renews itself. You only have to link again if you remove Ryokan from your MyAnimeList apps or change your MyAnimeList password.</p>
 <h2 id="watch-list-sync">Watch-list sync<a class="headerlink" href="#watch-list-sync" title="Anchor link">&para;</a></h2>
-<p>Once an account is linked, Ryokan checks it every 30 minutes. <strong>Sync interval (minutes)</strong> in the same settings section changes that, down to every 15 minutes. Each check:</p>
-<ul>
-<li>picks up anime you added or moved between lists, limited to the lists you ticked (Watching, Planning, Paused, Dropped, Completed),</li>
-<li>adds new series to your library and adjusts monitoring on existing ones to match their status on the linked side,</li>
-<li>about once a week, re-reads the whole list so anime you removed are noticed too.</li>
-</ul>
-<p><strong>Sync now</strong> next to the linked account runs a check right away.</p>
+<p>Ryokan checks the linked account every 30 minutes. Change that with <strong>Sync interval (minutes)</strong>. The minimum is 15.</p>
+<p>Tick the lists you want synced: Watching, Planning, Paused, Dropped, Completed. On each check, Ryokan adds series that are new on those lists and updates monitoring for series whose status changed. About once a week it reads the whole list again, which is when it notices anime you removed.</p>
+<p><strong>Sync now</strong> runs a check immediately.</p>
 <h2 id="keeping-a-removed-series-off-the-sync">Keeping a removed series off the sync<a class="headerlink" href="#keeping-a-removed-series-off-the-sync" title="Anchor link">&para;</a></h2>
-<p>Removing a series from the library does not remove it from your AniList or MyAnimeList list, so the next sync would add it back. To stop that, tick the <strong>Keep it off my … sync</strong> box in the remove dialog. On the series page the box appears once an account is linked; the bulk remove on the Library page always has it. The series goes on the <strong>Sync exclusions</strong> list inside the External Accounts card under Settings → Connections, and a sync skips it until you press <strong>Allow again</strong> there. The list appears once an account is linked or a series is on it. This is the same idea as Sonarr's import-list exclusions.</p>
+<p>Removing a series from Ryokan does not remove it from your AniList or MyAnimeList list, so the next sync adds it back.</p>
+<p>To prevent that, tick <strong>Keep it off my … sync</strong> when you remove the series. It goes on the <strong>Sync exclusions</strong> list under Settings → Connections, and syncs skip it until you press <strong>Allow again</strong> there.</p>
 <h2 id="one-account-at-a-time">One account at a time<a class="headerlink" href="#one-account-at-a-time" title="Anchor link">&para;</a></h2>
-<p>Only one account can be linked. <strong>Unlink</strong> removes the link along with the scores and list memberships that came from it, but the series it added stay in your library with their monitoring and grab history. While an account is linked, your score for each series shows on its library card in the format your account uses.</p>
+<p>Only one account can be linked at a time. While it is linked, your score for each series is shown on its library card.</p>
+<p><strong>Unlink</strong> removes the link and the scores that came from it. The series it added stay in your library.</p>
 <h2 id="common-issues">Common issues<a class="headerlink" href="#common-issues" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong>Re-link required</strong>: the account's access has expired or been revoked. Click <strong>Link</strong> again. Until you do, Ryokan retries at a slower pace and logs the problem under <strong>System → Logs</strong> (category External Sync).</li>
-<li><strong>AniList rate limit</strong>: AniList allows a limited number of requests per minute, and Ryokan stops short of that limit on its own. If syncs look stalled, see <a href="../troubleshooting/#anilist-keeps-returning-429-too-many-requests">Troubleshooting</a>.</li>
-<li><strong>One MyAnimeList entry, several series</strong>: AniList sometimes splits one MyAnimeList entry into parts (Steel Ball Run's stages, for example). A status change on MyAnimeList applies to every part you have in your library, and the sync doesn't add a missing part next to them.</li>
-<li><strong>Linking fails right after pasting the token</strong>: linking uses the same AniList allowance as syncing. If your account is in a cooldown, wait a minute and try again. See <a href="../troubleshooting/#anilist-per-account-cooldown-stuck-past-60s">Troubleshooting</a>.</li>
+<li><strong>Re-link required</strong>: the link has expired or been revoked. Click <strong>Link</strong> again.</li>
+<li><strong>Syncs seem stalled</strong>: AniList limits how many requests Ryokan may make each minute. See <a href="../troubleshooting/#anilist-keeps-returning-429-too-many-requests">Troubleshooting</a>.</li>
+<li><strong>Linking fails right after you paste the token</strong>: linking counts against the same AniList limit. Wait a minute and try again. See <a href="../troubleshooting/#anilist-per-account-cooldown-stuck-past-60s">Troubleshooting</a>.</li>
+<li><strong>One MyAnimeList entry covers several series</strong>: AniList sometimes splits one MyAnimeList entry into parts, such as the stages of Steel Ball Run. A status change on MyAnimeList applies to every part in your library. The sync does not add parts you do not have.</li>
 </ul>
 <hr />
 <p><em>Last updated: 2026-10-26.</em></p>
@@ -1285,10 +1256,10 @@
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.77dd0ce9.min.js"></script>
+      <script src="../assets/javascripts/bundle.3cb411a8.min.js"></script>
       
         <script src="../javascripts/picker.js"></script>
       

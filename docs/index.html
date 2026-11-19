@@ -22,7 +22,7 @@
       
       
       <link rel="icon" href="./assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.73">
+      <meta name="generator" content="zensical-0.1.2">
     
     
       
@@ -33,7 +33,7 @@
       
         
       
-      <link rel="stylesheet" href="./assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="./assets/stylesheets/modern/main.ebb7f775.min.css">
       
         
           
@@ -458,17 +458,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-you-can-do-with-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What you can do with it
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#get-started" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -480,10 +469,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#when-somethings-wrong" class="md-nav__link">
+  <a href="#when-something-is-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        When something's wrong
+        When something is wrong
       </span>
     </span>
   </a>
@@ -514,33 +503,6 @@
     
   
   Quick start
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-                
-              
-                
-                  
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="./stack-builder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Stack builder
 
     
   </span>
@@ -1069,17 +1031,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-you-can-do-with-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What you can do with it
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#get-started" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1091,10 +1042,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#when-somethings-wrong" class="md-nav__link">
+  <a href="#when-something-is-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        When something's wrong
+        When something is wrong
       </span>
     </span>
   </a>
@@ -1122,47 +1073,33 @@
 
 
 <h1 id="welcome">Welcome<a class="headerlink" href="#welcome" title="Anchor link">&para;</a></h1>
-<p><strong>Ryokan</strong> is a self-hosted <strong>anime PVR</strong>. Think of it as a personal recorder for anime releases. You add the shows you want to your library, Ryokan watches for new episodes, picks the best release of each one, and sends it to your download client. Once the file lands, it's renamed and dropped into your media library so Jellyfin (or whatever you use) sees it as a normal episode.</p>
-<p>If you've used Sonarr for TV, the shape is the same. Ryokan is just the anime-tuned version of that idea: release-group reputation, batch packs, fansub conventions, <a href="https://releases.moe">SeaDex</a> authoritative picks, AniList as the metadata source.</p>
+<p><strong>Ryokan</strong> is a self-hosted anime PVR inspired by Sonarr.</p>
+<p>It's made around how anime is released: fansub groups, batch packs, <a href="https://releases.moe">SeaDex</a> picks, AniList for metadata, and auto search that just works.</p>
 <div class="admonition info">
 <p class="admonition-title">Project status</p>
-<p>Ryokan is a one-person project; expect rough edges. v1.X handles anime only; manga and light novels are a later goal, after the anime side is solid.</p>
+<p>Ryokan is a one-person vibecoded project, so expect some rough edges.</p>
 </div>
-<h2 id="what-you-can-do-with-it">What you can do with it<a class="headerlink" href="#what-you-can-do-with-it" title="Anchor link">&para;</a></h2>
-<ul>
-<li><strong>Track anime from AniList or MAL.</strong> Link your account and Ryokan auto-adds shows you mark as watching. Or add them manually from Ryokan's search.</li>
-<li><strong>Search multiple sources at once.</strong> Built-in <a href="https://nyaa.si">Nyaa</a> search, torznab and newznab indexers via Prowlarr or Jackett, direct RSS feeds, and autobrr webhooks all merge into one ranked result list.</li>
-<li><strong>Pick the best release automatically.</strong> A quality profile, <a href="https://trash-guides.info">TRaSH-Guides</a>-compatible Custom Formats (the same scoring rules Sonarr uses), and optional <a href="https://releases.moe">SeaDex</a> picks (a community-curated list of best anime releases) decide what gets grabbed.</li>
-<li><strong>Re-grab when something better lands.</strong> Set a quality cutoff and Ryokan keeps watching for higher-quality uploads, replacing older grabs as higher-scoring releases show up.</li>
-<li><strong>See what's airing this week.</strong> A built-in <a href="calendar/">Calendar</a> shows upcoming episodes for the shows in your library, as a list or a month grid. You can also subscribe to it from your phone or laptop's calendar app.</li>
-<li><strong>Use the download client you already have.</strong> qBittorrent, Deluge, Transmission, rTorrent, or SABnzbd. Run more than one at once and Ryokan routes per-grab.</li>
-<li><strong>Land files in your library automatically.</strong> Hardlink (default; keeps the torrent seeding), copy, or move.</li>
-<li><strong>Import the anime you already have.</strong> Point the <a href="manual-import/">import wizard</a> at a folder; it matches each series on AniList and lands the files in place.</li>
-<li><strong>Undo a deletion.</strong> With a recycle bin configured, deleted episodes and series folders wait there until you restore or purge them.</li>
-<li><strong>Back up and restore from the UI.</strong> Snapshot the database and encryption key from System → Backup, on a schedule if you like, and restore by uploading the archive.</li>
-<li><strong>Plug into Seerr.</strong> Ryokan exposes a Sonarr/Radarr-compatible API so Seerr requests anime the same way it asks Sonarr for TV.</li>
-</ul>
 <h2 id="get-started">Get started<a class="headerlink" href="#get-started" title="Anchor link">&para;</a></h2>
-<p>Ryokan runs as a single Docker container; if anything else in your homelab does, this will too. New to Docker? <a href="https://docs.docker.com/get-started/docker-overview/">Docker's overview</a> is a 10-minute read that covers containers, images, and volumes, which the rest of these docs assume you've got a feel for.</p>
+<p>Ryokan runs as a Docker container. These docs assume you know what containers, images and volumes are.</p>
 <div class="admonition tip">
-<p class="admonition-title">Most users should start here</p>
-<p>The <strong><a href="stack-builder/">Stack builder</a></strong> generates a complete <code>docker-compose.yml</code> for Ryokan <strong>plus</strong> your download client, Jellyfin, Seerr, and a reverse proxy if you want one. Click through a checkbox form, copy the result, run <code>docker compose up -d</code>. Paths line up so post-processing works without fiddling, and the matching Ryokan settings are printed alongside so you know what to paste in once Ryokan is up.</p>
+<p class="admonition-title">Start with the Quick start</p>
+<p>The <strong><a href="quick-start/">Quick start</a></strong> lets you build a <code>docker-compose.yml</code> for Ryokan, your download client, a media server, and optionally Seerr and a reverse proxy. It then walks you through setting each one up.</p>
 </div>
-<p>If you'd rather build the stack yourself, work through these in order:</p>
+<p>Guides:</p>
 <ol>
-<li><strong><a href="quick-start/">Quick start</a></strong>: get Ryokan running and grabbing in about 10 minutes. Hands-held end to end.</li>
-<li><strong><a href="install/">Docker installation</a></strong>: the Docker-only details. Skip if the Stack builder generated your compose for you.</li>
-<li><strong><a href="configuration/">Configuration</a></strong>: the tabs in Settings, what each does, what to leave alone.</li>
-<li><strong><a href="download-clients/">Download clients</a></strong>: per-client setup notes (qBit, Deluge, Transmission, rTorrent, SABnzbd).</li>
-<li><strong><a href="external-accounts/">External accounts</a></strong>: link AniList or MAL so your watch list pulls into Ryokan automatically.</li>
+<li><strong><a href="quick-start/">Quick start</a></strong>: from installing Docker to a first episode.</li>
+<li><strong><a href="install/">Docker installation</a></strong>: setting up a basic install of Ryokan.</li>
+<li><strong><a href="configuration/">Configuration</a></strong>: what each Settings tab does.</li>
+<li><strong><a href="download-clients/">Download clients</a></strong>: setup notes for each client.</li>
+<li><strong><a href="external-accounts/">External accounts</a></strong>: linking AniList/MAL.</li>
 </ol>
-<h2 id="when-somethings-wrong">When something's wrong<a class="headerlink" href="#when-somethings-wrong" title="Anchor link">&para;</a></h2>
+<h2 id="when-something-is-wrong">When something is wrong<a class="headerlink" href="#when-something-is-wrong" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong><a href="troubleshooting/">Troubleshooting</a></strong>: concrete diagnostic steps for the most common "why didn't this work" cases.</li>
-<li><strong><a href="faq/">FAQ</a></strong>: how Ryokan compares to Sonarr, multi-user, manga support, API access, backup.</li>
+<li><strong><a href="troubleshooting/">Troubleshooting</a></strong>: common problems and how to fix them.</li>
+<li><strong><a href="faq/">FAQ</a></strong>: how Ryokan compares to Sonarr, multiple users, API access, and other questions.</li>
 </ul>
 <hr />
-<p><em>Last updated: 2026-08-29.</em></p>
+<p><em>Last updated: 2026-11-18.</em></p>
 
 
 
@@ -1224,10 +1161,10 @@
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":".","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"./assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":".","features":["navigation.tabs","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","content.code.copy","content.code.annotate"],"redirect":null,"search":"./assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="./assets/javascripts/bundle.77dd0ce9.min.js"></script>
+      <script src="./assets/javascripts/bundle.3cb411a8.min.js"></script>
       
         <script src="./javascripts/picker.js"></script>
       
