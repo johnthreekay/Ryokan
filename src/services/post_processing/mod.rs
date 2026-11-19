@@ -1222,9 +1222,11 @@ async fn load_series_import_ctx(
 /// states the prior bool flattened together:
 ///
 /// - `NotReady` — torrent complete but no video files visible yet
-///   (qBit still finalizing, or the pack is all samples/.nfo). Leave
-///   the grab pending so the next tick retries, until the #205 stall
-///   timer (`escalate_if_stalled`) gives up on it.
+///   (qBit still finalizing, the pack is all samples/.nfo, or the
+///   client lists files Ryokan cannot find on disk: an unmounted or
+///   unmapped download path). Leave the grab pending so the next tick
+///   retries, until the #205 stall timer (`escalate_if_stalled`) gives
+///   up on it.
 /// - `Imported` — every video file landed.
 /// - `PartiallyImported { failed_episodes }` — some files imported,
 ///   some failed (typically transient: disk full mid-copy, source
@@ -1541,6 +1543,54 @@ async fn import_torrent(
                 "detected as a misgrab; the misgrab sweep removes and blocklists it",
             )
             .await;
+            return Ok(ImportOutcome::NotReady);
+        }
+    }
+
+    // The client reports the download complete; its files also have to
+    // be where Ryokan can read them. When none of the wanted videos is
+    // at the path the client names (the download folder is not mounted
+    // yet, or the client's path is not mapped onto Ryokan's view of
+    // it), every file op below fails with "No such file", and the grab
+    // was failed on its first tick and the release blocklisted for
+    // good. That is a setup problem, not a bad release: wait as the
+    // empty-list walk above does (#205), and let the stall timer give
+    // up on it. A download with some of its files visible still goes
+    // through, and the missing ones fail as before.
+    if !files_from_walk {
+        let sources: Vec<PathBuf> = video_files
+            .iter()
+            .map(|(_, file)| Path::new(&source_base).join(&file.name))
+            .collect();
+        let expected = sources.first().cloned();
+        let any_visible = tokio::task::spawn_blocking(move || sources.iter().any(|p| p.exists()))
+            .await
+            .unwrap_or(true);
+        if !any_visible {
+            // Every tick lands here until the path resolves; one line
+            // per grab every few hours is enough to act on.
+            if logger::first_in_window(
+                &format!("import-source-missing:{}:{}", grab.id, grab.hash),
+                std::time::Duration::from_secs(6 * 3600),
+            ) {
+                logger::warn(
+                    &state.db,
+                    LogCategory::PostProcess,
+                    &format!(
+                        "Import waiting for '{}': the download client reports it complete, but Ryokan cannot see its files",
+                        grab.torrent_name
+                    ),
+                    &format!(
+                        "expected {}; check that the download folder is mounted and that the client's download path is set to where Ryokan sees it. Retrying every tick. hash={}",
+                        expected
+                            .as_deref()
+                            .unwrap_or(Path::new(&source_base))
+                            .display(),
+                        grab.hash
+                    ),
+                )
+                .await;
+            }
             return Ok(ImportOutcome::NotReady);
         }
     }
@@ -3722,6 +3772,7 @@ pub async fn run_once(state: &AppState) {
                 )
                 .await;
                 let _ = grabbed_torrents::mark_failed(&state.db, grab.id).await;
+                fail_grab_tags(state, grab).await;
             }
             Ok(ImportOutcome::NotReady) => {
                 // Torrent complete but no video files yet — leave as pending.
@@ -3741,6 +3792,7 @@ pub async fn run_once(state: &AppState) {
                 )
                 .await;
                 let _ = grabbed_torrents::mark_failed(&state.db, grab.id).await;
+                fail_grab_tags(state, grab).await;
             }
         }
     }
@@ -3750,7 +3802,7 @@ pub async fn run_once(state: &AppState) {
             logger::warn(
                 &state.db,
                 LogCategory::PostProcess,
-                "Jellyfin refresh failed after import",
+                &format!("{} refresh failed after import", jellyfin.label()),
                 &e,
             )
             .await;
@@ -3758,12 +3810,26 @@ pub async fn run_once(state: &AppState) {
             logger::info(
                 &state.db,
                 LogCategory::PostProcess,
-                "Triggered Jellyfin library refresh",
+                &format!("Triggered {} library refresh", jellyfin.label()),
                 "",
             )
             .await;
         }
     }
+}
+
+/// A grab that just failed at import leaves no download behind it, so
+/// the `grabbed` rows it wrote at grab time fail with it, as the stall
+/// timer and the errored-in-client branch already do. Left `grabbed`,
+/// the library card kept saying "Downloading" and the episode kept the
+/// release's quality chip with nothing on the way. Only rows still
+/// `grabbed` under this release's title change: an episode that did
+/// land is `completed`, and one a later grab took over is that grab's.
+/// Parent series only, the same limit the stall path has.
+async fn fail_grab_tags(state: &AppState, grab: &grabbed_torrents::GrabbedTorrent) {
+    let _ =
+        episode_tags::mark_grab_failed_for_release(&state.db, grab.series_id, &grab.torrent_name)
+            .await;
 }
 
 /// Import robustness (#205): give up on a grab the download client has

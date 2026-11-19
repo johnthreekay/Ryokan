@@ -436,30 +436,47 @@ pub async fn remove_series(
         .iter()
         .map(|e| crate::handlers::auth::sanitize_for_log(e))
         .collect();
-    logger::info(
-        &state.db,
-        LogCategory::Library,
-        &format!("Removed from library: {}", series_label),
-        &format!(
-            "id={}, delete_files={}, torrents_removed={}, folder={}{}{}, jellyfin={}",
-            series_id,
-            delete_files,
-            torrents_removed,
-            folder_status,
-            if safe_folder_detail.is_empty() {
-                String::new()
-            } else {
-                format!(" ({})", safe_folder_detail)
-            },
-            if safe_torrent_failures.is_empty() {
-                String::new()
-            } else {
-                format!(", torrent_errors=[{}]", safe_torrent_failures.join("; "))
-            },
-            jellyfin_status,
-        ),
-    )
-    .await;
+    let detail = format!(
+        "id={}, delete_files={}, torrents_removed={}, folder={}{}{}, jellyfin={}",
+        series_id,
+        delete_files,
+        torrents_removed,
+        folder_status,
+        if safe_folder_detail.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", safe_folder_detail)
+        },
+        if safe_torrent_failures.is_empty() {
+            String::new()
+        } else {
+            format!(", torrent_errors=[{}]", safe_torrent_failures.join("; "))
+        },
+        jellyfin_status,
+    );
+    // The row goes even when the cleanup did not finish (the user asked
+    // for the removal), so what stayed behind has to be findable: a
+    // warn line here, and the page's toast from the fields below.
+    if matches!(folder_status, "error" | "refused") || !torrent_failures.is_empty() {
+        logger::warn(
+            &state.db,
+            LogCategory::Library,
+            &format!(
+                "Removed from library, with files or downloads left behind: {}",
+                series_label
+            ),
+            &detail,
+        )
+        .await;
+    } else {
+        logger::info(
+            &state.db,
+            LogCategory::Library,
+            &format!("Removed from library: {}", series_label),
+            &detail,
+        )
+        .await;
+    }
 
     Ok(Json(serde_json::json!({
         "ok": true,

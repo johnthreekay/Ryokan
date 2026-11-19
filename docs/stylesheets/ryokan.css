@@ -262,3 +262,12 @@
 [data-md-toggle="search"]:checked ~ .md-header .md-search__form {
     box-shadow: 0 0 0 1px rgba(203, 166, 247, 0.4);
 }
+
+/* ── Wider page ───────────────────────────────────────────────────── */
+
+/* Material caps the page at 61rem, which leaves the text column about
+   31rem once both sidebars take their share. The sidebars keep their
+   width, so everything added here goes to the text. */
+.md-grid {
+    max-width: 67rem;
+}

@@ -969,24 +969,12 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
         let item_key = build_item_key(&item);
         let (src_str, src_id) = source_dedup_key(&item.source);
         if already_grabbed.contains(&(item_key.clone(), src_str.to_string(), src_id)) {
+            // Counted, never recorded: the `grabbed` row is this
+            // check's own tombstone and the log's record of the grab.
+            // Writing "skipped" over it dropped the item from
+            // `already_grabbed`, so every second sync grabbed it again
+            // for as long as it stayed in the feed.
             skipped += 1;
-            let _ = rss::record_decision(
-                &state.db,
-                rss::DecisionRecord {
-                    item_key: &item_key,
-                    title: &item.title,
-                    link: &item.link,
-                    series_id: None,
-                    series_title: "",
-                    group_name: &item.group,
-                    is_batch: item.is_batch,
-                    decision: "skipped",
-                    reason: "Already grabbed earlier; skipping duplicate RSS item",
-                    source: src_str,
-                    source_id: src_id,
-                },
-            )
-            .await;
             continue;
         }
 
@@ -1493,7 +1481,16 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             cand.item.link.clone()
         };
 
-        let info_hash = crate::services::nyaa::extract_hash(&grab_url);
+        // The feed's own `<nyaa:infoHash>` first (`parse_feed` has
+        // validated it): a `.torrent` link, which is preferred over
+        // the magnet and is all Nyaa's feed carries, names no hash, and
+        // a grab recorded without one skips the client's and
+        // `record_grab`'s hash dedup and hash-keyed post-processing.
+        let info_hash = if cand.item.info_hash.is_empty() {
+            crate::services::nyaa::extract_hash(&grab_url)
+        } else {
+            cand.item.info_hash.clone()
+        };
         // multi-rss commit F — resolve the dispatch client per-item
         // based on the source's pin (Nyaa pin / indexer pin /
         // direct-feed pin). A pin pointing at a deleted client

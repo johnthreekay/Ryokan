@@ -96,7 +96,7 @@ async fn fetch_indexer_rss_stamps_indexer_source_attribution() {
     assert_eq!(items.len(), 1);
     match &items[0].source {
         RssSource::Indexer { id, name, kind } => {
-            assert_eq!(*id, 7); // fixture's row id
+            assert_eq!(*id, crate::services::indexers::Indexer::id(&client)); // fixture's row id
             assert_eq!(name, "Wiremock");
             assert_eq!(kind, "torznab");
         }

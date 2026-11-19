@@ -3,7 +3,9 @@
    `static/js/index.js::searchAnilist`; that path was removed when the input
    gained `hx-get` (issue #166). The full `data-entry` JSON is pre-serialized
    in the handler so `addSeries` can keep reading it without a separate fetch. #}
-{% if entries.is_empty() %}
+{% if !error.is_empty() %}
+<p class="loading-text" role="alert">Search failed: {{ error }}. Try again in a moment.</p>
+{% else if entries.is_empty() %}
 <p class="loading-text">No results found.</p>
 {% else %}
 {% for r in entries %}

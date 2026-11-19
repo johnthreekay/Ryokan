@@ -11,7 +11,7 @@ You are read-only. Never edit, write, or commit. Report findings; the main sessi
 
 ## Scope
 
-- **In scope**: every `docs/*.md` (`ls docs/*.md` for the current list; as of 2026-09: index, quick-start, install, docker, from-source, stack-builder, configuration, download-clients, external-accounts, calendar, manual-import, scoring, system, troubleshooting, faq).
+- **In scope**: every `docs/*.md` (`ls docs/*.md` for the current list; as of 2026-09: index, quick-start, install, docker, from-source, configuration, download-clients, external-accounts, calendar, manual-import, scoring, system, troubleshooting, faq).
 - **Out of scope**: `AGENTS.md` / `CLAUDE.md` (redirect to `doc-drift-detector`), `README.md`, the OAuth broker pages on `gh-pages`.
 - The site is built by Zensical (`zensical build -s` in `.github/workflows/docs.yml`), which reads `mkdocs.yml` directly and keeps MkDocs' link and anchor rules. Fonts are self-hosted under `docs/stylesheets/fonts/` with `font: false`; a page that claims otherwise is wrong.
 

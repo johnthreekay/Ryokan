@@ -1,8 +1,8 @@
 # Docker installation
 
-Ryokan ships as a Docker image at `ghcr.io/johnthreekay/ryokan:latest`. The image runs on `linux/amd64` and `linux/arm64`. The fastest way to get going is `docker compose up`.
+The Ryokan image is `ghcr.io/johnthreekay/ryokan:latest`, for `linux/amd64` and `linux/arm64`.
 
-If you're new to Docker, skim [Docker's overview](https://docs.docker.com/get-started/docker-overview/) first; this page assumes you know what `docker compose up -d` does.
+This page covers the Ryokan container on its own. For Ryokan together with a media server and a download client, follow the [Quick start](quick-start.md).
 
 ## Quick install
 
@@ -27,17 +27,17 @@ volumes:
   ryokan-data:
 ```
 
-Then:
+Then run:
 
 ```sh
 docker compose up -d
 ```
 
-Open <http://localhost:8978> and create your admin account on the setup page. You're done.
+Open <http://localhost:8978> and create your account.
 
-## Recommended install (with media folders)
+## Recommended install (with a media folder)
 
-The Quick install doesn't mount your media library or your download client's complete folder yet. To make post-processing actually move files into your library, you need two more volume mounts:
+The quick install lets you search and grab, but Ryokan cannot place finished downloads in your library until it can see both. Add one mount, for a folder that holds your downloads and your library:
 
 ```yaml
 services:
@@ -48,8 +48,7 @@ services:
       - "8978:8978"
     volumes:
       - ryokan-data:/data
-      - /srv/downloads:/downloads          # where your download client puts completed files
-      - /srv/media/anime:/media/anime      # where Ryokan should land imported episodes
+      - /srv/media:/srv/media              # downloads and library
     environment:
       - PUID=1000
       - PGID=1000
@@ -60,12 +59,12 @@ volumes:
   ryokan-data:
 ```
 
-The colon in volume mounts means: left side is your host filesystem path, right side is the path inside the container. Ryokan only sees the right side. So:
+Here `/srv/media` holds two folders, `/srv/media/downloads` and `/srv/media/anime`. Use your own folder in place of `/srv/media` on both sides of the mount.
 
-- Inside the container, "complete downloads" live at `/downloads`. Configure your download client to put its completed files here.
-- Inside the container, "the library" lives at `/media/anime`. Enter `/media/anime` when first-run setup asks for the media library, or later under Settings → General → Media Root Path.
+- Enter `/srv/media/anime` as the **Media Root Path**, during first-run setup or later under Settings → General.
+- Mount the same folder at the same path in your download client, and have the client save into `/srv/media/downloads`. Ryokan looks for a finished file at exactly the path the client reports.
 
-These paths must match what your download client sees. If qBittorrent thinks files are at `/downloads/movies/foo.mkv` but Ryokan thinks they're at `/srv/downloads/foo.mkv`, post-processing fails. The [Stack builder](stack-builder.md) generates compose files with matching paths automatically.
+Keep downloads and the library in one mount like this. A hardlink only works inside a single mount, and with hardlinks an imported episode takes no extra space while the torrent keeps seeding. With two separate mounts Ryokan has to copy each file instead. See [Volume layout](docker.md#volume-layout).
 
 ## PUID and PGID
 
@@ -75,20 +74,18 @@ environment:
   - PGID=1000
 ```
 
-These set the user/group ID Ryokan runs as inside the container. Set them to match the user that owns your media files on the host.
+Ryokan runs as this user and group inside the container. Set them to the user that owns your media, so the files Ryokan writes have the same owner as the rest of your library. To find the values, run `id -u` and `id -g` as that user. On most systems both are 1000.
 
-To find the right values: run `id -u` and `id -g` on the host as the user who owns `/srv/media/anime` (or wherever your library lives). Most homelabs run everything as a single non-root user with ID 1000, in which case the defaults are fine.
+Other containers that follow the [linuxserver.io convention](https://docs.linuxserver.io/general/understanding-puid-and-pgid/) use the same two variables. Give them the same values.
 
-This is the [linuxserver.io convention](https://docs.linuxserver.io/general/understanding-puid-and-pgid/), shared with the rest of the *arr stack. Setting them right means files Ryokan writes match the rest of your media's ownership.
-
-!!! warning "User-mounted paths are NOT chowned"
-    The container chowns its data folder (`/data`, or whatever `RYOKAN_DATA_DIR` names) to the supplied PUID/PGID, but does not chown `/downloads` or `/media/...`. Chowning a 10TB media library would stall startup for hours and could clobber ownership the rest of your *arr stack relies on. Pick PUID/PGID that already match your media's owner instead.
+!!! warning "Ryokan does not change the owner of your media"
+    On start, the container takes ownership of its own data folder (`/data`) and nothing else. Your downloads and library folders must already be writable by the user you set here.
 
 ## First-run setup
 
-The first time Ryokan boots, navigating to `/` redirects to `/setup`. Create an admin account there. Once an account exists, `/setup` redirects to `/login` and won't accept further submissions.
+The first time you open Ryokan it asks you to create an account. After that the setup page is closed.
 
-If you need to reset the admin account later (forgot password, etc.), there's a deliberate two-step gate to avoid an accidental wipe-on-restart. See [Docker reference → Reset auth](docker.md#reset-auth).
+If you forget the password, see [Reset auth](docker.md#reset-auth).
 
 ## Updating
 
@@ -97,16 +94,16 @@ docker compose pull
 docker compose up -d
 ```
 
-The named volume preserves your data. Migrations run automatically on next boot and are idempotent (applying twice is a no-op). For more on migrations and `docker compose down -v` safety, see [Docker reference → Updating](docker.md#updating).
+Your data is in the volume and is kept. The database is upgraded automatically on start. See [Docker reference → Updating](docker.md#updating) for one command to avoid.
 
 ## Where next
 
 - **[Configuration](configuration.md)**: the Settings tabs.
-- **[Download clients](download-clients.md)**: per-client setup notes.
+- **[Download clients](download-clients.md)**: setup notes for each client.
 - **[External accounts](external-accounts.md)**: link AniList or MAL.
-- **[Docker reference](docker.md)**: full environment variable table, healthcheck shape, advanced topics.
-- **[Build from source](from-source.md)**: if you're contributing to Ryokan or running pre-release commits instead of the Docker image.
+- **[Docker reference](docker.md)**: environment variables, reverse proxies and other details.
+- **[Build from source](from-source.md)**: run Ryokan without Docker.
 
 ---
 
-*Last updated: 2026-10-03.*
+*Last updated: 2026-11-18.*

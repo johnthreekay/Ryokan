@@ -13,7 +13,7 @@
                 <label class="setting-row">
                     <span class="setting-row-text">
                         <span class="setting-row-title">Enable post-processing</span>
-                        <span class="setting-row-desc">Rename and move finished downloads into the media library and write NFO files for Jellyfin.</span>
+                        <span class="setting-row-desc">Rename and move finished downloads into the media library and write NFO files for Jellyfin, Emby and Kodi.</span>
                     </span>
                     <input type="checkbox" name="post_processing_enabled" id="post_processing_enabled" {% if config.post_processing_enabled %}checked{% endif %}>
                 </label>
@@ -142,7 +142,7 @@
             </div>
             <div class="form-group">
                 <label for="rss_interval_minutes">RSS Sync Interval (minutes)</label>
-                <input type="number" min="1" max="60" name="rss_interval_minutes" id="rss_interval_minutes" value="{{ config.rss_interval_minutes }}">
+                <input type="number" min="1" max="60" required name="rss_interval_minutes" id="rss_interval_minutes" value="{{ config.rss_interval_minutes }}">
                 <span class="form-hint">Run a sync by hand from System → RSS.</span>
             </div>
         </div>
@@ -177,7 +177,7 @@
             </div>
             <div class="form-group">
                 <label for="backup_retention_count">Backups to keep</label>
-                <input type="number" min="1" max="365" name="backup_retention_count" id="backup_retention_count" value="{{ config.backup_retention_count }}">
+                <input type="number" min="1" max="365" required name="backup_retention_count" id="backup_retention_count" value="{{ config.backup_retention_count }}">
                 <span class="form-hint">Older scheduled backups are deleted. Backups taken before a restore are kept.</span>
             </div>
             <div class="setting-rows">
@@ -200,7 +200,7 @@
             </div>
             <div class="form-group">
                 <label for="recycle_bin_age_days">Purge after (days)</label>
-                <input type="number" min="0" max="3650" name="recycle_bin_age_days" id="recycle_bin_age_days" value="{{ config.recycle_bin_age_days }}">
+                <input type="number" min="0" max="3650" required name="recycle_bin_age_days" id="recycle_bin_age_days" value="{{ config.recycle_bin_age_days }}">
                 <span class="form-hint">0 keeps files until you empty the bin.</span>
             </div>
         </div>

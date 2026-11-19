@@ -358,6 +358,11 @@ async fn detail_fetch_failed_when_al_search_hits_but_detail_5xxs() {
     // resolver must surface DetailFetchFailed (not NoMatch) so the
     // toast can honestly say "matched on AniList but couldn't fetch
     // details" rather than implying the show isn't on AL at all.
+    //
+    // Its own show and id: AniList's search and detail memo caches are
+    // process-wide, so reusing the Frieren query of
+    // `auto_added_inserts_series_and_links_when_toggle_on` answered
+    // this test from that test's cached hit under plain `cargo test`.
     let mock = al_mock_server().await;
     Mock::given(method("POST"))
         .and(path("/"))
@@ -365,9 +370,9 @@ async fn detail_fetch_failed_when_al_search_hits_but_detail_5xxs() {
         .respond_with(
             ResponseTemplate::new(200).set_body_json(search_response_for(
                 444,
-                "Frieren: Beyond Journey's End",
-                "Frieren: Beyond Journey's End",
-                "葬送のフリーレン",
+                "Dungeon Meshi",
+                "Delicious in Dungeon",
+                "ダンジョン飯",
             )),
         )
         .mount(&mock)
@@ -387,15 +392,18 @@ async fn detail_fetch_failed_when_al_search_hits_but_detail_5xxs() {
         "pre-condition: no series row for id=444"
     );
 
-    let outcome =
-        resolve_or_add_series_for_grab(&state, "[SubsPlease] Frieren - 01 [1080p].mkv", false)
-            .await;
+    let outcome = resolve_or_add_series_for_grab(
+        &state,
+        "[SubsPlease] Dungeon Meshi - 01 [1080p].mkv",
+        false,
+    )
+    .await;
 
     match outcome {
         LibraryLinkOutcome::DetailFetchFailed { al_id, al_title } => {
             assert_eq!(al_id, 444);
             assert!(
-                al_title.to_lowercase().contains("frieren"),
+                al_title.to_lowercase().contains("dungeon"),
                 "al_title should carry the matched series's display name; got {al_title:?}"
             );
         }

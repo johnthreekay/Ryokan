@@ -242,6 +242,9 @@ struct SearchResultRow {
 #[template(path = "partials/library/anilist_search_results.html")]
 struct AnilistSearchResultsPartial {
     entries: Vec<SearchResultRow>,
+    /// Why there are no entries when the search itself failed; the
+    /// partial says so in the results' place. Empty otherwise.
+    error: String,
 }
 
 /// Pick the user-facing title for a result given a language hint. Mirrors
@@ -340,7 +343,10 @@ fn build_search_results_partial(
             }
         })
         .collect();
-    AnilistSearchResultsPartial { entries: rows }
+    AnilistSearchResultsPartial {
+        entries: rows,
+        error: String::new(),
+    }
 }
 
 #[utoipa::path(
@@ -352,7 +358,7 @@ fn build_search_results_partial(
     params(AnilistSearchQuery),
     responses(
         (status = 200, description = "Search results (JSON for plain callers, rendered HTML partial when called via HX-Request)", body = Vec<anilist::AnimeEntry>),
-        (status = 500, description = "Search failed"),
+        (status = 502, description = "Every metadata source failed the search (HTMX callers get a 200 fragment saying so)"),
     ),
 )]
 pub async fn anilist_search(
@@ -380,9 +386,33 @@ pub async fn anilist_search(
             ));
         }
     };
-    let results = anilist::search_anime_with_options(&params.q, force_fallback)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let results = match anilist::search_anime_with_options(&params.q, force_fallback).await {
+        Ok(results) => results,
+        Err(e) => {
+            logger::warn(
+                &state.db,
+                LogCategory::AniList,
+                &format!("Title search failed: '{}'", params.q),
+                &e,
+            )
+            .await;
+            // The Add Series modal swaps this response into its results
+            // area, and error statuses are never swapped (`noSwap`), so
+            // a plain error left the area blank: a failed search looked
+            // like a search that had not answered yet. Say it in the
+            // results' place. An API caller gets the upstream failure.
+            if is_htmx {
+                let html = AnilistSearchResultsPartial {
+                    entries: Vec::new(),
+                    error: e.trim_end_matches('.').to_string(),
+                }
+                .render()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                return Ok(Html(html).into_response());
+            }
+            return Err((axum::http::StatusCode::BAD_GATEWAY, e));
+        }
+    };
 
     let source = if results.iter().any(|r| r.source == "mal") {
         "MAL/Jikan fallback"

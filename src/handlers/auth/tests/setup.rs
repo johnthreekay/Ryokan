@@ -346,6 +346,45 @@ async fn concurrent_setup_posts_create_exactly_one_account() {
 }
 
 #[tokio::test]
+async fn setup_refuses_a_username_that_is_huge_or_holds_control_characters() {
+    // Dogfood a1: a 1.5 MB username was stored, written to the log
+    // unsanitized (ESC and BEL included), and sent back with every
+    // System page.
+    let long = "A".repeat(101);
+    for username in [long.as_str(), "admin%1B%5B31m", "ad%07min"] {
+        let db = in_memory_pool().await;
+        let app = handler_router(fresh_install_state(db.clone()));
+        let body = format!("username={username}&password=correct-horse&confirm=correct-horse");
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/setup")
+                    .header(header::HOST, "ryokan.local")
+                    .header(header::ORIGIN, "http://ryokan.local")
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "the form comes back");
+        let html = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&html).contains("Use a username of at most 100 characters"),
+            "{username}"
+        );
+        let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(users.0, 0, "{username}");
+    }
+}
+
+#[tokio::test]
 async fn setup_refuses_passwords_bcrypt_would_mangle_or_that_are_trivial() {
     for (password, needle) in [("x", "at least"), (&*"p".repeat(73), "at most")] {
         let db = in_memory_pool().await;

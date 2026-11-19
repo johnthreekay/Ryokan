@@ -651,28 +651,61 @@ pub async fn get_episode_map_for_provider(
 ///   same date-only, UTC semantics as the series page's
 ///   unaired-vs-missing split.
 pub async fn aired_episode_counts(db: &SqlitePool) -> Result<HashMap<i64, i64>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (i64, i64)>(
-        "SELECT series_id, COUNT(*) FROM series_episode_metadata
-         WHERE episode_number >= 1
-           AND length(aired) >= 10
-           AND substr(aired, 1, 10) <= date('now')
-         GROUP BY series_id",
-    )
+    let rows = sqlx::query_as::<_, (i64, i64)>(sqlx::AssertSqlSafe(format!(
+        "SELECT series_id, MAX(n) FROM (
+             SELECT series_id, COUNT(*) AS n FROM series_episode_metadata
+             WHERE {DATED_AIRED}
+             GROUP BY series_id
+             UNION ALL
+             SELECT series_id, {SCHEDULE_BOUND} AS n FROM episode_airings
+             GROUP BY series_id
+         ) GROUP BY series_id"
+    )))
     .fetch_all(db)
     .await?;
     Ok(rows.into_iter().collect())
 }
 
+/// The dated half of the aired count: see `aired_episode_counts`.
+const DATED_AIRED: &str = "episode_number >= 1
+               AND length(aired) >= 10
+               AND substr(aired, 1, 10) <= date('now')";
+
+/// The airing schedule's answer to "how many episodes have aired", for
+/// a `GROUP BY series_id` over `episode_airings`: the last episode
+/// whose slot has passed, or the one before the next slot, whichever
+/// is higher (past slots are pruned after 14 days, so a series added
+/// mid-season has future slots only). A provider with no episode list
+/// leaves every air date blank (Tenrai for a season in progress), and
+/// without this bound every such episode reads as unaired.
+const SCHEDULE_BOUND: &str = "MAX(
+                 COALESCE(MAX(CASE WHEN airing_at <= unixepoch() THEN episode END), 0),
+                 COALESCE(MIN(CASE WHEN airing_at > unixepoch() THEN episode END) - 1, 0))";
+
 /// `aired_episode_counts` for one series, for the Wanted page's
 /// per-series search menu, which must not scan the library per open.
 pub async fn aired_episode_count(db: &SqlitePool, series_id: i64) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar::<_, i64>(
+    let dated = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(format!(
         "SELECT COUNT(*) FROM series_episode_metadata
-         WHERE series_id = ?
-           AND episode_number >= 1
-           AND length(aired) >= 10
-           AND substr(aired, 1, 10) <= date('now')",
-    )
+         WHERE series_id = ? AND {DATED_AIRED}"
+    )))
+    .bind(series_id)
+    .fetch_one(db)
+    .await?;
+    Ok(dated.max(scheduled_aired_bound(db, series_id).await?.unwrap_or(0)))
+}
+
+/// How many episodes the airing schedule says have aired, or `None`
+/// when the series has no schedule rows. The series page uses it for
+/// an episode with no air date.
+pub async fn scheduled_aired_bound(
+    db: &SqlitePool,
+    series_id: i64,
+) -> Result<Option<i64>, sqlx::Error> {
+    sqlx::query_scalar::<_, Option<i64>>(sqlx::AssertSqlSafe(format!(
+        "SELECT CASE WHEN COUNT(*) = 0 THEN NULL ELSE {SCHEDULE_BOUND} END
+         FROM episode_airings WHERE series_id = ?"
+    )))
     .bind(series_id)
     .fetch_one(db)
     .await
@@ -966,5 +999,60 @@ mod tests {
         // Start at 1: visit 2 (add 12), then 2's PREQUEL is 1 which is
         // already visited → stop. Offset should be 12, not unbounded.
         assert_eq!(compute_cumulative_prior_episodes(&db, 1).await, 12);
+    }
+
+    /// The aired count takes the airing schedule when the provider's
+    /// episode list has no dates, and the higher of the two otherwise.
+    #[tokio::test]
+    async fn aired_count_uses_the_airing_schedule_when_dates_are_blank() {
+        let db = test_pool().await;
+        for id in 1..=4 {
+            sqlx::query(
+                "INSERT INTO series (id, anilist_id, title, title_romaji, title_english,
+                    title_native, cover_url, format, status, folder_name)
+                 VALUES (?, ?, 't', 't', 't', '', '', 'TV', 'RELEASING', ?)",
+            )
+            .bind(id)
+            .bind(1000 + id)
+            .bind(format!("f{id}"))
+            .execute(&db)
+            .await
+            .expect("series row");
+        }
+        let airing = |sid: i64, ep: i64, offset: i64| {
+            let db = db.clone();
+            async move {
+                sqlx::query(
+                    "INSERT INTO episode_airings (series_id, episode, airing_at)
+                     VALUES (?, ?, unixepoch() + ?)",
+                )
+                .bind(sid)
+                .bind(ep)
+                .bind(offset)
+                .execute(&db)
+                .await
+                .expect("airing row");
+            }
+        };
+        // 1: future slots only, from episode 7. Six have aired.
+        airing(1, 7, 3600).await;
+        airing(1, 8, 608_400).await;
+        // 2: past slots only (the finale aired last week). Three aired.
+        airing(2, 2, -700_000).await;
+        airing(2, 3, -90_000).await;
+        // 3: first episode still to come. None aired.
+        airing(3, 1, 3600).await;
+        // 4: no schedule at all.
+
+        let counts = aired_episode_counts(&db).await.expect("counts");
+        assert_eq!(counts.get(&1), Some(&6));
+        assert_eq!(counts.get(&2), Some(&3));
+        assert_eq!(counts.get(&3), Some(&0));
+        assert_eq!(counts.get(&4), None);
+        for (sid, want) in [(1, 6), (2, 3), (3, 0), (4, 0)] {
+            assert_eq!(aired_episode_count(&db, sid).await.expect("count"), want);
+        }
+        assert_eq!(scheduled_aired_bound(&db, 3).await.expect("bound"), Some(0));
+        assert_eq!(scheduled_aired_bound(&db, 4).await.expect("bound"), None);
     }
 }

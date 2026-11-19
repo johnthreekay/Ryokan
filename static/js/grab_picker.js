@@ -626,21 +626,24 @@
             }),
         })
         .then(async r => {
-            const data = await r.json().catch(() => ({}));
+            // A refusal is plain text (nothing selected, or the client
+            // rejected the selection: nothing was grabbed and the
+            // preview is still there, so the picker stays open for
+            // another try). Read as JSON it came out as "confirm
+            // failed (502)" with the reason dropped.
+            const text = await r.text().catch(() => '');
             if (!r.ok) {
-                const msg = (data && data.message) || (typeof data === 'string' ? data : '') || `confirm failed (${r.status})`;
-                throw new Error(msg);
+                throw new Error(text || `confirm failed (${r.status})`);
             }
-            return data;
+            try { return JSON.parse(text); } catch (_) { return {}; }
         })
         .then(data => {
             const errs = (data && data.file_priority_errors) || [];
-            const resumeErr = data && data.resume_error;
-            if (errs.length || resumeErr) {
+            if (errs.length) {
                 window.ryokanToast && window.ryokanToast({
                     kind: 'warn',
                     title: 'Grab sent with partial errors',
-                    body: [resumeErr, ...errs].filter(Boolean).join('\n'),
+                    body: errs.join('\n'),
                 });
             } else {
                 window.ryokanToast && window.ryokanToast({

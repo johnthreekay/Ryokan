@@ -772,7 +772,7 @@ pub async fn resolve_existing_all(db: &SqlitePool, groups: &mut [SeriesGroup]) {
         .filter_map(|g| g.picked().map(|e| e.id))
         .filter(|id| *id > 0)
         .collect();
-    let mut by_al = series::get_by_anilist_ids(db, &ids)
+    let by_al = series::get_by_anilist_ids(db, &ids)
         .await
         .unwrap_or_default();
     for g in groups.iter_mut() {
@@ -780,7 +780,13 @@ pub async fn resolve_existing_all(db: &SqlitePool, groups: &mut [SeriesGroup]) {
         let Some(entry) = g.picked().cloned() else {
             continue;
         };
-        let row = match by_al.remove(&entry.id) {
+        // A lookup, not a `remove`: two groups can pick the same entry
+        // (a `Season 01` folder and a loose file of one show, or the
+        // romaji and native spellings). Taking the row out left every
+        // group after the first with no library series, so a rescan
+        // showed it as "New series" with a made-up folder and counted
+        // it among the new ones.
+        let row = match by_al.get(&entry.id).cloned() {
             Some(r) => Some(r),
             None => match entry.id_mal {
                 Some(mal) => series::get_by_mal_id_for_entry(db, entry.id, mal)

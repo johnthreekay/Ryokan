@@ -1,55 +1,52 @@
 # Calendar
 
-Ryokan's calendar shows what's airing for the shows in your library. It lives at `/calendar` in the top nav, between Library and Wanted. There's also a subscription feed if you'd rather see new episodes inside Apple Calendar, Google Calendar, or Thunderbird alongside the rest of your week.
+The Calendar page shows when episodes air for the shows in your library. You can also subscribe to it from Apple Calendar, Google Calendar or Thunderbird.
 
 ## Views
 
-Three quick toggles at the top of the page:
+- **This week**: a list, grouped by day, with today highlighted.
+- **Next week**: the same for the seven days after.
+- **This month**: a month grid.
 
-- **This week**: list view. Each day is a sticky header with the episodes airing that day stacked beneath. Today gets a colored stripe so your eye lands there.
-- **Next week**: same shape, for the seven days after that (days 8 to 14 from now).
-- **This month**: calendar grid view. Sun-to-Sat rows for the current month; each cell holds the episodes for that day.
+## What each episode shows
 
-## What you'll see on each episode
+- The series cover and title.
+- The episode number. Each season is its own series in Ryokan, so the first episode of *Re:Zero 4th Season* is E01, not S04E01.
+- A **Premiere** badge in the list, or a **★** in the grid, on the first episode of a series.
+- Whether the series is **Monitored**.
 
-- The series cover thumbnail and title.
-- The episode number (E01, E02, ...). Each anime "season" in Ryokan is its own series with its own E1, E2 numbering, so an episode of *Re:Zero 4th Season* shows as E01 of that series, not S04E01 of the franchise.
-- A **Premiere** badge (in the list) or a small **★** (in the grid) on E01 of any series, so you can spot where a new cour starts.
-- Whether the series is **Monitored**. This is the same flag the rest of Ryokan uses to decide whether to grab episodes for it.
-
-Click an episode to jump to its series page.
+Click an episode to open its series page.
 
 ## Filtering
 
-- **Search**: type into the box to filter the list down. The search matches across all the title variants Ryokan knows about (romaji, English, native), so "attack on titan" finds *Shingeki no Kyojin* even if your title language is set to romaji.
-- **Monitored only**: hide series Ryokan isn't tracking. Useful when your library has both actively-monitored shows and stuff you've added but turned monitoring off for.
+- **Search** matches romaji, English and native titles, so "attack on titan" finds *Shingeki no Kyojin*.
+- **Monitored only** hides series that are not monitored.
 
 ## Subscribing from your calendar app
 
-Click the **iCal Link** button in the page header. The modal:
+1. Create an API key with the `calendar` scope under **Settings → API Keys**, if you do not have one.
+2. On the Calendar page, click **iCal Link**, choose the key, and copy the URL.
+3. Add the URL to your calendar app:
+    - **Apple Calendar**: File → New Calendar Subscription
+    - **Google Calendar**: Other calendars → + → From URL
+    - **Thunderbird**: New Calendar → On the Network → iCalendar (ICS)
 
-1. Asks you to pick an API key with the `calendar` scope (create one on **Settings → API Keys** if you don't have one yet).
-2. Builds the full subscription URL. The key is part of the URL, so treat it like a password.
-3. Has a Copy button to put the URL on your clipboard.
+The URL contains the key, so treat it like a password.
 
-Then in your calendar app:
+The feed covers the next 30 days. To change that, add options to the end of the URL:
 
-- **Apple Calendar**: File → New Calendar Subscription, paste the URL.
-- **Google Calendar**: Other calendars → + → From URL, paste the URL.
-- **Thunderbird**: New Calendar → On the Network → iCalendar (ICS), paste the URL.
+- `&days=N` sets the number of days, up to 90.
+- `&monitored=true` leaves out series that are not monitored.
 
-The feed defaults to the next 30 days. The URL you copy already ends in `?apikey=...`, so add options with `&`: `&days=N` for a wider or narrower window (capped at 90), `&monitored=true` to only see monitored series.
+## How current the times are
 
-## How fresh is the data?
+Air times come from AniList. Ryokan fetches them when you add a series and refreshes them every 12 hours.
 
-Air times come from AniList. Ryokan refreshes them every 12 hours and stores its own copy, so the calendar page doesn't have to call AniList every time you load it. Two things to know:
+To refresh now, go to **System → Scheduled Tasks** and click **Run now** on **Episode air-date refresh**.
 
-- A newly-added series shows up within seconds. Ryokan grabs its air times right after you add it, not on the next 12-hour refresh.
-- If AniList updates an episode's air time, you'll see the change within 12 hours. If you want it sooner, go to **System → Scheduled Tasks**, find **Episode air-date refresh**, and click **Run now**.
+## Series added from MyAnimeList
 
-## Series Ryokan adds via MAL
-
-A few series in your library may have come from MAL instead of AniList. These are usually older or obscure titles that AniList doesn't have a record for. Those won't show up on the calendar, because the calendar's air-time data only comes from AniList. Most shows are on AniList and won't be affected.
+A series that AniList has no entry for, which Ryokan added from MyAnimeList instead, does not appear on the calendar. This mostly affects old or obscure titles.
 
 ---
 

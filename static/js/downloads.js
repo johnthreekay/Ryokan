@@ -43,6 +43,7 @@ function stateLabel(kind) {
         'checking-seed': 'Checking',
         'paused': 'Paused',
         'paused-complete': 'Paused',
+        'warning': 'Warning',
         'errored': 'Error',
     };
     if (map[kind] === undefined) {
@@ -55,7 +56,7 @@ function stateLabel(kind) {
 function stateBadgeClass(kind) {
     if (['seeding', 'seeding-stalled', 'paused-complete'].includes(kind)) return 'log-badge-info';
     if (kind === 'downloading') return 'log-badge-debug';
-    if (['downloading-stalled', 'downloading-queued', 'seeding-queued', 'paused'].includes(kind)) return 'log-badge-warn';
+    if (['downloading-stalled', 'downloading-queued', 'seeding-queued', 'paused', 'warning'].includes(kind)) return 'log-badge-warn';
     if (kind === 'errored') return 'log-badge-error';
     return '';
 }
@@ -146,15 +147,42 @@ function renderQueue(torrents) {
     window.scrollTo({left: prevScrollX, top: prevScrollY, behavior: 'instant'});
 }
 
+// The notice above the queue (a download client that did not answer).
+// Empty text hides it.
+function setQueueAlert(text) {
+    const alert = document.getElementById('queue-alert');
+    if (!alert) return;
+    alert.textContent = text || '';
+    alert.style.display = text ? '' : 'none';
+}
+
 function loadQueue() {
     if (!document.getElementById('queue-container')) return;
     fetch('/api/torrents')
-        .then(r => { if (!r.ok) throw new Error('Failed to load queue'); return r.json(); })
+        .then(async r => {
+            if (!r.ok) {
+                // No client answered (502), or none is configured: the
+                // body says which. Not an empty queue.
+                const text = await r.text().catch(() => '');
+                throw new Error(text || 'Could not load the queue.');
+            }
+            // One client down, others up: the rows that loaded, with
+            // the server's notice about the one that did not.
+            let warning = r.headers.get('X-Ryokan-Queue-Warning') || '';
+            try { warning = decodeURIComponent(warning); } catch (_) {}
+            setQueueAlert(warning);
+            return r.json();
+        })
         .then(data => renderQueue(data))
         .catch(err => {
+            // A TypeError is the browser failing to reach Ryokan itself;
+            // anything else carries the server's own sentence.
+            const message = (err && err.message) || '';
+            setQueueAlert(err instanceof TypeError || !message
+                ? 'Could not load the queue' + (message ? ' (' + message + ').' : '.')
+                : message);
             const c = document.getElementById('queue-container');
-            if (c) c.innerHTML =
-                '<div class="logs-empty">Could not load queue: ' + escapeHtml(err.message) + '</div>';
+            if (c) c.innerHTML = '';
         });
 }
 

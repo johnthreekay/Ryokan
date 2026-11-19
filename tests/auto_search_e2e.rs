@@ -146,6 +146,83 @@ fn unset_nyaa_base() {
 // ─── Tests ────────────────────────────────────────────────────────
 
 #[tokio::test]
+async fn a_nyaa_error_page_is_a_failed_search_not_an_empty_one() {
+    // Dogfood a3 #1 / a9. `nyaa::search` never looked at the status:
+    // a 5xx or 429 page has no result rows, so it parsed as an empty
+    // result and every caller reported "nothing found".
+    let _gate = ENV_LOCK.lock().await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(
+            ResponseTemplate::new(503)
+                .set_body_string("<html><body>Service Unavailable</body></html>"),
+        )
+        .mount(&server)
+        .await;
+    set_nyaa_base(&server.uri());
+
+    let opts = ryokan::services::nyaa::SearchOptions {
+        query: "test show".into(),
+        category: "1_2".into(),
+        ..Default::default()
+    };
+    let err = ryokan::services::nyaa::search(&opts, 1)
+        .await
+        .expect_err("an error page is an error");
+    assert!(
+        err.starts_with("Nyaa request failed: HTTP 503"),
+        "the error keeps its prefix and names the status: {err}"
+    );
+
+    // The collectors keep only the hits, so the list is still empty;
+    // the failure is on record for whoever has to explain that.
+    let state = build_state().await;
+    let detail = detail_for(1099, "Outage Show");
+    let cfg = default_config();
+    let cfs: Vec<ryokan::services::custom_formats::CompiledCustomFormat> = vec![];
+    let started = std::time::Instant::now();
+    let results = find_all_for_target(
+        &state.db,
+        &detail,
+        &cfg,
+        &SearchTarget::Episode(1),
+        true,
+        &cfs,
+        &state.indexers,
+    )
+    .await;
+    assert!(results.is_empty());
+    let noted = ryokan::services::nyaa::search_failure_since(started)
+        .expect("the failed queries are on record");
+    assert!(noted.contains("HTTP 503"), "{noted}");
+
+    // Nyaa answers again (with nothing): an empty list is now just an
+    // empty list.
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(nyaa_results_page("")))
+        .mount(&server)
+        .await;
+    let started = std::time::Instant::now();
+    let results = find_all_for_target(
+        &state.db,
+        &detail,
+        &cfg,
+        &SearchTarget::Episode(1),
+        true,
+        &cfs,
+        &state.indexers,
+    )
+    .await;
+    assert!(results.is_empty());
+    assert_eq!(ryokan::services::nyaa::search_failure_since(started), None);
+
+    unset_nyaa_base();
+}
+
+#[tokio::test]
 async fn find_all_for_target_returns_matching_release_from_nyaa() {
     // Smallest happy-path case: one Nyaa row with a title that shares
     // a token with the AL detail's title, episode number matches the

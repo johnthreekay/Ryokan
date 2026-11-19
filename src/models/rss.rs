@@ -177,6 +177,11 @@ pub struct DecisionRecord<'a> {
     pub source_id: Option<i64>,
 }
 
+/// Upserts the decision for `item_key`. A `grabbed` row is the dedup
+/// tombstone [`grabbed_item_keys_scoped`] reads, so a later decision
+/// that is not itself a grab never replaces it (the `WHERE` on the
+/// conflict arm): overwriting it with "skipped" took the item out of
+/// the dedup set, and the sync after that grabbed it again.
 pub async fn record_decision(
     db: &SqlitePool,
     record: DecisionRecord<'_>,
@@ -196,7 +201,8 @@ pub async fn record_decision(
                reason = excluded.reason,
                source = excluded.source,
                source_id = excluded.source_id,
-               created_at = CURRENT_TIMESTAMP"#,
+               created_at = CURRENT_TIMESTAMP
+           WHERE rss_seen.decision != 'grabbed' OR excluded.decision = 'grabbed'"#,
     )
     .bind(record.item_key)
     .bind(record.title)
@@ -441,6 +447,35 @@ mod tests {
         assert_eq!(recents.len(), 1);
         assert_eq!(recents[0].title, "Title v2");
         assert_eq!(recents[0].decision, "grabbed");
+    }
+
+    #[tokio::test]
+    async fn record_decision_never_downgrades_a_grabbed_row() {
+        // A8-3: the sync's "already grabbed, skipping" write replaced
+        // the grabbed row, so the item left the dedup set and every
+        // second sync grabbed it again.
+        let db = in_memory_pool().await;
+        record_decision(&db, record("guid:1", "Grabbed title", "grabbed"))
+            .await
+            .unwrap();
+        for later in ["skipped", "rejected", "failed"] {
+            record_decision(&db, record("guid:1", "Later title", later))
+                .await
+                .unwrap();
+        }
+
+        let recents = recent_decisions(&db, 10).await.unwrap();
+        assert_eq!(recents.len(), 1);
+        assert_eq!(recents[0].decision, "grabbed");
+        assert_eq!(recents[0].title, "Grabbed title");
+        assert!(grabbed_item_keys(&db).await.unwrap().contains("guid:1"));
+
+        // A fresh grab of the same key still refreshes the row.
+        record_decision(&db, record("guid:1", "Regrabbed title", "grabbed"))
+            .await
+            .unwrap();
+        let recents = recent_decisions(&db, 10).await.unwrap();
+        assert_eq!(recents[0].title, "Regrabbed title");
     }
 
     #[tokio::test]

@@ -25,9 +25,15 @@
 
 {% if tab == "queue" %}
 <div class="rss-panel">
+    {# The notice about a client that did not answer sits outside
+       #queue-container, which the poll rewrites, and beside the rows
+       instead of in their place: with one client down the others'
+       queues are still listed (the notice says so). downloads.js keeps
+       it in step with each poll. #}
+    <div id="queue-alert" class="alert alert-warn" role="status"{% if queue_error.is_empty() %} style="display:none"{% endif %}>{{ queue_error }}</div>
     <div id="queue-container">
-        {% if !queue_error.is_empty() %}
-        <div class="alert alert-warn" role="status">{{ queue_error }}</div>
+        {% if queue.is_empty() && !queue_error.is_empty() %}
+        {# Nothing could be read: not the same as nothing queued. #}
         {% else if queue.is_empty() %}
         <div class="logs-empty">
             <p>No active downloads.</p>

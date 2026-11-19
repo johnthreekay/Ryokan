@@ -196,6 +196,11 @@ function addSeries(anilistId, btn) {
             format: entry.format,
             status: entry.status,
             episodes: entry.episodes,
+            // The series folder is named once, at add time, and a
+            // template with {series.year} (or two series sharing a
+            // title) needs the year then: left out, the folder had
+            // no year for good although the search result carried it.
+            season_year: entry.season_year || null,
         })
     })
     .then(async r => {
@@ -711,11 +716,38 @@ function confirmBulkDelete() {
         // Remove succeeded cards from the DOM directly — they're
         // gone server-side, so leaving them in the grid would be
         // misleading. Failed cards stay (per renderBulkOutcome's
-        // partial-failure logic).
-        (outcome.succeeded || []).forEach(function (id) {
+        // partial-failure logic), except a failure flagged `removed`:
+        // that series is gone too, only its files or a download were
+        // left behind, so its card goes and a toast of its own says
+        // what stayed. Kept as a selected "failure" it was a card for
+        // a series that no longer exists.
+        var gone = (outcome.succeeded || []).slice();
+        var leftovers = [];
+        var stillThere = [];
+        (outcome.failed || []).forEach(function (f) {
+            if (f && f.removed) {
+                gone.push(f.series_id);
+                leftovers.push(f);
+            } else {
+                stillThere.push(f);
+            }
+        });
+        outcome = { succeeded: gone, failed: stillThere };
+        gone.forEach(function (id) {
             var card = document.getElementById('series-' + id);
             if (card) card.remove();
         });
+        if (leftovers.length && window.ryokanToast) {
+            var more = leftovers.length > 1 ? ' (and ' + (leftovers.length - 1) + ' more series)' : '';
+            window.ryokanToast({
+                kind: 'warn',
+                title: 'Removed, but not everything was cleaned up',
+                body: (leftovers[0].reason || 'files were left behind') + more,
+                category: 'library',
+                sticky: true,
+                log: true
+            });
+        }
         // Recycle bin (#123): when files went to the bin, give the toast
         // a way there.
         var modal = document.getElementById('bulk-delete-modal');

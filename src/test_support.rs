@@ -313,7 +313,7 @@ mod e2e {
 <meta charset="utf-8">
 <title>Browser-e2e fixture</title>
 <script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 </head>
 <body>
 <button class="ep-mon-btn {% if monitored %}ep-mon-yes{% else %}ep-mon-no{% endif %}"
@@ -350,7 +350,7 @@ mod e2e {
 <meta charset="utf-8">
 <title>Connection-test fixture</title>
 <script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 </head>
 <body>
 <form id="jellyfin-form">
@@ -434,7 +434,7 @@ document.body.addEventListener('ryokan-dc-test-result', function (ev) {
 <div id="ryokan-toast-stack"></div>
 {# Same shape as base.html: the scripts sit at the end of the body,
    so a boosted swap re-executes them with the new body. #}
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 <script src="/static/js/page_lifecycle.js" defer></script>
 <script src="/static/js/base.js" defer></script>
 <script>
@@ -514,7 +514,7 @@ window.addEventListener('DOMContentLoaded', function () {
 <meta charset="utf-8">
 <title>hx-on fixture</title>
 <script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 </head>
 <body>
 <label>
@@ -574,7 +574,7 @@ window.addEventListener('DOMContentLoaded', function () {
 <meta charset="utf-8">
 <title>Episode-delete listener fixture</title>
 <script>window.__ryokanFixtureErrors = []; window.addEventListener("error", function (e) { window.__ryokanFixtureErrors.push(String(e.message || e)); });</script>
-<script src="/static/vendor/htmx-4.0.0.min.js" defer></script>
+<script src="/static/vendor/htmx-4.0.2.min.js" defer></script>
 <script src="/static/js/page_lifecycle.js" defer></script>
 <script src="/static/js/base.js" defer></script>
 </head>
@@ -972,7 +972,28 @@ pub fn sonarr_router(state: AppState) -> Router {
             handlers::sonarr_compat::require_api_key,
         ));
 
-    Router::new().merge(routes).with_state(state)
+    with_test_peer(Router::new().merge(routes).with_state(state))
+}
+
+/// Gives a test router its own client address, as the TCP peer the
+/// real server attaches. The wrong-API-key throttle
+/// (`handlers::auth::api_key_throttled`) counts failures per client in
+/// a process-wide map, and requests with no peer all read as one
+/// client: under plain `cargo test`, which runs every test in one
+/// process, the 401 tests filled that one bucket and every later shim
+/// test answered 429. nextest hid it by giving each test a process.
+/// Clones of one router share the address, so a test that wants the
+/// throttle still gets it.
+fn with_test_peer(router: Router) -> Router {
+    use std::net::{Ipv4Addr, SocketAddr};
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static NEXT: AtomicU32 = AtomicU32::new(1);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    // 10.0.0.0/8 by test number; the port is not part of the bucket.
+    let ip = Ipv4Addr::from(0x0A00_0000 | (n & 0x00FF_FFFF));
+    router.layer(axum::Extension(axum::extract::ConnectInfo(
+        SocketAddr::from((ip, 40000)),
+    )))
 }
 
 /// Sonarr shim router that includes the resource-tier series + command
@@ -1036,7 +1057,7 @@ pub fn sonarr_router_with_series(state: AppState) -> Router {
             handlers::sonarr_compat::require_api_key,
         ));
 
-    Router::new().merge(routes).with_state(state)
+    with_test_peer(Router::new().merge(routes).with_state(state))
 }
 
 /// Build a minimal Radarr shim router (parallel to [`sonarr_router`]).
@@ -1076,7 +1097,7 @@ pub fn radarr_router(state: AppState) -> Router {
             handlers::radarr_compat::require_api_key,
         ));
 
-    Router::new().merge(routes).with_state(state)
+    with_test_peer(Router::new().merge(routes).with_state(state))
 }
 
 /// Radarr shim router that includes the resource-tier movie + command
@@ -1137,5 +1158,5 @@ pub fn radarr_router_with_movie(state: AppState) -> Router {
             handlers::radarr_compat::require_api_key,
         ));
 
-    Router::new().merge(routes).with_state(state)
+    with_test_peer(Router::new().merge(routes).with_state(state))
 }

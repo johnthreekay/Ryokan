@@ -24,17 +24,30 @@
         <input type="hidden" name="rtorrent_download_path" value="{{ config.rtorrent_download_path }}">
 
         <div class="cf-section">
-            <h3>Jellyfin <span id="jellyfin-health" class="form-hint"></span></h3>
-            <div class="form-group">
-                <label for="jellyfin_url">URL</label>
-                <input type="text" name="jellyfin_url" id="jellyfin_url" value="{{ config.jellyfin_url }}" placeholder="http://192.168.68.61:8096">
+            {# #315: one connection, three kinds. The ids, field names and
+               endpoints keep the `jellyfin` name; `media_server_kind` says
+               which server the URL and key belong to. #}
+            <h3>Media Server <span id="jellyfin-health" class="form-hint"></span></h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="media_server_kind">Type</label>
+                    <select name="media_server_kind" id="media_server_kind">
+                        {% for kind in crate::services::jellyfin::MediaServerKind::ALL %}
+                        <option value="{{ kind.as_str() }}" {% if config.media_server_kind == kind.as_str() %}selected{% endif %}>{{ kind.label() }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="jellyfin_url">URL</label>
+                    <input type="text" name="jellyfin_url" id="jellyfin_url" value="{{ config.jellyfin_url }}" placeholder="http://192.168.68.61:8096">
+                </div>
             </div>
             <div class="form-group">
                 <label for="jellyfin_api_key">API Key</label>
                 <div style="display: flex; gap: 8px; align-items: center;">
                     <input type="password" name="jellyfin_api_key" id="jellyfin_api_key" autocomplete="new-password" placeholder="{% if !config.jellyfin_api_key.is_empty() %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% endif %}" style="flex:1">
                 </div>
-                <span class="form-hint">Ryokan will use this for server info, targeted lookups, and library refreshes. A saved key is never shown again. Leave the field blank to keep it.</span>
+                <span class="form-hint">Ryokan asks the server to refresh its library after each import. For Plex, paste your X-Plex-Token. A saved key is never shown again. Leave the field blank to keep it.</span>
             </div>
             <div class="settings-inline-actions">
                 <button type="button" class="btn btn-secondary"

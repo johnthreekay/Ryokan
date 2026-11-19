@@ -2,7 +2,7 @@
 
 Askama 0.16 (Jinja2-like, compiled into the binary at build time via proc-macro). Templates live here; handlers call `template.render()` and wrap in `Html(...)` themselves — there's no `axum`-integration crate (Askama 0.13 merged with rinja and dropped per-framework wrappers).
 
-**htmx 4.0.0** is vendored under `static/vendor/` (issue #130, migrated from 2.0.9). **Body-wide `<body hx-boost:inherited="true">` is active** — every plain `<a>` and `<form>` runs through htmx by default. No extensions are loaded: the progress toast streams over native `EventSource`, and the `<head>` never changes across a boosted nav (all CSS is bundled in `base.html`; htmx 4 core carries `<title>` on its own), so the 2.x SSE and head-support extensions are gone.
+**htmx 4.0.2** is vendored under `static/vendor/` (issue #130, migrated from 2.0.9). **Body-wide `<body hx-boost:inherited="true">` is active** — every plain `<a>` and `<form>` runs through htmx by default. No extensions are loaded: the progress toast streams over native `EventSource`, and the `<head>` never changes across a boosted nav (all CSS is bundled in `base.html`; htmx 4 core carries `<title>` on its own), so the 2.x SSE and head-support extensions are gone.
 
 ## htmx 4 rules (what changed from 2.x, and what pins it)
 
@@ -79,6 +79,7 @@ Under htmx 2's implicit inheritance a plain `<a href>` inside a form with `hx-ta
 
 - **Use `var` at module scope, not `let` / `const`.** Top-level `let` / `const` throws "redeclaration" SyntaxError on body-swap re-execute.
 - **Module-scope DOM snapshots go stale** after a body swap. Cache via a Proxy or re-query inside the handler.
+- **Anything a script registers on `document`, `window` or `htmx`, and any timer it starts, is registered again on every re-execution**, `base.js` included (it sits in the swapped body). Guard it with a `window.__ryokan…` flag and reach the newest copy through a `window` hook (`bindModalKeys`, `window.ryokanRefreshTimestamps`, `__ryokanGrabPickerEscape`), and keep a timer's handle on `window`, never in a module-scope `var x = null`, which the re-execution resets while the timer keeps running (`system.js`'s Logs poller did this: one more 3 s poll per return to the tab).
 
 ## CSS gotcha: `background:` shorthand on `<select>`
 

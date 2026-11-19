@@ -5,8 +5,7 @@ You don't need this if you run the Docker image. This page is for contributing t
 ## What you need
 
 - **Rust 1.95 or later**.
-- **A C/C++ compiler and `cmake`**. Two of Ryokan's dependencies build native code (the anime title parser and the TLS library).
-- **`mold` and `clang`** on Linux. Ryokan links with them on Linux because it makes rebuilds much faster. Without them the first build stops with `linker 'clang' not found` or `ld.mold not found`.
+- **A C/C++ compiler and `cmake`**. Two of Ryokan's dependencies build native code (the TLS library and SQLite).
 - **`cargo-nextest`** (optional) for the `cargo t` test shortcut. Plain `cargo test` works without it.
 
 ## Install the toolchain
@@ -14,19 +13,19 @@ You don't need this if you run the Docker image. This page is for contributing t
 Debian or Ubuntu:
 
 ```sh
-sudo apt install mold clang cmake
+sudo apt install build-essential cmake
 ```
 
 Fedora:
 
 ```sh
-sudo dnf install mold clang cmake
+sudo dnf install gcc gcc-c++ make cmake
 ```
 
 Arch:
 
 ```sh
-sudo pacman -S mold clang cmake
+sudo pacman -S base-devel cmake
 ```
 
 macOS:
@@ -35,8 +34,6 @@ macOS:
 xcode-select --install     # Apple's compiler, once
 brew install cmake
 ```
-
-The mold linker setting only applies to Linux, so macOS builds use Apple's linker and need nothing else.
 
 !!! note "macOS builds are untested"
     Ryokan's automated builds and tests run on Linux only, so a native macOS build may work but nothing checks it. On a Mac, including Apple Silicon, the supported way to run Ryokan is the Docker image. Docker Desktop, OrbStack, and Colima run its arm64 build natively, without emulation.

@@ -330,7 +330,7 @@
          window.ryokanToast({kind, title, body, duration}). -->
     <div class="ryokan-toast-stack" id="ryokan-toast-stack" aria-live="polite" aria-atomic="false"></div>
 
-    {# Vendored htmx 4.0.0 core (no extensions: the progress toast
+    {# Vendored htmx 4.0.2 core (no extensions: the progress toast
        streams over native EventSource, and the head needs no merge)
        plus the page_lifecycle helper (mount/unmount per-page polling
        on every boosted swap). All `defer`'d so they evaluate after
@@ -343,7 +343,7 @@
        means every plain `<a>` and `<form>` runs through htmx by
        default. Per-page `hx-boost="false"` opt-outs are documented at
        each opt-out site. #}
-    <script src="/static/vendor/htmx-4.0.0.min.js?v={{ crate::asset_version() }}" defer></script>
+    <script src="/static/vendor/htmx-4.0.2.min.js?v={{ crate::asset_version() }}" defer></script>
     <script src="/static/js/page_lifecycle.js?v={{ crate::asset_version() }}" defer></script>
     <script src="/static/js/base.js?v={{ crate::asset_version() }}" defer></script>
     {# Per-page scripts must load AFTER `page_lifecycle.js` + `base.js`

@@ -718,7 +718,7 @@ pub async fn require_auth(
     // Check session cookie.
     let token = match get_session_token(&req) {
         Some(t) => t,
-        None => return crate::handlers::responses::htmx_aware_redirect_from_req(&req, "/login"),
+        None => return login_required(&req),
     };
 
     match session::validate_session(&state.db, &token).await {
@@ -735,8 +735,44 @@ pub async fn require_auth(
             }
             next.run(req).await
         }
-        _ => crate::handlers::responses::htmx_aware_redirect_from_req(&req, "/login"),
+        _ => login_required(&req),
     }
+}
+
+/// Response header on the 401 [`login_required`] gives a script
+/// request; `base.js` reads it to send the page to `/login`.
+pub const SESSION_ENDED_HEADER: &str = "x-ryokan-session";
+
+/// What a request to a protected route gets when it carries no valid
+/// session. A navigation goes to `/login`: a 303, or `HX-Redirect` for
+/// htmx, which would otherwise swap the login page into the old one.
+///
+/// A script's own request gets a 401 instead. `fetch` follows a 303 on
+/// its own, receives the login page as a 200, and reports `ok`: every
+/// caller that then only checks `r.ok` took the session ending for
+/// success, so "Add to library" said Added, and a remove or a grab
+/// confirm went through the motions, with nothing done. Browsers mark
+/// such requests with a `Sec-Fetch-Mode` other than `navigate`. A
+/// request without the header (curl, a form post from an old browser)
+/// keeps the redirect.
+fn login_required(req: &Request<Body>) -> Response {
+    let header_is = |name: &str, pred: fn(&str) -> bool| {
+        req.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(pred)
+    };
+    let htmx = header_is("hx-request", |v| v.eq_ignore_ascii_case("true"));
+    let scripted = header_is("sec-fetch-mode", |v| !v.eq_ignore_ascii_case("navigate"));
+    if scripted && !htmx {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(SESSION_ENDED_HEADER, "ended")],
+            "Your session has ended. Sign in again.",
+        )
+            .into_response();
+    }
+    crate::handlers::responses::htmx_aware_redirect_from_req(req, "/login")
 }
 
 /// Refuse a cross-site navigation to a GET that does something: builds
@@ -784,6 +820,10 @@ pub async fn csrf_public(req: Request<Body>, next: Next) -> Response {
 pub(crate) const MIN_PASSWORD_CHARS: usize = 8;
 /// Longest: bcrypt ignores everything past byte 72.
 pub(crate) const MAX_PASSWORD_BYTES: usize = 72;
+/// Longest admin username `/setup` accepts, in characters. The name is
+/// stored, logged, and sent back with every System page; unbounded, a
+/// megabyte of it made every one of those a megabyte.
+pub(crate) const MAX_USERNAME_CHARS: usize = 100;
 
 pub async fn setup_page(State(state): State<AppState>) -> impl IntoResponse {
     // If users already exist, redirect to login.
@@ -821,6 +861,16 @@ pub async fn setup_submit(
     if form.username.trim().is_empty() || form.password.is_empty() {
         let template = SetupTemplate {
             error: Some("Username and password are required.".into()),
+        };
+        return Html(template.render().unwrap_or_default()).into_response();
+    }
+
+    let username = form.username.trim();
+    if username.chars().count() > MAX_USERNAME_CHARS || username.chars().any(char::is_control) {
+        let template = SetupTemplate {
+            error: Some(format!(
+                "Use a username of at most {MAX_USERNAME_CHARS} characters, without control characters."
+            )),
         };
         return Html(template.render().unwrap_or_default()).into_response();
     }
@@ -874,7 +924,10 @@ pub async fn setup_submit(
             logger::info(
                 &state.db,
                 LogCategory::Auth,
-                &format!("Account created: {}", form.username.trim()),
+                &format!(
+                    "Account created: {}",
+                    sanitize_for_log(form.username.trim())
+                ),
                 "",
             )
             .await;

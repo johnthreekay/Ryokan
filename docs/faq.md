@@ -2,64 +2,71 @@
 
 ## How is this different from Sonarr?
 
-Sonarr was built for general-purpose TV; its anime support is real but bolted on. Ryokan is anime-only and tunes its release-classification logic, search shape, and metadata for that. The concrete differences:
+Sonarr is built for TV in general and supports anime as a special case. Ryokan only does anime. In practice:
 
-- **Batch releases are a first-class search target, not a fan-out.** Sonarr's anime mode searches every episode individually, which multiplies search time and indexer hits with every episode and indexer (and, in our experience, times out before the results aggregate). Ryokan sends one search per batch.
-- **Anime release-name parsing is the default-handled path, not an edge case.** Ryokan's own release-title parser reads fansub, BD-pack, scene and CJK naming (groups, absolute and season numbering, batches, specials, revisions); Custom Formats match against the release title; AniList is the primary metadata source.
-- **[SeaDex](https://releases.moe) is integrated as an authoritative-pick layer.** Sonarr has nothing equivalent.
-- **Source classification combines multiple signals** (filename, Nyaa description scrape, release-group reputation table, ffprobe output, directory walk, and a temporal "is this still airing?" heuristic) before deciding whether a release is BD or WEB. Sonarr decides quality from the release title plus Custom Formats; for anime, that misclassifies often enough that the manual-review pile stays large.
+- **Batches.** Ryokan searches for a season pack with one search. Sonarr's anime mode searches every episode separately.
+- **Release names.** Ryokan reads fansub and BluRay-pack naming, absolute episode numbers and revisions (v2) by default.
+- **Metadata.** Ryokan uses AniList, so seasons and titles match how anime is listed.
+- **[SeaDex](https://releases.moe).** Ryokan can prefer the releases SeaDex recommends.
+- **BluRay or WEB.** Ryokan looks at more than the release title to tell them apart, including the release group, the file itself, and whether the show is still airing.
 
 ## Is this a fork of Sonarr?
 
-No. Different language (Rust vs C#), different architecture, different release ecosystem. Some conventions are deliberately Sonarr / Radarr-shaped (Custom Format JSON format, source taxonomy, the API shape Seerr expects) so TRaSH-Guides presets and Seerr-style request frontends Just Work, but the codebase is independent.
+No. Ryokan is written from scratch in Rust. It follows some Sonarr conventions on purpose, so that TRaSH-Guides Custom Formats and Seerr work with it.
 
 ## Can it manage manga, light novels, or webtoons?
 
-No. Ryokan only manages anime in the current 1.x line. Manga, light novels, and webtoons were going to be the focus of 2.x, but that work has been pushed back to concentrate on making Ryokan a true Sonarr replacement for anime first. They need different metadata sources, naming conventions, and file layouts, so they won't be grafted on partially.
+No, only anime. They may come later.
 
 ## Can I run multiple Ryokan instances?
 
-Technically yes, but they don't coordinate. Each instance has its own database, its own grab history, its own AniList / MAL link state. Two instances pointed at the same AniList account share that account's per-token rate-limit budget (which you'll trip), so this isn't a "scale horizontally" pattern; it's "two completely separate libraries that happen to share metadata sources".
+Yes, but they know nothing about each other. Each has its own database and library. If two use the same AniList account, they share its rate limit and will hit it. See [Troubleshooting](troubleshooting.md#anilist-per-account-cooldown-stuck-past-60s).
 
-If you need shared library state across machines, stick to one instance and put it behind a reverse proxy or VPN-mesh so both machines can reach it. See [Troubleshooting → AniList per-account cooldown](troubleshooting.md#anilist-per-account-cooldown-stuck-past-60s) for the rate-limit angle.
+To use one library from several machines, run one instance and reach it over your network.
 
 ## Is Ryokan multi-user?
 
-Not supported and not on the roadmap. Single-admin only. The reasoning matches Sonarr's [PR #7186](https://github.com/Sonarr/Sonarr/pull/7186) rejection (Jan 2025): private-tracker account-sharing semantics get messy fast, and the "PVR shared with friends" use case is well-served by Jellyfin sitting on top of a single-admin PVR. Jellyfin already handles per-user libraries, watch progress, parental controls, etc.
+No, and there are no plans for it. Ryokan has one account. To share your library with other people, use Jellyfin, which has its own users, watch progress and parental controls.
 
 ## Can I use the API directly?
 
-Yes. Ryokan exposes a Swagger UI at `/api-docs` and the OpenAPI JSON at `/api-docs/openapi.json`. Both sit behind the web login, so open them in a browser where you are already signed in. Three auth paths for the endpoints themselves:
+Yes. The API documentation is at `/api-docs`, and the OpenAPI file at `/api-docs/openapi.json`. Both need you to be logged in.
 
-- **Cookie auth** for the web-UI-facing endpoints (whatever the browser uses; you log in with username + password).
-- **API-key auth** for the Sonarr / Radarr-compatible shim that Seerr and friends call (`X-Api-Key` header or `?apikey=` query string, configured in **Settings → Connections**).
-- **Per-tool API keys** for narrower jobs. Right now the calendar subscription feed at `/api/calendar.ics` is the main one. Create a key with the `calendar` permission on **Settings → API Keys** and the [Calendar](calendar.md) page builds the subscription URL for you.
+There are three ways to authenticate:
+
+- **Your login session**, for the same endpoints the web UI uses.
+- **The Sonarr / Radarr API keys** from **Settings → Connections**, for the endpoints Seerr calls. Send the key in the `X-Api-Key` header or as `?apikey=`.
+- **Keys from Settings → API Keys**, for specific features. Currently that is the calendar feed at `/api/calendar.ics`. See [Calendar](calendar.md).
 
 ## Does Ryokan handle a file that holds two episodes?
 
-Yes. A release like `Title - 05-06` or `S01E05-E06` imports as one file named with the range (`Title - S01E05-E06 - Title A + Title B.mkv` with the default template) and both episodes show as present, so neither is searched for again. Deleting the file clears both episodes. Ryokan reads the range from the file name: numbers joined by dashes in the episode slot (`05-06`, `S01E05-E06`, or a run like `S01E01-02-03`), each at least two digits, at most six episodes in one file. A file that already holds two episodes is only replaced by a release that covers both; a single-episode release for one of them is not imported, since that would drop the other episode.
+Yes. A release like `Title - 05-06` or `S01E05-E06` is imported as one file named with the range, and both episodes count as present. Deleting the file removes both.
+
+Such a file is only replaced by a release that covers both episodes.
 
 ## Where do OVAs and specials go?
 
-A file whose name marks it as a special (`Show - OVA 01`, `Show - SP1`, `Show - 01 Special`) is not an episode of a TV series, so Ryokan keeps it apart the way Sonarr's Season 0 does. When a batch for a TV series contains one, it lands in a `Specials` folder inside the series folder, named `S00E01`-style, which Jellyfin, Plex and Kodi all read as a special. It gets no entry in the episode list and never replaces anything already in that folder. Automatic search and RSS skip special releases for a TV series, since the special is never the episode they are looking for. Grab one from interactive search when you want it. For a series that is itself an OVA or special on AniList the marker is part of its name, and its files are ordinary episodes.
+A special that comes inside a batch for a TV series, such as `Show - OVA 01` or `Show - SP1`, goes into a `Specials` folder in the series folder and is named `S00E01` style. Jellyfin, Plex and Kodi all recognise that. It does not appear in the episode list.
+
+Automatic search and RSS do not grab specials for a TV series. Use interactive search when you want one.
+
+A series that is itself an OVA on AniList is treated like any other series.
 
 ## Can a .strm file stand in for an episode?
 
-Yes. A `.strm` file is a small text file holding a link to a stream, which Jellyfin, Emby and Kodi play in place of the video. Some setups move an episode off the server and leave a `.strm` behind under the same name. Ryokan counts a `.strm` in the series folder as that episode's file, the same as an `.mkv` with that name, so the episode shows as present and isn't searched for again. Import Library picks them up too.
+Yes. A `.strm` file is a small text file containing a link to a stream, which Jellyfin, Emby and Kodi play in place of a video. Ryokan counts a `.strm` in the series folder as that episode, so the episode shows as present and is not searched for. Import Library picks them up too.
 
-Ryokan never opens a `.strm` or follows its link. The episode keeps the quality recorded when its video was imported, and the series page shows **Stream link** where the file size would be. A `.strm` for an episode Ryokan never imported is classified like any file you add by hand, except that Ryokan can't measure its resolution, so its quality is a best guess. Downloads never import a `.strm`, since the link inside a release would be one your media server fetches.
+Ryokan never opens the link. The series page shows **Stream link** where the file size would be.
 
-An upgrade replaces a `.strm` like any other file, and the `.strm` goes to the recycle bin. To keep offloaded episodes as they are, turn off **Upgrades** on the series page.
+An upgrade replaces a `.strm` like any other file. To prevent that, turn off **Upgrades** on the series page.
 
 ## How do I back up?
 
-Ryokan has a built-in backup on [System → Backup](system.md#backup): download a snapshot, save one to the backup folder, schedule daily or weekly backups under Settings → General, and restore by uploading an archive. That is the supported path; a plain file copy taken while Ryokan is running can miss writes.
+Use [System → Backup](system.md#backup). You can download a backup, save one to a folder, schedule them, and restore from one.
 
-If you would rather copy the volume yourself, stop Ryokan first. The whole `/data` volume captures everything: the SQLite database, the artwork cache, the encryption key, the OAuth tokens (encrypted at rest), and config sentinels. Standard SQLite backup tools work, or just stop Ryokan and copy the volume.
+To back up the files yourself, stop Ryokan first and copy the whole data folder: `/srv/docker/ryokan` in the [quick start](quick-start.md), or the Docker volume otherwise. A copy taken while Ryokan is running can miss recent changes.
 
-The encryption key is the load-bearing bit. Lose it but keep the database, and every encrypted OAuth token in `external_accounts` becomes unrecoverable; you'll need to re-link those accounts. The key lives at `/data/.ryokan-key` by default; back it up alongside the DB.
-
-If you're using the [quick start's](quick-start.md) `/srv/docker/ryokan` bind-mount layout, the whole folder is your backup target. With Docker named volumes it's under `/var/lib/docker/volumes/<volume-name>/`; same idea, less convenient.
+The data folder contains a hidden `.ryokan-key` file. Keep it with the database. Without it you have to link your AniList and MyAnimeList accounts again.
 
 ---
 

@@ -2,6 +2,33 @@ use super::*;
 use std::collections::HashMap;
 use std::io::Read;
 
+/// `create_backup` and `stage_restore` take the process-wide
+/// [`BACKUP_LOCK`] with `try_lock` and answer `Busy` when it is held.
+/// Tests that share a process (plain `cargo test`; nextest gives each
+/// its own) would trip over each other, so the two wrappers below,
+/// which shadow the real functions for this module, run one at a time.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn create_backup(
+    db: &SqlitePool,
+    paths: &BackupPaths,
+    opts: BackupOptions,
+    out: &Path,
+) -> Result<BackupManifest, BackupError> {
+    let _serial = SERIAL.lock().await;
+    super::create_backup(db, paths, opts, out).await
+}
+
+async fn stage_restore(
+    db: &SqlitePool,
+    paths: &BackupPaths,
+    backup_dir: &Path,
+    upload: &Path,
+) -> Result<StagedRestore, RestoreError> {
+    let _serial = SERIAL.lock().await;
+    super::stage_restore(db, paths, backup_dir, upload).await
+}
+
 /// A data dir laid out like a real install: a key file and an artwork
 /// dir; the database is created by [`pool_at`].
 fn temp_paths(tag: &str) -> BackupPaths {
@@ -181,8 +208,12 @@ async fn sanitized_backup_omits_key_and_hostname_and_trims_logs() {
 async fn busy_lock_refuses_a_second_backup() {
     let paths = temp_paths("busy");
     let db = pool_at(&paths).await;
+    // Held for the whole test: while this test holds the real lock,
+    // no other test may start a backup. The real function is called
+    // directly because the wrapper would wait on `SERIAL` forever.
+    let _serial = SERIAL.lock().await;
     let _held = BACKUP_LOCK.lock().await;
-    let err = create_backup(
+    let err = super::create_backup(
         &db,
         &paths,
         BackupOptions::default(),
@@ -322,7 +353,7 @@ async fn stage_restore_rejects_non_backups_and_newer_schemas() {
     let mut manifest = BackupManifest {
         ryokan_version: env!("CARGO_PKG_VERSION").to_string(),
         backup_timestamp: 1,
-        max_migration_id: max_migration_id(&db).await + 1000,
+        max_migration_id: migration_level(&db).await + 1000,
         includes_artwork: false,
         includes_key: false,
         sanitized: false,
@@ -380,6 +411,60 @@ async fn stage_restore_rejects_non_backups_and_newer_schemas() {
             .iter()
             .any(|w| w.contains("no encryption key"))
     );
+    cleanup(&paths);
+}
+
+#[tokio::test]
+async fn a_backup_from_a_database_with_more_migrations_is_refused() {
+    // Dogfood a7. The gate above only ever saw hand-written manifests:
+    // a real backup carried `max_migration_id: 0` whatever the
+    // database held, and the running side read 0 too, so a backup from
+    // a newer build of the same version string staged and applied.
+    let paths = temp_paths("newer-ledger");
+    let db = pool_at(&paths).await;
+    let backup_dir = paths.data_dir.join("backups");
+
+    let known = migration_level(&db).await;
+    assert!(known > 0, "migrate() records its one-shot migrations");
+
+    // The backup is taken by a build with one more migration.
+    sqlx::query("INSERT INTO schema_migrations (id) VALUES ('from_a_newer_build_v1')")
+        .execute(&db)
+        .await
+        .unwrap();
+    let out = backup_dir.join("ryokan-backup-newer.tar.gz");
+    let manifest = create_backup(&db, &paths, BackupOptions::default(), &out)
+        .await
+        .expect("backup");
+    assert_eq!(manifest.max_migration_id, known + 1);
+    // A refused archive is deleted; keep one for the control below.
+    let again = paths.data_dir.join("again.tar.gz");
+    fs::copy(&out, &again).unwrap();
+
+    // This build never ran it.
+    sqlx::query("DELETE FROM schema_migrations WHERE id = 'from_a_newer_build_v1'")
+        .execute(&db)
+        .await
+        .unwrap();
+    let err = stage_restore(&db, &paths, &backup_dir, &out)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, RestoreError::Incompatible(_)), "{err}");
+    assert!(
+        err.to_string()
+            .contains(&format!("schema {} vs {} here", known + 1, known)),
+        "{err}"
+    );
+    assert!(!paths.pending_dir().exists());
+
+    // The same archive restores onto a database that has run it.
+    sqlx::query("INSERT INTO schema_migrations (id) VALUES ('from_a_newer_build_v1')")
+        .execute(&db)
+        .await
+        .unwrap();
+    stage_restore(&db, &paths, &backup_dir, &again)
+        .await
+        .expect("an equal ledger restores");
     cleanup(&paths);
 }
 

@@ -139,6 +139,23 @@ pub async fn try_connect_browser() -> Result<fantoccini::Client, String> {
         "moz:firefoxOptions".to_string(),
         serde_json::Value::Object(firefox_opts),
     );
+    // Keep the browser off the network: everything except the local
+    // test server goes to a proxy address nothing listens on. A fresh
+    // LibreWolf profile otherwise downloads and installs uBlock Origin
+    // (its policies.json) about two seconds after launch, which is when
+    // a test makes its first clicks; a request issued while the add-on
+    // starts up was sometimes never sent, so a boosted link or a page
+    // script hung until the test's wait timed out (about one run in
+    // seven of the boost binaries failed this way, on any htmx version).
+    caps.insert(
+        "proxy".to_string(),
+        serde_json::json!({
+            "proxyType": "manual",
+            "httpProxy": "127.0.0.1:9",
+            "sslProxy": "127.0.0.1:9",
+            "noProxy": ["127.0.0.1", "localhost"],
+        }),
+    );
 
     // `rustls()` rather than `native()`: fantoccini is built with
     // `default-features = false, features = ["rustls-tls"]` so the

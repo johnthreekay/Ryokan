@@ -738,3 +738,85 @@ fn misgrabs_tab_is_recognized() {
         "misgrabs"
     );
 }
+
+/// A season in progress whose provider has no episode list (every air
+/// date blank): the airing schedule says which episodes have aired, so
+/// the ones before the next slot are missing, not unaired. They all
+/// read as unaired when only the series status was asked.
+#[tokio::test]
+async fn undated_episodes_before_the_next_airing_slot_are_missing_not_unaired() {
+    let db = sqlx::SqlitePool::connect("sqlite::memory:")
+        .await
+        .expect("in-memory sqlite");
+    crate::models::migrate(&db).await.expect("migrate");
+    let (series_id, _) = series::upsert(
+        &db,
+        series::SeriesCore {
+            anilist_id: 152677,
+            mal_id: None,
+            title: "Airing Show",
+            title_romaji: "Airing Show",
+            title_english: "Airing Show",
+            title_native: "",
+            cover_url: "",
+            format: "TV",
+            status: "RELEASING",
+            episodes: Some(13),
+            season_year: Some(2026),
+            end_year: None,
+        },
+    )
+    .await
+    .expect("series upsert");
+    // Past slots are pruned, so only episodes 7 onward have a row.
+    for ep in 7..=13 {
+        sqlx::query(
+            "INSERT INTO episode_airings (series_id, episode, airing_at)
+             VALUES (?, ?, unixepoch() + ? * 604800 + 3600)",
+        )
+        .bind(series_id)
+        .bind(ep)
+        .bind(ep - 7)
+        .execute(&db)
+        .await
+        .expect("airing row");
+    }
+    let media_root = unique_media_root("undated_airing");
+    std::fs::create_dir_all(&media_root).expect("media root");
+    let mut detail = empty_anime_detail(152677, "Airing Show", Some(13));
+    detail.status = "RELEASING".to_string();
+
+    let unaired_of = |episodes: &[Episode]| -> Vec<i32> {
+        let mut v: Vec<i32> = episodes
+            .iter()
+            .filter(|e| e.unaired)
+            .map(|e| e.number)
+            .collect();
+        v.sort_unstable();
+        v
+    };
+    let (episodes, ..) = build_episodes(
+        &db,
+        &detail,
+        Some(series_id),
+        "Airing Show",
+        media_root.to_str().expect("media root str"),
+    )
+    .await;
+    assert_eq!(unaired_of(&episodes), (7..=13).collect::<Vec<_>>());
+
+    // An untracked series has no schedule rows: the detail's next
+    // airing episode answers instead.
+    detail.next_airing_episode = Some(4);
+    let (episodes, ..) =
+        build_episodes(&db, &detail, None, "", media_root.to_str().expect("str")).await;
+    assert_eq!(unaired_of(&episodes), (4..=13).collect::<Vec<_>>());
+
+    // With neither, a releasing series' undated episodes stay unaired.
+    detail.next_airing_episode = None;
+    let (episodes, ..) =
+        build_episodes(&db, &detail, None, "", media_root.to_str().expect("str")).await;
+    assert_eq!(unaired_of(&episodes), (1..=13).collect::<Vec<_>>());
+
+    std::fs::remove_dir_all(&media_root).ok();
+}

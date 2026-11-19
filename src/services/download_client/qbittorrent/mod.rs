@@ -192,6 +192,21 @@ impl QbitClient {
             .await
             .map_err(|e| format!("qbit login failed: {}", e))?;
 
+        // qBittorrent answers a login with 200 either way (`Ok.` or
+        // `Fails.`). Anything else is not a login: 403 is its ban on an
+        // address after repeated bad passwords, and a 401 / 404 / 5xx
+        // is a proxy or some other server at this URL. Only the
+        // `Fails.` body used to count, so all of those "logged in" and
+        // the Test button reported Connected.
+        let status = resp.status();
+        if !status.is_success() {
+            let hint = if status == StatusCode::FORBIDDEN {
+                " (qBittorrent blocks an address after repeated failed logins)"
+            } else {
+                ""
+            };
+            return Err(format!("qbit login failed: HTTP {status}{hint}"));
+        }
         let body = resp.text().await.unwrap_or_default();
         if body == "Fails." {
             return Err("qbit auth failed: invalid credentials".into());
@@ -375,7 +390,13 @@ impl QbitClient {
         let endpoint = if self.category.is_empty() {
             "/api/v2/torrents/info".to_string()
         } else {
-            format!("/api/v2/torrents/info?category={}", self.category)
+            // Encoded: a label like `Anime & Co+1#x` otherwise asked for
+            // category `Anime`, listing another category's torrents and
+            // never this client's own.
+            format!(
+                "/api/v2/torrents/info?category={}",
+                urlencoding::encode(&self.category)
+            )
         };
 
         let resp = self.do_get(&endpoint).await?;
@@ -392,8 +413,21 @@ impl QbitClient {
 impl DownloadClient for QbitClient {
     async fn test(&self) -> Result<String, String> {
         let resp = self.do_get("/api/v2/app/version").await?;
+        // The body of an error page is not a version. Returned as one,
+        // a 500, a proxy's 401 or another web app at this URL showed
+        // as "Connected: <whatever it said>".
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(format!("qBittorrent returned HTTP {status}"));
+        }
         let version = resp.text().await.unwrap_or_default();
-        Ok(version)
+        let version = version.trim();
+        if version.is_empty() || version.len() > 64 || version.contains('<') {
+            return Err(
+                "the server answered, but not like qBittorrent's Web API; check the URL".into(),
+            );
+        }
+        Ok(version.to_string())
     }
 
     async fn add_torrent(&self, url: &str, info_hash: &str) -> Result<AddOutcome, String> {

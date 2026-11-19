@@ -263,8 +263,38 @@ pub struct SearchResponse {
     pub has_next: bool,
 }
 
+/// The most recent failed [`search`] and when it failed. The search
+/// collectors run dozens of queries per target and keep only the hits
+/// (`Err(_) => continue`), so a caller left with nothing asks
+/// [`search_failure_since`] whether that was "no release" or "Nyaa did
+/// not answer". Never cleared: a reader compares the time.
+static LAST_SEARCH_FAILURE: LazyLock<std::sync::Mutex<Option<(std::time::Instant, String)>>> =
+    LazyLock::new(|| std::sync::Mutex::new(None));
+
+/// The error of a Nyaa search that failed at or after `since`, when
+/// there was one. Process-wide, so a search another request started in
+/// the same moments counts too; a caller reads it only to explain an
+/// empty result, and with Nyaa failing next door "could not be
+/// searched" is the truer account of an empty list.
+pub fn search_failure_since(since: std::time::Instant) -> Option<String> {
+    LAST_SEARCH_FAILURE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .filter(|(at, _)| *at >= since)
+        .map(|(_, error)| error.clone())
+}
+
 /// Search Nyaa by scraping the HTML results page.
 pub async fn search(opts: &SearchOptions, page: i32) -> Result<SearchResponse, String> {
+    let outcome = search_inner(opts, page).await;
+    if let Err(error) = &outcome {
+        *LAST_SEARCH_FAILURE.lock().unwrap() = Some((std::time::Instant::now(), error.clone()));
+    }
+    outcome
+}
+
+async fn search_inner(opts: &SearchOptions, page: i32) -> Result<SearchResponse, String> {
     let sanitized_query = sanitize_query_for_nyaa(&opts.query);
     let base = nyaa_base();
     let mut url = format!(
@@ -297,6 +327,13 @@ pub async fn search(opts: &SearchOptions, page: i32) -> Result<SearchResponse, S
         .send()
         .await
         .map_err(|e| format!("Nyaa request failed: {}", e.without_url()))?;
+    // An error page (5xx, a 429, a block page) holds no result rows.
+    // Parsed like a results page it read as "nothing found", which is
+    // what every caller then told the user.
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("Nyaa request failed: HTTP {status}"));
+    }
     let body = crate::services::http_body::read_capped(resp, SEARCH_BODY_CAP).await?;
     let html = String::from_utf8_lossy(&body);
 

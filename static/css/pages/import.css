@@ -666,4 +666,18 @@
     .import-summary-actions {
         margin-left: 0;
     }
+    /* #314: two full-size buttons do not fit one phone row, and the
+       second ran off the card. They take the card's width and wrap,
+       each as wide as its row. */
+    .import-report-actions {
+        flex: 1 1 100%;
+        flex-wrap: wrap;
+    }
+    .import-report-actions > .btn,
+    .import-report-actions > form {
+        flex: 1 1 auto;
+    }
+    .import-report-actions > form .btn {
+        width: 100%;
+    }
 }

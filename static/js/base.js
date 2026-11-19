@@ -1,3 +1,42 @@
+// A request a script makes after the session has ended is answered
+// 401 with `X-Ryokan-Session: ended` (`handlers::auth::login_required`)
+// rather than a redirect, which `fetch` would follow to the login page
+// and report as a success. Wrapped once: whichever caller made the
+// request, the page goes to the login form, the way a click on a link
+// would have. The response is still handed back, so the caller's own
+// error path runs first and nothing reads as done.
+if (!window.__ryokanFetchSessionWrapped && typeof window.fetch === 'function') {
+    window.__ryokanFetchSessionWrapped = true;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = function () {
+        return nativeFetch.apply(null, arguments).then(function (resp) {
+            if (resp.status === 401 && resp.headers.get('X-Ryokan-Session') === 'ended'
+                && !window.__ryokanSessionEnded) {
+                window.__ryokanSessionEnded = true;
+                setTimeout(function () { window.location.assign('/login'); }, 0);
+            }
+            return resp;
+        });
+    };
+}
+
+// The confirm / alert / prompt modals below each need one document
+// keydown listener. This file runs again on every boosted navigation
+// (it sits in the swapped body), and a listener added per run stayed
+// on `document` for good, holding the previous page's modal nodes with
+// it. Each kind is bound once and dispatches to the handler the newest
+// run registered.
+function bindModalKeys(kind, handler) {
+    const handlers = window.__ryokanModalKeyHandlers || (window.__ryokanModalKeyHandlers = {});
+    const bound = kind in handlers;
+    handlers[kind] = handler;
+    if (bound) return;
+    document.addEventListener('keydown', function (ev) {
+        const current = window.__ryokanModalKeyHandlers[kind];
+        if (current) current(ev);
+    });
+}
+
 (function () {
     // In-app replacement for browser confirm(). Returns a promise that
     // resolves to {ok: boolean, extras: {id: value}}. Falls back to
@@ -41,7 +80,7 @@
     modal.addEventListener('click', function (ev) {
         if (ev.target === modal) close({ok: false, extras: {}});
     });
-    document.addEventListener('keydown', function (ev) {
+    bindModalKeys('confirm', function (ev) {
         if (!current) return;
         if (ev.key === 'Escape') close({ok: false, extras: {}});
         if (ev.key === 'Enter') close({ok: true, extras: collectExtras()});
@@ -106,7 +145,7 @@
     modal.addEventListener('click', function (ev) {
         if (ev.target === modal) close();
     });
-    document.addEventListener('keydown', function (ev) {
+    bindModalKeys('alert', function (ev) {
         if (!current) return;
         if (ev.key === 'Escape' || ev.key === 'Enter') close();
     });
@@ -170,7 +209,7 @@
     modal.addEventListener('click', function (ev) {
         if (ev.target === modal) close(null);
     });
-    document.addEventListener('keydown', function (ev) {
+    bindModalKeys('prompt', function (ev) {
         if (!current) return;
         if (ev.key === 'Escape') close(null);
         if (ev.key === 'Enter' && ev.target === inputEl) {
@@ -639,6 +678,16 @@ window.ryokanNewProgressId = function () {
 window.ryokanProgressToast = function (opts) {
     opts = opts || {};
     if (!opts.progressId) throw new Error('ryokanProgressToast requires opts.progressId');
+    // One toast per job. A full page load re-attaches a stored progress
+    // toast (`__ryokanRestoreToasts`) before the page's own script
+    // asks to follow the same job, and each call used to add a toast
+    // (#314: the import page showed its status two and three times).
+    // The newer call wins, since it carries the page's `onTerminal`.
+    const followers = window.__ryokanProgressFollowers = window.__ryokanProgressFollowers || {};
+    const previous = followers[opts.progressId];
+    if (previous) {
+        try { previous.dismiss(); } catch (_) {}
+    }
     const toast = window.ryokanToast({
         id: opts.id,
         kind: opts.kind || 'info',
@@ -660,6 +709,7 @@ window.ryokanProgressToast = function (opts) {
     });
     let stopped = false;
     let lastTerminal = null;
+    let handle = null;
     // Apply a single ProgressEvent to the toast; track terminal so
     // close() can fire onTerminal + finalize cleanly. Shared between
     // the SSE and the polling-fallback code paths.
@@ -667,9 +717,13 @@ window.ryokanProgressToast = function (opts) {
         toast.update({kind: ev.kind, title: ev.title, body: ev.body || ''});
         if (ev.terminal) lastTerminal = ev;
     }
+    function release() {
+        if (followers[opts.progressId] === handle) delete followers[opts.progressId];
+    }
     function close() {
         if (stopped) return;
         stopped = true;
+        release();
         // Always finalize so a sticky toast can't get orphaned. Two
         // cases land here:
         //   1. Normal completion: `lastTerminal` carries the success/
@@ -784,19 +838,23 @@ window.ryokanProgressToast = function (opts) {
         // today, but cheap defensive fallback).
         startPolling();
     }
-    return {
+    handle = {
         dismiss: function () {
             stopped = true;
+            release();
             if (es) { es.close(); es = null; }
             toast.dismiss();
         },
         update: function (p) { toast.update(p); },
         finalize: function (p) {
             stopped = true;
+            release();
             if (es) { es.close(); es = null; }
             toast.finalize(p);
         },
     };
+    followers[opts.progressId] = handle;
+    return handle;
 };
 
 // A full page load rebuilds the toasts the previous page still had
@@ -1086,15 +1144,25 @@ window.ryokanCopy = function (text, btn) {
     // Expose for callers who inject new [data-ts] nodes after DOM ready.
     window.ryokanRefreshTimestamps = refresh;
 
-    window.addEventListener('DOMContentLoaded', refresh);
-    // Phase B of the hx-boost rollout — also refresh on every
-    // boosted swap. Without this, navigating to a page with new
-    // [data-ts] nodes via boost would leave them showing the raw
-    // timestamp until the 30s `setInterval` tick caught up.
-    if (window.htmx && typeof window.htmx.onLoad === 'function') {
-        window.htmx.onLoad(refresh);
+    // Bound once per document. This file sits in the swapped body and
+    // runs again on every boosted navigation; registered per run, the
+    // 30 s interval and the onLoad hook piled up (15 navigations: 15
+    // intervals and 15 refreshes per swap, never cleared) until a full
+    // reload. The hooks call through `window.ryokanRefreshTimestamps`,
+    // which each run reassigns, so they always reach the newest copy.
+    if (!window.__ryokanTimestampRefreshBound) {
+        window.__ryokanTimestampRefreshBound = true;
+        const run = function () { window.ryokanRefreshTimestamps(); };
+        window.addEventListener('DOMContentLoaded', run);
+        // Phase B of the hx-boost rollout — also refresh on every
+        // boosted swap. Without this, navigating to a page with new
+        // [data-ts] nodes via boost would leave them showing the raw
+        // timestamp until the 30s `setInterval` tick caught up.
+        if (window.htmx && typeof window.htmx.onLoad === 'function') {
+            window.htmx.onLoad(run);
+        }
+        setInterval(run, 30000);
     }
-    setInterval(refresh, 30000);
 })();
 
 // ── Click outside a modal dismisses it ────────────────────────────

@@ -55,6 +55,22 @@ async fn sends_category_as_query_param() {
 }
 
 #[tokio::test]
+async fn sends_a_category_with_reserved_characters_whole() {
+    // Dogfood a4: `&`, `+` and `#` in the label cut the query short,
+    // and the list came back for category `Anime`.
+    let (server, client) = new_with_category("Anime & Co+1#x").await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/torrents/info"))
+        .and(query_param("category", "Anime & Co+1#x"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(seeded_torrents()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let items = client.list_scoped().await.expect("list_scoped");
+    assert_eq!(items.len(), 2);
+}
+
+#[tokio::test]
 async fn parses_two_torrents_with_correct_fields() {
     let (server, client) = new_fixture().await;
     Mock::given(method("GET"))

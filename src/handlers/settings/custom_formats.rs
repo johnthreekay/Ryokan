@@ -71,12 +71,21 @@ pub struct CustomFormatImportResolveForm {
     /// One entry per collision: `"<index>:<action>"` where action is
     /// `skip`, `overwrite`, or `rename`. Serialized as a newline-
     /// delimited string to avoid the axum Form-extractor's complicated
-    /// multi-value handling.
+    /// multi-value handling. Filled by the page's script from the
+    /// radios below; empty when the form is posted without it.
+    #[serde(default)]
     decisions: String,
     /// One entry per rename collision: `"<index>:<new_name>"`. Only
     /// read when the corresponding `decisions` line has action `rename`.
     /// Also newline-delimited.
+    #[serde(default)]
     renames: String,
+    /// The review table's own fields, as a plain form post sends them:
+    /// `cf_action_<index>` (the radio: `skip` / `overwrite` / `rename`)
+    /// and `cf_rename_<index>` (the new name).
+    #[serde(flatten)]
+    #[schema(value_type = Object)]
+    fields: HashMap<String, String>,
 }
 
 /// Query parameters for the CF export endpoint. `mode` selects between
@@ -720,6 +729,41 @@ pub async fn settings_custom_formats_import(
     }
 }
 
+/// The decision for each collision the review form carried one for.
+///
+/// The choice is a radio per collision (`cf_action_<index>`, with
+/// `cf_rename_<index>` beside it), and the page's script copies them
+/// into the `decisions` / `renames` fields on submit. Only those two
+/// were read here, so a post made without the script (or by hand)
+/// arrived with no decision at all, and the missing-decision default,
+/// overwrite, replaced every Custom Format the user had left on Skip.
+/// The radios are read directly now; the script's fields, when they
+/// are filled, say the same thing and win.
+fn collision_decisions(form: &CustomFormatImportResolveForm) -> HashMap<usize, CollisionDecision> {
+    let mut out: HashMap<usize, CollisionDecision> = HashMap::new();
+    for (field, action) in &form.fields {
+        let Some(idx) = field
+            .strip_prefix("cf_action_")
+            .and_then(|n| n.parse::<usize>().ok())
+        else {
+            continue;
+        };
+        let decision = match action.trim() {
+            "overwrite" => CollisionDecision::Overwrite,
+            "rename" => CollisionDecision::Rename(
+                form.fields
+                    .get(&format!("cf_rename_{idx}"))
+                    .map(|name| name.trim().to_string())
+                    .unwrap_or_default(),
+            ),
+            _ => CollisionDecision::Skip,
+        };
+        out.insert(idx, decision);
+    }
+    out.extend(parse_collision_decisions(&form.decisions, &form.renames));
+    out
+}
+
 /// Parse the newline-delimited decisions string into a HashMap keyed
 /// by entry index. Unknown actions are mapped to `Skip` (the safest
 /// default) and unknown indices are silently dropped.
@@ -769,7 +813,7 @@ fn parse_collision_decisions(decisions: &str, renames: &str) -> HashMap<usize, C
     path = "/settings/custom-formats/import-resolve",
     tag = "Settings",
     summary = "Resolve a staged CF import with per-collision decisions",
-    description = "Second step of the CF import flow: re-parses the original payload (echoed from a hidden field) and applies the user's overwrite/rename/skip decision for each name collision. Entries with no collision default to plain insert. Rebuilds the compiled-CF cache and redirects back to the Custom Formats settings tab.",
+    description = "Second step of the CF import flow: re-parses the original payload (echoed from a hidden field) and applies the user's overwrite/rename/skip decision for each name collision, read from the review table's `cf_action_<index>` / `cf_rename_<index>` fields or from the `decisions` / `renames` lists the page's script builds from them. A collision with no decision is skipped. Entries with no collision default to plain insert. Rebuilds the compiled-CF cache and redirects back to the Custom Formats settings tab.",
     request_body(content = CustomFormatImportResolveForm, content_type = "application/x-www-form-urlencoded"),
     responses(
         (status = 303, description = "Redirect back to the Custom Formats settings tab"),
@@ -828,16 +872,28 @@ pub async fn settings_custom_formats_import_resolve(
     let existing_by_name: HashMap<String, i64> =
         existing_rows.into_iter().map(|r| (r.name, r.id)).collect();
 
-    let decisions_map = parse_collision_decisions(&form.decisions, &form.renames);
+    let decisions_map = collision_decisions(&form);
 
     let decisions: Vec<(serde_json::Value, CollisionDecision)> = entries
         .into_iter()
         .enumerate()
         .map(|(idx, entry)| {
-            let decision = decisions_map
-                .get(&idx)
-                .cloned()
-                .unwrap_or(CollisionDecision::Overwrite);
+            let decision = decisions_map.get(&idx).cloned().unwrap_or_else(|| {
+                // No decision for this entry. For a new name that is a
+                // plain insert (`Overwrite` with no row to overwrite).
+                // For a name that exists it is the review form's own
+                // default, Skip: replacing a Custom Format nobody
+                // chose to replace is the one outcome that loses data.
+                let collides = entry
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|name| existing_by_name.contains_key(name.trim()));
+                if collides {
+                    CollisionDecision::Skip
+                } else {
+                    CollisionDecision::Overwrite
+                }
+            });
             (entry, decision)
         })
         .collect();
@@ -1638,6 +1694,111 @@ mod tests {
             Some(CollisionDecision::Rename(name)) => assert!(name.is_empty()),
             other => panic!("expected Rename with empty name, got {other:?}"),
         }
+    }
+
+    // ── import-resolve end to end (dogfood a6) ───────────────────────
+    //
+    // The review step posted without the page's script carries only the
+    // radios. Every collision was then overwritten, whatever was ticked.
+
+    const EXISTING_JSON: &str = r#"{"name":"T1","specifications":[{"name":"a","implementation":"ReleaseTitleSpecification","fields":{"value":"foo"}}]}"#;
+    /// Two entries: index 0 collides with `T1`, index 1 is new.
+    const IMPORT_PAYLOAD: &str = r#"[{"name":"T1","specifications":[{"name":"a","implementation":"ReleaseTitleSpecification","fields":{"value":"bar"}}]},{"name":"Fresh","specifications":[{"name":"b","implementation":"ReleaseTitleSpecification","fields":{"value":"baz"}}]}]"#;
+
+    async fn state_with_t1() -> AppState {
+        let db = crate::test_support::in_memory_pool().await;
+        cf_model::insert(&db, "T1", None, EXISTING_JSON, 0, cf_model::ORIGIN_IMPORT)
+            .await
+            .unwrap();
+        crate::test_support::build_test_app_state(db, None)
+    }
+
+    /// Post `extra` (urlencoded pairs) to import-resolve the way a
+    /// browser form does, through the real `Form` decoding, and return
+    /// the stored Custom Formats as `name → json`.
+    async fn resolve_with(state: &AppState, extra: &[(&str, &str)]) -> HashMap<String, String> {
+        use axum::extract::FromRequest;
+        let mut pairs = vec![("payload", IMPORT_PAYLOAD)];
+        pairs.extend_from_slice(extra);
+        let body = pairs
+            .iter()
+            .map(|(k, v)| format!("{k}={}", urlencoding::encode(v)))
+            .collect::<Vec<_>>()
+            .join("&");
+        let request = axum::http::Request::builder()
+            .method("POST")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(axum::body::Body::from(body))
+            .unwrap();
+        let form = Form::<CustomFormatImportResolveForm>::from_request(request, &())
+            .await
+            .expect("the review form decodes");
+        let _ =
+            settings_custom_formats_import_resolve(State(state.clone()), HxRequest(false), form)
+                .await;
+        cf_model::list_with_scores(&state.db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.name, row.json))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn import_resolve_honors_a_skip_posted_without_the_script() {
+        let state = state_with_t1().await;
+        let stored = resolve_with(
+            &state,
+            &[("decisions", ""), ("renames", ""), ("cf_action_0", "skip")],
+        )
+        .await;
+        assert!(
+            stored["T1"].contains("foo"),
+            "T1 was left alone: {stored:?}"
+        );
+        assert!(stored.contains_key("Fresh"), "the new entry is imported");
+    }
+
+    #[tokio::test]
+    async fn import_resolve_skips_a_collision_nobody_decided() {
+        // The a6 reproduction: no radios, empty lists.
+        let state = state_with_t1().await;
+        let stored = resolve_with(&state, &[("decisions", ""), ("renames", "")]).await;
+        assert!(stored["T1"].contains("foo"), "{stored:?}");
+        assert!(stored.contains_key("Fresh"));
+    }
+
+    #[tokio::test]
+    async fn import_resolve_reads_overwrite_and_rename_from_the_radios() {
+        let state = state_with_t1().await;
+        let stored = resolve_with(&state, &[("cf_action_0", "overwrite")]).await;
+        assert!(stored["T1"].contains("bar"), "overwritten: {stored:?}");
+
+        let state = state_with_t1().await;
+        let stored = resolve_with(
+            &state,
+            &[("cf_action_0", "rename"), ("cf_rename_0", "T1 imported")],
+        )
+        .await;
+        assert!(
+            stored["T1"].contains("foo"),
+            "the original stays: {stored:?}"
+        );
+        assert!(stored["T1 imported"].contains("bar"));
+    }
+
+    #[tokio::test]
+    async fn import_resolve_takes_the_scripts_lists_over_the_radios() {
+        // With the script the two say the same; if they ever differ,
+        // the lists are what the user saw validated (an empty rename
+        // is caught there).
+        let state = state_with_t1().await;
+        let stored = resolve_with(
+            &state,
+            &[("decisions", "0:overwrite"), ("cf_action_0", "skip")],
+        )
+        .await;
+        assert!(stored["T1"].contains("bar"), "{stored:?}");
     }
 
     #[test]

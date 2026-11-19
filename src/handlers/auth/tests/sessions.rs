@@ -175,6 +175,63 @@ async fn anonymous_request_to_protected_endpoint_redirects_to_login() {
     assert_eq!(location, "/login");
 }
 
+/// An anonymous `POST /api/library/add` carrying `headers`.
+async fn anonymous_api_post(headers: &[(&str, &str)]) -> axum::response::Response {
+    let state = build_test_app_state(in_memory_pool().await, None);
+    let mut request = Request::builder()
+        .method("POST")
+        .uri("/api/library/add")
+        .header(header::HOST, "ryokan.local")
+        .header(header::ORIGIN, "http://ryokan.local")
+        .header(header::CONTENT_TYPE, "application/json");
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    handler_router(state)
+        .oneshot(request.body(Body::from(r#"{"anilist_id":1}"#)).unwrap())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_script_request_without_a_session_is_401_not_a_redirect() {
+    // Dogfood a1. `fetch` follows the 303, gets the login page as a
+    // 200 and reports `ok`, so the page's own POSTs "succeeded" after
+    // the session had ended.
+    for mode in ["cors", "same-origin", "no-cors"] {
+        let response = anonymous_api_post(&[("sec-fetch-mode", mode)]).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{mode}");
+        assert_eq!(
+            response
+                .headers()
+                .get(crate::handlers::auth::SESSION_ENDED_HEADER)
+                .and_then(|v| v.to_str().ok()),
+            Some("ended"),
+            "{mode}"
+        );
+        assert!(response.headers().get(header::LOCATION).is_none());
+    }
+}
+
+#[tokio::test]
+async fn navigations_and_htmx_keep_their_way_to_the_login_page() {
+    // A page load, a plain form post, and a client that says nothing
+    // about itself: redirected, as before.
+    for headers in [vec![("sec-fetch-mode", "navigate")], vec![]] {
+        let response = anonymous_api_post(&headers).await;
+        assert_eq!(response.status(), StatusCode::SEE_OTHER, "{headers:?}");
+        assert_eq!(
+            response.headers().get(header::LOCATION).unwrap(),
+            "/login",
+            "{headers:?}"
+        );
+    }
+    // htmx issues its requests with fetch too; it is told where to go.
+    let response = anonymous_api_post(&[("sec-fetch-mode", "cors"), ("hx-request", "true")]).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get("hx-redirect").unwrap(), "/login");
+}
+
 #[tokio::test]
 async fn valid_session_cookie_reaches_protected_endpoint() {
     let db = in_memory_pool().await;

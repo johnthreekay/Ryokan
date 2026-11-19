@@ -32,7 +32,14 @@
 </form>
 {% if searched %}
 <div class="results-container">
-    {% if results.is_empty() %}
+    {% if !search_error.is_empty() %}
+        {# Nyaa did not answer the search (down, rate limited, blocked).
+           That is not "no results", and the hint below would send the
+           user off rewording a query that was never run. #}
+        <div class="alert alert-error" role="alert">
+            Nyaa could not be searched: {{ search_error }}. Try again in a moment.
+        </div>
+    {% else if results.is_empty() %}
         <div class="empty-state">
             <p>No results for &ldquo;{{ query }}&rdquo;.</p>
             <p class="form-hint">Try a shorter query, turn off Trusted only, or switch the category to Anime All.</p>

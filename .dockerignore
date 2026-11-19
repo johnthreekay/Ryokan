@@ -55,8 +55,7 @@ docs-requirements.txt
 site/
 .cache/
 
-# Build/dev tooling not needed in the image. `.cargo/` pins clang +
-# mold, which the builder image doesn't have.
+# Build/dev tooling not needed in the image.
 .cargo/
 .config/
 .env

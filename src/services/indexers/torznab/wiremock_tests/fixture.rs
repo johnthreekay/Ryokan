@@ -39,9 +39,20 @@ pub async fn new_fixture_with_row(
     (server, client)
 }
 
+/// A row id no other fixture in this process has. The 429 cooldown
+/// (`indexers::cooldown`) is a process-wide table keyed by indexer id;
+/// with one shared id, a rate-limit test's cooldown failed every other
+/// fixture's requests under plain `cargo test` (one process for all
+/// tests), where nextest's process per test had hidden it.
+fn next_fixture_id() -> i64 {
+    use std::sync::atomic::{AtomicI64, Ordering};
+    static NEXT: AtomicI64 = AtomicI64::new(7_000);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
 fn sample_row_for(server: &MockServer, kind: &str, display_name: &str) -> IndexerRow {
     IndexerRow {
-        id: 7,
+        id: next_fixture_id(),
         name: display_name.to_string(),
         kind: kind.to_string(),
         url: format!("{}/api", server.uri()),
@@ -69,7 +80,7 @@ fn sample_row_for(server: &MockServer, kind: &str, display_name: &str) -> Indexe
 async fn new_fixture_with_kind(kind: &str, display_name: &str) -> (MockServer, TorznabIndexer) {
     let server = MockServer::start().await;
     let row = IndexerRow {
-        id: 7,
+        id: next_fixture_id(),
         name: display_name.to_string(),
         kind: kind.to_string(),
         url: format!("{}/api", server.uri()),

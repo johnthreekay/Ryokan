@@ -434,6 +434,12 @@ pub fn unique_folder_among(
     with_suffix(&base, &format!(" ({})", chrono::Utc::now().timestamp()))
 }
 
+/// Serializes [`upsert`]: its check-then-insert is only correct when no
+/// other upsert runs between the check and the insert. In-process, like
+/// `handlers::settings::CONFIG_WRITE_LOCK`; Ryokan is one process per
+/// database.
+static UPSERT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Insert or update a series based on AniList/MAL provider identity.
 ///
 /// The AniList id decides first. The MAL id only finds the row of the
@@ -443,7 +449,16 @@ pub fn unique_folder_among(
 /// that row untouched, since MAL-sourced metadata would overwrite the
 /// AniList entry's own. Two AniList entries that share a MAL id stay
 /// two series (#292).
+///
+/// One call at a time ([`UPSERT_LOCK`]). The function looks a row up,
+/// picks a folder no other row has, then inserts, and two calls that
+/// interleaved both ran the lookups before either insert: the same
+/// AniList id added twice at once (a double click, two tabs) failed
+/// the second insert on `UNIQUE(anilist_id)` and surfaced the raw SQL
+/// error as a 500, and different series with one title all took the
+/// same "unique" folder and then read each other's files.
 pub async fn upsert(db: &SqlitePool, core: SeriesCore<'_>) -> Result<(i64, bool), sqlx::Error> {
+    let _one_at_a_time = UPSERT_LOCK.lock().await;
     if let Some(existing) = get_by_anilist_id(db, core.anilist_id).await? {
         sqlx::query(
             r#"
@@ -1126,6 +1141,76 @@ mod tests {
         // Re-upserting an existing series keeps its folder.
         upsert(&db, core(11061, 2011)).await.unwrap();
         assert_eq!(folder(new).await, "Hunter x Hunter (2011)");
+    }
+
+    /// A file-backed pool: the races below need more than one
+    /// connection, and `sqlite::memory:` gives each its own database.
+    async fn file_pool() -> (SqlitePool, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(dir.path().join("series.db"))
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .busy_timeout(std::time::Duration::from_secs(10));
+        let db = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(8)
+            .connect_with(options)
+            .await
+            .unwrap();
+        crate::models::migrate(&db).await.unwrap();
+        (db, dir)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn the_same_series_added_at_once_is_one_row_and_no_error() {
+        // Dogfood a9 #2: 4 concurrent identical adds answered one 200
+        // and three 500s with `UNIQUE constraint failed:
+        // series.anilist_id`.
+        let (db, _dir) = file_pool().await;
+        let tasks: Vec<_> = (0..16)
+            .map(|_| {
+                let db = db.clone();
+                tokio::spawn(async move { upsert(&db, core_ids(4242, None, "Twice")).await })
+            })
+            .collect();
+        let mut created = 0;
+        let mut ids = std::collections::HashSet::new();
+        for task in tasks {
+            let (id, was_created) = task.await.unwrap().expect("no upsert fails");
+            ids.insert(id);
+            created += usize::from(was_created);
+        }
+        assert_eq!(created, 1, "one call inserts, the rest update");
+        assert_eq!(ids.len(), 1);
+        let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM series")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(rows, 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn series_sharing_a_title_added_at_once_each_get_their_own_folder() {
+        // Dogfood a2 #3: 16 different entries all titled "Race", added
+        // together, all took the folder `Race`.
+        let (db, _dir) = file_pool().await;
+        let tasks: Vec<_> = (0..16)
+            .map(|i| {
+                let db = db.clone();
+                tokio::spawn(async move { upsert(&db, core_ids(5000 + i, None, "Race")).await })
+            })
+            .collect();
+        for task in tasks {
+            task.await.unwrap().expect("no upsert fails");
+        }
+        let folders: Vec<String> = sqlx::query_scalar("SELECT folder_name FROM series")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+        let distinct: std::collections::HashSet<String> =
+            folders.iter().map(|f| f.to_lowercase()).collect();
+        assert_eq!(folders.len(), 16);
+        assert_eq!(distinct.len(), 16, "{folders:?}");
     }
 
     fn core_ids<'a>(anilist_id: i64, mal_id: Option<i64>, title: &'a str) -> SeriesCore<'a> {

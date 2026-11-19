@@ -1,128 +1,211 @@
 # Configuration
 
-This page is the Settings reference. Once Ryokan is up and you've worked through the [quick start](quick-start.md), come here to look up what each control does. The Settings UI lives at `/settings` once you're logged in.
-
-Changes apply on save; no restart needed.
+This page describes each tab under **Settings**. Changes take effect when you save. Nothing needs a restart.
 
 ## Connections
 
-Third-party services Ryokan talks to.
+Other services Ryokan talks to.
 
-Saved passwords and keys for other services (download clients, indexers, Jellyfin, a Discord webhook URL, a webhook's URL, signing secret and header values) are never shown again once saved. The field stays empty and reads **[set; leave blank to keep]**. Leave it blank to keep the saved value, type a new one to replace it, or press **Clear** to remove it. A saved webhook header shows its name with `********` in place of the value, and a saved webhook URL shows only its host on the provider card. If you change where a service's address points, such as its host or port, or switch between http and https, type the password or key again. Ryokan doesn't send a saved secret to a new address, on Save or on Test.
+- **AniList / MyAnimeList**: link an account and shows on your watch list are added to the library. See [External accounts](external-accounts.md).
+- **Sync interval (minutes)**: how often the watch list is checked. Default 30, minimum 15, maximum 10080 (7 days).
+- **Media Server**: your Jellyfin, Emby or Plex server. Pick the **Type**, then enter its URL and API key. Ryokan asks the server to refresh its library after each import. For Jellyfin the URL is `http://jellyfin:8096` when both run in the same compose file. Otherwise use the address you open the server with in a browser. Emby keys are under **API Keys** in its server settings. For Plex, paste your X-Plex-Token in the API key field. Ryokan connects to one media server at a time.
+- **Sonarr / Radarr API**: lets Seerr and similar tools request anime from Ryokan as if it were Sonarr or Radarr. The Sonarr API is at `/api/v3/`, the Radarr API at `/radarr/api/v3/`, and each has its own key.
 
-- **AniList / MyAnimeList accounts**: OAuth-linked for watch-list sync. When linked, anime you mark "watching" (or "planning", "completed", etc.) on AniList or MAL get auto-added to your Ryokan library on the next sync tick. Setup walkthrough: [External accounts](external-accounts.md).
-- **Sync interval (minutes)**: how often the watch-list sync runs. Default 30 minutes; minimum 15, maximum 10080 (7 days). The form won't let you type anything below 15. If a value somehow ends up outside that range, it falls back to 30.
-- **Jellyfin**: server URL and API key. Lets Ryokan trigger a Jellyfin library refresh after each import and validate that imported files actually landed on disk. URL is `http://jellyfin:8096` when Ryokan and Jellyfin share a Docker compose; if they're on different hosts or in separate composes, use your host's LAN IP and the host-mapped port.
-- **Sonarr / Radarr API shim (anibridge)**: exposes a Sonarr-compatible and Radarr-compatible API so request frontends like Seerr can ask Ryokan for anime the same way they'd ask Sonarr for TV. The Sonarr side lives at `/api/v3/...`, the Radarr side at `/radarr/api/v3/...`. Each has its own API key.
+### Saved passwords and keys
+
+Ryokan never shows a saved password or key again. The field reads **[set; leave blank to keep]**.
+
+- Leave it blank to keep the saved value.
+- Type a new value to replace it.
+- Press **Clear** to remove it.
+
+If you change a service's address (host, port, or http to https), type the password or key again. Ryokan will not send a saved secret to a new address.
+
+For a webhook, a saved header shows its name with `********` in place of the value, and a saved URL shows only its host.
 
 ## Download Clients
 
-Pick one or more of qBittorrent, Deluge, Transmission, rTorrent, SABnzbd. Ryokan supports running multiple at once and routes per-grab. Per-client setup notes (URLs, credentials, common gotchas) live on the [Download clients](download-clients.md) page.
+Add one or more of qBittorrent, Deluge, Transmission, rTorrent and SABnzbd. Setup notes for each are on the [Download clients](download-clients.md) page.
 
-The **Default client** checkbox is per-protocol, not global. You can have one default torrent client and one default usenet client coexisting; Nyaa and torznab indexer grabs route to the torrent default, and newznab indexer grabs route to the usenet default.
+There is one **Default client** for torrents and one for Usenet. Grabs from Nyaa and torznab indexers go to the torrent default, and grabs from newznab indexers go to the Usenet default.
 
 ## Indexers
 
-Add torznab indexers (typically fronted by Prowlarr) and newznab indexers (typically Jackett or direct from NZBGeek-style services) here. Direct RSS feeds from sources like SubsPlease also live in this tab.
+An indexer is a place Ryokan searches. Nyaa is built in and is the first card. Add torznab and newznab indexers (usually through Prowlarr or Jackett) and direct RSS feeds, such as SubsPlease, here.
 
-**Indexer** here means a search source. Ryokan ships with built-in Nyaa search, shown as the first card; everything else is added here.
+Each indexer has two optional fields:
 
-Each indexer row has a **Categories** field. Blank means automatic: Ryokan asks for anime (5070), adds Movies (2000) for a film and XXX (6000) for an adult title, and when the indexer reports none of those it asks for what the indexer does report, so a sukebei-only or movies-only indexer is never asked for a category it does not have. The RSS poll is not for one series, so it asks for everything your library needs: Movies once you track a film, XXX once you track an adult title. A value is sent as written on every search and poll, comma separated, Sonarr-style, for torznab and newznab rows alike. The edit form folds what the indexer offers under the field; click an entry to add or remove its id.
+- **Categories**: leave blank and Ryokan asks for Anime (5070), plus Movies (2000) for a film and XXX (6000) for an adult title. If the indexer offers none of those, Ryokan asks for the categories it does offer. The RSS poll asks for every category your library needs. If you fill the field in, those category ids are sent on every search and RSS poll, comma separated. The edit form lists the categories the indexer offers. Click one to add or remove it.
+- **Download client**: sends this indexer's grabs to a specific client, overriding the default. Use it when one tracker needs a client with its own seeding rules.
 
-Each indexer row has an optional **download client pin** that overrides the per-protocol default for grabs from that indexer. Useful when you want one private tracker's grabs going to a specific qBit instance with stricter seed rules.
+### Nyaa
 
-Two more things live on this tab:
+The Nyaa card cannot be removed, but you can click it to:
 
-- **autobrr webhook**: accepts inbound webhooks at `/api/webhook/autobrr`. [autobrr](https://autobrr.com) is a separate self-hosted tool that watches IRC announce channels for new releases and pushes matches as HTTP webhooks; this is the receiving side. The webhook has its own API key with a dedicated regenerate button, so an accidental tab POST can't silently rotate or wipe it. A push whose indexer has the name of an indexer configured in Ryokan (autobrr sends its identifier, such as `animebytes`) uses that indexer's download client and seed rules. `nyaa` uses the built-in Nyaa's client. Any other torrent push is still grabbed, through the default torrent client and without seed rules, and its log line says which indexer matched nothing. A push Ryokan can't tell is a torrent, such as a Usenet release, is skipped instead. Give the indexer in Ryokan the name autobrr uses so those pushes go to its download client.
-- **Nyaa**: the built-in search is the first card, marked built-in, and cannot be removed. Click it to turn it off, switch its RSS feed on or off, choose English-translated or every anime category for automatic grabs, pin it to a torrent client (**use default** routes Nyaa grabs to the default torrent client), or restrict it to one uploader by default. Off skips Nyaa in automatic and interactive searches and stops its feed; the Search page keeps working. A series can override the uploader restriction on its own page.
+- turn it off. Automatic and interactive searches then skip Nyaa and its RSS feed stops. The Search page keeps working.
+- turn its RSS feed on or off
+- choose between English-translated releases and all anime for automatic grabs
+- send its grabs to a specific torrent client
+- restrict searches to one uploader. A series can override this on its own page.
+
+### autobrr webhook
+
+[autobrr](https://autobrr.com) watches tracker announce channels and can push new releases to Ryokan at `/api/webhook/autobrr`. The webhook has its own API key, shown on this tab.
+
+Name the indexer in Ryokan the same as autobrr's identifier for it, such as `animebytes`. A push from that indexer then uses its download client and seed rules. A push from `nyaa` uses the Nyaa card's client.
+
+A torrent push from an indexer Ryokan does not know is still grabbed, through the default torrent client and without seed rules. A push that is not a torrent, such as a Usenet release, is skipped.
 
 ## Quality & Releases
 
-The scoring inputs that decide which release wins when several match the same episode.
+These settings decide which release wins when several match an episode. [How releases are scored](scoring.md) explains how they combine.
 
-- **Preferred / blocked groups**: whitelists and blacklists of release-group names (e.g. `[VCB-Studio]`). Preferred groups boost scores; blocked groups exclude their releases entirely.
-- **Preferred resolution / source**: a coarse first-pass filter. Releases below the resolution floor or wrong source (e.g. WEB-DL when you want BluRay) get filtered out before scoring runs.
-- **Cutoff source / resolution**: once an episode has a release at or above the cutoff, the upgrade-search task stops looking for better. Set this to "I'll take 1080p WEB-DL but stop churning through grabs once I've got that."
-- **Propers and Repacks**: what a v2, PROPER or REPACK of a release you already have is worth. *Prefer and upgrade* (the default) scores it higher and replaces your file with it when it comes from the same group. *Prefer, do not upgrade* only scores it higher. *Do not prefer* ignores revisions. See [Replacing a file you already have](scoring.md#replacing-a-file-you-already-have).
-- **Upgrade Until Custom Format Score**: a file at the quality cutoff is still replaced, through RSS, by a same-quality release with a higher Custom Format score, until the file's score reaches this. 0 (the default) turns score-only upgrades off for any file scoring 0 or better; TRaSH-style setups raise it.
-- **Minimum Custom Format Score Increment**: the least a score-only upgrade has to gain over the file on disk. Default 1.
-- **Finished-series quality**: a separate cutoff that applies once AniList marks the series as `FINISHED`. Pattern: WEB while a series is airing, BluRay once the season's done.
-- **Audio preference**: subtitled, dubbed, or no preference. Affects scoring, not filtering.
-- **SeaDex enabled**: when on, Ryokan consults [SeaDex](https://releases.moe) (a community-curated list of "best release" picks per AniList ID) and gives matching releases a large score bonus. Adding a Custom Format that uses the `SeaDexBest` spec automatically suppresses this toggle so you don't double-count.
-- **Default custom query tokens**: keywords added to every search, such as `bd 1080p`. A series can override them on its own page. The Nyaa uploader restriction lives on the Nyaa card of the Indexers tab.
+- **Preferred / blocked groups**: releases from preferred groups score higher. Releases from blocked groups are never grabbed.
+- **Preferred resolution / source**: releases below the resolution, or from the wrong source, are filtered out before scoring.
+- **Cutoff source / resolution**: once an episode has a file at or above the cutoff, Ryokan stops looking for a better one.
+- **Finished-series quality**: a second cutoff that applies once AniList marks the series as finished. A common setup is WEB while a show airs and BluRay afterwards.
+- **Propers and Repacks**: what to do with a v2, PROPER or REPACK of a release you already have. See [Replacing a file you already have](scoring.md#replacing-a-file-you-already-have).
+    - *Prefer and upgrade* (default): scores it higher, and replaces your file when it comes from the same group.
+    - *Prefer, do not upgrade*: scores it higher only.
+    - *Do not prefer*: ignores revisions.
+- **Upgrade Until Custom Format Score**: a file that already meets the quality cutoff is still replaced by a release of the same quality with a higher Custom Format score, until the file's score reaches this number. The default, 0, turns this off for any file scoring 0 or more.
+- **Minimum Custom Format Score Increment**: how much higher the new release has to score for that kind of upgrade. Default 1.
+- **Audio preference**: subtitled, dubbed, or no preference. It changes scores but does not filter anything out.
+- **SeaDex enabled**: gives a large score bonus to the releases [SeaDex](https://releases.moe) recommends. If you add a Custom Format that uses `SeaDexBest`, the Custom Format is used and this switch is ignored.
+- **Default custom query tokens**: words added to every search, such as `bd 1080p`. A series can override them on its own page.
 
 ## Custom Formats
 
-[Sonarr-style](https://wiki.servarr.com/sonarr/settings#custom-formats) scoring rules. Each release gets scored against every Custom Format; the cumulative score is a tiebreaker on top of the resolution/source profile.
+Custom Formats are [Sonarr-style](https://wiki.servarr.com/sonarr/settings#custom-formats) scoring rules. Each release is checked against every Custom Format and the matching scores are added up.
 
-- **Custom Formats list**: add, edit, delete CFs. Includes a release-title test box (paste a release title; see which CFs match and what the cumulative score is) and an Install Defaults button that loads a bundled anime-tuned set.
-- **Minimum Score**: a floor for auto-search candidates. Releases scoring below this are silently dropped from auto-search but still show up in interactive search where you can override.
-- **Import / Export**: Ryokan round-trips Sonarr v4 CF JSON, so you can paste [TRaSH-Guides](https://trash-guides.info) JSON (a community-maintained set of CF presets) or copy an existing Sonarr setup. The Ryokan-native export keeps Ryokan-only specs (`Ryokan.SeaDexBestSpecification`) verbatim.
+- **Custom Formats list**: add, edit and delete formats. Paste a release title into the test box to see which formats match and the total score. **Install Defaults** loads a set made for anime.
+- **Minimum Score**: automatic searches ignore releases that score below this. They still appear in interactive search.
+- **Import / Export**: Ryokan reads and writes Sonarr v4 Custom Format JSON, so you can paste formats from [TRaSH-Guides](https://trash-guides.info) or from Sonarr.
 
 ## Release Groups
 
-A per-group reputation map. Tells the classifier things like "VCB-Studio always means BluRay encode, regardless of what the filename claims." Used as one of the layers the source classifier consults when the filename alone is ambiguous about BD vs. WEB.
+A table of what each release group usually releases, for example that VCB-Studio releases are BluRay encodes. Ryokan uses it when a file name does not say whether the release is BluRay or WEB.
 
-The mapping ships seeded from a bundled table (rows tagged `seed`). The tab also lists **Suggested Mappings** you can accept or edit, and your own rows (tagged `user`) take precedence over the seed.
+The table comes filled in. The tab also lists **Suggested Mappings** you can accept or edit. Rows you add win over the built-in ones.
 
 ## API Keys
 
-Issue API keys for outside tools that need to talk to Ryokan. Each key gets a name, a list of permissions ("scopes") that decide what the key can do, and shows you the key text once when you create it. Save it then; if you lose it, regenerate.
+Keys for other tools that connect to Ryokan. Each key has a name and one or more scopes, which decide what it may do. The key is shown once, when you create it.
 
-- **calendar**: lets the key read the iCal subscription feed. Calendar apps (Apple Calendar, Google Calendar, Thunderbird) can't log in like a browser, so the subscription URL carries the key in the URL itself. The [Calendar](calendar.md) page has a button that builds the full URL for you.
-- **search**, **library:read**, **library:write**: reserved for API surfaces that don't exist yet. A key can carry them, but nothing checks them today.
-- **admin**: covers everything. Use it sparingly; prefer narrower scopes when one fits.
+- **calendar**: read the calendar subscription feed. The [Calendar](calendar.md) page builds the subscription URL for you.
+- **admin**: everything.
+- **search**, **library:read**, **library:write**: not used yet.
 
 ## General
 
-Day-to-day knobs.
+### Library and imports
 
-- **Media Root Path**: where Ryokan imports completed downloads. The value is the path *inside* Ryokan's container. With the default compose, `/media/anime` maps to `/srv/media/anime` on the host.
-- **Enable automatic RSS sync**: the master switch. Nyaa's feed, indexer feeds, and direct feeds are polled on the interval below and matching releases are grabbed. Each source also has its own RSS switch on the Indexers tab.
-- **RSS Sync Interval (minutes)**: how often the background RSS poller runs. Default 15 minutes; minimum 1, maximum 60.
-- **Enable post-processing**: rename and move completed downloads into the media library and write NFO sidecars for Jellyfin. Needs a media root and a download client.
-- **File operation mode**: `hardlink` (default; keeps the torrent seeding by sharing the same inode between the download folder and the library), `copy`, or `move`. Hardlink automatically falls back to copy when the source and destination are on different filesystems (where hardlinks aren't possible).
-- **Import subtitle files**: off by default. When on, subtitle files that come with a download (`srt` and `ass` unless you change **Subtitle file extensions**) are placed next to the episode with the same file operation, named after it with the language read from the subtitle's own name, like `Show - S01E05 - Title.en.ass`, and a running number when a download carries several of the same kind. A subtitle belongs to a video when its name starts with the video's, when it carries the same episode number, or when its folder is named after the video (a pack's `Subs/` layout). When none of those match and the download holds a single video, every subtitle in it goes to that episode. Deleting or replacing the episode takes its subtitles along.
-- **Give up on stuck imports after (hours)**: when the download client reports a download finished but Ryokan still finds no video file to import after this many hours (the download folder is not visible to Ryokan, or the release turned out to be all extras), the download is marked failed, the episode shows as failed, an Import Failed notification goes out, and the release is listed under Downloads → Blocklist. Remove it from the blocklist to let a search grab it again. Default 24. `0` keeps retrying forever. Nothing is given up on in the first 15 minutes after a restart, so a download folder that mounts late is not mistaken for a stuck import. Leftover partial files from an import that stopped mid-copy (they end in `.ryokan-tmp` or `.ryokan-new`) are removed from the media library by the hourly cleanup once they are older than two hours; a `.ryokan-new` goes to the recycle bin when one is configured.
-- **Preferred Title Language**: `romaji` / `english` / `native`. Display-only for scoring and search, which match across all three regardless. It also picks the title the `{series.title}` naming token renders.
-- **File naming**: three templates decide where an import lands. **Series folder** (default `{series.title}`) applies once, when a series is added. Series already in your library keep their folder, so changing it never renames anything. **Season folder** (default `Season {season.number:00}`) and **Episode file** (default `{series.title} - S{season.number:00}E{episode.number:00} - {episode.title}{ext}`) apply to every import. Files already in the library keep their names. Each field shows a sample as you type, the combined path shows underneath, and **Reset** puts the default back. A token with no value (a show AniList has no episode titles for, a release with no group) drops out together with its brackets or separator, so `[{quality.full}]` never leaves an empty `[]` behind. The episode template must end with `{ext}` and include `{episode.number}`, and Ryokan checks that it can read the episode number back out of the sample name, because library scans and upgrades depend on that. Characters that are not allowed in file names (`/ \ : * ? " < > |`) become `_`. A name that would exceed the filesystem limit is shortened at the series title so the episode number and extension always survive. On Windows a warning appears when the sample path passes 260 characters. A release that holds two or more episodes in one file (`Title - 05-06`) is named with the range, `S01E05-E06` with the default template or `05-06` after a dash, and both episodes count as present in the library; Ryokan checks that the range reads back too.
+- **Media Root Path**: where imported episodes go. This is the path inside Ryokan's container. In the quick start, `/media/anime` is `/srv/media/anime` on the host.
+- **Enable post-processing**: rename finished downloads, place them in the library, and write NFO files for Jellyfin. Needs a media root and a download client.
+- **File operation mode**:
+    - `hardlink` (default): the library file and the download are the same data on disk, so the torrent keeps seeding and no extra space is used. Falls back to a copy when the two folders are on different filesystems.
+    - `copy`
+    - `move`
+- **Import subtitle files**: off by default. When on, subtitle files that come with a download are placed next to the episode and named after it, with the language from the subtitle's own name, for example `Show - S01E05 - Title.en.ass`. Deleting or replacing the episode removes them too. **Subtitle file extensions** sets which files count (`srt` and `ass` by default).
 
-    | Token | Renders |
-    |---|---|
-    | `{series.title}` | Series title in your preferred title language |
-    | `{series.year}` | Premiere year, empty when unknown |
-    | `{season.number}` | Season number (always 1 today). `{season.number:00}` pads to `01` |
-    | `{episode.number}` | Episode number. `{episode.number:00}` pads to `01`, `{episode.number:000}` to `001`. A file holding several episodes renders the range, `S01E05-E06` or `05-06` |
-    | `{episode.absolute}` | Absolute episode number counted across the show's seasons, the way fansub groups number a sequel: `019` for episode 7 of a second season that follows 12 episodes. `{episode.absolute:000}` pads. Empty until Ryokan knows the season chain (after the first metadata refresh or grab), and always empty for a special. Keep it after the episode number, as in `S01E07 - 019`, so scans read the episode number and not the absolute one. The sample check refuses a template where the absolute number would win |
-    | `{episode.title}` | Episode title from metadata, empty when unknown |
-    | `{quality.full}` | Resolution and source together, like `1080p WEB-DL` or `1080p BluRay Remux` |
-    | `{quality.resolution}` | `1080p`, `720p`, ... |
-    | `{quality.source}` | `BluRay`, `BluRay Remux`, `WEB-DL`, `WEBRip`, `DVD`, `HDTV` |
-    | `{group}` | Release group, empty when unknown |
-    | `{ext}` | The file extension with its dot. The episode file template must end with it |
+    A subtitle belongs to a video when one of these is true:
 
-    Quality and group come from the release Ryokan grabbed (the same signals it scored), so a manual quality override on an episode is honored. Renaming files already in the library to a new template is not part of this release.
-- **Scheduled backups**: off by default. Daily or weekly, Ryokan writes a backup of the database and encryption key (plus cached artwork if ticked) to the backup folder and keeps the newest N. Manual backups, the folder's contents, and restores live on [System → Backup](system.md#backup). Leave it off if you already back up the whole data folder some other way, but note that a plain file copy of `ryokan.db` taken while Ryokan runs can miss recent writes; the built-in backup does not.
-- **Backup folder**: empty keeps backups in a `backups` folder next to the database (`/data/backups` in Docker). The value is the path inside Ryokan's container. A folder on another disk or a mounted share is the point.
-- **Backups to keep**: older scheduled backups are deleted after each new one. Default 7. Backups taken automatically before a restore are never pruned.
-- **Recycle bin path**: empty by default, which means deletes are permanent. Set it to a directory (inside the container, like the media root) and deleting an episode, removing a series with its files, or replacing a file during an upgrade moves the files there instead. Each entry keeps the video plus its `.nfo`, subtitles, and thumbnail, and the Library page's Recycle Bin view can restore or permanently delete it. Keep it on the same filesystem as the media root so the move is an instant rename that preserves seeding hardlinks. On a different filesystem Ryokan copies, verifies the size, then deletes. If the path is set but Ryokan cannot write to it, deletes are refused until you fix it or clear the path. Restore puts the files back and re-tags the episode, but a torrent that was removed from the download client at delete time is not re-added, and files that crossed filesystems come back with a new modification time. Clearing the path leaves anything already recycled where it is.
-- **Purge after (days)**: how long recycled items survive before the hourly cleanup task deletes them for good. Default 14. `0` keeps everything until you empty the bin manually.
-- **Search when monitoring is widened**: when a series switches to monitoring more episodes (for example none → all), run a search for the newly monitored ones. Off by default.
-- **Add the series to the library when grabbing from Search**: on by default. Off sends the release to the download client without tracking the series.
-- **Interactive file picker**: whether the file picker opens for multi-file releases. **Batches only** (default) opens it for batches and one-clicks single-file releases; **Never** is one-click everywhere. The picker is for torrents. A Usenet batch has no per-file selection and downloads whole.
-- **Search for monitored episodes when a series is added**: on by default. Off adds the series without starting a download.
-- **Remove and blocklist detected misgrabs**: when the files inside a download clearly name a different series, Ryokan removes the download from the client, blocklists the release, notifies you, and searches again. On by default. Off keeps the download in the client, never imports it, and lists it under System, Misgrabs for you to restore or dismiss.
-- **Search again after a failed download**: when the download client itself reports a download as failed (SABnzbd's Failed, qBittorrent's error state), Ryokan blocklists the release, removes the download with its files, notifies you, and searches for a replacement right away, the way Sonarr's failed download handling does. On by default. It stops after three failed grabs of one series within a day so a broken indexer cannot loop. A download the client only flags with a warning (qBittorrent's missing files, a Transmission or Deluge error, an rtorrent item stopped with a message) is left alone and stays on the Downloads page with the client's own state until you sort it out; a download folder that went away comes back with its files intact. Nothing is failed in the first 15 minutes after a restart. Each client row's **Remove failed downloads** box (Settings → Download Clients, on by default) decides whether the failed download is removed from that client; with it off the download stays there for a look. An import that fails is different: the download is fine, something on your side is not, so Ryokan leaves it for you to look at rather than downloading the same thing again.
+    - its name starts with the video's name
+    - it has the same episode number
+    - its folder is named after the video, as in a pack's `Subs/` layout
 
-## On the System page (not Settings)
+    If none of those match and the download has only one video, every subtitle goes to that episode. When a download has several subtitles of the same kind, they are numbered.
 
-The **Force MAL / Kitsu fallback** switches live on the **System** page rather than under Settings. See [System → Debug](system.md#debug).
+- **Give up on stuck imports after (hours)**: if a download has finished but Ryokan cannot find a video file to import after this long, the download is marked failed, you are notified, and the release goes on the blocklist under Downloads → Blocklist. Remove it from there to allow it to be grabbed again. Default 24. `0` never gives up. The usual cause is that Ryokan cannot see the download folder. Nothing is given up on in the first 15 minutes after a restart, so a download folder that mounts late is not mistaken for a stuck import.
+- **Preferred Title Language**: `romaji`, `english` or `native`. Sets the title shown in the UI and used by the `{series.title}` naming token. Searches match all three whichever you pick.
 
-## Reset / wipe state
+### File naming
 
-- **Wipe library + grab history**: there's no global UI button (**System → Debug → Clear grab history** only clears the RSS poller's grab history). The closest is per-series "Remove from library", which cleans up that series' rows and optionally deletes the on-disk files.
-- **Wipe everything**: stop Ryokan, delete its data folder (`/srv/docker/ryokan` if you followed the [quick start](quick-start.md), or the named Docker volume otherwise), restart. First-run setup runs again.
-- **Reset auth only**: when you've forgotten your admin password but want to keep your library and OAuth tokens intact. See [Docker reference → Reset auth](docker.md#reset-auth) for the two-step gate.
+Three templates set where an import goes:
+
+| Template | Default | Applies |
+|---|---|---|
+| Series folder | `{series.title}` | once, when the series is added |
+| Season folder | `Season {season.number:00}` | on every import |
+| Episode file | `{series.title} - S{season.number:00}E{episode.number:00} - {episode.title}{ext}` | on every import |
+
+Each field shows a sample as you type, and **Reset** restores the default. Changing a template never renames folders or files already in the library.
+
+The episode template must include `{episode.number}` and end with `{ext}`. Ryokan refuses a template if it cannot read the episode number back out of the sample name, because scans and upgrades rely on that.
+
+| Token | Renders |
+|---|---|
+| `{series.title}` | Series title in your preferred title language |
+| `{series.year}` | Premiere year |
+| `{season.number}` | Season number, currently always 1. `{season.number:00}` pads to `01` |
+| `{episode.number}` | Episode number. `:00` pads to `01`, `:000` to `001` |
+| `{episode.absolute}` | Episode number counted across all seasons, as fansub groups number sequels: `019` for episode 7 of a second season that follows 12 episodes. `:000` pads |
+| `{episode.title}` | Episode title |
+| `{quality.full}` | Resolution and source, like `1080p WEB-DL` |
+| `{quality.resolution}` | `1080p`, `720p`, ... |
+| `{quality.source}` | `BluRay`, `BluRay Remux`, `WEB-DL`, `WEBRip`, `DVD`, `HDTV` |
+| `{group}` | Release group |
+| `{ext}` | File extension, including the dot |
+
+Things to know:
+
+- A token with no value is left out along with its brackets or separator, so `[{group}]` never leaves an empty `[]`.
+- `{episode.absolute}` is empty for specials, and for a sequel until Ryokan has refreshed its metadata once. Put it after the episode number, as in `S01E07 - 019`, so scans read the right number.
+- A file holding several episodes is named with the range: `S01E05-E06`, or `05-06` after a dash.
+- Characters that file names cannot contain (`/ \ : * ? " < > |`) become `_`.
+- A name that is too long for the filesystem is shortened at the series title. The episode number and extension are always kept.
+- On Windows, a warning appears when the sample path is longer than 260 characters.
+- Quality and group come from the release that was grabbed. A manual quality override on an episode is used instead.
+
+### Backups
+
+- **Scheduled backups**: off by default. Daily or weekly, Ryokan saves its database and encryption key, and cached artwork if you tick it, to the backup folder. Manual backups and restores are under [System → Backup](system.md#backup).
+- **Backup folder**: a path inside Ryokan's container. Empty means a `backups` folder next to the database (`/data/backups` in Docker). A folder on another disk is safer.
+- **Backups to keep**: older scheduled backups are deleted after each new one. Default 7. Backups taken automatically before a restore are never deleted.
+
+!!! note
+    Copying `ryokan.db` yourself while Ryokan is running can miss recent changes. The built-in backup does not have that problem.
+
+### Recycle bin
+
+- **Recycle bin path**: empty by default, which makes deletes permanent. Set a folder (a path inside the container) and deleted episodes, removed series, and files replaced by an upgrade are moved there instead. Restore or delete them for good from the Recycle Bin on the Library page.
+- **Purge after (days)**: recycled items older than this are deleted. Default 14. `0` keeps them until you empty the bin.
+
+Things to know:
+
+- Put the bin on the same filesystem as the media root. The move is then instant and keeps hardlinks to seeding torrents.
+- If Ryokan cannot write to the path, deletes are refused until you fix or clear it.
+- Restoring puts the files back. It does not re-add a torrent that was removed from the download client.
+
+### Searching and grabbing
+
+- **Enable automatic RSS sync**: check RSS feeds on a schedule and grab matching releases. Each indexer also has its own RSS switch on the Indexers tab.
+- **RSS Sync Interval (minutes)**: default 15, minimum 1, maximum 60.
+- **Search for monitored episodes when a series is added**: on by default.
+- **Search when monitoring is widened**: search for episodes that become monitored when you change a series' monitoring, for example from none to all. Off by default.
+- **Add the series to the library when grabbing from Search**: on by default. When off, a grab from the Search page goes to the download client and Ryokan does not track the series.
+- **Interactive file picker**: **Batches only** (default) opens the file picker when you grab a multi-file torrent. **Never** grabs everything with one click. Usenet releases always download whole.
+
+### Failed downloads
+
+- **Remove and blocklist detected misgrabs**: on by default. When the files in a download clearly belong to a different series, Ryokan removes the download, blocklists the release, notifies you and searches again. When off, the download stays in the client, is not imported, and is listed under System → Misgrabs.
+- **Search again after a failed download**: on by default. When the download client reports a download as failed, Ryokan blocklists the release, removes the download, notifies you and searches for another. It stops after three failures for one series in a day.
+
+A download the client only flags with a warning, such as qBittorrent's "missing files", is left alone and stays on the Downloads page.
+
+Nothing is marked failed in the first 15 minutes after a restart.
+
+A failed *import* is not retried either. The download itself is fine, so downloading it again would not help. Check the logs for what went wrong.
+
+Each download client has a **Remove failed downloads** box (on by default) that decides whether a failed download is also removed from that client.
+
+## Reset or wipe
+
+- **Remove one series**: use **Remove from Library** on its page. You can delete its files at the same time.
+- **Wipe everything**: stop Ryokan, delete its data folder (`/srv/docker/ryokan` in the [quick start](quick-start.md)), and start it again. First-run setup runs again.
+- **Forgot your password**: see [Reset auth](docker.md#reset-auth). Your library and linked accounts are kept.
+
+The **Force MAL / Kitsu fallback** switches are on the System page, under [Debug](system.md#debug).
 
 ---
 

@@ -27,7 +27,7 @@ Actively developed. Expect occasional bugs. See [Releases](https://github.com/jo
 
 ## Contributing
 
-Bug reports, feature requests, and PRs are welcome. PRs target the `dev` branch and run a verify chain (`cargo fmt`/`clippy -D warnings`/`cargo t`). See [`CLAUDE.md`](CLAUDE.md) for the build prerequisites (`mold` + `clang`, `cmake`, `cargo-nextest`) and the code conventions. Quick version:
+Bug reports, feature requests, and PRs are welcome. PRs target the `dev` branch and run a verify chain (`cargo fmt`/`clippy -D warnings`/`cargo t`). See [`CLAUDE.md`](CLAUDE.md) for the build prerequisites (a C/C++ toolchain, `cmake`, `cargo-nextest`) and the code conventions. Quick version:
 
 ```bash
 git clone https://github.com/johnthreekay/Ryokan.git

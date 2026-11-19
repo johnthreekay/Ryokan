@@ -49,7 +49,7 @@ async fn search_sends_tvsearch_with_anime_category_default() {
     assert_eq!(releases.len(), 1);
     assert_eq!(releases[0].title, "Synthetic.Show.S01E01");
     assert_eq!(releases[0].seeders, 20);
-    assert_eq!(releases[0].indexer_id, 7, "stamps caller's id");
+    assert_eq!(releases[0].indexer_id, client.id(), "stamps caller's id");
     assert_eq!(
         releases[0].indexer_name, "Wiremock",
         "indexer_name must be stamped at parse time so it survives \

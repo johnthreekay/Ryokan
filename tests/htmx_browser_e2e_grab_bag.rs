@@ -186,7 +186,7 @@ async fn jellyfin_refresh_renders_not_configured_in_browser() {
         wait_until_substring(
             &client,
             "#jellyfin-test-result",
-            "not configured",
+            "No media server connected",
             Duration::from_secs(3),
         )
         .await

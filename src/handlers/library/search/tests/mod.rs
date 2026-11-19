@@ -1075,6 +1075,33 @@ mod handler_endpoints {
         assert_eq!(returned.episodes, Some(26));
     }
 
+    // ─── anilist_search failure fragment ────────────────────────
+
+    #[test]
+    fn a_failed_title_search_is_said_in_the_results_area() {
+        // Dogfood a2 #1. The Add Series modal swaps the response into
+        // its results area; a plain-text 500 is never swapped, so a
+        // failed search left the area blank, like one still running.
+        use askama::Template;
+        let html = super::super::AnilistSearchResultsPartial {
+            entries: Vec::new(),
+            error: "AniList search failed: <b>Server exploded</b>".to_string(),
+        }
+        .render()
+        .expect("renders");
+        assert!(
+            html.contains("Search failed: AniList search failed:"),
+            "{html}"
+        );
+        assert!(
+            html.contains("&lt;b&gt;") || html.contains("&#60;b&#62;"),
+            "escaped: {html}"
+        );
+        assert!(!html.contains("<b>"), "{html}");
+        assert!(!html.contains("No results found."), "{html}");
+        assert!(html.contains("role=\"alert\""), "{html}");
+    }
+
     // ─── anilist_search invalid-source guard ────────────────────
 
     #[tokio::test]
@@ -1376,6 +1403,30 @@ mod handler_endpoints {
     /// Batch flow: same partial, `grab_episode_number = None` →
     /// Grab button calls the batch handler instead. Empty result
     /// list renders the batch-specific copy.
+    #[tokio::test]
+    async fn an_empty_search_during_a_nyaa_failure_says_so() {
+        // Nothing found while Nyaa was failing: the modal is told
+        // so in the table's place (a 200, so htmx swaps it), an API
+        // caller gets the upstream error.
+        let failed = super::super::interactive::test_helpers::search_failed_response;
+        let modal = failed("Nyaa request failed: HTTP 503 Service Unavailable", true)
+            .expect("the modal gets a page fragment");
+        assert_eq!(modal.status(), axum::http::StatusCode::OK);
+        let html = String::from_utf8(
+            axum::body::to_bytes(modal.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(html.contains("Nyaa could not be searched."), "{html}");
+        assert!(html.contains("HTTP 503 Service Unavailable"), "{html}");
+        assert!(!html.contains("No results found"), "{html}");
+        let (status, body) = failed("Nyaa request failed: HTTP 503", false).unwrap_err();
+        assert_eq!(status, axum::http::StatusCode::BAD_GATEWAY);
+        assert_eq!(body, "Nyaa request failed: HTTP 503");
+    }
+
     #[test]
     fn interactive_search_partial_batch_flow_uses_batch_handler() {
         use askama::Template;

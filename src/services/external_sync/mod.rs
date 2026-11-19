@@ -724,7 +724,7 @@ async fn spawn_post_merge_bulk_pass(state: &AppState, specs: Vec<NewArtworkSpec>
             logger::warn(
                 &db,
                 LogCategory::Jellyfin,
-                "Sync-driven Jellyfin refresh failed",
+                &format!("Sync-driven {} refresh failed", client.label()),
                 &e,
             )
             .await;

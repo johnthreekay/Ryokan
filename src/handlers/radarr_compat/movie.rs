@@ -50,7 +50,7 @@ pub async fn movie_lookup(
             .ok()
             .flatten();
 
-        let tmdb_id = anibridge::resolve_tmdb_id(r.id, r.id_mal).await;
+        let tmdb_id = anibridge::resolve_tmdb_movie_id(r.id, r.id_mal).await;
         let title = if !r.title_english.is_empty() {
             &r.title_english
         } else {
@@ -81,7 +81,7 @@ pub async fn list_movies(
 
     let mut results = Vec::new();
     for s in &tracked {
-        let tmdb_id = anibridge::resolve_tmdb_id(s.anilist_id, s.mal_id).await;
+        let tmdb_id = anibridge::resolve_tmdb_movie_id(s.anilist_id, s.mal_id).await;
         let detail = cached_detail_for(&state.db, s.id).await;
         results.push(build_radarr_movie_from_tracked(s, detail.as_ref(), tmdb_id, &cfg).await);
     }
@@ -105,7 +105,7 @@ pub async fn get_movie(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Movie not found".to_string()))?;
 
-    let tmdb_id = anibridge::resolve_tmdb_id(s.anilist_id, s.mal_id).await;
+    let tmdb_id = anibridge::resolve_tmdb_movie_id(s.anilist_id, s.mal_id).await;
     let detail = cached_detail_for(&state.db, s.id).await;
     Ok(Json(
         build_radarr_movie_from_tracked(&s, detail.as_ref(), tmdb_id, &cfg).await,
@@ -119,8 +119,10 @@ pub async fn add_movie(
 ) -> Result<Json<RadarrMovie>, (StatusCode, String)> {
     let tmdb_id = body.tmdb_id.unwrap_or(0);
 
-    anibridge::ensure_loaded().await;
-    let anime_ids = anibridge::lookup_by_tmdb(tmdb_id, None).await;
+    // Without the mappings the id is unknown, not unmapped: 503, never
+    // the title-search fallback below.
+    anibridge::require_loaded().await?;
+    let anime_ids = anibridge::lookup_by_tmdb_movie(tmdb_id).await;
     let requested_anilist_id = anime_ids.first().and_then(|a| a.anilist_id);
 
     let detail = if let Some(ids) = anime_ids
@@ -311,7 +313,7 @@ pub async fn update_movie(
         .flatten()
         .unwrap_or_default();
 
-    let tmdb_id = anibridge::resolve_tmdb_id(s.anilist_id, s.mal_id).await;
+    let tmdb_id = anibridge::resolve_tmdb_movie_id(s.anilist_id, s.mal_id).await;
     let detail = cached_detail_for(&state.db, s.id).await;
     Ok(Json(
         build_radarr_movie_from_tracked(&s, detail.as_ref(), tmdb_id, &cfg).await,

@@ -174,7 +174,7 @@ impl LogCategory {
             LogCategory::Jikan => "Jikan",
             LogCategory::Kitsu => "Kitsu",
             LogCategory::DownloadClient => "Download Client",
-            LogCategory::Jellyfin => "Jellyfin",
+            LogCategory::Jellyfin => "Media Server",
             LogCategory::Media => "Media",
             LogCategory::Library => "Library",
             LogCategory::Auth => "Auth",

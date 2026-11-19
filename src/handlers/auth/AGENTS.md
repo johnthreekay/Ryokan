@@ -1,6 +1,6 @@
 # handlers/auth/AGENTS.md
 
-Cookie-based sessions for the web UI. `require_auth` middleware on protected routes redirects to `/login`; first-run setup at `/setup` creates the admin account. Tests live in `tests/` (topic-split: `throttle.rs`, `csrf.rs`, `sessions.rs`, `proxy_headers.rs`, `setup.rs`, `timing_equalization.rs`, `forgot_password.rs`, `sanitize.rs`).
+Cookie-based sessions for the web UI. `require_auth` middleware on protected routes redirects to `/login`; first-run setup at `/setup` creates the admin account. Tests live in `tests/` (topic-split: `throttle.rs`, `csrf.rs`, `sessions.rs`, `proxy_headers.rs`, `setup.rs`, `timing_equalization.rs`, `forgot_password.rs`, `sanitize.rs`). **Without a session, what the request gets depends on who is asking** (`login_required`): a navigation gets the 303 (htmx an `HX-Redirect`), and a script's own request, which browsers mark with a `Sec-Fetch-Mode` other than `navigate`, gets `401` with `X-Ryokan-Session: ended`. `fetch` follows a 303 by itself and hands back the login page as a 200, so every `r.ok` check in the page scripts read an ended session as success (Add said Added, a remove or a grab confirm did nothing); `base.js` wraps `fetch` once and sends the page to `/login` on that header. A request with no `Sec-Fetch-Mode` (curl, old browsers) keeps the redirect.
 
 ## Session cookie
 
@@ -60,7 +60,7 @@ Usernames are passed through `sanitize_for_log()` (strip control chars, cap at 6
 
 ## One admin, even under concurrent setup
 
-`setup_submit` creates the account through `models::user::create_first_user`, an `INSERT ... SELECT ... WHERE NOT EXISTS (SELECT 1 FROM users)`, never `create_user`. Its `has_users` gate runs before the ~50ms bcrypt hash, so two submissions in flight at once both pass it; with a plain insert both landed and a second admin with a different username slipped in beside the first (`UNIQUE(username)` only catches a repeated name). The loser gets `Ok(None)`, an `Auth` warn line, and a redirect to `/login`. `create_user` stays for tests that seed users. `tests/setup.rs::concurrent_setup_posts_create_exactly_one_account` pins it.
+`setup_submit` refuses a username over `MAX_USERNAME_CHARS` (100) or holding control characters, and logs it through `sanitize_for_log` like `login_submit` does. `setup_submit` creates the account through `models::user::create_first_user`, an `INSERT ... SELECT ... WHERE NOT EXISTS (SELECT 1 FROM users)`, never `create_user`. Its `has_users` gate runs before the ~50ms bcrypt hash, so two submissions in flight at once both pass it; with a plain insert both landed and a second admin with a different username slipped in beside the first (`UNIQUE(username)` only catches a repeated name). The loser gets `Ok(None)`, an `Auth` warn line, and a redirect to `/login`. `create_user` stays for tests that seed users. `tests/setup.rs::concurrent_setup_posts_create_exactly_one_account` pins it.
 
 ## Sonarr/Radarr shim auth (out of scope)
 

@@ -1,62 +1,233 @@
-/* Stack-builder form layout. The theme defaults work for everything
-   except the form itself; these rules give the picker a tight grid
-   shape with sensible spacing. */
+/* Stack picker (the form in docs/quick-start.md). Every color comes from the theme's own
+   tokens, so the form follows the light and dark schemes. */
 
-.stack-form fieldset {
-    border: 1px solid var(--md-default-fg-color--lightest);
-    border-radius: 4px;
-    padding: 12px 16px 16px;
-    margin: 16px 0;
+.stack-form {
+    margin: 1.2em 0;
+    font-size: 0.8rem;
 }
 
-.stack-form legend {
-    font-weight: 600;
-    padding: 0 8px;
+.sf-group {
+    margin: 0 0 1.4em;
+}
+
+.sf-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    margin-bottom: 8px;
+}
+
+.sf-title {
+    font-family: 'Murecho', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
     color: var(--md-default-fg-color);
 }
 
-.stack-form .hint {
-    font-size: 0.85em;
+.sf-sub {
+    font-size: 0.72rem;
     color: var(--md-default-fg-color--light);
-    margin: 0 0 12px;
 }
 
-.stack-form label {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin: 4px 16px 4px 0;
+/* Option cards: the whole card is the label, the input sits in its
+   top right corner. */
+.sf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 8px;
+}
+
+.sf-opt {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 34px 10px 12px;
+    border: 1px solid var(--md-default-fg-color--lighter);
+    border-radius: 8px;
+    background: var(--md-default-bg-color);
+    cursor: pointer;
+    transition: border-color 0.12s, background-color 0.12s;
+}
+
+.sf-opt:hover {
+    border-color: var(--md-accent-fg-color);
+}
+
+.sf-opt input {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    margin: 0;
+    accent-color: var(--md-accent-fg-color);
     cursor: pointer;
 }
 
-.stack-form input[type="checkbox"],
-.stack-form input[type="radio"] {
-    cursor: pointer;
+.sf-opt:has(input:checked) {
+    border-color: var(--md-accent-fg-color);
+    background: var(--md-accent-fg-color--transparent);
 }
 
-.stack-form input[type="text"],
-.stack-form input[type="number"] {
-    border: 1px solid var(--md-default-fg-color--lightest);
-    border-radius: 3px;
-    padding: 4px 8px;
-    font-family: var(--md-code-font-family);
+.sf-opt:has(input:focus-visible) {
+    outline: 2px solid var(--md-accent-fg-color);
+    outline-offset: 2px;
+}
+
+.sf-name {
+    font-weight: 600;
+    color: var(--md-default-fg-color);
+}
+
+.sf-desc {
+    font-size: 0.68rem;
+    line-height: 1.35;
+    color: var(--md-default-fg-color--light);
+}
+
+/* Text fields: label above, help below. */
+.sf-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 10px 12px;
+}
+
+.sf-grid + .sf-fields {
+    margin-top: 10px;
+}
+
+.sf-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.sf-wide {
+    grid-column: span 2;
+}
+
+@media (max-width: 480px) {
+    .sf-wide {
+        grid-column: auto;
+    }
+}
+
+.sf-label {
+    font-weight: 600;
+    font-size: 0.72rem;
+    color: var(--md-default-fg-color);
+}
+
+.sf-field input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid var(--md-default-fg-color--lighter);
+    border-radius: 6px;
     background: var(--md-default-bg-color);
     color: var(--md-default-fg-color);
+    font-family: var(--md-code-font-family);
+    font-size: 0.72rem;
 }
 
-.stack-form input[type="number"] {
-    width: 5em;
+.sf-field input:focus {
+    outline: none;
+    border-color: var(--md-accent-fg-color);
 }
 
-.stack-form input[type="text"] {
-    width: 16em;
+.sf-help {
+    font-size: 0.66rem;
+    color: var(--md-default-fg-color--light);
 }
 
+.sf-more {
+    margin: 0 0 1.4em;
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 8px;
+    padding: 0 14px;
+}
+
+.sf-more > summary {
+    padding: 10px 0;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--md-default-fg-color);
+}
+
+.sf-more[open] > summary {
+    margin-bottom: 8px;
+}
+
+.sf-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: var(--md-code-bg-color);
+}
+
+.sf-summary-label {
+    font-weight: 600;
+    font-size: 0.72rem;
+    color: var(--md-default-fg-color--light);
+}
+
+.sf-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sf-chip {
+    padding: 2px 10px;
+    border: 1px solid var(--md-accent-fg-color);
+    border-radius: 999px;
+    font-size: 0.7rem;
+    color: var(--md-default-fg-color);
+}
+
+.sf-error {
+    margin: 10px 0 0;
+    padding: 10px 14px;
+    border: 1px solid var(--md-accent-fg-color);
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+/* Generated output. */
 .stack-output {
     max-height: 600px;
     overflow: auto;
 }
 
-#copy-compose {
-    margin-bottom: 8px;
+/* Copy buttons, in the site's own accent in both schemes (the theme's
+   .md-button is a different purple). */
+.md-typeset .stack-copy {
+    display: inline-block;
+    margin: 0 0 8px;
+    padding: 6px 16px;
+    border: 1px solid var(--md-accent-fg-color);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--md-accent-fg-color);
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.12s, color 0.12s;
+}
+
+.md-typeset .stack-copy:hover,
+.md-typeset .stack-copy:focus-visible {
+    background: var(--md-accent-fg-color);
+    color: var(--md-default-bg-color);
+    outline: none;
+}
+
+/* A step's variants: the script shows the ones that match the stack.
+   Without it, every variant stays visible. */
+[data-when][hidden] {
+    display: none !important;
 }

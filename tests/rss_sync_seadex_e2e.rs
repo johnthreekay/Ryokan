@@ -19,6 +19,12 @@ use std::sync::{Arc, Mutex};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+/// `sync_once` takes the process-wide `RSS_SYNC_LOCK` with `try_lock`
+/// and errors when a sync is running. Tests sharing a process (plain
+/// `cargo test`; nextest gives each its own) overlapped, so each holds
+/// this while it syncs.
+static SYNC_SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 const ANILIST_ID: i64 = 9201;
 /// Ahead on every heuristic: the preferred 1080p.
 const PLAIN_TITLE: &str = "[Group] SeaDex Feed Show - 04 (1080p) [WEB].mkv";
@@ -104,6 +110,7 @@ impl DownloadClient for RecordingClient {
 /// Run one sync over the two-item feed with SeaDex on or off and return
 /// the hashes the client was asked to add.
 async fn sync_with_seadex(seadex_enabled: bool) -> Vec<String> {
+    let _serial = SYNC_SERIAL.lock().await;
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/feed"))

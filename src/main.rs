@@ -721,10 +721,8 @@ async fn main() {
         });
     }
     if let Ok(Some(config)) = models::config::get_config(&db).await
-        && !config.jellyfin_url.is_empty()
-        && !config.jellyfin_api_key.is_empty()
+        && let Some(client) = JellyfinClient::from_config(&config)
     {
-        let client = JellyfinClient::new(&config.jellyfin_url, &config.jellyfin_api_key);
         *state.jellyfin.write().await = Some(client);
     }
 

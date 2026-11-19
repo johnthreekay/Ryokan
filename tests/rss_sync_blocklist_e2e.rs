@@ -22,6 +22,12 @@ use std::sync::{Arc, Mutex};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+/// `sync_once` takes the process-wide `RSS_SYNC_LOCK` with `try_lock`
+/// and errors when a sync is running. Tests sharing a process (plain
+/// `cargo test`; nextest gives each its own) overlapped, so each holds
+/// this while it syncs.
+static SYNC_SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 const TITLE_BLOCKED: &str = "[Group] Blocklist Feed Show - 01 (1080p) [WEB].mkv";
 const HASH_BLOCKED_TITLE: &str = "[Other] Blocklist Feed Show - 02 (1080p) [WEB].mkv";
 const HASH_BLOCKED: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -146,6 +152,7 @@ async fn blocklist(db: &sqlx::SqlitePool, series_id: i64, hash: &str, title: &st
 
 #[tokio::test]
 async fn rss_sync_rejects_blocklisted_releases_by_hash_and_by_title() {
+    let _serial = SYNC_SERIAL.lock().await;
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/feed"))
@@ -244,6 +251,7 @@ async fn rss_sync_rejects_blocklisted_releases_by_hash_and_by_title() {
 
 #[tokio::test]
 async fn rss_sync_grabs_the_same_items_when_nothing_is_blocklisted() {
+    let _serial = SYNC_SERIAL.lock().await;
     // The control for the test above: the same feed with an empty
     // blocklist grabs all three, which proves the fixture clears every
     // other gate and the rejections really come from the blocklist.

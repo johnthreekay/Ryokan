@@ -654,6 +654,7 @@ mod non_htmx_path {
             rtorrent_download_path: "/seed/rt".to_string(),
             jellyfin_url: "http://jelly.seed:8096".to_string(),
             jellyfin_api_key: "jelly-seed-key".to_string(),
+            media_server_kind: "plex".to_string(),
             sonarr_enabled: false,
             sonarr_api_key: "sonarr-seed-key".to_string(),
             radarr_enabled: true,
@@ -768,6 +769,10 @@ mod non_htmx_path {
         // doesn't own).
         assert_eq!(saved.preferred_resolution, "720");
         assert_eq!(saved.jellyfin_url, "http://jelly.seed:8096");
+        assert_eq!(
+            saved.media_server_kind, "plex",
+            "#315: another tab keeps the type"
+        );
     }
 
     #[tokio::test]
@@ -830,6 +835,10 @@ mod non_htmx_path {
         // Cross-tab fields (General + Integrations) stay at seed.
         assert_eq!(saved.media_root, "/seed/media");
         assert_eq!(saved.jellyfin_url, "http://jelly.seed:8096");
+        assert_eq!(
+            saved.media_server_kind, "plex",
+            "#315: another tab keeps the type"
+        );
         assert_eq!(saved.qbit_url, "http://qbit.seed:8080");
     }
 
@@ -867,6 +876,7 @@ mod non_htmx_path {
                 rtorrent_download_path: "/submit/rt".to_string(),
                 jellyfin_url: String::new(), // empty — skips connection-test
                 jellyfin_api_key: String::new(),
+                media_server_kind: None,
                 sonarr_enabled: Some(String::new()), // seed=false → submit→true
                 sonarr_api_key: Some("sonarr-submit-key-0123".to_string()),
                 radarr_enabled: None, // seed=true → submit→false
@@ -908,6 +918,9 @@ mod non_htmx_path {
         assert_eq!(saved.rtorrent_download_path, "/submit/rt");
         assert!(saved.jellyfin_url.is_empty());
         assert!(saved.jellyfin_api_key.is_empty());
+        // #315: a form with no Type field (a page rendered before the
+        // upgrade) keeps the stored type rather than turning it Jellyfin.
+        assert_eq!(saved.media_server_kind, "plex");
         assert!(saved.sonarr_enabled);
         assert_eq!(saved.sonarr_api_key, "sonarr-submit-key-0123");
         assert!(!saved.radarr_enabled);
@@ -1340,6 +1353,7 @@ mod non_htmx_path {
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(),
                 jellyfin_api_key: String::new(),
+                media_server_kind: None,
                 sonarr_enabled: None,
                 sonarr_api_key: None,
                 radarr_enabled: None,
@@ -1461,6 +1475,7 @@ mod non_htmx_path {
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(),
                 jellyfin_api_key: String::new(),
+                media_server_kind: Some("Emby".to_string()),
                 sonarr_enabled: None,
                 sonarr_api_key: None,
                 radarr_enabled: None,
@@ -1475,6 +1490,10 @@ mod non_htmx_path {
             .expect("get_config")
             .expect("config row");
         assert_eq!(saved.active_client, "deluge");
+        assert_eq!(
+            saved.media_server_kind, "emby",
+            "#315: the posted type is stored"
+        );
     }
 
     #[tokio::test]
@@ -1504,6 +1523,7 @@ mod non_htmx_path {
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(),
                 jellyfin_api_key: String::new(),
+                media_server_kind: Some("kodi".to_string()),
                 sonarr_enabled: None,
                 sonarr_api_key: None,
                 radarr_enabled: None,
@@ -1518,6 +1538,10 @@ mod non_htmx_path {
             .expect("get_config")
             .expect("config row");
         assert_eq!(saved.active_client, "rtorrent");
+        assert_eq!(
+            saved.media_server_kind, "jellyfin",
+            "#315: an unknown type is Jellyfin"
+        );
     }
 
     // ─── Jellyfin connection-test gate ────────────────────────────
@@ -1561,6 +1585,7 @@ mod non_htmx_path {
                 rtorrent_download_path: String::new(),
                 jellyfin_url: "http://127.0.0.1:1".to_string(), // would-fail address
                 jellyfin_api_key: String::new(),                // empty — gate must skip
+                media_server_kind: None,
                 sonarr_enabled: None,
                 sonarr_api_key: None,
                 radarr_enabled: None,
@@ -1610,6 +1635,7 @@ mod non_htmx_path {
                 rtorrent_download_path: String::new(),
                 jellyfin_url: String::new(), // empty — gate must skip
                 jellyfin_api_key: "some-key".to_string(), // present
+                media_server_kind: None,
                 sonarr_enabled: None,
                 sonarr_api_key: None,
                 radarr_enabled: None,

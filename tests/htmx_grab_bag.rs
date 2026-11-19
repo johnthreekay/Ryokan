@@ -141,6 +141,7 @@ async fn jellyfin_test_returns_red_message_on_unreachable_url() {
         Form(JellyfinTestForm {
             jellyfin_url: "http://127.0.0.1:1".to_string(),
             jellyfin_api_key: "bogus".to_string(),
+            media_server_kind: String::new(),
         }),
     )
     .await;
@@ -170,7 +171,7 @@ async fn jellyfin_refresh_returns_red_message_when_not_configured() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = read_body(resp).await;
     assert!(
-        body.contains("Jellyfin not configured"),
+        body.contains("No media server connected"),
         "missing-config message must surface in the swap target; got: {body}"
     );
     assert!(

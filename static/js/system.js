@@ -43,7 +43,13 @@ if (!window.__ryokanSystemListeners) {
 // redeclaration is a parser-stage SyntaxError — the whole file is
 // rejected and the lifecycle registration never runs. `var` redeclares
 // silently. See `feedback_no_module_scope_dom_under_boost` memory.
-var pollTimer = null;
+//
+// The poller's interval handle is not one of these: it lives on
+// `window.__ryokanLogsPollTimer`. As `var pollTimer = null` here it was
+// reset by every re-execution while the interval it named kept
+// running, so `stopPolling()` had nothing to clear and each return to
+// the Logs tab added another 3 s poller (three round trips: three
+// polls every 3 s, until a full page load).
 // Initial "latest seen" log id is read from the first rendered row's
 // data-id attribute (server-side Askama writes one on every <tr>) so the
 // JS stays free of Askama templating. 0 when the logs tab isn't rendered.
@@ -173,12 +179,15 @@ function pollLogs() {
 }
 
 function startPolling() {
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(pollLogs, 3000);
+    stopPolling();
+    window.__ryokanLogsPollTimer = setInterval(pollLogs, 3000);
 }
 
 function stopPolling() {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (window.__ryokanLogsPollTimer) {
+        clearInterval(window.__ryokanLogsPollTimer);
+        window.__ryokanLogsPollTimer = null;
+    }
 }
 
 // Page-lifecycle-aware logs poller. Phase B of the hx-boost rollout:
@@ -587,9 +596,18 @@ async function notifTestClickHandler() {
         var r = await fetch('/api/notifications/' + id + '/test', { method: 'POST' });
         var data = await r.json();
         if (out) {
-            if (r.ok) {
-                out.textContent = 'OK (' + (data.status || 200) + ')';
+            // The endpoint answers 200 whenever the request reached the
+            // receiver and reports what the receiver said in `status`.
+            // A wrong or expired webhook URL answers 401 / 404 / 500
+            // there, which used to show as a green "OK (500)".
+            var receiver = Number(data.status || 200);
+            if (r.ok && receiver >= 200 && receiver < 300) {
+                out.textContent = 'OK (' + receiver + ')';
                 out.className += ' ok';
+            } else if (r.ok) {
+                var said = data.body ? ': ' + String(data.body).slice(0, 200) : '';
+                out.textContent = 'The receiver answered ' + receiver + said;
+                out.className += ' err';
             } else {
                 out.textContent = 'Error: ' + (data.error || data.body || r.statusText);
                 out.className += ' err';

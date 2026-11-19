@@ -101,7 +101,8 @@ pub(super) async fn lookup_by_external_id(
     cfg: &config::Config,
     tvdb_id: i64,
 ) -> Result<Json<Vec<SonarrSeries>>, (StatusCode, String)> {
-    anibridge::ensure_loaded().await;
+    // No stub for an id that could not even be looked up.
+    anibridge::require_loaded().await?;
 
     let season_entries = anibridge::lookup_tvdb_seasons(tvdb_id).await;
 

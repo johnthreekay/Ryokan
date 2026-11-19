@@ -297,10 +297,7 @@ fn is_structural_token(t: &str) -> bool {
     }
     // CRC32 and similar hex runs. Six or more so ordinary words that
     // happen to be hex ("bead", "face") survive.
-    if lower.len() >= 6 && lower.chars().all(|c| c.is_ascii_hexdigit()) {
-        return true;
-    }
-    false
+    lower.len() >= 6 && lower.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// What a path claims as its title: the series title from the file name
