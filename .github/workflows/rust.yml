@@ -98,8 +98,9 @@ jobs:
     name: Browser tests
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
-    # About 6 min on a cold cache, most of it the build. 30 min ends a
-    # hung browser or download.
+    # About 4 min on a cold cache: 2 min to build the host, half a
+    # minute to install the browsers, a minute for the 74 tests on two
+    # workers. 30 min ends a hung browser or download.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
