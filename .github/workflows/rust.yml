@@ -88,20 +88,36 @@ jobs:
     # The browser tests in tests/browser: Playwright Test on Chromium
     # and Firefox against the fixture host (`tests/AGENTS.md`, "Browser
     # e2e"). Its own job because it needs a second build of the crate
-    # (the `browser-e2e` feature, dev profile) plus Node and two browser
-    # builds, none of which the verify pass should wait for.
+    # (the `browser-e2e` feature, dev profile) plus two browser builds,
+    # none of which the verify pass should wait for.
     #
     # Nothing here holds a write token or a secret. `npm ci` installs
     # the three packages package-lock.json pins by hash and runs no
-    # install scripts; `playwright install` then downloads the browser
-    # builds that Playwright version names and their apt packages.
+    # install scripts; `playwright install` downloads the browser builds
+    # that Playwright version names.
+    #
+    # Kept off the network where it can be:
+    # - No `--with-deps`. That flag has Playwright `apt-get` 54 MB of
+    #   libraries from the Ubuntu mirror, which took 33 s on one run and
+    #   12 min 39 s on the next. The runner image already has what the
+    #   two builds need (it ships Chrome and Firefox). If an image
+    #   update ever drops a library, the browser fails to launch and
+    #   names it: add that one package here, not the flag.
+    # - The browser builds are cached. The key carries the lockfile,
+    #   since a Playwright bump names new builds, and the image's OS,
+    #   since the Firefox build is per distribution.
+    # - Node is the runner image's own. Playwright needs 20 or later.
     name: Browser tests
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
-    # About 4 min on a cold cache: 2 min to build the host, half a
-    # minute to install the browsers, a minute for the 74 tests on two
-    # workers. 30 min ends a hung browser or download.
+    # 30 min ends a hung browser or download.
     timeout-minutes: 30
+    env:
+      # Line numbers in a panic are enough for a binary only these
+      # tests run; full debug info costs build, link and cache time.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      # One test file per core. The default is half of them.
+      RYOKAN_E2E_WORKERS: 4
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
@@ -110,17 +126,28 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: browser
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 26
       - name: Build the fixture host
         run: cargo build --locked --features browser-e2e --bin ryokan-e2e-host
       - name: Install Playwright
         working-directory: tests/browser
-        run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Install the browsers
+        run: |
+          node --version
+          npm ci --ignore-scripts --no-audit --no-fund
+      - name: Browser cache key
+        id: browser-key
+        run: echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Restore the browser builds
+        id: browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.browser-key.outputs.os }}-${{ runner.arch }}-${{ hashFiles('tests/browser/package-lock.json') }}
+      - name: Download the browser builds
+        if: steps.browsers.outputs.cache-hit != 'true'
         working-directory: tests/browser
-        run: npx playwright install --with-deps chromium firefox
+        # --only-shell: headless Chromium runs on its headless shell, so
+        # the full browser (the larger download) is not needed here.
+        run: npx playwright install --only-shell chromium firefox
       - name: Browser tests
         working-directory: tests/browser
         run: npx playwright test
