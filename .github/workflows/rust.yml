@@ -110,7 +110,10 @@ jobs:
     name: Browser tests
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
-    # 30 min ends a hung browser or download.
+    # 2 min with warm caches, measured: 5 s to restore the Rust cache,
+    # 52 s to build the host, 3 s to restore the browsers, 52 s for
+    # the 74 tests. A cold Rust cache adds about a minute and a cold
+    # browser cache 9 s. 30 min ends a hung browser or download.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
