@@ -45,10 +45,13 @@ export default defineConfig({
     // their own size.
     viewport: { width: 1366, height: 768 },
     // A failed test keeps its trace (DOM snapshots, network, console).
+    // Locally every test records one and a pass throws it away, which
+    // costs under a tenth of the run. CI records only when a test is
+    // being retried, so a failure there still leaves one.
     // No separate screenshot: taking one at the end of every test waits
     // on the page's fonts and added seconds to tests that end on a
     // navigation.
-    trace: 'retain-on-failure',
+    trace: ci ? 'on-first-retry' : 'retain-on-failure',
     screenshot: 'off',
   },
 });

@@ -88,8 +88,8 @@ jobs:
     # The browser tests in tests/browser: Playwright Test on Chromium
     # and Firefox against the fixture host (`tests/AGENTS.md`, "Browser
     # e2e"). Its own job because it needs a second build of the crate
-    # (the `browser-e2e` feature) plus two browser builds, none of which
-    # the verify pass should wait for.
+    # (the `browser-e2e` feature, dev profile) plus two browser builds,
+    # none of which the verify pass should wait for.
     #
     # Nothing here holds a write token or a secret. `npm ci` installs
     # the three packages package-lock.json pins by hash and runs no
@@ -112,10 +112,6 @@ jobs:
     runs-on: ubuntu-latest
     # 30 min ends a hung browser or download.
     timeout-minutes: 30
-    env:
-      # Line numbers in a panic are enough for a binary only these
-      # tests run; full debug info costs build, link and cache time.
-      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
@@ -125,11 +121,11 @@ jobs:
         with:
           key: browser
       - name: Build the fixture host
-        # The test profile, as scripts/browser-e2e.sh builds it:
-        # dependencies at opt-level 1, so each test's app (a fresh
-        # database with every migration run) is created several times
-        # faster than under dev.
-        run: cargo build --locked --profile test --features browser-e2e --bin ryokan-e2e-host
+        # The dev profile on purpose. Under the test profile (deps at
+        # opt-level 1) a cold build here took 4 min 23 s against
+        # 2 min 13 s, and the tests ran no faster: the browsers, not the
+        # host, are what the runner's cores are busy with.
+        run: cargo build --locked --features browser-e2e --bin ryokan-e2e-host
       - name: Install Playwright
         working-directory: tests/browser
         run: |

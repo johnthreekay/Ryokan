@@ -22,10 +22,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# The test profile, not dev: its dependencies are built at opt-level 1
-# (Cargo.toml), which makes creating each test's app about four times
-# faster, and they are the same artifacts `cargo t` already built.
-cargo build --locked --profile test --features browser-e2e --bin ryokan-e2e-host
+cargo build --locked --features browser-e2e --bin ryokan-e2e-host
 
 cd tests/browser
 if [ ! -d node_modules/@playwright/test ]; then
