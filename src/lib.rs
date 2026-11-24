@@ -194,7 +194,7 @@ pub struct AppState {
     /// the indexer had been up for over a year regardless of when
     /// Ryokan was last restarted, which made the pill useless as a
     /// liveness signal.
-    pub start_time: chrono::DateTime<chrono::Utc>,
+    pub start_time: time::UtcDateTime,
     /// Lifecycle metadata for every supervised background task.
     /// Each `supervise()` loop registers itself here and updates
     /// status atomically on every iteration; `/api/system/tasks`
@@ -527,7 +527,7 @@ mod resolve_grab_client_tests {
             users_exist: Arc::new(AtomicBool::new(true)),
             interactive_search_cache: crate::services::interactive_search_cache::new(),
             oauth_state: crate::services::oauth_state::new(),
-            start_time: chrono::Utc::now(),
+            start_time: crate::services::datetime::now(),
             tasks: crate::services::task_registry::TaskRegistry::new(),
             dc_status_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             notification_providers: crate::services::notifications::empty_cache(),

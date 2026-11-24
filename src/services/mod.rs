@@ -3,6 +3,7 @@ pub mod anilist;
 pub mod anime_relations;
 pub mod calendar;
 pub mod crypto;
+pub mod datetime;
 pub mod download_client;
 pub mod external_sync;
 pub mod http_body;

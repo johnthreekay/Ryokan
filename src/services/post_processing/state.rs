@@ -21,9 +21,7 @@ use super::POST_PROC_LOCK;
 /// Seconds elapsed since a SQLite `CURRENT_TIMESTAMP` value
 /// (`"YYYY-MM-DD HH:MM:SS"`, UTC). `None` when the text does not parse.
 pub fn sqlite_age_secs(timestamp: &str) -> Option<i64> {
-    let then = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").ok()?;
-    let now = chrono::Utc::now().naive_utc();
-    Some(now.signed_duration_since(then).num_seconds())
+    crate::services::datetime::sqlite_age_secs(timestamp)
 }
 
 pub fn grab_is_stale(grabbed_at: &str, max_age_secs: i64) -> bool {
@@ -596,8 +594,8 @@ mod tests {
     // ── grab_is_stale ────────────────────────────────────────────────
 
     fn ts_secs_ago(secs: i64) -> String {
-        let t = chrono::Utc::now().naive_utc() - chrono::Duration::seconds(secs);
-        t.format("%Y-%m-%d %H:%M:%S").to_string()
+        use crate::services::datetime;
+        datetime::format_sqlite(datetime::now() - time::SignedDuration::seconds(secs))
     }
 
     #[test]
@@ -621,7 +619,7 @@ mod tests {
         // can't silently change the boundary semantics.
         let ts = ts_secs_ago(60);
         // Allow ±1s slack for the inevitable wallclock advance between
-        // `ts_secs_ago(60)` and `Utc::now()` inside `grab_is_stale`.
+        // `ts_secs_ago(60)` and the clock read inside `grab_is_stale`.
         assert!(grab_is_stale(&ts, 58));
         assert!(!grab_is_stale(&ts, 62));
     }

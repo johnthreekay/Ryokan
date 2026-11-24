@@ -1402,7 +1402,7 @@ async fn run_with_complete_torrent(db: &sqlx::SqlitePool, hash: &str) {
 async fn run_with_complete_torrent_booted_at(
     db: &sqlx::SqlitePool,
     hash: &str,
-    start_time: chrono::DateTime<chrono::Utc>,
+    start_time: time::UtcDateTime,
 ) {
     let mut state = build_test_app_state(db.clone(), None);
     state.start_time = start_time;
@@ -1519,15 +1519,15 @@ async fn run_once_holds_the_stall_timer_during_the_boot_grace() {
     let g = seed_stalled_grab(&db, "stallboot").await;
     backdate_completed_seen(&db, g, 25).await;
 
-    run_with_complete_torrent_booted_at(&db, "stallboot", chrono::Utc::now()).await;
+    run_with_complete_torrent_booted_at(&db, "stallboot", crate::services::datetime::now()).await;
 
     let (state, reason, _) = state_and_reason(&db, g).await;
     assert_eq!(state, "pending", "no escalation inside the boot grace");
     assert_eq!(reason, "");
 
     // Once the grace is over the same grab fails on the next tick.
-    let booted = chrono::Utc::now()
-        - chrono::Duration::seconds(post_processing::IMPORT_STALL_BOOT_GRACE_SECS + 1);
+    let booted = crate::services::datetime::now()
+        - time::SignedDuration::seconds(post_processing::IMPORT_STALL_BOOT_GRACE_SECS + 1);
     run_with_complete_torrent_booted_at(&db, "stallboot", booted).await;
 
     let (state, reason, _) = state_and_reason(&db, g).await;
@@ -2702,7 +2702,7 @@ async fn run_once_waits_out_the_boot_grace_before_failing_an_errored_grab() {
     .await
     .unwrap();
     let mut state = build_test_app_state(db.clone(), None);
-    state.start_time = chrono::Utc::now();
+    state.start_time = crate::services::datetime::now();
     let default_client = Arc::new(RecordingClient::new(vec![fake_torrent(
         "boothash",
         DownloadItemState::Errored,

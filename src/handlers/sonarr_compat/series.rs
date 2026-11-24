@@ -686,6 +686,6 @@ pub async fn execute_command(
         "name": name,
         "commandName": name,
         "status": "queued",
-        "queued": chrono::Utc::now().to_rfc3339(),
+        "queued": crate::services::datetime::rfc3339(crate::services::datetime::now()),
     }))
 }

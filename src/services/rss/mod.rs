@@ -937,7 +937,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
     // policy, and the Custom Format cutoff / increment, read once per
     // sync. `now_secs` anchors the RSS revision window.
     let policy = source::UpgradePolicy::from_config(&cfg);
-    let now_secs = chrono::Utc::now().timestamp();
+    let now_secs = crate::services::datetime::now_unix();
 
     let mut items_seen = 0;
     let mut matched = 0;

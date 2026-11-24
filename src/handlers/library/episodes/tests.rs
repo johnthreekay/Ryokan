@@ -1120,8 +1120,7 @@ mod cancel_pending_sab_e2e {
             users_exist: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             interactive_search_cache: crate::services::interactive_search_cache::new(),
             oauth_state: crate::services::oauth_state::new(),
-            start_time: chrono::DateTime::<chrono::Utc>::from_timestamp(1_704_067_200, 0)
-                .expect("epoch"),
+            start_time: crate::services::datetime::from_unix(1_704_067_200).expect("epoch"),
             tasks: crate::services::task_registry::TaskRegistry::new(),
             dc_status_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             notification_providers: crate::services::notifications::empty_cache(),

@@ -851,7 +851,7 @@ impl DownloadClient for QbitClient {
 
 fn to_download_item(raw: QbitRawTorrent) -> DownloadItem {
     let state_kind = map_qbit_state(&raw.state);
-    let seeding_done = qbit_seeding_done(&raw, chrono::Utc::now().timestamp());
+    let seeding_done = qbit_seeding_done(&raw, crate::services::datetime::now_unix());
     DownloadItem {
         hash: raw.hash,
         name: raw.name,

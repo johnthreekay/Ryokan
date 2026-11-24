@@ -50,9 +50,8 @@ pub fn parse_sqlite_utc(s: &str) -> Option<i64> {
     let second: i64 = std::str::from_utf8(&bytes[17..19]).ok()?.parse().ok()?;
 
     // Days from civil date — algorithm from Howard Hinnant's date.h
-    // (public-domain). Avoids pulling in chrono just for this one
-    // conversion. Operates in proleptic Gregorian. Tested against
-    // chrono::Utc::with_ymd_and_hms for 2000..2050 in the unit tests.
+    // (public-domain), written when no date library was worth pulling
+    // in for this one conversion. Operates in proleptic Gregorian.
     let y = if month <= 2 { year - 1 } else { year };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;

@@ -105,9 +105,8 @@ pub fn build_test_app_state(
         oauth_state: crate::services::oauth_state::new(),
         // A fixed start_time so snapshot tests of `system_status` get
         // a stable serialization. Real production paths use
-        // `chrono::Utc::now()` at process boot.
-        start_time: chrono::DateTime::<chrono::Utc>::from_timestamp(1_704_067_200, 0)
-            .expect("epoch is valid"),
+        // `datetime::now()` at process boot.
+        start_time: crate::services::datetime::from_unix(1_704_067_200).expect("epoch is valid"),
         tasks: crate::services::task_registry::TaskRegistry::new(),
         dc_status_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         notification_providers: crate::services::notifications::empty_cache(),

@@ -321,7 +321,11 @@ utoipa = { version = "6.0", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
 
 # Misc
-chrono = { version = "0.4", features = ["serde"] }
+# Dates and times, UTC only, through `services::datetime`. Already in
+# the build before this was a direct dependency (reqwest's cookie
+# store pulls it with the same three features), so it adds no crate.
+# It replaced chrono, which is unmaintained (RUSTSEC-2026-0543).
+time = { version = "0.3.55", features = ["formatting", "parsing", "macros"] }
 urlencoding = "2"
 regex-lite = "0.1"
 # fancy-regex is used only by the Custom Formats parser (Sonarr-v4

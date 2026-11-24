@@ -766,11 +766,9 @@ fn evidence_trail(result: &ClassificationResult) -> String {
 }
 
 /// Current calendar year as an `i32`, injected into Layer 4 so the
-/// module itself stays a pure function (easier to unit-test). Uses
-/// `chrono::Utc::now()` which is already a dependency of the project.
+/// module itself stays a pure function (easier to unit-test).
 fn current_year() -> i32 {
-    use chrono::Datelike;
-    chrono::Utc::now().year()
+    crate::services::datetime::today().year()
 }
 
 // ───────────────────────────────────────────────────────────────────────────

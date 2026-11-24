@@ -278,8 +278,7 @@ pub struct MisgrabSweepSummary {
 /// Seconds since the row's `grabbed_at` (SQLite `CURRENT_TIMESTAMP`
 /// form). `None` when the timestamp does not parse.
 fn grab_age_secs(grab: &GrabbedTorrent) -> Option<i64> {
-    let at = chrono::NaiveDateTime::parse_from_str(&grab.grabbed_at, "%Y-%m-%d %H:%M:%S").ok()?;
-    Some((chrono::Utc::now().naive_utc() - at).num_seconds())
+    crate::services::datetime::sqlite_age_secs(&grab.grabbed_at)
 }
 
 fn older_than(grab: &GrabbedTorrent, age: Duration) -> bool {
