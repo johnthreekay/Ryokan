@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -156,10 +156,7 @@ async fn create_app(
     Json(req): Json<CreateApp>,
 ) -> Result<Json<Value>, Failure> {
     let db = in_memory_pool().await;
-    let user_id =
-        ryokan::models::user::create_user(&db, "browser-e2e-user", "hunter2-test-password")
-            .await
-            .map_err(internal)?;
+    let user_id = seed_user(&db).await?;
     let session = ryokan::models::session::create_session(&db, user_id)
         .await
         .map_err(internal)?;
@@ -186,6 +183,35 @@ async fn create_app(
         "base_url": format!("http://{addr}"),
         "session": session,
     })))
+}
+
+/// The test user's password hash, as the first app's `create_user`
+/// computed it. Every test creates an app, and bcrypt at cost 10 is
+/// most of what creating one costs in an unoptimized build, so later
+/// apps insert the same row with the hash already made.
+static USER_HASH: OnceLock<String> = OnceLock::new();
+
+async fn seed_user(db: &SqlitePool) -> Result<i64, Failure> {
+    const USERNAME: &str = "browser-e2e-user";
+    if let Some(hash) = USER_HASH.get() {
+        let inserted = sqlx::query("INSERT INTO users (username, password_hash) VALUES (?, ?)")
+            .bind(USERNAME)
+            .bind(hash)
+            .execute(db)
+            .await
+            .map_err(internal)?;
+        return Ok(inserted.last_insert_rowid());
+    }
+    let id = ryokan::models::user::create_user(db, USERNAME, "hunter2-test-password")
+        .await
+        .map_err(internal)?;
+    let hash: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = ?")
+        .bind(id)
+        .fetch_one(db)
+        .await
+        .map_err(internal)?;
+    let _ = USER_HASH.set(hash);
+    Ok(id)
 }
 
 async fn drop_app(State(host): State<Host>, Path(id): Path<u64>) -> StatusCode {

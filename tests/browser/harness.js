@@ -32,7 +32,7 @@ function startHost() {
   if (!fs.existsSync(hostBinary)) {
     throw new Error(
       `fixture host not built: ${hostBinary}\n` +
-        'Run scripts/browser-e2e.sh, or: cargo build --features browser-e2e --bin ryokan-e2e-host',
+        'Run scripts/browser-e2e.sh, which builds it.',
     );
   }
   // stdin stays open and unused: the host exits when it closes, so it
