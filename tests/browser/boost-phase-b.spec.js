@@ -217,15 +217,20 @@ test('pingpong_nav_does_not_stack_pollers', async ({ page }) => {
   ).toBe(true);
 });
 
-// timestamp-rebind: `[data-ts]` nodes injected via boosted page swap
-// must get rendered with humanized text on the same swap. Pre-Phase-B,
-// the refresh fired only on DOMContentLoaded + a 30s interval, so a
-// fresh `[data-ts]` could show the raw ISO string for up to 30s after
-// a boosted nav. Phase B hooks the refresh into `htmx.onLoad`.
+// timestamp-rebind: `[data-ts]` nodes that arrive in a boosted swap are
+// re-rendered by the page on that same swap. Before Phase B the refresh
+// ran only on DOMContentLoaded and a 30s interval, so a fresh node kept
+// whatever text it arrived with for up to 30s. Phase B hooks the
+// refresh into `htmx.onLoad`.
 //
-// Marker: the Downloads History tab renders `<span data-ts="...">` for
-// each grab. The history tab requires DB-seeded grabs; we seed one via
-// `record_grab` before navigating.
+// Marker: the Downloads History tab renders a `<span data-ts="...">`
+// for each grab, and one grab is seeded. The server renders that span
+// already humanized, with its own clock, so its text alone cannot show
+// whether the page's refresh ran (the Rust version of this test checked
+// only for "ago" / "now" and passed with the refresh disabled). So the
+// two clocks are made to disagree: the browser is told it is three days
+// later. The server writes "just now"; only the page's own refresh can
+// turn that into "3d ago".
 test('data_ts_rebinds_after_boosted_nav', async ({ app, page }) => {
   // Seed one grab so the Downloads history tab has a [data-ts] node to
   // assert against.
@@ -241,53 +246,56 @@ test('data_ts_rebinds_after_boosted_nav', async ({ app, page }) => {
     'seed grab',
   );
 
+  // `Date.now()` in the page is pinned three days ahead. Timers keep
+  // running, so htmx and the queue poller behave as usual.
+  const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+  await page.clock.setFixedTime(Date.now() + threeDaysMs);
+
   await setMobileViewport(page);
   await page.goto('/');
   // Enforced; the Rust original threw this result away.
   await assertHtmxLoaded(page);
 
-  // Navigate to Downloads via boost; the History tab is a query-param
-  // flip (`?tab=history`) but the queue tab is the default and seeing
-  // the timestamp render is the same swap mechanism. Note: queue tab
-  // doesn't render history rows. Navigate directly to
-  // /downloads?tab=history via mobile-tabbar fall-through to a plain
-  // link click. The mobile-tabbar's Downloads link goes to /downloads
-  // (queue tab); we then click through to history via a tab anchor on
-  // the page.
+  // A window-scoped marker survives boosted swaps and dies with a full
+  // document load. A full load would run the refresh from
+  // DOMContentLoaded, which is not the path under test.
+  await exec(page, "window.__dataTsBoostMarker = 'planted';");
+
+  // Downloads through the boosted tab bar (the queue tab, which renders
+  // no history rows), then the History tab link on that page.
   await withMessage(clickTabbarLink(page, '/downloads', '/downloads'), 'nav to downloads');
 
-  // Click the History tab link inside the Downloads page (this is a
-  // plain anchor, boosted because of inheritance from any ancestor with
-  // hx-boost, but Phase A only puts hx-boost on the mobile-tabbar so
-  // this is a real document navigation. Either way the [data-ts] should
-  // render after.)
   const historyLink = page.locator('a[href="/downloads?tab=history"]').first();
   await withMessage(historyLink.waitFor({ state: 'attached', timeout: 5000 }), 'history tab link');
   await withMessage(historyLink.click(), 'click history');
   await withMessage(waitForPath(page, '/downloads', 5000), 'url updated');
-  // Wait for the history table to render
+  // Wait for the history table to render.
   await withMessage(
     page.locator('[data-ts]').first().waitFor({ state: 'attached', timeout: 5000 }),
     'data-ts span present',
   );
-  await page.waitForTimeout(200);
 
-  const text = await withMessage(
+  const marker = await exec(page, 'return typeof window.__dataTsBoostMarker;');
+  expect(
+    marker,
+    'both navigations must be boosted swaps: a full document load refreshes ' +
+      'timestamps from DOMContentLoaded and would hide a broken htmx.onLoad hook',
+  ).toBe('string');
+
+  const readText = () =>
     exec(
       page,
       `const el = document.querySelector('[data-ts]');
        return el ? el.textContent.trim() : '';`,
-    ),
-    'read text',
-  );
-  const textStr = typeof text === 'string' ? text : '';
-  // Humanized text looks like "5s ago" / "2m ago" / "1h ago" /
-  // "3d ago", all ending in ` ago`. Raw ISO 8601 contains 'T' or a
-  // hyphen. Distinguish: "ago" present is the humanized form.
-  expect(
-    textStr.endsWith('ago') || textStr.endsWith('now'),
-    '[data-ts] textContent must be humanized (e.g. "5s ago") ' +
-      `after boosted nav; got: ${JSON.stringify(textStr)}; the ` +
-      "`htmx.onLoad(refresh)` hook in base.js probably didn't fire",
-  ).toBe(true);
+    );
+  await expect
+    .poll(readText, {
+      timeout: 3000,
+      intervals: [50],
+      message:
+        '[data-ts] must be re-rendered by the page after a boosted nav: the server wrote ' +
+        'its own "just now", and with the browser clock three days ahead the refresh in ' +
+        "base.js turns it into \"3d ago\". Anything else means the `htmx.onLoad` hook didn't run it",
+    })
+    .toBe('3d ago');
 });

@@ -47,30 +47,33 @@ Each `services/download_client/*/mod.rs` impl ships a `#[ignore]`d `live_smoke` 
 
 ## Browser e2e
 
-`tests/browser/*.spec.js` are Playwright Test specs in plain JavaScript. They drive a real browser against the app and assert post-htmx-swap DOM state — the only layer where "htmx loaded + hx-vals form-encoded correctly + handler response shape correct + template attributes intact" is verified together end-to-end.
+`tests/browser/*.spec.js` are Playwright Test specs in plain JavaScript. They drive real browsers (Chromium and Firefox) against the app and assert post-htmx-swap DOM state — the only layer where "htmx loaded + hx-vals form-encoded correctly + handler response shape correct + template attributes intact" is verified together end-to-end.
 
 Originally scoped to the issue #129 HTMX migration; kept as **general-purpose browser e2e infrastructure** — the harness pays for itself the first time a template-attribute typo (like the `data-ryokan-confirm-label` vs `-yes` bug from PR 131) ships unnoticed by the handler-level test layer.
 
-Until #319 these were Rust tests on `fantoccini` + geckodriver (`tests/htmx_browser_e2e*.rs`). They moved because fantoccini's `webdriver` crate kept `cookie` 0.16 in `Cargo.lock` with no patched release (RUSTSEC-2026-0594), and an optional dependency's tree is audited whether or not it is compiled. Each test kept its Rust function name as its title, so `git log -S <title>` still finds its history.
+Until #319 these were Rust tests on `fantoccini` + geckodriver (`tests/htmx_browser_e2e*.rs`). They moved because fantoccini's `webdriver` crate kept `cookie` 0.16 in `Cargo.lock` with no patched release (RUSTSEC-2026-0594), and an optional dependency's tree is audited whether or not it is compiled. Each test kept its Rust function name as its title, so `git log -S <title>` still finds its history. The two stylesheet tests in `boost-phase-a` are the exception: they were renamed when their checks were rewritten, and their old names are in that file's header comment.
 
 ### Local run
 
 ```bash
-scripts/browser-e2e.sh                       # the whole suite (37 tests, about 10 s)
+scripts/browser-e2e.sh                       # the whole suite: 37 tests on two engines, about 20 s
+scripts/browser-e2e.sh --project=chromium    # one engine (or firefox)
 scripts/browser-e2e.sh settings-deletes      # one file
 scripts/browser-e2e.sh -g cancel_keeps_row   # tests whose title matches
 scripts/browser-e2e.sh --headed --workers=1  # watch it run
 ```
 
-Needs Node.js and Playwright's Chromium build: `cd tests/browser && npx playwright install chromium`, once per Playwright version (Playwright says so itself when the build is missing). `RYOKAN_E2E_BROWSER=firefox` or `webkit` runs another engine once that build is installed; `RYOKAN_BROWSER_BIN` launches a different build of the chosen engine; `RYOKAN_BROWSER_HEADLESS=0` shows the window; `RYOKAN_E2E_WORKERS` sets how many files run side by side; `RUST_LOG=ryokan=debug` prints the app's log.
+Needs Node.js and Playwright's Chromium and Firefox builds: `cd tests/browser && npx playwright install chromium firefox`, once per Playwright version (Playwright says so itself when a build is missing). `RYOKAN_CHROMIUM_BIN` launches a different Chromium build; `RYOKAN_BROWSER_HEADLESS=0` shows the window; `RYOKAN_E2E_WORKERS` sets how many files run side by side; `RUST_LOG=ryokan=debug` prints the app's log.
 
 **Use the script, not a bare `npx playwright test`.** The script rebuilds the fixture host first. Askama templates and handlers are compiled into that binary, so a bare run after a template or Rust edit tests the old app. `static/` is served from disk: a JS or CSS edit needs no rebuild.
 
 **Nothing skips.** A missing host binary, a missing browser build, and a `test.only` left in (`forbidOnly`) each fail the run. The Rust suite printed `[skip]` and passed when its driver was unreachable, which is how five rotted tests went unnoticed for months.
 
-**Chromium, not LibreWolf.** Playwright cannot drive a stock Firefox or LibreWolf, only its own builds. The suite ran on LibreWolf before the move and on Chromium since; Playwright's Firefox is one environment variable away but has not been run.
+**Two engines, Playwright's own builds.** Every test runs once on Chromium and once on Firefox (the `projects` in `playwright.config.js`). Playwright cannot drive a stock Firefox or LibreWolf, which is what the Rust suite ran on; its Firefox build is the same Gecko engine with Playwright's automation patches.
 
-CI does not run the suite. The one npm dependency, `@playwright/test`, is pinned exactly in `tests/browser/package.json`, and `package-lock.json` holds three packages with integrity hashes (`npm ci --ignore-scripts`). A Playwright bump changes the browser build it expects, so run the install line again after one.
+**CI runs it**: the `Browser tests` job in `rust.yml`, on every branch push, both engines. With `CI` set a failed test is retried twice (the same allowance nextest's `ci` profile gives the Rust suite; a test that passed on retry is reported as flaky), and a failed run uploads its Playwright traces as the `browser-test-traces` artifact.
+
+The one npm dependency, `@playwright/test`, is pinned exactly in `tests/browser/package.json`, and `package-lock.json` holds three packages with integrity hashes (`npm ci --ignore-scripts`). Dependabot tracks it (`npm` entry, `/tests/browser`). A Playwright bump changes the browser builds it expects, so run the install line again after one.
 
 ### How it fits together
 
@@ -91,10 +94,10 @@ Per the PR 131 audit:
 
 When in doubt, add the assertion and **mutation-test it**: revert the corresponding production code, confirm the test fails with a clear diagnostic, revert your revert. (For a template or handler mutation, rerun through the script so the host is rebuilt.) The port was checked this way: a confirm attribute renamed in `base.js`, a changed pause payload, a missing `clearInterval`, the htmx script removed (32 of 37 tests fail; the five that pass do not use htmx), a handler that skips its delete (caught only by the DB read-back), and a changed confirm title in a template were each caught by the test meant to catch them.
 
-**Known weak tests**, carried over from the Rust suite as they were:
+**A check has to read something only the code under test can produce.** Three tests carried over from the Rust suite passed with their feature broken, and mutation is how that showed:
 
-- `data_ts_rebinds_after_boosted_nav` (`boost-phase-b`) passes with the timestamp refresh in `base.js` turned into a no-op: the server already renders the History rows humanized.
-- `boost_swaps_head_when_navigating_library_to_settings` and `boost_reapplies_origin_css_when_navigating_back` (`boost-phase-a`) predate `base.html` loading every `pages/*.css` on every page. The rules they check are present before the click, so they cannot tell whether a head merge happened.
+- `data_ts_rebinds_after_boosted_nav` looked for humanized timestamp text after a boosted nav, but the server already renders that text. It now pins the browser's clock three days ahead (`page.clock.setFixedTime`): the server writes "just now" and only the page's own refresh can produce "3d ago".
+- The two stylesheet tests in `boost-phase-a` read rules that a shared sheet also satisfied (`.cf-section` had moved into `base.css`; a `.btn-pill` is also a `.btn`, which is rounded 6px without `pages/index.css`). Each now reads a value only its page's sheet gives: `.tabbed-sidebar` computing to `display: flex`, and the 999px pill radius.
 
 ## CI-enforced lints
 

@@ -1,17 +1,22 @@
-// hx-boost rollout, Phase A browser e2e coverage.
+// Boosted navigation and page stylesheets.
 //
-// Phase A scope per the hx-boost rollout plan:
-//   - `htmx-ext-head-support` vendored + loaded
-//   - `<body hx-ext="head-support">` in base.html
-//   - `<nav class="mobile-tabbar" hx-boost="true">`: narrowest possible
-//     opt-in, 5 anchor links, no forms, distinct per-page CSS targets
+// A boosted navigation swaps `<body>` and leaves `<head>` alone. The
+// first attempt at hx-boost died of exactly that: the new page arrived
+// without its stylesheet and rendered unstyled. The fix that stuck is
+// in `templates/base.html`: every `pages/*.css` sheet is linked on
+// every page, so no head merge is needed (the htmx 2 head-support
+// extension that once did it is gone).
 //
-// These tests pin the head-swap behavior. They're Phase A's failure
-// detector for the regression that killed attempt-1 (boost swaps body,
-// head stays stale, per-page CSS doesn't load, page renders unstyled).
-// All four assertions would fire LOUDLY if `htmx-ext-head-support`
-// were ever removed or `hx-ext="head-support"` were dropped from
-// `<body>`.
+// These tests pin what that buys. After a boosted navigation the
+// destination page's own stylesheet is in force, the shared sheets are
+// not linked twice, and the navigation really was boosted. Each
+// stylesheet check reads a rule that only that page's sheet defines,
+// so it fails if the sheet goes back to being linked per page.
+//
+// The first two tests were `boost_swaps_head_when_navigating_library_to_settings`
+// and `boost_reapplies_origin_css_when_navigating_back` in the Rust
+// suite. They were renamed when their checks were rewritten: the
+// Settings one used to read a rule that had moved into a shared sheet.
 
 import { test, expect, exec, assertHtmxLoaded, waitForPath } from './harness.js';
 
@@ -43,18 +48,12 @@ function parsePx(value) {
   return Number(number);
 }
 
-// **head-css-swap**: the failure-mode detector.
+// Library -> Settings through the boosted mobile tab bar.
 //
-// Navigate Library -> Settings via the boosted mobile-tabbar. Without
-// `htmx-ext-head-support`, `pages/settings.css` would never load on
-// the boosted nav and the assertion below would fail. With it, the
-// extension diffs the response head and adds the new `<link>`.
-//
-// Marker: `base.css` defines `.cf-section { padding: 22px 24px }`.
-// Read the computed `padding` of a Settings card; assert it is
-// `22px`. Browsers fall back to user-agent default padding (~0)
-// when the rule isn't loaded: clear signal.
-test('boost_swaps_head_when_navigating_library_to_settings', async ({ page }) => {
+// Marker: `pages/settings.css` is the only sheet with a rule for
+// `.tabbed-sidebar`, and it makes the Settings section nav a flex row.
+// Without that sheet a `<nav>` computes to `display: block`.
+test('settings_page_css_is_in_force_after_boosted_nav_from_library', async ({ page }) => {
   await setMobileViewport(page);
   await page.goto('/');
   // The Rust original computed this and threw the result away
@@ -67,42 +66,34 @@ test('boost_swaps_head_when_navigating_library_to_settings', async ({ page }) =>
     .first()
     .waitFor({ state: 'attached', timeout: 5000 });
 
-  // Click the boosted Settings tab. With hx-boost on the nav, htmx
-  // intercepts the click and does an AJAX swap of `<body>`. The
-  // head-support extension then merges the head.
+  // Click the boosted Settings tab: htmx intercepts the click and
+  // swaps `<body>`.
   const settingsLink = page.locator('.mobile-tabbar a[href="/settings"]').first();
   await settingsLink.click();
 
   // Wait until the URL reflects the new page and a Settings-only
   // element renders.
   await waitForPath(page, '/settings', 5000);
-  const fieldset = page.locator('.cf-section').first();
-  await fieldset.waitFor({ state: 'attached', timeout: 5000 });
+  const sidebar = page.locator('.tabbed-sidebar').first();
+  await sidebar.waitFor({ state: 'attached', timeout: 5000 });
 
-  // Read computed padding. `base.css` sets it to 22px; unstyled
-  // fallback is 0 / user-agent default. The mobile-side
-  // `@media (max-width: 640px)` override sets 16px, so accept both
-  // values (accepting both keeps the test robust to the viewport while
-  // still distinguishing styled from unstyled clearly).
-  const padding = await fieldset.evaluate((el) =>
-    getComputedStyle(el).getPropertyValue('padding-top'),
-  );
-  const paddingPx = parsePx(padding);
+  const display = await sidebar.evaluate((el) => getComputedStyle(el).getPropertyValue('display'));
   expect(
-    paddingPx,
-    'base.css `.cf-section { padding: 22px 24px }` rule must apply after boosted nav; ' +
-      `got computed padding-top=${paddingPx}px (head-support extension probably didn't merge ` +
-      "the new page's CSS link)",
-  ).toBeGreaterThanOrEqual(16);
+    display,
+    'pages/settings.css `.tabbed-sidebar { display: flex }` must apply after a boosted nav ' +
+      `into Settings; got computed display=${display} (is the sheet still linked from ` +
+      'base.html on every page?)',
+  ).toBe('flex');
 });
 
-// **head-css-evict**: the inverse direction; ensures Library's CSS
-// reapplies when navigating back from Settings.
+// The other direction: Settings -> Library.
 //
-// Marker: `pages/index.css` defines `.btn-pill { border-radius: 999px }`,
-// a pill shape that's distinctive vs the default `border-radius: 0`
-// fallback.
-test('boost_reapplies_origin_css_when_navigating_back', async ({ page }) => {
+// Marker: `pages/index.css` is the only sheet with a rule for
+// `.btn-pill`, and it gives the Library's pills a `border-radius` of
+// `var(--radius-pill)` (999px). The pills are also `.btn`, which the
+// shared forms sheet rounds to 6px, so the check asks for the pill
+// radius itself: "more than a few pixels" passed without the sheet.
+test('library_page_css_is_in_force_after_boosted_nav_from_settings', async ({ page }) => {
   await setMobileViewport(page);
   // Start on Settings, then nav to Library via boosted tabbar.
   await page.goto('/settings');
@@ -117,21 +108,19 @@ test('boost_reapplies_origin_css_when_navigating_back', async ({ page }) => {
 
   await waitForPath(page, '/', 5000);
 
-  // Wait for a `.btn-pill` element to render: Library's filter pills
-  // carry that class. If the page renders before its CSS loads,
-  // `border-radius` is 0 (UA default).
+  // Wait for a `.btn-pill` element to render: the Library's pills
+  // carry that class.
   const btn = page.locator('.btn-pill').first();
   await btn.waitFor({ state: 'attached', timeout: 5000 });
   const radius = await btn.evaluate((el) => getComputedStyle(el).getPropertyValue('border-radius'));
   const radiusPx = parsePx(radius);
-  // The rule sets `999px`; browsers may compute it down to whatever
-  // the element's largest dimension caps at. As long as it's
-  // distinctly more than the unstyled 0, the rule applied.
+  // With the sheet: 999px. Without it: the 6px every `.btn` has.
   expect(
     radiusPx,
-    'index.css `.btn-pill { border-radius: 999px }` must apply after boosted back-nav; ' +
-      `got computed border-radius=${radiusPx}px`,
-  ).toBeGreaterThan(4);
+    'pages/index.css `.btn-pill` border-radius (999px) must apply after a boosted nav into ' +
+      `the Library; got computed border-radius=${radiusPx}px (is the sheet still linked ` +
+      'from base.html on every page?)',
+  ).toBeGreaterThan(100);
 });
 
 // **desktop-nav-is-boosted-under-body-wide-opt-in**: under body-wide
@@ -192,10 +181,9 @@ test('desktop_nav_is_boosted_under_body_wide_opt_in', async ({ page }) => {
   ).toBe('string');
 });
 
-// **shared-css-deduped**: `htmx-ext-head-support` should leave the
-// shared `<link>` tags (base.css, topbar.css, forms.css, etc.) in
-// place, not re-add them. Each shared CSS link should appear exactly
-// once after a boosted swap.
+// **shared-css-deduped**: a boosted swap leaves the shared `<link>`
+// tags (base.css, topbar.css, forms.css, etc.) alone. Each should
+// appear exactly once afterwards.
 test('boosted_swap_does_not_duplicate_shared_css_links', async ({ page }) => {
   await setMobileViewport(page);
   await page.goto('/');
@@ -209,12 +197,11 @@ test('boosted_swap_does_not_duplicate_shared_css_links', async ({ page }) => {
   // Wait for the swap.
   await waitForPath(page, '/settings', 5000);
 
-  // Count occurrences of `forms.css` in the rendered head. Both
-  // `index.html` and `settings.html` extend `base.html`, which
-  // includes `<link rel="stylesheet" href="/static/css/forms.css">`.
-  // The extension should leave the shared link alone: if it
-  // mistakenly removes-then-re-adds, an instant of FOUC would land and
-  // a careless implementation could yield duplicates.
+  // Count the `forms.css` links in the document. Both `index.html`
+  // and `settings.html` extend `base.html`, which links it once in
+  // `<head>`. A second copy means the swap brought a stylesheet link
+  // along (one moved into a page body, or a head merge switched back
+  // on and re-adding what was already there).
   const count = await exec(
     page,
     'return document.querySelectorAll(\'link[href*="forms.css"]\').length;',
@@ -222,7 +209,7 @@ test('boosted_swap_does_not_duplicate_shared_css_links', async ({ page }) => {
   const n = Number.isInteger(count) ? count : -1;
   expect(
     n,
-    'shared forms.css link should appear exactly once in head after boosted swap; ' +
-      `got ${n} (head-merge dedup is broken: would FOUC users on every nav)`,
+    'shared forms.css link should appear exactly once after a boosted swap; ' +
+      `got ${n} (a duplicate would flash unstyled content on every navigation)`,
   ).toBe(1);
 });

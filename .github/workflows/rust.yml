@@ -84,6 +84,56 @@ jobs:
         # fail the whole run.
         run: cargo nextest run --workspace --locked --features test-support --profile ci
 
+  browser:
+    # The browser tests in tests/browser: Playwright Test on Chromium
+    # and Firefox against the fixture host (`tests/AGENTS.md`, "Browser
+    # e2e"). Its own job because it needs a second build of the crate
+    # (the `browser-e2e` feature, dev profile) plus Node and two browser
+    # builds, none of which the verify pass should wait for.
+    #
+    # Nothing here holds a write token or a secret. `npm ci` installs
+    # the three packages package-lock.json pins by hash and runs no
+    # install scripts; `playwright install` then downloads the browser
+    # builds that Playwright version names and their apt packages.
+    name: Browser tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    # About 6 min on a cold cache, most of it the build. 30 min ends a
+    # hung browser or download.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: browser
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Build the fixture host
+        run: cargo build --locked --features browser-e2e --bin ryokan-e2e-host
+      - name: Install Playwright
+        working-directory: tests/browser
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install the browsers
+        working-directory: tests/browser
+        run: npx playwright install --with-deps chromium firefox
+      - name: Browser tests
+        working-directory: tests/browser
+        run: npx playwright test
+      # A failed test leaves a Playwright trace (DOM snapshots, network,
+      # console). Open one at https://trace.playwright.dev or with
+      # `npx playwright show-trace <zip>`.
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-test-traces
+          path: tests/browser/test-results
+          retention-days: 7
+
   msrv:
     # Verify the crate still builds on the declared MSRV. Cargo.toml's
     # `rust-version = "1.95"` is otherwise decorative — the main `build`

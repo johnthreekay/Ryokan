@@ -4,32 +4,43 @@
 // it builds the fixture host first. See `tests/AGENTS.md` ("Browser e2e").
 import { defineConfig } from '@playwright/test';
 
-// chromium (default), or firefox / webkit once that Playwright build is
-// installed (`npx playwright install firefox`).
-const browserName = process.env.RYOKAN_E2E_BROWSER || 'chromium';
+// GitHub Actions sets CI. There a failed test is retried twice, as
+// the Rust suite's nextest `ci` profile does, and failures are also
+// reported as annotations on the run.
+const ci = !!process.env.CI;
 
 export default defineConfig({
   testDir: '.',
   testMatch: '*.spec.js',
   outputDir: 'test-results',
-  reporter: [['list']],
+  reporter: ci ? [['list'], ['github']] : [['list']],
   // A stray `test.only` would make a green run mean almost nothing.
   forbidOnly: true,
-  retries: 0,
+  retries: ci ? 2 : 0,
   // Tests in one file run in order in one worker against one fixture
   // host; files run side by side, each worker with its own host process.
   fullyParallel: false,
   workers: process.env.RYOKAN_E2E_WORKERS ? Number(process.env.RYOKAN_E2E_WORKERS) : undefined,
   timeout: 30_000,
   expect: { timeout: 5_000 },
+  // Every test runs on both engines. `--project=chromium` (or firefox)
+  // narrows a run to one.
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        browserName: 'chromium',
+        // RYOKAN_CHROMIUM_BIN launches another Chromium build (a system
+        // one, say) in place of Playwright's own.
+        launchOptions: process.env.RYOKAN_CHROMIUM_BIN
+          ? { executablePath: process.env.RYOKAN_CHROMIUM_BIN }
+          : {},
+      },
+    },
+    { name: 'firefox', use: { browserName: 'firefox' } },
+  ],
   use: {
-    browserName,
     headless: process.env.RYOKAN_BROWSER_HEADLESS !== '0',
-    // RYOKAN_BROWSER_BIN points at another build of the same engine
-    // (a system Chromium, say) in place of Playwright's own.
-    launchOptions: process.env.RYOKAN_BROWSER_BIN
-      ? { executablePath: process.env.RYOKAN_BROWSER_BIN }
-      : {},
     // A desktop-sized window. Tests that care about the breakpoint set
     // their own size.
     viewport: { width: 1366, height: 768 },
