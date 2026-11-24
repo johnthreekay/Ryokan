@@ -70,6 +70,23 @@ updates:
     commit-message:
       prefix: chore(docker)
       include: scope
+  # tests/browser: the browser tests' one npm dependency,
+  # @playwright/test, pinned exactly with a lockfile. The Browser tests
+  # job in rust.yml runs the suite on the bump's branch. A new
+  # Playwright version names new browser builds; that job installs them
+  # itself, a local checkout needs `npx playwright install chromium
+  # firefox` again.
+  - package-ecosystem: npm
+    directory: /tests/browser
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(tests)
+      include: scope
   # docs-requirements.txt: pinned and hash-checked, compiled from
   # docs-requirements.in by `uv pip compile` (command in the .in file).
   - package-ecosystem: pip

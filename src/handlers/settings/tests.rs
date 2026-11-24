@@ -569,8 +569,8 @@ mod indexer_picker {
 /// (`settings_general_submit`, `settings_quality_submit`,
 /// `settings_integrations_submit`).
 ///
-/// The browser-e2e suite at
-/// `tests/htmx_browser_e2e_settings_subforms.rs` covers the HTMX
+/// The browser suite at
+/// `tests/browser/settings-subforms.spec.js` covers the HTMX
 /// path (request lands with `HX-Request: true`, handler returns
 /// the small subform partial). It can't reach the no-JS fallback
 /// because every request from a real browser carries the htmx

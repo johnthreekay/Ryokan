@@ -5,6 +5,9 @@ edition = "2024"
 authors = ["John K"]
 license = "GPL-3.0-or-later"
 rust-version = "1.95"
+# `cargo run` means the server. The only other binary is the browser
+# tests' fixture host, which needs a feature to build at all.
+default-run = "ryokan"
 
 [features]
 # Opt-in re-export of `crate::test_support::*` as a public module so
@@ -16,14 +19,13 @@ rust-version = "1.95"
 # without the helpers. CI flips it on for the test step.
 test-support = []
 
-# Browser-driving e2e tests for HTMX UI flows. Opt-in because they
-# require a running geckodriver (or chromedriver) on localhost:4444
-# + a Firefox/LibreWolf binary, and pull `fantoccini` into the
-# dev-dep tree. NOT enabled in CI — they're a local-iteration tool.
-# Run locally with:
-#   geckodriver --port=4444 &
-#   cargo test --features browser-e2e --test htmx_browser_e2e
-browser-e2e = ["dep:fantoccini"]
+# Builds what the browser tests in tests/browser need on the Rust side:
+# the fixture host binary (`ryokan-e2e-host`) and the fixture pages in
+# `test_support`. The tests themselves are Playwright Test specs in
+# JavaScript, so this feature pulls in no dependency. NOT enabled in
+# CI: the suite is a local tool. Run it with:
+#   scripts/browser-e2e.sh
+browser-e2e = ["test-support"]
 
 # Each integration test target under `tests/` lists the `test-support`
 # feature in `required-features` so a plain `cargo test` (without the
@@ -145,65 +147,12 @@ name = "auto_search_e2e"
 path = "tests/auto_search_e2e.rs"
 required-features = ["test-support"]
 
-[[test]]
-name = "htmx_browser_e2e"
-path = "tests/htmx_browser_e2e.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_phase1"
-path = "tests/htmx_browser_e2e_phase1.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_grab_bag"
-path = "tests/htmx_browser_e2e_grab_bag.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_settings_subforms"
-path = "tests/htmx_browser_e2e_settings_subforms.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_settings_modals"
-path = "tests/htmx_browser_e2e_settings_modals.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_progress_sse"
-path = "tests/htmx_browser_e2e_progress_sse.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_episode_delete"
-path = "tests/htmx_browser_e2e_episode_delete.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_add_series_monitor"
-path = "tests/htmx_browser_e2e_add_series_monitor.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_setup_library"
-path = "tests/htmx_browser_e2e_setup_library.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_boost_phase_a"
-path = "tests/htmx_browser_e2e_boost_phase_a.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_boost_phase_b"
-path = "tests/htmx_browser_e2e_boost_phase_b.rs"
-required-features = ["test-support", "browser-e2e"]
-
-[[test]]
-name = "htmx_browser_e2e_boost_phase_d"
-path = "tests/htmx_browser_e2e_boost_phase_d.rs"
-required-features = ["test-support", "browser-e2e"]
+# The browser tests' fixture host (tests/browser/host.rs). Behind the
+# feature so `cargo build`, the Docker image and CI's test run skip it.
+[[bin]]
+name = "ryokan-e2e-host"
+path = "tests/browser/host.rs"
+required-features = ["browser-e2e"]
 
 [dependencies]
 # Web framework + async runtime
@@ -365,20 +314,6 @@ walkdir = "2"
 tar = "0.4"
 flate2 = "1"
 nix = { version = "0.32", features = ["fs", "hostname"] }
-
-# fantoccini: WebDriver client for browser-driven e2e tests of HTMX
-# UI flows. `optional = true` + the `browser-e2e` feature gate means
-# the dep only enters the build graph when explicitly opted in —
-# `cargo build` / `cargo test` (without the flag) don't pull it, so
-# prod and CI stay unaffected. Listed here rather than in
-# [dev-dependencies] because Cargo doesn't allow optional dev-deps.
-# default-features = false + rustls-tls swaps fantoccini's default
-# native-tls stack (hyper-tls -> native-tls -> openssl) for rustls.
-# The rest of Ryokan already runs on rustls+aws-lc, so this prunes
-# `openssl` (and `native-tls`) from the lock at the source instead of
-# carrying a phantom advisory only the browser-e2e feature could ever
-# build (same approach as the sqlx default-features opt-out above).
-fantoccini = { version = "0.22", optional = true, default-features = false, features = ["rustls-tls"] }
 
 [dev-dependencies]
 # Used only by the env-gated live_smoke tests for the DownloadClient

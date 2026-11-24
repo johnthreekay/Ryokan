@@ -11,7 +11,7 @@
 //!   error rendered as 502 would silently leave the spinner up.
 //!
 //! Browser-driven coverage (button click → DOM swap landed) lives in
-//! `tests/htmx_browser_e2e_grab_bag.rs`.
+//! `tests/browser/grab-bag.spec.js`.
 //!
 //! Same calling pattern as `tests/htmx_settings_delete.rs` — handlers
 //! invoked directly with `State` + `HxRequest` + `Form` extractors.

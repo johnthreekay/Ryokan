@@ -47,40 +47,57 @@ Each `services/download_client/*/mod.rs` impl ships a `#[ignore]`d `live_smoke` 
 
 ## Browser e2e
 
-`tests/htmx_browser_e2e*.rs` are gated on `--features browser-e2e` and drive a real Firefox/LibreWolf via WebDriver/`fantoccini` to assert post-htmx-swap DOM state — the only layer where "htmx loaded + hx-vals form-encoded correctly + handler response shape correct + template attributes intact" is verified together end-to-end.
+`tests/browser/*.spec.js` are Playwright Test specs in plain JavaScript. They drive real browsers (Chromium and Firefox) against the app and assert post-htmx-swap DOM state — the only layer where "htmx loaded + hx-vals form-encoded correctly + handler response shape correct + template attributes intact" is verified together end-to-end.
 
 Originally scoped to the issue #129 HTMX migration; kept as **general-purpose browser e2e infrastructure** — the harness pays for itself the first time a template-attribute typo (like the `data-ryokan-confirm-label` vs `-yes` bug from PR 131) ships unnoticed by the handler-level test layer.
+
+Until #319 these were Rust tests on `fantoccini` + geckodriver (`tests/htmx_browser_e2e*.rs`). They moved because fantoccini's `webdriver` crate kept `cookie` 0.16 in `Cargo.lock` with no patched release (RUSTSEC-2026-0594), and an optional dependency's tree is audited whether or not it is compiled. Each test kept its Rust function name as its title, so `git log -S <title>` still finds its history. The two stylesheet tests in `boost-phase-a` are the exception: they were renamed when their checks were rewritten, and their old names are in that file's header comment.
 
 ### Local run
 
 ```bash
-sudo pacman -S geckodriver       # Arch
-scripts/browser-e2e.sh           # the whole suite, or: scripts/browser-e2e.sh htmx_browser_e2e_phase1
-# RYOKAN_WEBDRIVER_PORT=4445 moves the driver the script starts; RYOKAN_BROWSER_BIN and
-# RYOKAN_BROWSER_HEADLESS=0 reach the harness. RYOKAN_WEBDRIVER_URL only makes sense for a
-# bare `cargo test` against a driver you started yourself.
+scripts/browser-e2e.sh                       # the whole suite: 37 tests on two engines, about 20 s
+scripts/browser-e2e.sh --project=chromium    # one engine (or firefox)
+scripts/browser-e2e.sh settings-deletes      # one file
+scripts/browser-e2e.sh -g cancel_keeps_row   # tests whose title matches
+scripts/browser-e2e.sh --headed --workers=1  # watch it run
 ```
 
-**Use the script, not a bare `cargo test`.** geckodriver holds exactly one WebDriver session: tests within a binary run in parallel by default and a test that bails before `client.close()` leaks its session, after which every later test prints `[skip] … Session is already started` and passes with an `ok` verdict in 0.01s. That is how five rotted tests went unnoticed for months. The script runs one binary at a time with `--test-threads=1`, restarts the driver between binaries, and reports skips as a separate count and exits non-zero when any test skipped (`RYOKAN_E2E_ALLOW_SKIPS=1` downgrades that to a warning), so a run that never drove a browser cannot look green. Every test must end with `let _ = client.close().await;` on its happy path, and `try_connect_browser` retries briefly on the session-teardown race.
+Needs Node.js and Playwright's Chromium and Firefox builds: `cd tests/browser && npx playwright install chromium firefox`, once per Playwright version (Playwright says so itself when a build is missing). `RYOKAN_CHROMIUM_BIN` launches a different Chromium build; `RYOKAN_BROWSER_HEADLESS=0` shows the window; `RYOKAN_E2E_WORKERS` sets how many files run side by side; `RUST_LOG=ryokan=debug` prints the app's log.
 
-**The browser runs offline.** `try_connect_browser` sends a `proxy` capability that routes everything except `127.0.0.1` / `localhost` to a dead address. A fresh LibreWolf profile otherwise downloads and installs uBlock Origin about two seconds after launch (its `policies.json`), and a request issued while the add-on starts was sometimes never sent: a boosted link or a re-fetched page script hung, and about one run in seven of the boost binaries failed on a 5 s wait. A test that needs the browser to reach another host has to add it to `noProxy`.
+**Use the script, not a bare `npx playwright test`.** The script rebuilds the fixture host first. Askama templates and handlers are compiled into that binary, so a bare run after a template or Rust edit tests the old app. `static/` is served from disk: a JS or CSS edit needs no rebuild.
 
-Tests skip (loudly, with `[skip]`) when the driver is unreachable. The `fantoccini` dep sits in `[dependencies]` as `optional = true` (Cargo doesn't allow optional dev-deps) and the e2e fixture handler + router builder live behind `#[cfg(feature = "browser-e2e")]` in `test_support.rs`.
+**Nothing skips.** A missing host binary, a missing browser build, and a `test.only` left in (`forbidOnly`) each fail the run. The Rust suite printed `[skip]` and passed when its driver was unreachable, which is how five rotted tests went unnoticed for months.
 
-### Shared harness
+**Two engines, Playwright's own builds.** Every test runs once on Chromium and once on Firefox (the `projects` in `playwright.config.js`). Playwright cannot drive a stock Firefox or LibreWolf, which is what the Rust suite ran on; its Firefox build is the same Gecko engine with Playwright's automation patches.
 
-`tests/common/browser_e2e.rs`, pulled into each test binary via `#[path = "common/browser_e2e.rs"] mod browser_e2e;`. Provides the in-process server spawn (`spawn_app`), WebDriver connect, LibreWolf shim, assertion helpers (`assert_htmx_handled_in_place`, `assert_dom_contains`, `assert_modal_text`, `wait_for_*`).
+**CI runs it**: the `Browser tests` job in `rust.yml`, on every branch push, both engines. With `CI` set a failed test is retried twice (the same allowance nextest's `ci` profile gives the Rust suite; a test that passed on retry is reported as flaky), a trace is recorded only for a retried test, and a failed run uploads its traces as the `browser-test-traces` artifact. The job is kept off the network where it can be, because that is where its time went: `playwright install --with-deps` has `apt` fetch 54 MB of libraries, and that one step took 33 s on one run and 12 min 39 s on the next. So there is no `--with-deps` (the runner image ships Chrome and Firefox and already has the libraries; if an image update drops one, the browser fails to launch and names it, and that one package gets installed), the browser builds are cached on the lockfile and the image's OS, and Node is the image's own. What is left is CPU: the whole job is 2 min with warm caches, 52 s of it building the host (about two minutes on a cold cache) and 52 s the 74 tests on the runner's two workers. Two things that did not help there, measured: four workers (the test time did not move), and building the host under the test profile for its optimized dependencies (a cold build twice as long, the same test time).
+
+The one npm dependency, `@playwright/test`, is pinned exactly in `tests/browser/package.json`, and `package-lock.json` holds three packages with integrity hashes (`npm ci --ignore-scripts`). Dependabot tracks it (`npm` entry, `/tests/browser`). A Playwright bump changes the browser builds it expects, so run the install line again after one.
+
+### How it fits together
+
+- **Fixture host** (`tests/browser/host.rs`, binary `ryokan-e2e-host`, built only under `--features browser-e2e`). The tests cannot build an `AppState` or call a model function, so this does it for them. It serves a control API on a loopback port; `POST /apps` builds what one Rust test used to build in-process: `in_memory_pool()`, a logged-in user, `build_test_app_state`, and `test_support::e2e_browser_app` on its own port. `POST /apps/{id}/seed` seeds through the model functions (a new seed is a `Seed` variant there plus a line in the `harness.js` doc comment); `POST /apps/{id}/sql` runs one statement and returns its rows. The host prints its control URL as its first stdout line and exits when its stdin closes, so it cannot outlive the runner.
+- **Harness** (`tests/browser/harness.js`). Import `test` from it instead of from `@playwright/test`. The `app` fixture is one fixture app per test (`app.seed`, `app.sql`, `app.baseURL`, `app.session`); the `page` fixture already carries the session cookie, resolves `page.goto('/settings')` against the app, and refuses requests to anything but the local app. One host process per Playwright worker: a file's tests run in order in one worker, files run side by side, so process-wide state in the app (throttle maps, job locks) is shared only by tests that run one after another.
+- **Fixture pages and the router** stay in `src/test_support.rs` (the `e2e` module, same feature). A route a new test needs is mounted there.
+- **`exec(page, body, ...args)`** runs a script body the way WebDriver's "execute script" did (`arguments[n]`, `return`). The ported tests keep their script bodies verbatim through it; a new test can use `page.evaluate(() => ...)`.
+- **Locators re-query.** WebDriver handed back one element and went stale when it was replaced; a Playwright locator looks the element up again on every use. Use `.first()` where a selector can match several elements (a click on a multi-match locator throws).
 
 ### False-positive guards (mandatory for new row-mutation tests)
 
 Per the PR 131 audit:
 
-1. **`assert_htmx_handled_in_place`** — catches the form-POST fallback masquerading as an htmx swap when the vendored script fails to load. Asserts (a) `window.htmx` is defined, (b) the URL didn't redirect, (c) the URL carries no `msg=` / `err=` flash parameter, the signature of the form-POST fallback's redirect. Neighbor survival is the next guard's job.
-2. **`assert_dom_contains(survivor)`** — catches over-broad swap targets that swallow neighbors. Seed at least 2 rows in the fixture.
-3. **DB-side side-effect verification** — the partial response is rendered from the request payload, so a no-op handler still returns a "successful" partial. Always verify the row is actually gone / present in the DB.
-4. **`assert_modal_text(slot, expected)`** — catches `data-ryokan-confirm-*` attribute typos that fall through to default copy.
+1. **`assertHtmxHandledInPlace(page, urlPrefix)`** — catches the form-POST fallback masquerading as an htmx swap when the vendored script fails to load. Asserts (a) `window.htmx` is defined, (b) the URL didn't redirect, (c) the URL carries no `msg=` / `err=` flash parameter, the signature of the form-POST fallback's redirect. Neighbor survival is the next guard's job. Where the action navigates on purpose (HX-Refresh, a boosted link), use `assertHtmxLoaded(page)`.
+2. **`assertDomContains(page, survivor)`** — catches over-broad swap targets that swallow neighbors. Seed at least 2 rows in the fixture.
+3. **DB-side side-effect verification** — the partial response is rendered from the request payload, so a no-op handler still returns a "successful" partial. Always read the row back with `app.sql(...)` and check it is actually gone / present.
+4. **`assertModalText(page, slot, expected)`** — catches `data-ryokan-confirm-*` attribute typos that fall through to default copy.
 
-When in doubt, add the assertion and **mutation-test it**: revert the corresponding production code, confirm the test fails with a clear diagnostic, revert your revert.
+When in doubt, add the assertion and **mutation-test it**: revert the corresponding production code, confirm the test fails with a clear diagnostic, revert your revert. (For a template or handler mutation, rerun through the script so the host is rebuilt.) The port was checked this way: a confirm attribute renamed in `base.js`, a changed pause payload, a missing `clearInterval`, the htmx script removed (32 of 37 tests fail; the five that pass do not use htmx), a handler that skips its delete (caught only by the DB read-back), and a changed confirm title in a template were each caught by the test meant to catch them.
+
+**A check has to read something only the code under test can produce.** Three tests carried over from the Rust suite passed with their feature broken, and mutation is how that showed:
+
+- `data_ts_rebinds_after_boosted_nav` looked for humanized timestamp text after a boosted nav, but the server already renders that text. It now pins the browser's clock three days ahead (`page.clock.setFixedTime`): the server writes "just now" and only the page's own refresh can produce "3d ago".
+- The two stylesheet tests in `boost-phase-a` read rules that a shared sheet also satisfied (`.cf-section` had moved into `base.css`; a `.btn-pill` is also a `.btn`, which is rounded 6px without `pages/index.css`). Each now reads a value only its page's sheet gives: `.tabbed-sidebar` computing to `display: flex`, and the 999px pill radius.
 
 ## CI-enforced lints
 

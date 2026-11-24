@@ -23,3 +23,7 @@ mutants-*.log
 # scripts/mutants-weekly.sh's default baseline and report paths.
 mutants.baseline*.json
 mutants-report*.md
+# Browser tests (tests/browser): npm install and Playwright output.
+/tests/browser/node_modules/
+/tests/browser/test-results*/
+/tests/browser/playwright-report/

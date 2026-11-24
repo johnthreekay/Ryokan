@@ -29,7 +29,7 @@
 //!
 //! Per-handler `HxRequest` branching, fragment-vs-page response shape,
 //! and DOM-state assertions live alongside their handlers
-//! (`tests/htmx_browser_e2e*.rs` for the browser layer).
+//! (`tests/browser/*.spec.js` for the browser layer).
 //!
 //! Asserts against on-disk artifacts directly rather than going through
 //! the test router (`handler_router` is a minimal test surface that

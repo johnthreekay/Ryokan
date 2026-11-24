@@ -42,7 +42,7 @@ Pure-fragment routes (no full-page equivalent — e.g. conditional-field swap on
 
 ## Patterns load-bearing for new migrations
 
-Tested via `tests/htmx_browser_e2e*.rs`.
+Tested via `tests/browser/*.spec.js`.
 
 - **`Form<T>`, not `Json<T>`**, on handler extractors. `hx-vals` + `hx-include="closest form"` form-encode by default. New handlers take `Form<T>` with `#[serde(default)]` on every field if `hx-include` may pull extras the handler doesn't care about — serde silently drops unknown fields.
 - **Always-200 for inline-result swaps.** The `noSwap` config in `base.html` makes htmx *skip the swap on 4xx/5xx* (htmx 2's built-in policy, opted back in under htmx 4) — a handler returning 502 on connection-test failure leaves the spinner up forever. Pattern: `templates/partials/settings/connection_test_result.html` + `ConnectionTestResultPartial::into_html_ok()` — render success/failure into the same partial (different inline color), always 200. Inverse for row-removal swaps: 5xx is the right signal so htmx skips the swap and the row stays put for the user to retry.
