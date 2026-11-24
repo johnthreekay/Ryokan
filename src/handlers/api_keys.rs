@@ -32,7 +32,7 @@ use crate::services::logger;
 /// Shape returned from list / create / toggle endpoints. Never carries
 /// the hash (internal). Pre-formatted display strings live alongside
 /// the raw Unix timestamps so the JS render path doesn't have to
-/// duplicate the chrono format and the cards don't flash a
+/// duplicate the date format and the cards don't flash a
 /// `"Loading..."` placeholder while waiting for JS hydration.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ApiKeyView {

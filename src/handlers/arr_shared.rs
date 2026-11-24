@@ -67,7 +67,7 @@ impl SystemStatus {
     /// `start_time` (the connected app's uptime as Seerr's UI
     /// displays it — pass `state.start_time` so it reflects actual
     /// process boot rather than a hardcoded long-stale timestamp).
-    pub fn default_with_name(app_name: &str, start_time: chrono::DateTime<chrono::Utc>) -> Self {
+    pub fn default_with_name(app_name: &str, start_time: time::UtcDateTime) -> Self {
         Self {
             // Sonarr v4 is the current line; the Radarr override below
             // bumps to a v6 string. Seerr uses `app_name` for its UI
@@ -99,7 +99,7 @@ impl SystemStatus {
             url_base: String::new(),
             runtime_version: String::new(),
             runtime_name: String::new(),
-            start_time: start_time.format("%Y-%m-%dT%H:%M:%S%.fZ").to_string(),
+            start_time: crate::services::datetime::rfc3339(start_time),
             package_update_mechanism: "builtIn".to_string(),
             app_name: app_name.to_string(),
         }

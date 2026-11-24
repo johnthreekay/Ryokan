@@ -278,7 +278,7 @@ pub fn build_payload(event: &NotificationEvent, cover_url: Option<&str>) -> Valu
         "color": color,
         "fields": fields,
         "footer": {"text": format!("Ryokan v{}", env!("CARGO_PKG_VERSION"))},
-        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "timestamp": crate::services::datetime::rfc3339(crate::services::datetime::now()),
     });
     if let Some(url) = cover_url
         && !url.is_empty()

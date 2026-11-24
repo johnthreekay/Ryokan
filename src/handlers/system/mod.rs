@@ -1009,10 +1009,10 @@ pub async fn api_logs_export(
     }
 
     // Dated filename so a user downloading multiple snapshots doesn't
-    // overwrite earlier ones. Use the chrono UTC date — local-time
+    // overwrite earlier ones. Use the UTC date — local-time
     // formatting would be misleading since the timestamps inside the
     // file are SQLite-default UTC.
-    let date = chrono::Utc::now().format("%Y-%m-%d");
+    let date = crate::services::datetime::format_date(crate::services::datetime::today());
     let filename = format!("ryokan-logs-{date}-{since_label}.tsv");
 
     let mut headers = HeaderMap::new();

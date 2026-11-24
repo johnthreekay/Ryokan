@@ -431,7 +431,10 @@ pub fn unique_folder_among(
             return candidate;
         }
     }
-    with_suffix(&base, &format!(" ({})", chrono::Utc::now().timestamp()))
+    with_suffix(
+        &base,
+        &format!(" ({})", crate::services::datetime::now_unix()),
+    )
 }
 
 /// Serializes [`upsert`]: its check-then-insert is only correct when no

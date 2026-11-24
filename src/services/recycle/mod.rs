@@ -35,11 +35,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use chrono::{NaiveDate, Utc};
 use sqlx::SqlitePool;
+use time::Date;
 
 use crate::models::log::LogCategory;
-use crate::services::logger;
+use crate::services::{datetime, logger};
 
 pub use helpers::is_valid_entry_id;
 pub use manifest::{MANIFEST_FILE, RecycleKind, RecycleManifest};
@@ -347,7 +347,7 @@ fn recycle_blocking(
         }
     }
 
-    let date = Utc::now().format("%Y-%m-%d").to_string();
+    let date = datetime::format_date(datetime::today());
     let date_dir = bin.join(&date);
     fs::create_dir_all(&date_dir)
         .map_err(|e| InnerErr::Unwritable(format!("create {}: {e}", date_dir.display())))?;
@@ -408,7 +408,7 @@ fn recycle_blocking(
         series_id,
         series_title: series_title.to_string(),
         original_path: path.display().to_string(),
-        recycled_at: Utc::now().timestamp(),
+        recycled_at: datetime::now_unix(),
         size_bytes,
         files: moved
             .iter()
@@ -459,8 +459,8 @@ fn read_manifest(entry_dir: &Path) -> io::Result<RecycleManifest> {
     serde_json::from_slice(&bytes).map_err(io::Error::other)
 }
 
-fn parse_date_dir(name: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(name, "%Y-%m-%d").ok()
+fn parse_date_dir(name: &str) -> Option<Date> {
+    datetime::parse_date(name)
 }
 
 /// Every entry in the bin, newest first. Entries with a missing or
@@ -701,7 +701,7 @@ pub async fn purge_old(bin_path: &str, age_days: i64) -> Result<PurgeReport, Str
     if bin.is_empty() || age_days <= 0 {
         return Ok(PurgeReport::default());
     }
-    let today = Utc::now().date_naive();
+    let today = datetime::today();
     invalidate_entry_count();
     tokio::task::spawn_blocking(move || purge_blocking(Path::new(&bin), today, Some(age_days)))
         .await
@@ -714,7 +714,7 @@ pub async fn empty(bin_path: &str) -> Result<PurgeReport, String> {
     if bin.is_empty() {
         return Ok(PurgeReport::default());
     }
-    let today = Utc::now().date_naive();
+    let today = datetime::today();
     invalidate_entry_count();
     tokio::task::spawn_blocking(move || purge_blocking(Path::new(&bin), today, None))
         .await
@@ -723,11 +723,7 @@ pub async fn empty(bin_path: &str) -> Result<PurgeReport, String> {
 
 /// `age_days = None` purges every date bucket; `Some(n)` only those whose
 /// date is more than `n` days before `today`.
-fn purge_blocking(
-    bin: &Path,
-    today: NaiveDate,
-    age_days: Option<i64>,
-) -> Result<PurgeReport, String> {
+fn purge_blocking(bin: &Path, today: Date, age_days: Option<i64>) -> Result<PurgeReport, String> {
     let date_dirs = match fs::read_dir(bin) {
         Ok(rd) => rd,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(PurgeReport::default()),
@@ -743,7 +739,7 @@ fn purge_blocking(
             continue;
         }
         if let Some(age) = age_days
-            && (today - date).num_days() <= age
+            && (today - date).whole_days() <= age
         {
             continue;
         }
