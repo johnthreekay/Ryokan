@@ -56,9 +56,7 @@ pub struct PendingView {
 }
 
 fn when_label(ts: i64) -> String {
-    chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0)
-        .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
-        .unwrap_or_else(|| ts.to_string())
+    crate::services::datetime::minute_label(ts).unwrap_or_else(|| ts.to_string())
 }
 
 pub async fn backup_tab_view(state: &AppState) -> BackupTabView {
@@ -261,7 +259,7 @@ pub async fn api_backup_download(
         hex::encode(rand::random::<[u8; 8]>())
     ));
     let guard = TempDirGuard(Some(work.clone()));
-    let name = download_file_name(opts.sanitize, chrono::Utc::now().timestamp());
+    let name = download_file_name(opts.sanitize, crate::services::datetime::now_unix());
     let out = work.join(&name);
     let manifest = match backup::create_backup(&state.db, &paths, opts, &out).await {
         Ok(m) => m,

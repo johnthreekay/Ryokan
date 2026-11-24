@@ -84,6 +84,85 @@ jobs:
         # fail the whole run.
         run: cargo nextest run --workspace --locked --features test-support --profile ci
 
+  browser:
+    # The browser tests in tests/browser: Playwright Test on Chromium
+    # and Firefox against the fixture host (`tests/AGENTS.md`, "Browser
+    # e2e"). Its own job because it needs a second build of the crate
+    # (the `browser-e2e` feature, dev profile) plus two browser builds,
+    # none of which the verify pass should wait for.
+    #
+    # Nothing here holds a write token or a secret. `npm ci` installs
+    # the three packages package-lock.json pins by hash and runs no
+    # install scripts; `playwright install` downloads the browser builds
+    # that Playwright version names.
+    #
+    # Kept off the network where it can be:
+    # - No `--with-deps`. That flag has Playwright `apt-get` 54 MB of
+    #   libraries from the Ubuntu mirror, which took 33 s on one run and
+    #   12 min 39 s on the next. The runner image already has what the
+    #   two builds need (it ships Chrome and Firefox). If an image
+    #   update ever drops a library, the browser fails to launch and
+    #   names it: add that one package here, not the flag.
+    # - The browser builds are cached. The key carries the lockfile,
+    #   since a Playwright bump names new builds, and the image's OS,
+    #   since the Firefox build is per distribution.
+    # - Node is the runner image's own. Playwright needs 20 or later.
+    name: Browser tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    # 2 min with warm caches, measured: 5 s to restore the Rust cache,
+    # 52 s to build the host, 3 s to restore the browsers, 52 s for
+    # the 74 tests. A cold Rust cache adds about a minute and a cold
+    # browser cache 9 s. 30 min ends a hung browser or download.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: browser
+      - name: Build the fixture host
+        # The dev profile on purpose. Under the test profile (deps at
+        # opt-level 1) a cold build here took 4 min 23 s against
+        # 2 min 13 s, and the tests ran no faster: the browsers, not the
+        # host, are what the runner's cores are busy with.
+        run: cargo build --locked --features browser-e2e --bin ryokan-e2e-host
+      - name: Install Playwright
+        working-directory: tests/browser
+        run: |
+          node --version
+          npm ci --ignore-scripts --no-audit --no-fund
+      - name: Browser cache key
+        id: browser-key
+        run: echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Restore the browser builds
+        id: browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.browser-key.outputs.os }}-${{ runner.arch }}-${{ hashFiles('tests/browser/package-lock.json') }}
+      - name: Download the browser builds
+        if: steps.browsers.outputs.cache-hit != 'true'
+        working-directory: tests/browser
+        # --only-shell: headless Chromium runs on its headless shell, so
+        # the full browser (the larger download) is not needed here.
+        run: npx playwright install --only-shell chromium firefox
+      - name: Browser tests
+        working-directory: tests/browser
+        run: npx playwright test
+      # A failed test leaves a Playwright trace (DOM snapshots, network,
+      # console). Open one at https://trace.playwright.dev or with
+      # `npx playwright show-trace <zip>`.
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-test-traces
+          path: tests/browser/test-results
+          retention-days: 7
+
   msrv:
     # Verify the crate still builds on the declared MSRV. Cargo.toml's
     # `rust-version = "1.95"` is otherwise decorative — the main `build`

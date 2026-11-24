@@ -138,8 +138,7 @@ pub struct BackupManifest {
 
 impl BackupManifest {
     pub fn timestamp_label(&self) -> String {
-        chrono::DateTime::<chrono::Utc>::from_timestamp(self.backup_timestamp, 0)
-            .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
+        crate::services::datetime::minute_label(self.backup_timestamp)
             .unwrap_or_else(|| self.backup_timestamp.to_string())
     }
 }

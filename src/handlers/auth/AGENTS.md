@@ -64,4 +64,4 @@ Usernames are passed through `sanitize_for_log()` (strip control chars, cap at 6
 
 ## Sonarr/Radarr shim auth (out of scope)
 
-The `sonarr_compat` / `radarr_compat` routers are merged **outside** the cookie-auth layer and use `arr_auth::check_api_key`. See `src/handlers/sonarr_compat/AGENTS.md` if it exists, otherwise `arr_auth.rs` directly.
+The `sonarr_compat` / `radarr_compat` routers are merged **outside** the cookie-auth layer and use `arr_auth::check_api_key`. See `src/handlers/AGENTS.md` ("API-key surfaces") and `arr_auth.rs`.

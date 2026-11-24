@@ -12,8 +12,8 @@ use axum::{
     extract::{Path, Query, State},
     response::{Html, IntoResponse, Response},
 };
-use chrono::{Duration, NaiveDate, Utc};
 use serde::Deserialize;
+use time::Date;
 
 use crate::AppState;
 use crate::models::{config, log::LogCategory};
@@ -88,17 +88,21 @@ fn entry_label(entry: &RecycleEntry) -> String {
     }
 }
 
-fn purge_in(date: &str, age_days: i64, today: NaiveDate) -> String {
+fn purge_in(date: &str, age_days: i64, today: Date) -> String {
     if age_days <= 0 {
         return "never (manual only)".to_string();
     }
-    let Ok(bucket) = NaiveDate::parse_from_str(date, "%Y-%m-%d") else {
+    let Some(bucket) = crate::services::datetime::parse_date(date) else {
         return String::new();
     };
     // `purge_old` drops a bucket once `today - bucket > age_days`, i.e.
-    // on the first cleanup tick of `bucket + age_days + 1`.
-    let purge_day = bucket + Duration::days(age_days + 1);
-    let left = (purge_day - today).num_days();
+    // on the first cleanup tick of `bucket + age_days + 1`. Counted in
+    // days rather than by adding to the date, so an age no calendar
+    // holds (a restored database can carry any number) is only a large
+    // count.
+    let left = age_days
+        .saturating_add(1)
+        .saturating_sub((today - bucket).whole_days());
     if left <= 0 {
         "next cleanup".to_string()
     } else if left == 1 {
@@ -144,7 +148,7 @@ pub async fn page(State(state): State<AppState>, Query(q): Query<RecycleQuery>) 
     let filter_series_id: Option<i64> = q.series.trim().parse().ok();
     let from = q.from.trim().to_string();
     let to = q.to.trim().to_string();
-    let today = Utc::now().date_naive();
+    let today = crate::services::datetime::today();
 
     let mut groups: Vec<DateGroup> = Vec::new();
     let mut total_entries = 0usize;
@@ -594,8 +598,13 @@ mod tests {
 
     #[test]
     fn purge_in_copy_matches_sweep_semantics() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 28).unwrap();
+        let today = time::macros::date!(2026 - 08 - 28);
         assert_eq!(purge_in("2026-08-28", 30, today), "in 31 days");
+        // An age past the calendar's last year is a count, not a panic.
+        assert_eq!(
+            purge_in("2026-08-28", i64::MAX, today),
+            format!("in {} days", i64::MAX)
+        );
         assert_eq!(purge_in("2026-07-29", 30, today), "in 1 day");
         // 31 days old: the next hourly sweep drops it.
         assert_eq!(purge_in("2026-07-28", 30, today), "next cleanup");

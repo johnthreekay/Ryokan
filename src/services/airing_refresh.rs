@@ -150,7 +150,7 @@ async fn refresh_inner(db: &SqlitePool, series: &[SeriesRef]) -> Result<RefreshS
         return Ok(summary);
     }
 
-    let now = chrono::Utc::now().timestamp();
+    let now = crate::services::datetime::now_unix();
     let from = now - BACKWARD_WINDOW_DAYS * 86_400;
     let to = now + FORWARD_WINDOW_DAYS * 86_400;
 
@@ -211,7 +211,7 @@ async fn refresh_inner(db: &SqlitePool, series: &[SeriesRef]) -> Result<RefreshS
 }
 
 async fn prune(db: &SqlitePool) -> Result<u64, String> {
-    let cutoff = chrono::Utc::now().timestamp() - RETAIN_PAST_DAYS * 86_400;
+    let cutoff = crate::services::datetime::now_unix() - RETAIN_PAST_DAYS * 86_400;
     episode_airings::prune_older_than(db, cutoff)
         .await
         .map_err(|e| format!("airings prune: {e}"))

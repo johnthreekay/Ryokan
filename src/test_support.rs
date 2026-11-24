@@ -105,9 +105,8 @@ pub fn build_test_app_state(
         oauth_state: crate::services::oauth_state::new(),
         // A fixed start_time so snapshot tests of `system_status` get
         // a stable serialization. Real production paths use
-        // `chrono::Utc::now()` at process boot.
-        start_time: chrono::DateTime::<chrono::Utc>::from_timestamp(1_704_067_200, 0)
-            .expect("epoch is valid"),
+        // `datetime::now()` at process boot.
+        start_time: crate::services::datetime::from_unix(1_704_067_200).expect("epoch is valid"),
         tasks: crate::services::task_registry::TaskRegistry::new(),
         dc_status_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         notification_providers: crate::services::notifications::empty_cache(),
@@ -271,15 +270,15 @@ pub fn handler_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-// ─── Browser-e2e harness (issue #129 HTMX migration) ────────────────
+// ─── Browser test fixtures ──────────────────────────────────────────
 //
-// Gated on `cfg(feature = "browser-e2e")` so the inline test fixtures
-// + ServeDir wiring don't pull `tower-http`'s `fs` feature into the
-// graph for plain `cargo test --features test-support` runs. The
-// `tower-http = ["fs"]` feature is already on for the production
-// crate, so this gate is a coupling reminder: when the migration is
-// complete and the e2e infra is removed, this whole module section
-// goes too. See the `browser-e2e` feature comment in Cargo.toml.
+// The fixture pages and the router the browser tests drive
+// (`tests/browser/*.spec.js`, Playwright). The tests are JavaScript, so
+// nothing here is called from a Rust test: the fixture host binary
+// (`tests/browser/host.rs`) serves `e2e_browser_app` once per test.
+// Gated on `cfg(feature = "browser-e2e")`, the feature that builds the
+// host, so a plain `cargo test --features test-support` run does not
+// compile fixtures nothing in it uses.
 
 #[cfg(feature = "browser-e2e")]
 mod e2e {
@@ -758,14 +757,14 @@ window.addEventListener('DOMContentLoaded', function () {
             // Phase D pentagon-nav test exercises every route here.
             .route("/", get(crate::handlers::library::pages::index))
             // First-run library step
-            // (`tests/htmx_browser_e2e_setup_library.rs`).
+            // (`tests/browser/setup-library.spec.js`).
             .route(
                 "/setup/library",
                 get(crate::handlers::settings::setup_library::setup_library_page)
                     .post(crate::handlers::settings::setup_library::setup_library_submit),
             )
             // The library's add-series Monitor Episodes dialog posts
-            // here (`tests/htmx_browser_e2e_add_series_monitor.rs`).
+            // here (`tests/browser/add-series-monitor.spec.js`).
             .route(
                 "/api/library/monitoring",
                 post(crate::handlers::library::crud::set_monitoring),
@@ -786,7 +785,7 @@ window.addEventListener('DOMContentLoaded', function () {
             // Issue #129 completion — per-tab subform handlers
             // (`/settings/general`, `/settings/quality`,
             // `/settings/integrations`). Mounted here so the
-            // browser-e2e tests at `htmx_browser_e2e_settings_subforms`
+            // browser tests in `tests/browser/settings-subforms.spec.js`
             // can POST through them; the production main.rs has the
             // same trio. Each handler reads `HxRequest` and returns
             // either the per-tab partial (HTMX) or the full
@@ -824,8 +823,8 @@ window.addEventListener('DOMContentLoaded', function () {
                 axum::routing::get(crate::handlers::settings::indexers::settings_indexers_edit_form),
             )
             // SAB cleanup PR — modal-form endpoints used by the
-            // browser-e2e tests in
-            // `tests/htmx_browser_e2e_settings_modals.rs`. The
+            // browser tests in
+            // `tests/browser/settings-modals.spec.js`. The
             // production `/api/download-clients/add-form` and
             // `/api/indexers/test` are mounted in main.rs's
             // `protected_routes`; the test harness needs them too so

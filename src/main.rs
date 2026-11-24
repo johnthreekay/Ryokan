@@ -678,7 +678,7 @@ async fn main() {
         users_exist,
         interactive_search_cache: services::interactive_search_cache::new(),
         oauth_state: services::oauth_state::new(),
-        start_time: chrono::Utc::now(),
+        start_time: services::datetime::now(),
         tasks: services::task_registry::TaskRegistry::new(),
         dc_status_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         notification_providers: services::notifications::empty_cache(),

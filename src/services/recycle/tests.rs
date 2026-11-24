@@ -518,7 +518,7 @@ fn seed_entry(bin: &Path, date: &str, id: &str, bytes: u64) {
 fn purge_respects_age_and_ignores_non_date_dirs() {
     let tmp = tempfile::tempdir().unwrap();
     let bin = tmp.path();
-    let today = chrono::NaiveDate::from_ymd_opt(2026, 8, 28).unwrap();
+    let today = time::macros::date!(2026 - 08 - 28);
     seed_entry(bin, "2026-01-01", "aaaaaaaa", 10);
     seed_entry(bin, "2026-01-01", "bbbbbbbb", 5);
     seed_entry(bin, "2026-07-29", "cccccccc", 7); // exactly 30 days: kept

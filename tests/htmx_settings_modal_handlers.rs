@@ -5,7 +5,7 @@
 //! header-bearing responses), assert on the response shape.
 //!
 //! Why direct-handler instead of browser-e2e: the browser-e2e
-//! variants we tried (`tests/htmx_browser_e2e_settings_modals.rs`)
+//! variants we tried (now `tests/browser/settings-modals.spec.js`)
 //! were observably flaky against geckodriver — in-page `fetch`
 //! occasionally dropped the response body, and Firefox's plaintext
 //! render of an empty 200 short-circuited the assertion. These

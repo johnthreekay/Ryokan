@@ -56,12 +56,13 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use axum_htmx::{HxBoosted, HxRequest};
-use chrono::{Datelike, TimeZone};
 use serde::{Deserialize, Serialize};
+use time::{Date, SignedDuration, UtcDateTime};
 
 use crate::AppState;
 use crate::models::config;
 use crate::services::calendar::{self, DEFAULT_FORWARD_DAYS, UpcomingEpisode};
+use crate::services::datetime;
 
 /// The iCal feed's `Cache-Control`, on both the 200 and the 304.
 const ICAL_CACHE_CONTROL: &str = "private, max-age=600";
@@ -87,37 +88,33 @@ fn range_to_window(range: &str) -> (i64, i64) {
 /// grid extends to the Sunday on or before the 1st and the Saturday
 /// on or after the last day of the month, so a 4-week or 6-week
 /// grid is always a clean rectangle.
-fn month_grid_window(now_utc: chrono::DateTime<chrono::Utc>) -> (i64, i64) {
-    let first_of_month = chrono::Utc
-        .with_ymd_and_hms(now_utc.year(), now_utc.month(), 1, 0, 0, 0)
-        .single()
+fn month_grid_window(now_utc: UtcDateTime) -> (i64, i64) {
+    let today = now_utc.date();
+    let first_of_month = today
+        .replace_day(1)
         .expect("first-of-month is always valid");
-    let next_month_first = if now_utc.month() == 12 {
-        chrono::Utc
-            .with_ymd_and_hms(now_utc.year() + 1, 1, 1, 0, 0, 0)
-            .single()
-            .expect("next-january is always valid")
-    } else {
-        chrono::Utc
-            .with_ymd_and_hms(now_utc.year(), now_utc.month() + 1, 1, 0, 0, 0)
-            .single()
-            .expect("next-month-first is always valid")
-    };
-    let last_of_month = next_month_first - chrono::Duration::days(1);
+    let last_of_month = today
+        .replace_day(today.month().length(today.year()))
+        .expect("last-of-month is always valid");
     let grid_start = sunday_on_or_before(first_of_month);
     // Grid end is exclusive — Saturday on/after last day, then +1.
-    let grid_end_exclusive = saturday_on_or_after(last_of_month) + chrono::Duration::days(1);
-    (grid_start.timestamp(), grid_end_exclusive.timestamp())
+    let grid_end_exclusive = saturday_on_or_after(last_of_month) + SignedDuration::days(1);
+    (utc_midnight(grid_start), utc_midnight(grid_end_exclusive))
 }
 
-fn sunday_on_or_before(d: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<chrono::Utc> {
-    let offset = d.weekday().num_days_from_sunday() as i64;
-    d - chrono::Duration::days(offset)
+/// Unix seconds of a date's UTC midnight.
+fn utc_midnight(d: Date) -> i64 {
+    d.midnight().as_utc().unix_timestamp()
 }
 
-fn saturday_on_or_after(d: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<chrono::Utc> {
-    let offset = 6_i64 - d.weekday().num_days_from_sunday() as i64;
-    d + chrono::Duration::days(offset)
+fn sunday_on_or_before(d: Date) -> Date {
+    let offset = i64::from(d.weekday().number_days_from_sunday());
+    d - SignedDuration::days(offset)
+}
+
+fn saturday_on_or_after(d: Date) -> Date {
+    let offset = 6_i64 - i64::from(d.weekday().number_days_from_sunday());
+    d + SignedDuration::days(offset)
 }
 
 #[derive(Debug, Deserialize)]
@@ -258,8 +255,8 @@ pub async fn page(
     let range = params.range.unwrap_or_else(|| "this_week".to_string());
     let monitored_only = params.monitored.unwrap_or(false);
 
-    let now_utc = chrono::Utc::now();
-    let now = now_utc.timestamp();
+    let now_utc = datetime::now();
+    let now = now_utc.unix_timestamp();
     let view_mode = if range == "month" { "grid" } else { "list" };
 
     // Window selection: list ranges slide N days from now;
@@ -358,7 +355,7 @@ struct CalendarGridPartial {
 /// inside the fetched episode range.
 fn build_month_grid(
     episodes: &[EpisodeView],
-    now_utc: chrono::DateTime<chrono::Utc>,
+    now_utc: UtcDateTime,
     from: i64,
     to_exclusive: i64,
 ) -> MonthGrid {
@@ -372,20 +369,19 @@ fn build_month_grid(
         v.sort_by_key(|e| e.airing_at);
     }
 
-    let today_key = now_utc.timestamp() - now_utc.timestamp().rem_euclid(86400);
+    let today_key = now_utc.unix_timestamp() - now_utc.unix_timestamp().rem_euclid(86400);
     let current_month = now_utc.month();
-    let month_label = now_utc.format("%B %Y").to_string();
+    let month_label = datetime::month_label(now_utc.date());
 
     let mut weeks: Vec<Vec<MonthCell>> = Vec::new();
     let mut cur = from;
     while cur < to_exclusive {
         let mut week: Vec<MonthCell> = Vec::with_capacity(7);
         for _ in 0..7 {
-            let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(cur, 0)
-                .unwrap_or_else(|| chrono::Utc.timestamp_opt(0, 0).single().unwrap());
+            let dt = datetime::from_unix(cur).unwrap_or(UtcDateTime::UNIX_EPOCH);
             let cell = MonthCell {
                 day_key: cur,
-                day_number: dt.day(),
+                day_number: u32::from(dt.day()),
                 is_today: cur == today_key,
                 is_in_current_month: dt.month() == current_month,
                 episodes: by_day.remove(&cur).unwrap_or_default(),
@@ -434,9 +430,7 @@ fn group_by_day(episodes: &[EpisodeView]) -> Vec<DayBucket> {
     by_date
         .into_iter()
         .map(|(day_key, eps)| DayBucket {
-            label: chrono::DateTime::<chrono::Utc>::from_timestamp(day_key, 0)
-                .map(|dt| dt.format("%A, %b %-d").to_string())
-                .unwrap_or_default(),
+            label: datetime::day_label(day_key).unwrap_or_default(),
             day_key,
             episodes: eps,
         })
@@ -499,7 +493,7 @@ pub async fn ical_feed(
         .unwrap_or(DEFAULT_FORWARD_DAYS)
         .clamp(1, MAX_DAYS);
     let monitored_only = params.monitored.unwrap_or(false);
-    let now = chrono::Utc::now().timestamp();
+    let now = datetime::now_unix();
     let from = now;
     let to = now + days * 86400;
 
@@ -693,9 +687,7 @@ fn render_ical(
 /// time gets interpreted as floating local time and shows up
 /// shifted in subscribers' calendars.
 fn format_ical_utc(unix_secs: i64) -> String {
-    chrono::DateTime::<chrono::Utc>::from_timestamp(unix_secs, 0)
-        .map(|dt| dt.format("%Y%m%dT%H%M%SZ").to_string())
-        .unwrap_or_else(|| "19700101T000000Z".to_string())
+    datetime::ical_utc(unix_secs).unwrap_or_else(|| "19700101T000000Z".to_string())
 }
 
 /// Escape per RFC 5545 §3.3.11. Backslash, comma, semicolon get
@@ -774,6 +766,7 @@ fn push_folded_line(out: &mut String, line: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use time::macros::utc_datetime;
 
     fn ep(
         series_id: i64,
@@ -886,15 +879,10 @@ mod tests {
     /// 2026-06-06 (Saturday). Grid spans 6 full weeks = 42 days.
     #[test]
     fn month_grid_window_spans_full_weeks_around_may_2026() {
-        let now = chrono::Utc
-            .with_ymd_and_hms(2026, 5, 9, 12, 0, 0)
-            .single()
-            .unwrap();
+        let now = utc_datetime!(2026-05-09 12:00);
         let (from, to) = month_grid_window(now);
-        let from_dt = chrono::DateTime::<chrono::Utc>::from_timestamp(from, 0).unwrap();
-        let to_dt = chrono::DateTime::<chrono::Utc>::from_timestamp(to, 0).unwrap();
-        assert_eq!(from_dt.format("%Y-%m-%d").to_string(), "2026-04-26");
-        assert_eq!(to_dt.format("%Y-%m-%d").to_string(), "2026-06-07");
+        assert_eq!(from, utc_datetime!(2026-04-26 0:00).unix_timestamp());
+        assert_eq!(to, utc_datetime!(2026-06-07 0:00).unix_timestamp());
         // 6 weeks × 7 days × 86400 sec.
         assert_eq!(to - from, 6 * 7 * 86400);
     }
@@ -903,20 +891,14 @@ mod tests {
     /// `2026-02-28` is a Saturday → grid ends on the 28th. 4 weeks.
     #[test]
     fn month_grid_window_compacts_to_4_weeks_when_aligned() {
-        let now = chrono::Utc
-            .with_ymd_and_hms(2026, 2, 14, 0, 0, 0)
-            .single()
-            .unwrap();
+        let now = utc_datetime!(2026-02-14 0:00);
         let (from, to) = month_grid_window(now);
         assert_eq!(to - from, 4 * 7 * 86400);
     }
 
     #[test]
     fn month_grid_handles_december_year_rollover() {
-        let now = chrono::Utc
-            .with_ymd_and_hms(2026, 12, 15, 0, 0, 0)
-            .single()
-            .unwrap();
+        let now = utc_datetime!(2026-12-15 0:00);
         let (from, to) = month_grid_window(now);
         // Window must be a positive multiple of 7 days.
         let span_days = (to - from) / 86400;
@@ -938,22 +920,11 @@ mod tests {
 
     #[test]
     fn build_month_grid_buckets_episodes_to_correct_cells() {
-        let now = chrono::Utc
-            .with_ymd_and_hms(2026, 5, 9, 12, 0, 0)
-            .single()
-            .unwrap();
+        let now = utc_datetime!(2026-05-09 12:00);
         let (from, to) = month_grid_window(now);
         // Two episodes on May 12 (Tue) at 09:00 and 21:00 UTC.
-        let may12_09 = chrono::Utc
-            .with_ymd_and_hms(2026, 5, 12, 9, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp();
-        let may12_21 = chrono::Utc
-            .with_ymd_and_hms(2026, 5, 12, 21, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp();
+        let may12_09 = utc_datetime!(2026-05-12 9:00).unix_timestamp();
+        let may12_21 = utc_datetime!(2026-05-12 21:00).unix_timestamp();
         let eps = vec![ev(1, 5, may12_21, true), ev(2, 1, may12_09, false)];
         let grid = build_month_grid(&eps, now, from, to);
         // Find the May 12 cell.
@@ -974,10 +945,7 @@ mod tests {
 
     #[test]
     fn build_month_grid_marks_today_cell() {
-        let now = chrono::Utc
-            .with_ymd_and_hms(2026, 5, 9, 18, 0, 0)
-            .single()
-            .unwrap();
+        let now = utc_datetime!(2026-05-09 18:00);
         let (from, to) = month_grid_window(now);
         let grid = build_month_grid(&[], now, from, to);
         let today_cells: Vec<&MonthCell> =

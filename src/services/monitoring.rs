@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{NaiveDate, Utc};
 use sqlx::SqlitePool;
+use time::Date;
 
 use crate::{
     models::{
@@ -199,7 +199,7 @@ fn resolve_monitored_episodes(
     episode_info: &HashMap<i32, jikan::EpisodeInfo>,
     mode: MonitorMode,
 ) -> HashSet<i32> {
-    let today = Utc::now().date_naive();
+    let today = crate::services::datetime::today();
     let mut latest_aired_known = 0;
 
     for ep in episode_numbers {
@@ -273,13 +273,13 @@ fn resolve_monitored_episodes(
         .collect()
 }
 
-fn parse_aired_date(value: &str) -> Option<NaiveDate> {
+fn parse_aired_date(value: &str) -> Option<Date> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return None;
     }
     let date_part = trimmed.split('T').next().unwrap_or(trimmed);
-    NaiveDate::parse_from_str(date_part, "%Y-%m-%d").ok()
+    crate::services::datetime::parse_date(date_part)
 }
 
 #[cfg(test)]
@@ -300,7 +300,6 @@ mod tests {
     //! lives in the `is_finished` short-circuit at the top of the
     //! Future arm.
     use super::*;
-    use chrono::TimeZone;
     use rstest::rstest;
 
     /// Build a minimal `Series` with the fields `resolve_monitored_episodes`
@@ -340,24 +339,19 @@ mod tests {
     }
 
     /// Build episode-info entries with aired-dates relative to "today."
-    /// The function under test compares against `Utc::now().date_naive()`,
-    /// so we have to use real wall-clock time rather than fixturing —
-    /// `chrono::Utc.with_ymd_and_hms` doesn't cleanly stub out the
-    /// inner clock. We build offsets that are far enough from today
-    /// that timezone drift around a date boundary can't flip them.
+    /// The function under test compares against `datetime::today()`,
+    /// so we have to use real wall-clock time rather than fixturing;
+    /// there is no seam to stub the clock. We build offsets that are
+    /// far enough from today that timezone drift around a date
+    /// boundary can't flip them.
     fn aired(days_offset: i64) -> jikan::EpisodeInfo {
-        let today = chrono::Utc::now().date_naive();
-        let date = today
-            .checked_add_signed(chrono::Duration::days(days_offset))
-            .unwrap_or_else(|| {
-                chrono::Utc
-                    .with_ymd_and_hms(2000, 1, 1, 0, 0, 0)
-                    .unwrap()
-                    .date_naive()
-            });
+        use crate::services::datetime;
+        let date = datetime::today()
+            .checked_add(time::SignedDuration::days(days_offset))
+            .unwrap_or(time::macros::date!(2000 - 01 - 01));
         jikan::EpisodeInfo {
             title: String::new(),
-            aired: date.format("%Y-%m-%d").to_string(),
+            aired: datetime::format_date(date),
         }
     }
 

@@ -105,9 +105,7 @@ impl ApiKey {
 }
 
 fn format_unix_ts(secs: i64) -> String {
-    chrono::DateTime::<chrono::Utc>::from_timestamp(secs, 0)
-        .map(|dt| dt.format("%b %d, %Y %H:%M").to_string())
-        .unwrap_or_default()
+    crate::services::datetime::short_stamp(secs).unwrap_or_default()
 }
 
 /// Generate a 32-byte CSPRNG plaintext key as a 64-char hex string.
@@ -477,7 +475,7 @@ mod tests {
                 .await
                 .unwrap();
         assert!(after.is_some());
-        let now = chrono::Utc::now().timestamp();
+        let now = crate::services::datetime::now_unix();
         assert!(
             (now - after.unwrap()).abs() < 5,
             "stamp should be within ~5s of now"

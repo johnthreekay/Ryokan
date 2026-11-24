@@ -3562,9 +3562,7 @@ pub async fn run_once(state: &AppState) {
             // (a download disk mounting after the client) gets
             // `IMPORT_STALL_BOOT_GRACE_SECS` to sort itself out before
             // the first tick acts on what it reports.
-            let uptime_secs = chrono::Utc::now()
-                .signed_duration_since(state.start_time)
-                .num_seconds();
+            let uptime_secs = (crate::services::datetime::now() - state.start_time).whole_seconds();
             if uptime_secs < IMPORT_STALL_BOOT_GRACE_SECS {
                 logger::debug(
                     &state.db,
@@ -3857,9 +3855,7 @@ async fn escalate_if_stalled(
     if cfg.import_stall_hours <= 0 {
         return;
     }
-    let uptime_secs = chrono::Utc::now()
-        .signed_duration_since(state.start_time)
-        .num_seconds();
+    let uptime_secs = (crate::services::datetime::now() - state.start_time).whole_seconds();
     if uptime_secs < IMPORT_STALL_BOOT_GRACE_SECS {
         return;
     }

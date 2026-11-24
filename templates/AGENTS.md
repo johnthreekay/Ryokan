@@ -4,6 +4,8 @@ Askama 0.16 (Jinja2-like, compiled into the binary at build time via proc-macro)
 
 **htmx 4.0.2** is vendored under `static/vendor/` (issue #130, migrated from 2.0.9). **Body-wide `<body hx-boost:inherited="true">` is active** — every plain `<a>` and `<form>` runs through htmx by default. No extensions are loaded: the progress toast streams over native `EventSource`, and the `<head>` never changes across a boosted nav (all CSS is bundled in `base.html`; htmx 4 core carries `<title>` on its own), so the 2.x SSE and head-support extensions are gone.
 
+Colors, fonts and controls have rules of their own, and they bind a template that adds a control or an inline `style=` as much as a stylesheet: **`static/AGENTS.md`**.
+
 ## htmx 4 rules (what changed from 2.x, and what pins it)
 
 - **Inheritance is explicit.** An attribute reaches descendants only with the `:inherited` suffix (`hx-boost:inherited`). A bare `hx-target` on a form is the form's alone; a link inside it boosts to the body. Don't add `:inherited` near a form unless every descendant should really use it. `hx-disinherit` no longer exists.
@@ -42,7 +44,7 @@ Pure-fragment routes (no full-page equivalent — e.g. conditional-field swap on
 
 ## Patterns load-bearing for new migrations
 
-Tested via `tests/htmx_browser_e2e*.rs`.
+Tested via `tests/browser/*.spec.js`.
 
 - **`Form<T>`, not `Json<T>`**, on handler extractors. `hx-vals` + `hx-include="closest form"` form-encode by default. New handlers take `Form<T>` with `#[serde(default)]` on every field if `hx-include` may pull extras the handler doesn't care about — serde silently drops unknown fields.
 - **Always-200 for inline-result swaps.** The `noSwap` config in `base.html` makes htmx *skip the swap on 4xx/5xx* (htmx 2's built-in policy, opted back in under htmx 4) — a handler returning 502 on connection-test failure leaves the spinner up forever. Pattern: `templates/partials/settings/connection_test_result.html` + `ConnectionTestResultPartial::into_html_ok()` — render success/failure into the same partial (different inline color), always 200. Inverse for row-removal swaps: 5xx is the right signal so htmx skips the swap and the row stays put for the user to retry.

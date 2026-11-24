@@ -985,7 +985,7 @@ pub(super) async fn build_episodes(
 
     // For the unaired-vs-missing split below. Date-only, UTC: provider
     // air dates are calendar dates, not timestamps.
-    let today = chrono::Utc::now().date_naive();
+    let today = crate::services::datetime::today();
     // For an episode with no air date: how many episodes the airing
     // schedule says have aired, else the detail's next airing episode.
     let scheduled_aired = match db_id {
@@ -1185,10 +1185,9 @@ pub(super) async fn build_episodes(
         // the right read.
         let unaired = !downloaded
             && quality_state.is_empty()
-            && match chrono::NaiveDate::parse_from_str(ep_aired.get(..10).unwrap_or(""), "%Y-%m-%d")
-            {
-                Ok(d) => d > today,
-                Err(_) => match scheduled_aired {
+            && match crate::services::datetime::parse_date(ep_aired.get(..10).unwrap_or("")) {
+                Some(d) => d > today,
+                None => match scheduled_aired {
                     Some(aired) => i64::from(ep_num) > aired,
                     None => !detail.is_finished(),
                 },

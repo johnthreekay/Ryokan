@@ -1,0 +1,12 @@
+{
+  "name": "ryokan-browser-tests",
+  "private": true,
+  "description": "Browser tests for Ryokan's HTMX UI. Run them with scripts/browser-e2e.sh from the repository root.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}
