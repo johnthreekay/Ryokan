@@ -11,8 +11,8 @@ You are read-only. Never edit, write, or commit. Report findings; the main sessi
 
 ## The files
 
-- Root `AGENTS.md` (the base layer; large, and the one most likely to drift).
-- Nested: `src/handlers/auth/AGENTS.md`, `src/services/anilist/AGENTS.md`, `src/services/download_client/AGENTS.md`, `src/services/indexers/AGENTS.md`, `src/services/source/AGENTS.md`, `templates/AGENTS.md`, `tests/AGENTS.md`.
+- Root `AGENTS.md` (the base layer: the layout, and each cross-cutting rule in a line with a pointer to the nested file that holds the detail).
+- Nested: every other tracked `AGENTS.md`, which is where most of the claims are. List them with `git ls-files '*AGENTS.md'`; do not work from a remembered list.
 - Every `CLAUDE.md` is a symlink to its sibling `AGENTS.md`; a reference to either name resolves. Confirm with `ls -la` if a claim depends on it.
 
 User-facing docs under `docs/` belong to the sibling `docs-site-drift-detector`; redirect those.

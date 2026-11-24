@@ -4,6 +4,8 @@ Askama 0.16 (Jinja2-like, compiled into the binary at build time via proc-macro)
 
 **htmx 4.0.2** is vendored under `static/vendor/` (issue #130, migrated from 2.0.9). **Body-wide `<body hx-boost:inherited="true">` is active** — every plain `<a>` and `<form>` runs through htmx by default. No extensions are loaded: the progress toast streams over native `EventSource`, and the `<head>` never changes across a boosted nav (all CSS is bundled in `base.html`; htmx 4 core carries `<title>` on its own), so the 2.x SSE and head-support extensions are gone.
 
+Colors, fonts and controls have rules of their own, and they bind a template that adds a control or an inline `style=` as much as a stylesheet: **`static/AGENTS.md`**.
+
 ## htmx 4 rules (what changed from 2.x, and what pins it)
 
 - **Inheritance is explicit.** An attribute reaches descendants only with the `:inherited` suffix (`hx-boost:inherited`). A bare `hx-target` on a form is the form's alone; a link inside it boosts to the body. Don't add `:inherited` near a form unless every descendant should really use it. `hx-disinherit` no longer exists.

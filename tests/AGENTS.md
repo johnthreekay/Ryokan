@@ -103,6 +103,7 @@ When in doubt, add the assertion and **mutation-test it**: revert the correspond
 
 - `tests/htmx_redirect_audit.rs` — every `Redirect::to` callsite must route through `htmx_aware_redirect`, sit inside an `if !is_htmx { ... }` arm, or be in the documented exceptions table. New handlers adding bare `Redirect::to` fail the lint.
 - `tests/js_constants_audit.rs` — every `UPPER_SNAKE` name a script under `static/js` uses must be declared somewhere in `static/js` or the templates (`var` / `let` / `const` / `function`, or `window.NAME =`). The scripts share a page-global scope with no bundler, so a deleted constant only fails when its code path runs; 65b545e left every live episode-row update throwing that way.
+- `tests/agents_md_audit.rs` — the `AGENTS.md` files stay readable: every nested one under 40,000 characters (Claude Code gives a session with a 200K context window only the start of a longer one, and says nothing), the root one under its budget (it is loaded into every session in full), a `CLAUDE.md` symlink beside each, and every other `AGENTS.md` one of them names by path exists. When a size check fails, move detail down a level: into the nested file beside the code, with a line and a pointer left behind.
 
 ## Migration discipline (browser-e2e specifically)
 

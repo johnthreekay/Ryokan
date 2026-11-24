@@ -1,0 +1,9 @@
+# services/recycle/AGENTS.md
+
+The recycle bin (#123). The root rule stands everywhere: a library delete goes through `recycle()`, never a bare `fs::remove_file` / `remove_dir_all`.
+
+Keep this file under 40,000 characters (`wc -m`): past that, a Claude Code session with a 200K context window is given only its start. `tests/agents_md_audit.rs` enforces it.
+
+## Layout
+
+- `recycle/` — recycle bin (#123). `recycle()` is the single funnel for every library delete (episode delete, series remove / bulk remove via `handlers::library::cleanup::cleanup_series_files`, and the post-processing upgrade-replace path). Layout is `<recycle_bin_path>/<YYYY-MM-DD>/<8-hex entry_id>/manifest.json + files`; `restore` / `delete_entry` / `empty` back `/library/recycle`; `purge_old` runs inside the hourly `cleanup` task. Empty `config.recycle_bin_path` = disabled (permanent unlink, the pre-#123 behavior, one `Library` info line per delete); configured-but-unwritable **refuses the delete** (Sonarr's fail-closed behavior, the file stays) and raises `RECYCLE_UNWRITABLE` for the recycle-page and System-page banners. Cross-fs copies are size-verified before the source is removed (file and whole-tree). Episode entries sweep companions by `<stem>.` / `<stem>-` prefix (nfo, `.en.srt`, `-thumb.jpg`) so `S01E07` never captures `S01E070`. Same-fs is a rename; cross-fs is copy-through-`.ryokan-tmp`-then-unlink. Restore is "put it back where it was" only and never recreates a deleted `series` row, and refuses a manifest whose `files` lists anything but plain names inside the entry (`is_plain_name`). The episode-delete `HX-Trigger` payload carries `recycle_entry_id` so the toast offers a one-click Undo (restore); the Library toolbar's bin control renders only when `recycle::cached_entry_count` (60s cache, dropped on every mutation) is non-zero.

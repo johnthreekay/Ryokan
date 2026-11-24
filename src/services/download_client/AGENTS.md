@@ -166,3 +166,24 @@ Each impl ships a `#[ignore]`d `live_smoke` test that exercises the full trait s
 | `RYOKAN_SAB_E2E=1` | `RYOKAN_SAB_URL=http://localhost:8080`, `RYOKAN_SAB_API_KEY=<key>`, `RYOKAN_SAB_CAT=ryokan-test` (no usable default for the API key — SAB requires one) |
 
 CI never runs these — they're for hand-validation when touching a client impl.
+
+## Routing, resolution order in full
+
+The same ground as "Multi-client routing pool" above, as the root notes had it, with the fallbacks spelled out.
+
+`AppState::client_for_indexer_with_id` resolves:
+
+1. **Indexer's `download_client_id` pin** if set and present in the pool.
+2. **Per-protocol default** — torznab indexer with no pin → `default_torrent_id`; newznab → `default_usenet_id`. Unknown indexer kind / not in cache snapshot → torrent default.
+3. None — caller surfaces "no download client configured."
+
+`client_for_nyaa` reads `config.nyaa_download_client_id` then **always falls back to torrent default** (Nyaa items are magnets / .torrent URLs; usenet fallback would just trip the protocol guard at add-time).
+
+`default_download_client` returns the **torrent** default — every internal default-only call site is torrent-flavored (manual grabs, library re-grab, RSS / upgrade "is anything configured" gates). Usenet routing always goes through an indexer pin or its protocol default.
+
+**`resolve_grab_client(download_client_id, hash)`** — used by post-processing's per-grab routing. Three-layer fallback:
+1. The stamped client id, if it still exists in the pool.
+2. **Hash-shape heuristic** — `hash.starts_with("SABnzbd_nzo_")` routes to ANY usenet client in the pool. Old grabs predating the `download_client_id` stamp migration have NULL stamps; without this branch, a SAB nzo_id sent to qBit's `delete` endpoint silently 200s (qBit ignores unknown hashes), and the user's symptom is "delete-from-disk leaves the SAB job alive forever."
+3. The torrent default (legacy fall-through; correct for BT v1 infohashes).
+
+`grabbed_torrents.download_client_id` is stamped at grab time so post-processing routes back through the same client even if defaults change.
