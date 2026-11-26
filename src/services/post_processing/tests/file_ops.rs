@@ -210,6 +210,125 @@ async fn unknown_mode_string_falls_back_to_hardlink_default() {
     );
 }
 
+// ─── Copies are staged ─────────────────────────────────────────────
+//
+// A copy written in place and killed midway left a truncated file
+// under the episode's final name. Every copy now goes to
+// `<dst>.ryokan-tmp` and is renamed into place.
+
+fn temp_of(dst: &std::path::Path) -> PathBuf {
+    PathBuf::from(format!("{}.ryokan-tmp", dst.display()))
+}
+
+/// A folder on another filesystem than the test's tempdir, for the
+/// paths a hardlink or a rename cannot take. `/dev/shm` is a tmpfs of
+/// its own on Linux; `None` where it is missing or is the same device,
+/// and the test that asked passes without running.
+fn other_filesystem(than: &TempDir) -> Option<TempDir> {
+    let other = tempfile::tempdir_in("/dev/shm").ok()?;
+    let same = fs::metadata(other.path()).ok()?.dev() == fs::metadata(than.path()).ok()?.dev();
+    (!same).then_some(other)
+}
+
+#[tokio::test]
+async fn a_copy_lands_whole_and_leaves_no_temp_file() {
+    let dir = TempDir::new().unwrap();
+    let src = write_src(&dir, "src.mkv", b"payload");
+    let dst = dir.path().join("Season 01/dst.mkv");
+    do_file_op("copy", &src, &dst).await.unwrap();
+    assert_eq!(fs::read(&dst).unwrap(), b"payload");
+    assert!(!temp_of(&dst).exists());
+    assert!(src.exists(), "copy leaves the source");
+}
+
+#[tokio::test]
+async fn a_copy_is_renamed_into_place_not_written_in_place() {
+    // The destination already exists and has a second hard link. A copy
+    // written in place would truncate the inode both names share; a
+    // staged copy replaces the name and leaves the other link alone.
+    // This is what shows the bytes went somewhere else first.
+    let dir = TempDir::new().unwrap();
+    let src = write_src(&dir, "new.mkv", b"the new release");
+    let dst = write_src(&dir, "dst.mkv", b"the old file");
+    let other_link = dir.path().join("still-seeding.mkv");
+    fs::hard_link(&dst, &other_link).unwrap();
+
+    do_file_op("copy", &src, &dst).await.unwrap();
+
+    assert_eq!(fs::read(&dst).unwrap(), b"the new release");
+    assert_eq!(fs::read(&other_link).unwrap(), b"the old file");
+    assert!(!temp_of(&dst).exists());
+}
+
+#[tokio::test]
+async fn the_leftover_of_a_killed_copy_is_written_over() {
+    // What a kill mid-copy leaves now: a partial `.ryokan-tmp`, and no
+    // file at the destination. The retry is an ordinary import.
+    let dir = TempDir::new().unwrap();
+    let src = write_src(&dir, "src.mkv", b"the whole episode");
+    let dst = dir.path().join("dst.mkv");
+    fs::write(temp_of(&dst), b"the who").unwrap();
+
+    do_file_op("copy", &src, &dst).await.unwrap();
+
+    assert_eq!(fs::read(&dst).unwrap(), b"the whole episode");
+    assert!(!temp_of(&dst).exists());
+}
+
+#[tokio::test]
+async fn a_copy_that_cannot_be_placed_cleans_up_after_itself() {
+    // The destination is a folder with something in it, so the rename
+    // onto it fails. The staged bytes must not be left beside it.
+    let dir = TempDir::new().unwrap();
+    let src = write_src(&dir, "src.mkv", b"payload");
+    let dst = dir.path().join("dst.mkv");
+    fs::create_dir_all(dst.join("inside")).unwrap();
+
+    assert!(do_file_op("copy", &src, &dst).await.is_err());
+    assert!(!temp_of(&dst).exists());
+    assert!(dst.join("inside").is_dir(), "what was there is untouched");
+    assert!(src.exists());
+}
+
+#[tokio::test]
+async fn a_hardlink_that_falls_back_to_copying_is_staged_too() {
+    let dir = TempDir::new().unwrap();
+    let Some(elsewhere) = other_filesystem(&dir) else {
+        return;
+    };
+    let src = write_src(&elsewhere, "src.mkv", b"across filesystems");
+    let dst = dir.path().join("dst.mkv");
+    // A killed earlier attempt's leftover, to show the fallback writes
+    // through the staging name.
+    fs::write(temp_of(&dst), b"acro").unwrap();
+
+    let link_error = do_file_op_reporting("hardlink", &src, &dst).await.unwrap();
+
+    assert!(link_error.is_some(), "the link could not be made");
+    assert_eq!(fs::read(&dst).unwrap(), b"across filesystems");
+    assert!(!temp_of(&dst).exists());
+    assert!(src.exists());
+}
+
+#[tokio::test]
+async fn a_move_across_filesystems_is_a_staged_copy_then_the_source_goes() {
+    let dir = TempDir::new().unwrap();
+    let Some(elsewhere) = other_filesystem(&dir) else {
+        return;
+    };
+    let src = write_src(&elsewhere, "src.mkv", b"across filesystems");
+    let dst = dir.path().join("dst.mkv");
+
+    do_file_op("move", &src, &dst).await.unwrap();
+
+    assert_eq!(fs::read(&dst).unwrap(), b"across filesystems");
+    assert!(!temp_of(&dst).exists());
+    assert!(
+        !src.exists(),
+        "a move removes the source once the copy is in place"
+    );
+}
+
 // ─── Missing source surfaces the error ─────────────────────────────
 
 #[tokio::test]

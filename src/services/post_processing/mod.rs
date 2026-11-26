@@ -585,6 +585,8 @@ pub(crate) fn mode_used(mode: &str, link_error: Option<&std::io::Error>) -> Stri
 }
 
 /// Hardlink → copy fallback. For "move" mode: rename → copy+delete fallback.
+/// A copy, in any mode, is staged beside the destination and renamed
+/// into place ([`copy_staged`]).
 ///
 /// Runs the whole operation under `spawn_blocking` because a Blu-ray
 /// episode cross-device copy can easily be 1–4 GB and blocks for
@@ -658,18 +660,8 @@ pub(crate) async fn do_file_op_reporting(
                 if std::fs::rename(&src, &dst).is_ok() {
                     return Ok(None);
                 }
-                // Cross-fs fallback: copy to a sibling tmp first then
-                // rename onto dst so a partially-copied file can't be
-                // observed at dst by a subsequent pass and mistaken for
-                // a finished import. Cleans up the tmp on rename failure.
-                let mut tmp = dst.as_os_str().to_os_string();
-                tmp.push(".ryokan-tmp");
-                let tmp = PathBuf::from(tmp);
-                std::fs::copy(&src, &tmp)?;
-                if let Err(e) = std::fs::rename(&tmp, &dst) {
-                    let _ = std::fs::remove_file(&tmp);
-                    return Err(e);
-                }
+                // Cross-fs fallback: a staged copy, then the source goes.
+                copy_staged(&src, &dst)?;
                 // Source-remove failure is rare (qBit still holds the
                 // file open, source dir is read-only, etc.) and the
                 // file is safely at dst either way — but surface a warn
@@ -686,7 +678,7 @@ pub(crate) async fn do_file_op_reporting(
                 Ok(None)
             }
             "copy" => {
-                std::fs::copy(&src, &dst)?;
+                copy_staged(&src, &dst)?;
                 Ok(None)
             }
             // "hardlink" (default).
@@ -714,10 +706,42 @@ fn link_or_copy(src: &Path, dst: &Path) -> std::io::Result<Option<std::io::Error
     match std::fs::hard_link(src, dst) {
         Ok(()) => Ok(None),
         Err(link_error) => {
-            std::fs::copy(src, dst)?;
+            copy_staged(src, dst)?;
             Ok(Some(link_error))
         }
     }
+}
+
+/// The name a copy is written under until it is whole: beside the
+/// destination, so the rename onto it never crosses a filesystem.
+fn temp_sibling(dst: &Path) -> PathBuf {
+    let mut tmp = dst.as_os_str().to_os_string();
+    tmp.push(".ryokan-tmp");
+    PathBuf::from(tmp)
+}
+
+/// Copy `src` to `dst` so that `dst` only ever names a whole file: the
+/// bytes are written to `<dst>.ryokan-tmp` and renamed into place.
+///
+/// Every copy an import makes goes through here (copy mode, hardlink
+/// mode falling back across filesystems, a cross-filesystem move). A
+/// copy of a Blu-ray episode takes seconds to minutes, and a process
+/// killed in the middle of one written in place left a truncated file
+/// under the episode's final name, which a media server indexes and
+/// the next scan counts as the episode. Killed here, what is left is a
+/// `.ryokan-tmp` no scanner reads; the retry writes over it, and
+/// `temp_sweep` removes one nobody came back for.
+///
+/// The rename replaces the destination's name rather than its bytes, so
+/// another hard link to an old file at `dst` keeps its content.
+/// Blocking; `do_file_op` runs it under `spawn_blocking`.
+fn copy_staged(src: &Path, dst: &Path) -> std::io::Result<()> {
+    let tmp = temp_sibling(dst);
+    let placed = std::fs::copy(src, &tmp).and_then(|_| std::fs::rename(&tmp, dst));
+    if placed.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    placed
 }
 
 /// Whether `path` resolves (symlinks followed) to a regular file inside

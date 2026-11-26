@@ -52,7 +52,7 @@ To decide each case yourself, turn off **Remove and blocklist detected misgrabs*
 
 ### Files ending in `.ryokan-tmp` or `.ryokan-new` in the library
 
-These are left behind when an import is interrupted, for example by a restart while a large file was being copied. Ryokan cleans them up hourly once they are more than two hours old. A newer one may be a copy in progress, so leave it.
+These are left behind when an import is interrupted, for example by a power cut while a large file was being copied. Ryokan copies a file under the `.ryokan-tmp` name and renames it when it is whole, so an interrupted copy never leaves a half file under an episode's own name. Ryokan cleans them up hourly once they are more than two hours old. A newer one may be a copy in progress, so leave it.
 
 A `.ryokan-new` file is a complete episode that was about to replace an older one. It goes to the recycle bin if you have one. To keep it, rename it in the season folder: remove the leading dot and the `.ryokan-new` ending.
 

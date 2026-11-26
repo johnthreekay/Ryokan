@@ -1,8 +1,9 @@
 //! Orphaned temporary-file sweep (issue #205).
 //!
-//! `do_file_op`'s cross-filesystem move writes `<dest>.ryokan-tmp`, and
-//! an upgrade lands at `.<basename>.ryokan-new` (`staging_path`), before
-//! the final rename onto the destination. Both are removed in-process
+//! Every copy `do_file_op` makes (copy mode, hardlink mode falling back
+//! across filesystems, a cross-filesystem move) is written to
+//! `<dest>.ryokan-tmp`, and an upgrade lands at `.<basename>.ryokan-new`
+//! (`staging_path`), before the final rename onto the destination. Both are removed in-process
 //! when the copy fails, but a crash, an OOM kill, or a container stop
 //! mid-copy leaves the file in the season folder for good, where a media
 //! server indexes it as junk. The hourly `cleanup` task calls
@@ -23,8 +24,8 @@
 //!
 //! What "remove" means depends on the suffix. A `.ryokan-tmp` is a
 //! partial copy, or at worst a duplicate of a source that is still in
-//! place (the move path unlinks the source only after the rename), so it
-//! is a direct unlink. A `.ryokan-new` is a complete file and in move mode
+//! place (copy and hardlink modes never touch the source, and the move
+//! path unlinks it only after the rename), so it is a direct unlink. A `.ryokan-new` is a complete file and in move mode
 //! can be the only copy of the episode, so it goes through
 //! `recycle::recycle` like any other library delete.
 //!
@@ -62,7 +63,8 @@ const MAX_REPORTED_ERRORS: usize = 20;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TempKind {
-    /// `<dest>.ryokan-tmp`: the cross-filesystem move's partial copy.
+    /// `<dest>.ryokan-tmp`: a copy that was not finished (copy mode,
+    /// a hardlink that fell back to copying, a cross-filesystem move).
     PartialCopy,
     /// `.<basename>.ryokan-new`: the upgrade's place-then-swap staging
     /// file (issue #202).
