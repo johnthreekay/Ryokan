@@ -9,7 +9,7 @@ Other services Ryokan talks to.
 - **AniList / MyAnimeList**: link an account and shows on your watch list are added to the library. See [External accounts](external-accounts.md).
 - **Sync interval (minutes)**: how often the watch list is checked. Default 30, minimum 15, maximum 10080 (7 days).
 - **Media Server**: your Jellyfin, Emby or Plex server. Pick the **Type**, then enter its URL and API key. Ryokan asks the server to refresh its library after each import. For Jellyfin the URL is `http://jellyfin:8096` when both run in the same compose file. Otherwise use the address you open the server with in a browser. Emby keys are under **API Keys** in its server settings. For Plex, paste your X-Plex-Token in the API key field. Ryokan connects to one media server at a time.
-- **Sonarr / Radarr API**: lets Seerr and similar tools request anime from Ryokan as if it were Sonarr or Radarr. The Sonarr API is at `/api/v3/`, the Radarr API at `/radarr/api/v3/`, and each has its own key.
+- **Sonarr / Radarr API**: lets Seerr and similar tools request anime from Ryokan as if it were Sonarr or Radarr. The Sonarr API is at `/api/v3/`, the Radarr API at `/radarr/api/v3/`, and each has its own key. With **Enable Scan** on for the server in Seerr, a requested title shows its download progress there.
 
 ### Saved passwords and keys
 

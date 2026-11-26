@@ -1406,6 +1406,8 @@ async fn main() {
             "/api/v3/command",
             post(handlers::sonarr_compat::execute_command),
         )
+        // #325: Seerr's download-sync job reads this every minute.
+        .route("/api/v3/queue", get(handlers::sonarr_compat::queue))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             handlers::sonarr_compat::require_api_key,
@@ -1458,6 +1460,7 @@ async fn main() {
             "/radarr/api/v3/command",
             post(handlers::radarr_compat::execute_command),
         )
+        .route("/radarr/api/v3/queue", get(handlers::radarr_compat::queue))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             handlers::radarr_compat::require_api_key,

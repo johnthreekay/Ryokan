@@ -11,8 +11,12 @@
 //!     `languageprofile`, `tag`, `downloadclient`). Snapshots pin
 //!     the exact JSON shape so a silently-drifting field doesn't
 //!     break Seerr without a test failure.
+//!   * `queue.rs` — `GET /queue` (#325): the paging envelope, the
+//!     record Seerr's download-sync job reads, and the rows a download
+//!     is reported under.
 
 mod auth;
 mod helpers;
+mod queue;
 mod series;
 mod system;

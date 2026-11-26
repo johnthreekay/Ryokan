@@ -1,0 +1,29 @@
+---
+source: src/handlers/radarr_compat/tests/queue.rs
+expression: body
+---
+{
+  "page": 1,
+  "pageSize": 10,
+  "sortKey": "timeleft",
+  "sortDirection": "ascending",
+  "totalRecords": 1,
+  "records": [
+    {
+      "movieId": 1,
+      "size": 1000,
+      "title": "[Group] Film [BD 1080p].mkv",
+      "sizeleft": 600,
+      "added": "2026-11-26T10:00:00Z",
+      "status": "paused",
+      "trackedDownloadStatus": "ok",
+      "trackedDownloadState": "downloading",
+      "statusMessages": [],
+      "downloadId": "0123456789ABCDEF0123456789ABCDEF01234567",
+      "protocol": "torrent",
+      "downloadClient": "QBittorrent",
+      "indexer": "",
+      "id": 863817070
+    }
+  ]
+}

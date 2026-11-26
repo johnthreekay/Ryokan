@@ -530,6 +530,8 @@ Seerr talks to Ryokan the way it would talk to Sonarr and Radarr. Ryokan plays b
 
 Click **Test** on each before saving. The profile and folder lists fill in once the test passes.
 
+Turn on **Enable Scan** for both if you want Seerr to show what is already in your library and the progress of a download.
+
 </div>
 
 <div markdown data-when="vpn:gluetun">

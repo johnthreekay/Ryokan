@@ -1051,6 +1051,7 @@ pub fn sonarr_router_with_series(state: AppState) -> Router {
             "/api/v3/command",
             post(handlers::sonarr_compat::execute_command),
         )
+        .route("/api/v3/queue", get(handlers::sonarr_compat::queue))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             handlers::sonarr_compat::require_api_key,
@@ -1152,6 +1153,7 @@ pub fn radarr_router_with_movie(state: AppState) -> Router {
             "/radarr/api/v3/command",
             post(handlers::radarr_compat::execute_command),
         )
+        .route("/radarr/api/v3/queue", get(handlers::radarr_compat::queue))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             handlers::radarr_compat::require_api_key,

@@ -9,10 +9,12 @@ use crate::AppState;
 
 mod helpers;
 mod movie;
+mod queue;
 mod system;
 mod types;
 
 pub use movie::{add_movie, execute_command, get_movie, list_movies, movie_lookup, update_movie};
+pub use queue::queue;
 pub use system::{
     create_tag, list_download_clients, list_tags, quality_profiles, root_folders, system_status,
 };

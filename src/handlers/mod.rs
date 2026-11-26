@@ -17,6 +17,7 @@ pub mod wanted;
 
 pub mod api_keys;
 pub mod arr_auth;
+pub mod arr_queue;
 pub mod arr_shared;
 pub mod media;
 pub mod radarr_compat;

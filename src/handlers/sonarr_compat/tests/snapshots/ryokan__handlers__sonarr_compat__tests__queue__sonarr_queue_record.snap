@@ -1,0 +1,38 @@
+---
+source: src/handlers/sonarr_compat/tests/queue.rs
+expression: body
+---
+{
+  "page": 1,
+  "pageSize": 10,
+  "sortKey": "timeleft",
+  "sortDirection": "ascending",
+  "totalRecords": 1,
+  "records": [
+    {
+      "seriesId": 1,
+      "episodeId": 754361266,
+      "seasonNumber": 2,
+      "episode": {
+        "id": 754361266,
+        "seriesId": 1,
+        "seasonNumber": 2,
+        "episodeNumber": 3,
+        "absoluteEpisodeNumber": 3
+      },
+      "size": 1000,
+      "title": "[Group] Show - 03 [1080p].mkv",
+      "sizeleft": 750,
+      "added": "2026-11-26T10:00:00Z",
+      "status": "downloading",
+      "trackedDownloadStatus": "ok",
+      "trackedDownloadState": "downloading",
+      "statusMessages": [],
+      "downloadId": "0123456789ABCDEF0123456789ABCDEF01234567",
+      "protocol": "torrent",
+      "downloadClient": "QBittorrent",
+      "indexer": "",
+      "id": 847039451
+    }
+  ]
+}

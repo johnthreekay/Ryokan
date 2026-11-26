@@ -7,10 +7,12 @@ use axum::{extract::State, http::Request, middleware::Next, response::Response};
 use crate::AppState;
 
 mod helpers;
+mod queue;
 mod series;
 mod system;
 mod types;
 
+pub use queue::queue;
 pub use series::{
     add_series, execute_command, get_series, list_series, series_lookup, update_series,
 };
