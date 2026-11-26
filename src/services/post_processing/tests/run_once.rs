@@ -1786,6 +1786,21 @@ async fn a_grab_that_died_before_the_client_answered_is_imported_when_the_downlo
         .collect();
     assert_eq!(landed.len(), 1, "{landed:?}");
     assert!(landed[0].contains("S01E01"), "{landed:?}");
+
+    // The row had no episode list; the import writes what it landed, so
+    // a later upgrade or delete of the episode finds this grab.
+    let grab = grabbed_torrents::get_by_id(&fx.db, grab_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(grab.episode_numbers, vec![1]);
+    let found = grabbed_torrents::find_imported_for_episode(&fx.db, fx.series_id, 1)
+        .await
+        .unwrap();
+    assert_eq!(
+        found.iter().map(|g| g.id).collect::<Vec<_>>(),
+        vec![grab_id]
+    );
 }
 
 #[tokio::test]

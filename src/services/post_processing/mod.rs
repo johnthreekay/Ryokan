@@ -3174,6 +3174,18 @@ async fn import_torrent(
         }
     }
 
+    // A row written ahead of a send its process did not survive
+    // (`AheadGrab`) has no episode list. The import above went by the
+    // files' own names; what landed for the grab's own series goes onto
+    // the row, so the lookups that find a grab by its episodes (an
+    // upgrade's old torrent, an episode delete) find this one too.
+    if grab.episode_numbers.is_empty()
+        && let Some(episodes) = imported_eps_by_series.get(&grab.series_id)
+    {
+        let ep_nums: Vec<i32> = episodes.iter().map(|(n, _, _)| *n).collect();
+        let _ = grabbed_torrents::fill_episode_numbers(&state.db, grab.id, &ep_nums).await;
+    }
+
     if failed_episodes.is_empty() && specials_refused == 0 {
         Ok(ImportOutcome::Imported)
     } else {

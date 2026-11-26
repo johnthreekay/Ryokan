@@ -1275,6 +1275,36 @@ pub async fn mark_failed_by_name(
     Ok(result.rows_affected())
 }
 
+/// Give a grab that has no episode list the episodes its import
+/// landed. A row written ahead of a send its process did not survive
+/// ([`AheadGrab`]) is in that state: the list is written once the
+/// client has answered, and nobody was there to hear the answer. The
+/// import goes by the files' own names and does not need the list, but
+/// the lookups below ([`find_imported_for_episode`]: an upgrade's old
+/// torrent, an episode delete) find a grab by it. Never replaces a list
+/// that is there.
+pub async fn fill_episode_numbers(
+    db: &SqlitePool,
+    id: i64,
+    episode_numbers: &[i32],
+) -> Result<(), sqlx::Error> {
+    let mut sorted: Vec<i32> = episode_numbers.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    if sorted.is_empty() {
+        return Ok(());
+    }
+    let eps_json = serde_json::to_string(&sorted).unwrap_or_else(|_| "[]".to_string());
+    sqlx::query(
+        "UPDATE grabbed_torrents SET episode_numbers = ? WHERE id = ? AND episode_numbers = '[]'",
+    )
+    .bind(&eps_json)
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 /// Find previously imported grabs for a series that cover a given episode.
 /// Used by post-processing to identify old torrents to clean up during upgrades.
 ///
