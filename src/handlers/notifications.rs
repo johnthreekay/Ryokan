@@ -259,6 +259,7 @@ mod tests {
         script::ScriptOutput {
             exit_code,
             timed_out,
+            interrupted: false,
             elapsed: Duration::from_millis(5),
             stdout: "from stdout".into(),
             stderr: stderr.into(),

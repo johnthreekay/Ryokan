@@ -3246,6 +3246,12 @@ pub async fn write_series_sidecars(state: &AppState, series_id: i64) -> Result<(
 
 /// Run one post-processing cycle. Called by the background task every minute.
 pub async fn run_once(state: &AppState) {
+    run_once_until(state, crate::services::shutdown::global()).await
+}
+
+/// [`run_once`] against a given stop state, so a test can ask for a
+/// stop without stopping every other test in its process.
+pub(crate) async fn run_once_until(state: &AppState, stop: &crate::services::shutdown::Shutdown) {
     let _guard = match POST_PROC_LOCK.try_lock() {
         Ok(g) => g,
         Err(_) => return, // already running
@@ -3456,6 +3462,22 @@ pub async fn run_once(state: &AppState) {
     // get one search, not one per grab.
     let mut researched: HashSet<i64> = HashSet::new();
     for grab in &pending {
+        // One download is the unit a stop of Ryokan waits for, and
+        // after a stop no further one begins. Not one file: a pack cut
+        // between files has had none of its bookkeeping done (history,
+        // sidecars, the grabs it replaced), and in move mode the files
+        // that did land have lost their sources, so the retry on the
+        // next start no longer finds them.
+        let Some(_importing) = stop.begin(format!("importing {}", grab.torrent_name)) else {
+            logger::info(
+                &state.db,
+                LogCategory::PostProcess,
+                "Import pass stopped",
+                "Ryokan is shutting down; downloads not yet imported are picked up on the next start",
+            )
+            .await;
+            break;
+        };
         // Resolve which client this grab landed on. Stamped grabs
         // land on exactly one id; un-stamped grabs (older history,
         // orphan-cleanup just NULLed it) check each per-protocol

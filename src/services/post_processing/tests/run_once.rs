@@ -1703,6 +1703,47 @@ async fn run_once_waits_for_a_complete_download_whose_files_it_cannot_see() {
 }
 
 #[tokio::test]
+async fn a_stop_starts_no_import_and_leaves_the_grab_for_the_next_start() {
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let fx = seed_unseen_download("stopimport").await;
+    std::fs::create_dir_all(&fx.source_dir).unwrap();
+    std::fs::write(fx.source_dir.join(UNSEEN_FILE), b"video content").unwrap();
+
+    // Ryokan was asked to stop before the pass reached this download.
+    let stop = crate::services::shutdown::Shutdown::new();
+    stop.request();
+    post_processing::run_once_until(&fx.state, &stop).await;
+
+    let (state, reason, _) = state_and_reason(&fx.db, fx.grab_id).await;
+    assert_eq!(state, "pending", "left as it was, not failed");
+    assert_eq!(reason, "");
+    assert!(
+        !fx.media_root.path().join("Show Title").exists(),
+        "nothing was placed"
+    );
+    assert!(
+        !grabbed_torrents::is_blocklisted(&fx.db, "stopimport")
+            .await
+            .unwrap()
+    );
+    let said: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM logs WHERE level = 'info' AND message = 'Import pass stopped'",
+    )
+    .fetch_one(&fx.db)
+    .await
+    .unwrap();
+    assert_eq!(said, 1);
+    assert!(
+        stop.in_progress().is_empty(),
+        "nothing is left holding the exit"
+    );
+
+    // The next start picks the same grab up and imports it.
+    post_processing::run_once(&fx.state).await;
+    assert_eq!(state_and_reason(&fx.db, fx.grab_id).await.0, "imported");
+}
+
+#[tokio::test]
 async fn run_once_gives_up_on_an_unseen_download_only_after_the_stall_window() {
     let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
     let fx = seed_unseen_download("unseenstalls").await;

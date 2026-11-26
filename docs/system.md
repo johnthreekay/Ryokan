@@ -134,6 +134,7 @@ Things to know:
 - It can't be in a system folder such as `/usr/bin`, and it can't be a downloaded file: nothing in your media library, the recycle bin, a download client's download path, or a release Ryokan grabbed is run.
 - Scripts run in the background, one at a time, so an import never waits for one. A script still running at its time limit is stopped, along with anything it started.
 - Disabling or deleting a script also drops its runs that are still waiting, and a new path applies to them.
+- Stopping Ryokan stops a script that is running and drops the runs still waiting. They are not picked up again after a restart.
 - Each run is recorded in **System → Logs** under Notifications, with its exit code and the end of anything it wrote to stderr.
 - A script made for Sonarr reads Sonarr's variable names, so it will not work as it is. To hand the file to a tool such as sickbeard_mp4_automator, call the tool's manual script from your own with `$ryokan_dest_path`.
 

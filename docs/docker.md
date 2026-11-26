@@ -102,6 +102,24 @@ docker load -i ryokan-pr-123-linux-amd64.tar
 docker run -p 8978:8978 -v ./data:/data ghcr.io/johnthreekay/ryokan:pr-123
 ```
 
+## Stopping
+
+`docker stop`, `docker compose down`, a restart and an update all ask Ryokan to stop, and it stops in order:
+
+- It finishes the requests it is answering, for up to 5 seconds.
+- It finishes the download it is importing and starts no other, so no pack is left half imported.
+- It stops a custom script that is running.
+
+Docker waits 10 seconds by default and then ends the container whatever it is doing. That is plenty for hardlink imports. If you import by copy or move and your files are large, give it longer in your compose file:
+
+```yaml
+services:
+  ryokan:
+    stop_grace_period: 2m
+```
+
+A download whose import did not start, or was cut off, is picked up again on the next start.
+
 ## Reset auth
 
 If you forget your password, you can delete the account and create a new one. Your library, settings and linked accounts are kept.

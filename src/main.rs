@@ -1566,6 +1566,14 @@ async fn main() {
 
     tracing::info!("Ryokan listening on {}", addr);
 
+    // Orderly stop (`services::shutdown`): SIGTERM from `docker stop` or
+    // systemd, Ctrl+C in a terminal. Installed here, before anything
+    // long-running starts, and failing loudly: with the handlers half
+    // installed a stop signal would be swallowed and do nothing.
+    let stop_signals = StopSignals::install().expect("Failed to listen for stop signals");
+    tokio::spawn(stop_signals.watch());
+    let shutdown_db = state.db.clone();
+
     // Register background task definitions for the System > Scheduled Tasks tab.
     let _ = models::scheduled_tasks::touch_definition(
         &db,
@@ -2835,12 +2843,137 @@ async fn main() {
     // `ConnectInfo<SocketAddr>`. This is the ground-truth IP the rate limiter
     // uses whenever RYOKAN_TRUSTED_PROXY is unset — without it, the only
     // source of an IP is the (spoofable) X-Forwarded-For / X-Real-IP headers.
-    axum::serve(
+    let server = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .await
-    .expect("Server error");
+    // Once a stop is asked for: take no new request, finish the ones in
+    // flight.
+    .with_graceful_shutdown(services::shutdown::wait());
+    tokio::select! {
+        served = std::future::IntoFuture::into_future(server) => served.expect("Server error"),
+        // A request that outlasts the drain (a backup download, a
+        // browser holding a connection open) is cut off.
+        _ = async {
+            services::shutdown::wait().await;
+            tokio::time::sleep(HTTP_DRAIN).await;
+        } => {
+            tracing::warn!(
+                "Requests still open {}s after the stop was asked for were cut off",
+                HTTP_DRAIN.as_secs()
+            );
+        }
+    }
+    // The server only returns once a stop has been asked for.
+    shutdown_gently(&shutdown_db).await;
+}
+
+/// How long requests in flight get to finish once a stop is asked for.
+const HTTP_DRAIN: Duration = Duration::from_secs(5);
+
+/// SIGTERM and SIGINT, as streams. Having a handler at all is what lets
+/// either signal reach Ryokan when it is a container's first process:
+/// Linux does not deliver a signal to PID 1 that it has no handler for,
+/// which is why `docker stop` used to wait out its grace period.
+struct StopSignals {
+    terminate: tokio::signal::unix::Signal,
+    interrupt: tokio::signal::unix::Signal,
+}
+
+impl StopSignals {
+    fn install() -> std::io::Result<Self> {
+        use tokio::signal::unix::{SignalKind, signal};
+        Ok(Self {
+            terminate: signal(SignalKind::terminate())?,
+            interrupt: signal(SignalKind::interrupt())?,
+        })
+    }
+
+    async fn next(&mut self) -> &'static str {
+        tokio::select! {
+            _ = self.terminate.recv() => "SIGTERM",
+            _ = self.interrupt.recv() => "Ctrl+C",
+        }
+    }
+
+    /// The first signal asks for an orderly stop; a second one is
+    /// someone who does not want to wait for it.
+    async fn watch(mut self) {
+        let signal = self.next().await;
+        tracing::info!("{signal} received, shutting down. A second signal exits at once.");
+        services::shutdown::global().request();
+        self.next().await;
+        tracing::warn!("Second stop signal, exiting now");
+        std::process::exit(1);
+    }
+}
+
+/// What happens after the web server has stopped; see
+/// `services::shutdown`. Never returns.
+async fn shutdown_gently(db: &sqlx::SqlitePool) -> ! {
+    use ryokan::models::log::LogCategory;
+    use services::{logger, shutdown};
+    let stop = shutdown::global();
+    logger::info(
+        db,
+        LogCategory::System,
+        "Shutting down",
+        "A stop was requested",
+    )
+    .await;
+
+    // Script runs still in the queue live in memory only.
+    let dropped = services::notifications::script::waiting();
+    if dropped > 0 {
+        logger::warn(
+            db,
+            LogCategory::Notifications,
+            "Script runs dropped",
+            &format!("waiting={dropped} reason=Ryokan is shutting down"),
+        )
+        .await;
+    }
+
+    // Work that must not be cut. No limit of Ryokan's own: whoever asked
+    // for the stop has theirs (Docker's stop grace period, systemd's
+    // TimeoutStopSec, a second Ctrl+C).
+    let mut said = false;
+    loop {
+        let busy = stop.in_progress();
+        if busy.is_empty() {
+            break;
+        }
+        let what = busy.join("; ");
+        tracing::info!("Waiting before stopping for: {what}");
+        if !said {
+            logger::info(
+                db,
+                LogCategory::System,
+                "Waiting for work in progress",
+                &what,
+            )
+            .await;
+            said = true;
+        }
+        if tokio::time::timeout(Duration::from_secs(15), stop.idle())
+            .await
+            .is_ok()
+        {
+            break;
+        }
+    }
+
+    // Closing the pool checkpoints the write-ahead log, so the database
+    // file on disk is whole by itself once Ryokan has stopped. Bounded:
+    // a background loop caught mid-query must not hold the exit.
+    if tokio::time::timeout(Duration::from_secs(5), db.close())
+        .await
+        .is_err()
+    {
+        tracing::warn!("The database was still in use after 5s; exiting anyway");
+    }
+    tracing::info!("Ryokan stopped");
+    std::process::exit(0);
 }
 
 #[cfg(test)]

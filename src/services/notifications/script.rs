@@ -60,6 +60,7 @@ use tokio::sync::mpsc;
 use super::{NotificationEvent, NotificationProvider};
 use crate::models::log::LogCategory;
 use crate::services::logger;
+use crate::services::shutdown::{self, Shutdown};
 
 /// The environment variable that turns custom scripts off.
 pub const SWITCH_VAR: &str = "RYOKAN_CUSTOM_SCRIPTS";
@@ -423,6 +424,8 @@ pub struct ScriptOutput {
     pub exit_code: Option<i32>,
     /// It ran past its limit and was stopped.
     pub timed_out: bool,
+    /// It was stopped because Ryokan is shutting down.
+    pub interrupted: bool,
     pub elapsed: Duration,
     /// The end of each stream.
     pub stdout: String,
@@ -431,7 +434,7 @@ pub struct ScriptOutput {
 
 impl ScriptOutput {
     pub fn succeeded(&self) -> bool {
-        !self.timed_out && self.exit_code == Some(0)
+        !self.timed_out && !self.interrupted && self.exit_code == Some(0)
     }
 
     /// What the script said, for one line of a result: stderr when it
@@ -453,6 +456,9 @@ impl ScriptOutput {
 /// otherwise run on, holding the output pipes open). The whole group
 /// gets SIGTERM and [`TERM_GRACE`] to finish up, then SIGKILL.
 ///
+/// A stop of Ryokan itself ends the run the same way, limit or not: the
+/// script would otherwise outlive the process that enforces its limit.
+///
 /// Dropping this future stops only the script itself, not its group, so
 /// callers run it in a task that is never dropped: the queue's worker,
 /// and [`run_test`]'s own task.
@@ -461,7 +467,14 @@ pub async fn run(
     env: &[(String, String)],
     timeout: Duration,
 ) -> Result<ScriptOutput, String> {
-    run_with_grace(path, env, timeout, TERM_GRACE).await
+    run_with_grace(path, env, timeout, TERM_GRACE, shutdown::global()).await
+}
+
+/// Why the wait for the script ended.
+enum Ended {
+    Exited(std::io::Result<std::process::ExitStatus>),
+    TimedOut,
+    ShuttingDown,
 }
 
 async fn run_with_grace(
@@ -469,6 +482,7 @@ async fn run_with_grace(
     env: &[(String, String)],
     timeout: Duration,
     term_grace: Duration,
+    stop: &Shutdown,
 ) -> Result<ScriptOutput, String> {
     let mut command = tokio::process::Command::new(path);
     command
@@ -493,9 +507,18 @@ async fn run_with_grace(
     let stdout = Tail::capture(child.stdout.take());
     let stderr = Tail::capture(child.stderr.take());
 
-    let (status, timed_out) = match tokio::time::timeout(timeout, child.wait()).await {
-        Ok(status) => (status, false),
-        Err(_) => {
+    let ended = tokio::select! {
+        status = child.wait() => Ended::Exited(status),
+        _ = tokio::time::sleep(timeout) => Ended::TimedOut,
+        _ = stop.wait() => Ended::ShuttingDown,
+    };
+    let (timed_out, interrupted) = (
+        matches!(ended, Ended::TimedOut),
+        matches!(ended, Ended::ShuttingDown),
+    );
+    let status = match ended {
+        Ended::Exited(status) => status,
+        Ended::TimedOut | Ended::ShuttingDown => {
             signal_group(group, nix::sys::signal::Signal::SIGTERM);
             let deadline = Instant::now() + term_grace;
             let status = match tokio::time::timeout(term_grace, child.wait()).await {
@@ -512,7 +535,7 @@ async fn run_with_grace(
                 signal_group(group, nix::sys::signal::Signal::SIGKILL);
                 group_gone_by(group, Instant::now() + KILL_GRACE).await;
             }
-            (status, true)
+            status
         }
     };
     let status = status.map_err(|e| format!("couldn't wait for {}: {e}", path.display()))?;
@@ -520,6 +543,7 @@ async fn run_with_grace(
     Ok(ScriptOutput {
         exit_code: status.code(),
         timed_out,
+        interrupted,
         elapsed: started.elapsed(),
         stdout: stdout.finish().await,
         stderr: stderr.finish().await,
@@ -666,6 +690,16 @@ pub struct Job {
 /// queued; replaced if its worker is gone.
 static QUEUE: StdMutex<Option<mpsc::Sender<Job>>> = StdMutex::new(None);
 
+/// How many runs are waiting in the process-wide queue. They live in
+/// memory only, so a stop drops them; `main.rs` logs the number.
+pub fn waiting() -> usize {
+    QUEUE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map_or(0, |tx| tx.max_capacity() - tx.capacity())
+}
+
 /// A handle on a serial script queue: the process-wide one, or (in
 /// tests) one of its own.
 #[derive(Clone)]
@@ -758,6 +792,12 @@ async fn current_config(job: &Job) -> Result<ScriptConfig, NotRun> {
 }
 
 async fn run_job(job: Job) {
+    // Held until the run's log row is written, so a stop waits for the
+    // script to be ended and accounted for. Once a stop has been asked
+    // for no run starts; `main.rs` logs how many were left waiting.
+    let Some(_running) = shutdown::begin(format!("script {}", job.provider_name)) else {
+        return;
+    };
     let who = format!("provider={} event={}", job.provider_name, job.event_kind);
     let category = LogCategory::Notifications;
     // The switch and the path are checked here as well as on save: the
@@ -799,7 +839,7 @@ async fn run_job(job: Job) {
 /// and the end of what it wrote (stdout too when it failed).
 async fn log_output(db: &SqlitePool, who: &str, output: &ScriptOutput) {
     let took = format!("{:.1}s", output.elapsed.as_secs_f64());
-    let mut detail = match (output.timed_out, output.exit_code) {
+    let mut detail = match (output.timed_out || output.interrupted, output.exit_code) {
         (true, _) => format!("{who} stopped_after={took}"),
         (false, Some(code)) => format!("{who} exit={code} took={took}"),
         (false, None) => format!("{who} took={took}"),
@@ -819,6 +859,9 @@ async fn log_output(db: &SqlitePool, who: &str, output: &ScriptOutput) {
     let category = LogCategory::Notifications;
     if output.succeeded() {
         logger::info(db, category, "Script finished", &detail).await;
+    } else if output.interrupted {
+        detail.push_str(" reason=Ryokan is shutting down");
+        logger::warn(db, category, "Script stopped", &detail).await;
     } else if output.timed_out {
         logger::warn(db, category, "Script timed out", &detail).await;
     } else if output.exit_code.is_some() {
@@ -902,13 +945,19 @@ pub async fn run_test(db: &SqlitePool, config: &ScriptConfig) -> Result<ScriptOu
     if !enabled() {
         return Err(disabled_message());
     }
+    let Some(running) = shutdown::begin("script test") else {
+        return Err("Ryokan is shutting down, so the script was not run.".to_string());
+    };
     let path = check_path(db, &config.path).await?;
     // In a task of its own: a closed tab drops the request, and the run
     // has to go on to its end or its limit either way, so the script is
     // stopped the way `run` stops it and never left running.
-    tokio::spawn(async move { run(&path, &test_env(), TEST_TIMEOUT).await })
-        .await
-        .map_err(|e| format!("the test run stopped unexpectedly: {e}"))?
+    tokio::spawn(async move {
+        let _running = running;
+        run(&path, &test_env(), TEST_TIMEOUT).await
+    })
+    .await
+    .map_err(|e| format!("the test run stopped unexpectedly: {e}"))?
 }
 
 #[cfg(test)]
@@ -1520,6 +1569,7 @@ echo "to stderr" >&2"#,
             &test_env(),
             Duration::from_millis(300),
             Duration::from_secs(5),
+            &Shutdown::new(),
         )
         .await
         .unwrap();
@@ -1549,12 +1599,57 @@ echo "to stderr" >&2"#,
             &test_env(),
             Duration::from_millis(200),
             Duration::from_millis(300),
+            &Shutdown::new(),
         )
         .await
         .unwrap();
         assert!(output.timed_out);
         tokio::time::sleep(Duration::from_millis(1300)).await;
         assert!(!marker.exists(), "killed once the grace ran out");
+    }
+
+    #[tokio::test]
+    async fn a_stop_of_ryokan_ends_the_running_script_and_what_it_started() {
+        // Half an hour of limit left, and Ryokan is asked to stop: the
+        // script is ended now, the way the limit would end it, and its
+        // encoder still gets the grace to finish up.
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("cleaned");
+        let script = write_script(
+            dir.path(),
+            "encode.sh",
+            &format!(
+                "(trap 'echo done > \"{}\"; exit 0' TERM; while :; do sleep 0.05; done) &\necho started\nsleep 30",
+                marker.display()
+            ),
+            0o755,
+        );
+        let stop = Shutdown::new();
+        let asked = {
+            let stop = stop.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                stop.request();
+            })
+        };
+        let started = Instant::now();
+        let output = run_with_grace(
+            &script,
+            &test_env(),
+            Duration::from_secs(1800),
+            Duration::from_secs(5),
+            &stop,
+        )
+        .await
+        .unwrap();
+        asked.await.unwrap();
+
+        assert!(output.interrupted);
+        assert!(!output.timed_out);
+        assert!(!output.succeeded());
+        assert_eq!(output.stdout, "started");
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "done\n");
+        assert!(started.elapsed() < Duration::from_secs(4));
     }
 
     #[tokio::test]

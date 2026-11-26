@@ -289,6 +289,11 @@ pub async fn run_import(
     }
     let mode = sess.mode.as_str();
     let cancel = sess.cancel.clone();
+    // A stop of Ryokan is a cancel: the file being placed is finished,
+    // no further one is started, and what landed is still tagged in
+    // phase 2. The hold keeps the process alive until then.
+    let _importing = crate::services::shutdown::hold("manual import");
+    let stopped = || cancel.load(Ordering::Relaxed) || crate::services::shutdown::requested();
 
     // Folders owned by a series row: a same-named folder on disk is a
     // merge target, not a collision. Grows as this run creates series.
@@ -327,7 +332,7 @@ pub async fn run_import(
 
     // ── Phase 1: land files ─────────────────────────────────────────
     for stored in &sess.groups {
-        if cancel.load(Ordering::Relaxed) {
+        if stopped() {
             report.cancelled = true;
             break;
         }
@@ -463,7 +468,7 @@ pub async fn run_import(
         let mut landed: Vec<(i32, i32, PathBuf)> = Vec::new();
 
         for (file, fv) in group.files.iter().zip(view.files.iter()) {
-            if cancel.load(Ordering::Relaxed) {
+            if stopped() {
                 report.cancelled = true;
                 break;
             }
@@ -667,7 +672,7 @@ pub async fn run_import(
     let total_series = touched.len();
     for (i, t) in touched.iter().enumerate() {
         let series_title = nfo::title_for_preference(&t.row, &cfg.title_language);
-        let cancelled = cancel.load(Ordering::Relaxed);
+        let cancelled = stopped();
         if cancelled {
             report.cancelled = true;
         }
