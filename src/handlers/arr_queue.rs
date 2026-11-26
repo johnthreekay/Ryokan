@@ -36,6 +36,13 @@ const ETA_UNKNOWN_SECS: i64 = 8_640_000;
 /// none and reads only `records`, so against a real Sonarr it sees ten
 /// downloads at most; here an unpaged request gets every record.
 const DEFAULT_PAGE_SIZE: usize = 10;
+
+/// How long one client gets to list its queue. Seerr gives the whole
+/// request 10 seconds by default, and the clients' own timeouts are 10
+/// to 30 seconds (SABnzbd makes two calls), so a client that hangs
+/// would otherwise cost Seerr the answer for every other download too,
+/// and Seerr keeps the previous minute's list when a sync fails.
+const CLIENT_LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 const MAX_PAGE_SIZE: usize = 1000;
 
 /// One download as the shims see it.
@@ -58,6 +65,13 @@ pub(crate) struct QueueEntry {
 /// Ordered by time left, shortest first and unknown last, which is the
 /// `sortKey` / `sortDirection` the page reports.
 pub(crate) async fn load_entries(state: &AppState) -> Result<Vec<QueueEntry>, String> {
+    load_entries_within(state, CLIENT_LIST_TIMEOUT).await
+}
+
+async fn load_entries_within(
+    state: &AppState,
+    client_limit: std::time::Duration,
+) -> Result<Vec<QueueEntry>, String> {
     let grabs = grabbed_torrents::get_all_pending(&state.db)
         .await
         .map_err(|e| e.to_string())?;
@@ -82,13 +96,15 @@ pub(crate) async fn load_entries(state: &AppState) -> Result<Vec<QueueEntry>, St
         return Ok(Vec::new());
     }
 
-    // Only the clients a pending grab lives in, all at once: one slow
-    // or dead client must not push the answer past Seerr's timeout.
-    let lists = futures_util::future::join_all(
-        clients
-            .iter()
-            .map(|(id, client)| async move { (*id, client.list_scoped().await) }),
-    )
+    // Only the clients a pending grab lives in, all at once and each
+    // within `client_limit`: one slow or dead client must not push the
+    // answer past Seerr's timeout. Its grabs read as unavailable.
+    let lists = futures_util::future::join_all(clients.iter().map(|(id, client)| async move {
+        let list = tokio::time::timeout(client_limit, client.list_scoped())
+            .await
+            .unwrap_or_else(|_| Err("no answer in time".to_string()));
+        (*id, list)
+    }))
     .await;
     // `None` for a client that did not answer.
     let mut items: HashMap<i64, Option<HashMap<String, DownloadItem>>> = HashMap::new();
@@ -447,6 +463,8 @@ pub(crate) mod test_client {
     pub(crate) struct QueueClient {
         pub items: Option<Vec<DownloadItem>>,
         pub protocol: &'static str,
+        /// Never answers, like a client behind a dead tunnel.
+        pub hangs: bool,
     }
 
     /// A 1,000-byte item at `progress` with no estimate.
@@ -489,6 +507,9 @@ pub(crate) mod test_client {
             Ok(SelectiveOutcome::FullDownload)
         }
         async fn list_scoped(&self) -> Result<Vec<DownloadItem>, String> {
+            if self.hangs {
+                std::future::pending::<()>().await;
+            }
             self.items
                 .clone()
                 .ok_or_else(|| "connection refused".to_string())
@@ -541,6 +562,7 @@ mod tests {
         Arc::new(QueueClient {
             items,
             protocol: "torrent",
+            hangs: false,
         })
     }
 
@@ -663,6 +685,7 @@ mod tests {
             Arc::new(QueueClient {
                 items: None,
                 protocol: "usenet",
+                hangs: false,
             }),
         );
         *state.download_clients.write().await = Arc::new(pool);
@@ -694,6 +717,70 @@ mod tests {
         assert_eq!(
             done.estimated_completion_time.as_deref(),
             Some("2027-01-15T08:00:00Z")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_client_that_hangs_costs_its_own_grabs_only() {
+        // A torrent client behind a dead tunnel never answers. The
+        // usenet client's download is still listed, and promptly: Seerr
+        // gives the whole request ten seconds.
+        let db = in_memory_pool().await;
+        let series_id = seed_series(&db, 100, "Show").await;
+        seed_grabbed_torrent(&db, series_id, HASH_A, "[G] Show - 03", &[3]).await;
+        let nzb = seed_grabbed_torrent(&db, series_id, "SABnzbd_nzo_abc", "Show.E04", &[4]).await;
+        sqlx::query("UPDATE grabbed_torrents SET download_client_id = 2 WHERE id = ?")
+            .bind(nzb)
+            .execute(&db)
+            .await
+            .unwrap();
+
+        let state = build_test_app_state(db, None);
+        let mut pool = crate::DownloadClientPool {
+            clients: std::collections::HashMap::new(),
+            default_torrent_id: Some(1),
+            default_usenet_id: Some(2),
+        };
+        pool.clients.insert(
+            1,
+            Arc::new(QueueClient {
+                items: Some(Vec::new()),
+                protocol: "torrent",
+                hangs: true,
+            }),
+        );
+        let downloading = item(
+            "SABnzbd_nzo_abc",
+            "Show.E04",
+            0.5,
+            DownloadItemState::Downloading,
+        );
+        pool.clients.insert(
+            2,
+            Arc::new(QueueClient {
+                items: Some(vec![downloading]),
+                protocol: "usenet",
+                hangs: false,
+            }),
+        );
+        *state.download_clients.write().await = Arc::new(pool);
+
+        let started = std::time::Instant::now();
+        let entries = load_entries_within(&state, std::time::Duration::from_millis(200))
+            .await
+            .unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+        let seen: Vec<(&str, &str)> = entries
+            .iter()
+            .map(|e| (e.protocol, e.base(fixed_now()).status))
+            .collect();
+        // Neither has an estimate, so they stay in grab order.
+        assert_eq!(
+            seen,
+            vec![
+                ("torrent", "downloadClientUnavailable"),
+                ("usenet", "downloading")
+            ]
         );
     }
 

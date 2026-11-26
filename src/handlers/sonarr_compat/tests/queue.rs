@@ -41,6 +41,7 @@ fn client(items: Option<Vec<DownloadItem>>) -> Option<Arc<dyn DownloadClient>> {
     Some(Arc::new(QueueClient {
         items,
         protocol: "torrent",
+        hangs: false,
     }))
 }
 
@@ -143,6 +144,54 @@ async fn a_download_is_reported_under_every_row_of_its_tvdb_show() {
     // One download, so one `downloadId`, and a record id apiece.
     assert_eq!(records[0]["downloadId"], records[1]["downloadId"]);
     assert_ne!(records[0]["id"], records[1]["id"]);
+
+    anibridge::clear_cache_for_tests().await;
+}
+
+#[tokio::test]
+async fn an_entry_spanning_several_tvdb_seasons_reports_each_episode_in_its_own() {
+    // One AniList entry, four TVDB seasons (Gintama's shape): 1-49,
+    // 50-99, 100-150, 151-201. The row is listed under one season, but
+    // an episode is reported where TVDB has it.
+    let _gate = anibridge::TEST_CACHE_LOCK.lock().await;
+    anibridge::seed_tvdb_placements_for_tests(&[
+        (918, 79895, 1, Some(0)),
+        (918, 79895, 2, Some(-49)),
+        (918, 79895, 3, Some(-99)),
+        (918, 79895, 4, Some(-150)),
+    ])
+    .await;
+
+    let db = in_memory_pool().await;
+    seed_sonarr_enabled(&db, KEY).await;
+    let series_id = seed_listed(&db, 918, "Long Show", 79895, 3).await;
+    seed_grab(
+        &db,
+        series_id,
+        HASH,
+        "[Group] Long Show (pack)",
+        &[10, 49, 50, 160],
+    )
+    .await;
+    let downloading = item(HASH, "pack", 0.5, DownloadItemState::Downloading);
+    let app = sonarr_router_with_series(build_test_app_state(db, client(Some(vec![downloading]))));
+
+    let body = get_json(app, "/api/v3/queue?includeEpisode=true").await;
+    let records = body["records"].as_array().unwrap();
+    let slots: Vec<(i64, i64)> = records
+        .iter()
+        .map(|r| {
+            assert_eq!(r["seasonNumber"], r["episode"]["seasonNumber"]);
+            (
+                r["episode"]["seasonNumber"].as_i64().unwrap(),
+                r["episode"]["episodeNumber"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(slots, vec![(1, 10), (1, 49), (2, 1), (4, 10)]);
+    let ids: std::collections::HashSet<i64> =
+        records.iter().map(|r| r["id"].as_i64().unwrap()).collect();
+    assert_eq!(ids.len(), 4, "s01e10 and s04e10 are two records");
 
     anibridge::clear_cache_for_tests().await;
 }

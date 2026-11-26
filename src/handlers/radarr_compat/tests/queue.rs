@@ -38,6 +38,7 @@ fn client(items: Option<Vec<DownloadItem>>) -> Option<Arc<dyn DownloadClient>> {
     Some(Arc::new(QueueClient {
         items,
         protocol: "torrent",
+        hangs: false,
     }))
 }
 

@@ -14,7 +14,8 @@ use serde::Serialize;
 use crate::AppState;
 use crate::handlers::arr_queue::{self, QueueBase, QueuePage, QueueQuery};
 use crate::models::series;
-use crate::services::{anibridge, datetime};
+use crate::services::anibridge::{self, TvdbPlacement};
+use crate::services::datetime;
 
 use super::helpers::{ShimIds, shim_ids};
 
@@ -45,16 +46,24 @@ pub struct SonarrQueueEpisode {
     pub absolute_episode_number: i32,
 }
 
-/// The offset from the entry's own episode numbers to its TVDB season's
-/// (AniList episode 1 of a second cour is often `s01e13`), 0 when the
-/// mappings do not give one for the season the row is listed under.
-async fn tvdb_episode_offset(anilist_id: i64, ids: &ShimIds) -> i32 {
-    anibridge::tvdb_placements(anilist_id)
-        .await
-        .into_iter()
-        .find(|p| p.tvdb_id == ids.tvdb_id && p.season == ids.tvdb_season)
-        .and_then(|p| p.episode_offset)
-        .unwrap_or(0)
+/// The TVDB season and episode of the entry's own episode `own`.
+///
+/// An AniList entry is not always one TVDB season. A second cour often
+/// starts at `s01e13` (offset 12), and one long entry can be several
+/// seasons: Gintama is seasons 1 to 4 of its TVDB show, with offsets 0,
+/// -49, -99 and -150. Each placement turns `own` into a number in its
+/// season, and the season the episode is in is the one where that
+/// number is positive and smallest. With no usable placement on the
+/// row's show it is the season the row is listed under, numbered as the
+/// entry numbers it.
+fn tvdb_slot(own: i32, ids: &ShimIds, placements: &[TvdbPlacement]) -> (i32, i32) {
+    placements
+        .iter()
+        .filter(|p| p.tvdb_id == ids.tvdb_id && p.season > 0)
+        .filter_map(|p| Some((p.season, own + p.episode_offset?)))
+        .filter(|(_, number)| *number > 0)
+        .min_by_key(|(_, number)| *number)
+        .unwrap_or((ids.tvdb_season, own))
 }
 
 /// GET /api/v3/queue
@@ -94,8 +103,7 @@ pub async fn queue(
             continue;
         };
         let base = entry.base(now);
-        let season = ids.tvdb_season;
-        let offset = tvdb_episode_offset(series.anilist_id, ids).await;
+        let placements = anibridge::tvdb_placements(series.anilist_id).await;
         // The same episodes under every row of the show: the season and
         // episode say what is downloading, the `seriesId` only which of
         // Ryokan's entries Seerr happens to hold for the show.
@@ -104,14 +112,14 @@ pub async fn queue(
                 records.push(SonarrQueueRecord {
                     series_id: row,
                     episode_id: 0,
-                    season_number: season,
+                    season_number: ids.tvdb_season,
                     episode: None,
                     id: arr_queue::record_id(&base.download_id, row, 0),
                     base: base.clone(),
                 });
             }
             for &own in &entry.grab.episode_numbers {
-                let number = if own + offset > 0 { own + offset } else { own };
+                let (season, number) = tvdb_slot(own, ids, &placements);
                 let episode_id = arr_queue::record_id(&format!("episode-s{season}"), row, number);
                 records.push(SonarrQueueRecord {
                     series_id: row,
@@ -124,7 +132,11 @@ pub async fn queue(
                         episode_number: number,
                         absolute_episode_number: own + series.cumulative_prior_episodes.max(0),
                     }),
-                    id: arr_queue::record_id(&base.download_id, row, number),
+                    id: arr_queue::record_id(
+                        &base.download_id,
+                        row,
+                        season.saturating_mul(10_000).saturating_add(number),
+                    ),
                     base: base.clone(),
                 });
             }
