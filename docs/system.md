@@ -148,8 +148,6 @@ Things to know:
         && rm -rf /var/lib/apt/lists/*
     ```
 
-    If your script leaves a job running in the background after it exits, add `init: true` to the Ryokan service in your compose file, so the job is cleaned up when it finishes.
-
 A custom script runs with the same access to your files as Ryokan itself, and anyone who can log in to Ryokan can add one. To turn the feature off for the whole install, set the environment variable `RYOKAN_CUSTOM_SCRIPTS=0`. Saved scripts are kept, but none is run and none can be added.
 
 ## Docs

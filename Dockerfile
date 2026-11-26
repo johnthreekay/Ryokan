@@ -79,11 +79,13 @@ FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f0
 # curl:            used by the compose healthcheck.
 # gosu:            drops privileges from root to the ryokan user in the entrypoint.
 # passwd:          provides useradd/groupadd/usermod/groupmod for the entrypoint.
+# tini:            the container's first process; see ENTRYPOINT below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     gosu \
     passwd \
+    tini \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -126,5 +128,13 @@ EXPOSE 8978
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -fsS http://localhost:8978/login || exit 1
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# tini is PID 1, and Ryokan (the entrypoint script execs into it) is its
+# one child. A custom script (#288) can leave a process behind when it
+# exits; a process whose parent is gone is handed to PID 1, and Ryokan
+# as PID 1 never waited for those, so each stayed in the process table
+# as a zombie. tini waits for them, and passes SIGTERM on to Ryokan,
+# which stops in order (`services::shutdown`). `-s` keeps that working,
+# without a warning on every start, for someone who also runs the
+# container with `--init`, where Docker's own init is PID 1.
+ENTRYPOINT ["/usr/bin/tini", "-s", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/app/ryokan"]
