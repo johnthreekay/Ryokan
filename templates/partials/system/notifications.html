@@ -4,6 +4,6 @@
    every successful save / delete (closes the modal + refreshes the
    cards atomically). #}
 <div class="notif-page">
-    <p class="form-hint" style="margin-bottom: 16px;">Where Ryokan sends event notifications. Webhooks receive JSON, Discord gets an embed. Pick the events per provider.</p>
+    <p class="form-hint" style="margin-bottom: 16px;">Where Ryokan sends event notifications. Webhooks receive JSON, Discord gets an embed, and a custom script is run with the event in its environment. Pick the events per provider.</p>
     {%~ include "partials/system/notifications/list.html" ~%}
 </div>

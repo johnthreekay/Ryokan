@@ -38,7 +38,7 @@ use crate::handlers::responses::htmx_aware_redirect;
 use crate::models::log::LogCategory;
 use crate::services::logger;
 use crate::services::notifications::{
-    self, ALL_EVENT_KINDS, DEFAULT_ON_EVENT_KINDS, discord, store, webhook,
+    self, ALL_EVENT_KINDS, DEFAULT_ON_EVENT_KINDS, discord, script, store, webhook,
 };
 
 /// Sentinel submitted from the explicit "Clear secret" button on the
@@ -90,6 +90,20 @@ pub struct ProviderView {
     /// Whether a Discord webhook URL is saved. The URL itself (its
     /// path carries the token) never reaches the page.
     pub discord_has_url: bool,
+    /// Script-only: the program's path. Not a secret, so it is shown
+    /// on the card and in the form. Empty for other kinds.
+    pub script_path: String,
+    /// Script-only: the time limit in minutes; the default for other
+    /// kinds, so switching an Add form's kind shows it filled in.
+    pub script_timeout_minutes: u64,
+}
+
+impl ProviderView {
+    /// A script row while `RYOKAN_CUSTOM_SCRIPTS` has scripts turned
+    /// off: saved, listed, and not run.
+    pub fn script_turned_off(&self) -> bool {
+        self.kind == "script" && !script::enabled()
+    }
 }
 
 /// Form payload for `POST /system/notifications/upsert`. `id`
@@ -114,6 +128,11 @@ pub struct UpsertForm {
     // Discord fields
     #[serde(default)]
     pub discord_webhook_url: String,
+    // Script fields (#288)
+    #[serde(default)]
+    pub script_path: String,
+    #[serde(default)]
+    pub script_timeout_minutes: String,
     // Per-event matrix — one form key per kind, value `"on"` if checked.
     // Names: `event_Grabbed`, `event_Imported`, etc.
     #[serde(flatten)]
@@ -149,6 +168,8 @@ pub async fn load_provider_views(db: &sqlx::SqlitePool) -> Vec<ProviderView> {
             let mut webhook_has_secret = false;
             let mut webhook_headers_text = String::new();
             let mut discord_has_url = false;
+            let mut script_path = String::new();
+            let mut script_timeout_minutes = script::DEFAULT_TIMEOUT_MINUTES;
             match r.kind.as_str() {
                 "webhook" => {
                     if let Ok(cfg) = serde_json::from_str::<webhook::WebhookConfig>(&r.config_json)
@@ -174,6 +195,12 @@ pub async fn load_provider_views(db: &sqlx::SqlitePool) -> Vec<ProviderView> {
                         serde_json::from_str::<discord::DiscordConfig>(&r.config_json)
                             .is_ok_and(|cfg| !cfg.webhook_url.is_empty());
                 }
+                "script" => {
+                    if let Ok(cfg) = serde_json::from_str::<script::ScriptConfig>(&r.config_json) {
+                        script_timeout_minutes = cfg.timeout_minutes();
+                        script_path = cfg.path;
+                    }
+                }
                 _ => {}
             }
             ProviderView {
@@ -186,6 +213,8 @@ pub async fn load_provider_views(db: &sqlx::SqlitePool) -> Vec<ProviderView> {
                 webhook_has_secret,
                 webhook_headers_text,
                 discord_has_url,
+                script_path,
+                script_timeout_minutes,
             }
         })
         .collect()
@@ -339,6 +368,10 @@ pub async fn notifications_upsert(
             Err(e) => return redirect_with_err(is_htmx, &e),
         },
         "discord" => match build_discord_config(&form, existing_row.as_ref()) {
+            Ok(s) => s,
+            Err(e) => return redirect_with_err(is_htmx, &e),
+        },
+        "script" => match build_script_config(&form, &state.db, script::enabled()).await {
             Ok(s) => s,
             Err(e) => return redirect_with_err(is_htmx, &e),
         },
@@ -564,6 +597,43 @@ fn build_discord_config(
     discord::validate_url(&webhook_url)?;
     let cfg = serde_json::json!({"webhook_url": webhook_url});
     Ok(cfg.to_string())
+}
+
+/// Build the script `config_json` (#288). Nothing here is a secret, so
+/// there is no keep-on-blank: the form shows the saved path and posts
+/// it back. The path has to pass every rule a run applies
+/// (`script::check_path`), so a save that would never run is
+/// refused here with the reason. `scripts_enabled` is
+/// [`script::enabled`]: with scripts turned off nothing is saved as a
+/// script, an existing row included.
+async fn build_script_config(
+    form: &UpsertForm,
+    db: &sqlx::SqlitePool,
+    scripts_enabled: bool,
+) -> Result<String, String> {
+    if !scripts_enabled {
+        return Err(script::disabled_message());
+    }
+    let path = form.script_path.trim();
+    script::check_path(db, path).await?;
+    let minutes = match form.script_timeout_minutes.trim() {
+        "" => script::DEFAULT_TIMEOUT_MINUTES,
+        typed => typed
+            .parse::<u64>()
+            .ok()
+            .filter(|m| (1..=script::MAX_TIMEOUT_MINUTES).contains(m))
+            .ok_or_else(|| {
+                format!(
+                    "Time limit must be a whole number of minutes from 1 to {}",
+                    script::MAX_TIMEOUT_MINUTES
+                )
+            })?,
+    };
+    serde_json::to_string(&script::ScriptConfig {
+        path: path.to_string(),
+        timeout_secs: minutes * 60,
+    })
+    .map_err(|e| format!("Couldn't save the script settings: {e}"))
 }
 
 /// Read every `event_<Kind>` form field and project to the matrix.
@@ -818,6 +888,8 @@ mod tests {
             webhook_secret: "".into(),
             webhook_headers: headers.into(),
             discord_webhook_url: "".into(),
+            script_path: "".into(),
+            script_timeout_minutes: "".into(),
             events: Default::default(),
         }
     }
@@ -967,6 +1039,8 @@ mod tests {
             webhook_secret: "".into(),
             webhook_headers: "".into(),
             discord_webhook_url: "".into(),
+            script_path: "".into(),
+            script_timeout_minutes: "".into(),
             events: Default::default(),
         };
         let json = build_webhook_config(&form, Some(&existing)).unwrap();
@@ -992,6 +1066,8 @@ mod tests {
             webhook_secret: CLEAR_SENTINEL.into(),
             webhook_headers: "".into(),
             discord_webhook_url: "".into(),
+            script_path: "".into(),
+            script_timeout_minutes: "".into(),
             events: Default::default(),
         };
         let json = build_webhook_config(&form, Some(&existing)).unwrap();
@@ -1049,6 +1125,8 @@ mod tests {
             webhook_secret: "".into(),
             webhook_headers: "Z-First: 1\nA-Second: 2".into(),
             discord_webhook_url: "".into(),
+            script_path: "".into(),
+            script_timeout_minutes: "".into(),
             events: Default::default(),
         };
         let json = build_webhook_config(&form, None).unwrap();
@@ -1074,6 +1152,8 @@ mod tests {
             webhook_secret: "".into(),
             webhook_headers: "Content-Type: text/plain".into(),
             discord_webhook_url: "".into(),
+            script_path: "".into(),
+            script_timeout_minutes: "".into(),
             events: Default::default(),
         };
         let r = build_webhook_config(&form, None);
@@ -1098,6 +1178,8 @@ mod tests {
             webhook_secret: "".into(),
             webhook_headers: "".into(),
             discord_webhook_url: "".into(),
+            script_path: "".into(),
+            script_timeout_minutes: "".into(),
             events: Default::default(),
         };
         let json = build_discord_config(&form, Some(&existing)).unwrap();
@@ -1121,6 +1203,148 @@ mod tests {
                 .any(|k| *k == "ExternalSyncReLinkRequired")
         );
         assert!(!pre_checked.iter().any(|k| *k == "Health"));
+    }
+
+    // ── custom script (#288) ──
+
+    /// An executable shell script in a fresh folder.
+    fn temp_script(mode: u32) -> (tempfile::TempDir, String) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("after-import.sh");
+        std::fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+        let text = path.to_str().unwrap().to_string();
+        (dir, text)
+    }
+
+    fn script_form(path: &str, minutes: &str) -> UpsertForm {
+        UpsertForm {
+            kind: "script".into(),
+            script_path: path.into(),
+            script_timeout_minutes: minutes.into(),
+            ..webhook_form("", "")
+        }
+    }
+
+    #[tokio::test]
+    async fn a_script_saves_its_path_and_time_limit() {
+        let (_dir, path) = temp_script(0o755);
+        let db = in_memory_pool().await;
+
+        let json = build_script_config(&script_form(&format!("  {path} "), "45"), &db, true)
+            .await
+            .unwrap();
+        let cfg: script::ScriptConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg.path, path, "trimmed, otherwise as typed");
+        assert_eq!(cfg.timeout_secs, 45 * 60);
+
+        // A blank limit is the default, not zero.
+        let json = build_script_config(&script_form(&path, ""), &db, true)
+            .await
+            .unwrap();
+        let cfg: script::ScriptConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg.timeout_minutes(), script::DEFAULT_TIMEOUT_MINUTES);
+    }
+
+    #[tokio::test]
+    async fn a_script_that_would_never_run_is_refused_on_save() {
+        let db = in_memory_pool().await;
+        let err = |form: UpsertForm| {
+            let db = db.clone();
+            async move { build_script_config(&form, &db, true).await.unwrap_err() }
+        };
+
+        assert_eq!(err(script_form("", "30")).await, "Script path is required");
+        assert!(
+            err(script_form("/bin/sh", "30"))
+                .await
+                .contains("system folder")
+        );
+        let (_dir, plain) = temp_script(0o644);
+        assert!(
+            err(script_form(&plain, "30"))
+                .await
+                .contains("isn't executable")
+        );
+
+        let (_dir, path) = temp_script(0o755);
+        for limit in ["0", "1441", "soon", "-5"] {
+            let e = err(script_form(&path, limit)).await;
+            assert!(e.contains("Time limit must be"), "{limit}: {e}");
+        }
+    }
+
+    #[tokio::test]
+    async fn nothing_is_saved_as_a_script_while_scripts_are_turned_off() {
+        // RYOKAN_CUSTOM_SCRIPTS=0. The path is fine; the kind is not.
+        let (_dir, path) = temp_script(0o755);
+        let db = in_memory_pool().await;
+        let err = build_script_config(&script_form(&path, "30"), &db, false)
+            .await
+            .unwrap_err();
+        assert!(err.contains("RYOKAN_CUSTOM_SCRIPTS"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_script_shows_its_path_on_the_card_and_in_the_form() {
+        let db = in_memory_pool().await;
+        sqlx::query(
+            "INSERT INTO notification_providers (id, name, kind, enabled, config_json) VALUES \
+             (1, 'encode', 'script', 1, ?)",
+        )
+        .bind(r#"{"path":"/config/scripts/after-import.sh","timeout_secs":2700}"#)
+        .execute(&db)
+        .await
+        .unwrap();
+
+        let views = load_provider_views(&db).await;
+        assert_eq!(views[0].script_path, "/config/scripts/after-import.sh");
+        assert_eq!(views[0].script_timeout_minutes, 45);
+
+        let cards = NotificationSectionPartial {
+            notification_providers: views,
+            notification_event_toggles: matrix_view(&db, None).await,
+        }
+        .render()
+        .unwrap();
+        assert!(
+            cards.contains("notif-kind-pill-script\">Script<"),
+            "{cards}"
+        );
+        assert!(
+            cards.contains("<code>/config/scripts/after-import.sh</code>"),
+            "{cards}"
+        );
+        // The Add form inside the section offers the kind and its fields.
+        assert!(cards.contains(r#"<option value="script">Custom script</option>"#));
+        assert!(cards.contains(r#"name="script_path""#));
+        assert!(
+            cards.contains(
+                r#"name="script_timeout_minutes" min="1" max="1440" step="1" value="30""#
+            )
+        );
+
+        let state = crate::test_support::build_test_app_state(db.clone(), None);
+        let resp =
+            notifications_edit_form(axum::extract::State(state), axum::extract::Path(1)).await;
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let form = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            form.contains(r#"<option value="script" selected>Custom script</option>"#),
+            "{form}"
+        );
+        assert!(
+            form.contains(r#"value="/config/scripts/after-import.sh""#),
+            "{form}"
+        );
+        assert!(form.contains(r#"step="1" value="45""#), "{form}");
+        assert!(
+            !form.contains("turned off by the"),
+            "scripts are allowed here"
+        );
     }
 
     #[test]

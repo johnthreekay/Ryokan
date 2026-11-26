@@ -315,10 +315,12 @@ walkdir = "2"
 
 # Backup / restore (#126). `tar` + `flate2` (miniz_oxide backend, pure
 # Rust) build and read the `.tar.gz` backups; `nix` gives a safe
-# `statvfs` for the free-disk-space precheck before a backup runs.
+# `statvfs` for the free-disk-space precheck before a backup runs. Its
+# `signal` feature is for the custom-script provider (#288), which
+# stops a script past its time limit by its process group.
 tar = "0.4"
 flate2 = "1"
-nix = { version = "0.32", features = ["fs", "hostname"] }
+nix = { version = "0.32", features = ["fs", "hostname", "signal"] }
 
 [dev-dependencies]
 # Used only by the env-gated live_smoke tests for the DownloadClient

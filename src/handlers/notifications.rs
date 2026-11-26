@@ -16,12 +16,38 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 
 use crate::AppState;
-use crate::services::notifications::{NotificationEvent, TestSendResult, discord, store, webhook};
+use crate::services::notifications::{
+    NotificationEvent, TestSendResult, discord, script, store, webhook,
+};
+
+/// What the Send test button gets back: what a receiver answered, or
+/// how a script's test run ended.
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+#[serde(untagged)]
+pub enum TestOutcome {
+    Receiver(TestSendResult),
+    Script(ScriptTestResult),
+}
+
+/// A custom script's test run (#288): its exit code and the end of what
+/// it wrote (stderr when there was any, else stdout).
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+pub struct ScriptTestResult {
+    pub exit_code: i32,
+    pub output: String,
+}
+
+/// How much of a script's output the page gets back.
+const SCRIPT_TEST_OUTPUT_CHARS: usize = 500;
 
 /// `POST /api/notifications/{id}/test` — send a synthetic
 /// `Health { kind: "test", message: "..." }` event to the targeted
 /// provider only. Bypasses the per-event matrix (Health is
 /// default-off so a matrix-honoring path would no-op).
+///
+/// A custom script (#288) gets no event at all: it is run once with
+/// `ryokan_eventtype=Test`, as Sonarr tests its own, and the answer is
+/// `{"exit_code": <int>, "output": "<truncated>"}`.
 ///
 /// Response shape:
 /// - 200 + `{"status": <int>, "body": "<truncated>"}` on send-side
@@ -45,15 +71,30 @@ use crate::services::notifications::{NotificationEvent, TestSendResult, discord,
     description = "Sends a synthetic health event to one notification provider, bypassing the per-event matrix. The status field reports what the receiver returned.",
     params(("id" = i64, Path, description = "Notification provider id")),
     responses(
-        (status = 200, description = "Request reached the receiver", body = TestSendResult),
+        (status = 200, description = "Request reached the receiver, or the script ran", body = TestOutcome),
+        (status = 403, description = "Custom scripts are turned off"),
         (status = 404, description = "Provider not found or disabled"),
+        (status = 422, description = "The script path is refused"),
         (status = 502, description = "Receiver unreachable or timed out"),
+        (status = 504, description = "The script ran past the test's time limit"),
     ),
 )]
 pub async fn test_provider(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-) -> Result<Json<TestSendResult>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<TestOutcome>, (StatusCode, Json<serde_json::Value>)> {
+    // A script row is never in the cache while scripts are turned off,
+    // and "disabled or recently deleted?" would be the wrong hint.
+    if !script::enabled()
+        && let Ok(Some(row)) = store::get_provider(&state.db, id).await
+        && row.kind == "script"
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": script::disabled_message()})),
+        ));
+    }
+
     // Resolve through the live cache first — the cached snapshot is
     // what the dispatcher would actually use, so a "provider not in
     // cache" 404 is the most accurate user signal (row may be
@@ -115,12 +156,15 @@ pub async fn test_provider(
                         })),
                     )
                 })?;
-            webhook::send_test(&p, &event).await.map(Json).map_err(|e| {
-                (
-                    StatusCode::BAD_GATEWAY,
-                    Json(serde_json::json!({"error": e})),
-                )
-            })
+            webhook::send_test(&p, &event)
+                .await
+                .map(|r| Json(TestOutcome::Receiver(r)))
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(serde_json::json!({"error": e})),
+                    )
+                })
         }
         "discord" => {
             let p = discord::DiscordProvider::from_row(
@@ -137,12 +181,27 @@ pub async fn test_provider(
                     })),
                 )
             })?;
-            discord::send_test(&p, &event).await.map(Json).map_err(|e| {
-                (
-                    StatusCode::BAD_GATEWAY,
-                    Json(serde_json::json!({"error": e})),
-                )
-            })
+            discord::send_test(&p, &event)
+                .await
+                .map(|r| Json(TestOutcome::Receiver(r)))
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(serde_json::json!({"error": e})),
+                    )
+                })
+        }
+        "script" => {
+            let config: script::ScriptConfig =
+                serde_json::from_str(&row.config_json).map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({
+                            "error": format!("invalid script config: {e}"),
+                        })),
+                    )
+                })?;
+            script_test_outcome(script::run_test(&state.db, &config).await).map(Json)
         }
         other => Err((
             StatusCode::NOT_IMPLEMENTED,
@@ -150,5 +209,100 @@ pub async fn test_provider(
                 "error": format!("test endpoint not yet wired for provider kind {other:?}"),
             })),
         )),
+    }
+}
+
+/// A test run's result as the endpoint's answer. A run that could not
+/// start is the path being refused (or gone), which is the user's to
+/// fix: 422. One stopped at the limit is 504.
+fn script_test_outcome(
+    run: Result<script::ScriptOutput, String>,
+) -> Result<TestOutcome, (StatusCode, Json<serde_json::Value>)> {
+    let output = run.map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({"error": e})),
+        )
+    })?;
+    let said = script::tail(output.said(), SCRIPT_TEST_OUTPUT_CHARS);
+    if output.timed_out {
+        return Err((
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(serde_json::json!({
+                "error": format!(
+                    "The script was still running after {} seconds and was stopped. A test run gets no file to work on, so it should finish quickly.",
+                    script::TEST_TIMEOUT.as_secs()
+                ),
+            })),
+        ));
+    }
+    match output.exit_code {
+        Some(exit_code) => Ok(TestOutcome::Script(ScriptTestResult {
+            exit_code,
+            output: said,
+        })),
+        None => Err((
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({
+                "error": "The script was ended by a signal before it finished.",
+            })),
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn output(exit_code: Option<i32>, timed_out: bool, stderr: &str) -> script::ScriptOutput {
+        script::ScriptOutput {
+            exit_code,
+            timed_out,
+            elapsed: Duration::from_millis(5),
+            stdout: "from stdout".into(),
+            stderr: stderr.into(),
+        }
+    }
+
+    #[test]
+    fn a_script_test_reports_the_exit_code_and_what_it_wrote() {
+        let ok = script_test_outcome(Ok(output(Some(0), false, ""))).unwrap();
+        assert_eq!(
+            serde_json::to_value(&ok).unwrap(),
+            serde_json::json!({"exit_code": 0, "output": "from stdout"})
+        );
+        // A non-zero exit is still an answer; the page says it failed.
+        let failed = script_test_outcome(Ok(output(Some(2), false, "no such codec"))).unwrap();
+        assert_eq!(
+            serde_json::to_value(&failed).unwrap(),
+            serde_json::json!({"exit_code": 2, "output": "no such codec"})
+        );
+    }
+
+    #[test]
+    fn a_receivers_answer_keeps_its_shape() {
+        let outcome = TestOutcome::Receiver(TestSendResult {
+            status: 204,
+            body: String::new(),
+        });
+        assert_eq!(
+            serde_json::to_value(&outcome).unwrap(),
+            serde_json::json!({"status": 204, "body": ""})
+        );
+    }
+
+    #[test]
+    fn a_script_that_never_started_or_never_finished_is_an_error() {
+        let (status, body) = script_test_outcome(Err("/x.sh is not a file".into())).unwrap_err();
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.0["error"], "/x.sh is not a file");
+
+        let (status, body) = script_test_outcome(Ok(output(None, true, ""))).unwrap_err();
+        assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
+        assert!(body.0["error"].as_str().unwrap().contains("30 seconds"));
+
+        let (status, _) = script_test_outcome(Ok(output(None, false, ""))).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
     }
 }

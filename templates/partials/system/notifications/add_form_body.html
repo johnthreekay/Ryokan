@@ -5,9 +5,11 @@
    so this is the entire content of that div (no header, no backdrop).
 
    Default kind is webhook (matches the dropdown's `selected` option);
-   the discord field group is hidden initially. The kind-flip JS in
-   static/js/settings.js (or wherever the notif modal helpers land)
-   toggles visibility live when the user changes the kind dropdown. #}
+   the discord and script field groups are hidden initially. The
+   kind-flip JS in static/js/system.js toggles visibility live when the
+   user changes the kind dropdown, and for a script ticks Imported
+   alone under Events. Custom script (#288) is offered only while
+   `RYOKAN_CUSTOM_SCRIPTS` allows scripts. #}
 <form method="post" action="/system/notifications/upsert"
       class="notif-modal-form"
       hx-post="/system/notifications/upsert"
@@ -24,6 +26,9 @@
                 <select id="notif-add-kind" name="kind" data-notif-kind-select>
                     <option value="webhook" selected>Generic webhook</option>
                     <option value="discord">Discord</option>
+                    {% if crate::services::notifications::script::enabled() %}
+                    <option value="script">Custom script</option>
+                    {% endif %}
                 </select>
             </div>
         </div>
@@ -64,6 +69,21 @@
                 <label for="notif-add-discord-webhook-url">Discord webhook URL</label>
                 <input id="notif-add-discord-webhook-url" type="password" name="discord_webhook_url" autocomplete="new-password" placeholder="https://discord.com/api/webhooks/...">
                 <span class="form-hint">From Discord: Server Settings → Integrations → Webhooks → Copy Webhook URL. Keep it secret.</span>
+            </div>
+        </div>
+
+        {# Custom script — hidden initially. The path is not a secret,
+           so it is a plain field. #}
+        <div data-notif-field-group="script" style="display:none">
+            <div class="form-group">
+                <label for="notif-add-script-path">Path</label>
+                <input id="notif-add-script-path" type="text" name="script_path" autocomplete="off" spellcheck="false" placeholder="/config/scripts/after-import.sh">
+                <span class="form-hint">The full path to a program Ryokan can run, such as a shell script marked executable. In Docker this is the path inside the container. It is run with no arguments and gets the event as environment variables: <code>ryokan_eventtype</code>, and for an import <code>ryokan_dest_path</code>, <code>ryokan_source_path</code>, <code>ryokan_series_title</code>, <code>ryokan_episode_number</code> and <code>ryokan_quality_tag</code>.</span>
+            </div>
+            <div class="form-group">
+                <label for="notif-add-script-timeout">Time limit (minutes)</label>
+                <input id="notif-add-script-timeout" type="number" name="script_timeout_minutes" min="1" max="{{ crate::services::notifications::script::MAX_TIMEOUT_MINUTES }}" step="1" value="{{ crate::services::notifications::script::DEFAULT_TIMEOUT_MINUTES }}">
+                <span class="form-hint">A script still running after this long is stopped. Scripts run one at a time, so a long one holds up the next. The exit code and the end of what it wrote go to System → Logs.</span>
             </div>
         </div>
 

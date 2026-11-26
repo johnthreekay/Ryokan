@@ -19,6 +19,7 @@ Most installs only set `PUID`, `PGID` and `TZ`.
 | `RYOKAN_FRAME_ANCESTORS` | any site | Which pages may show Ryokan inside a frame: `self`, `none`, or one or more origins like `https://dash.example.com`, separated by spaces or commas. Leave it unset, or list your dashboard, if you embed Ryokan in Organizr or Homarr. |
 | `RYOKAN_HOST_CHECK` | off | Set to `1` to turn on the [host check](#host-check). Ryokan's pages will then only answer to an IP address, `localhost`, or a name listed in `RYOKAN_ALLOWED_HOSTS`. |
 | `RYOKAN_ALLOWED_HOSTS` | unset | The names you open Ryokan by, for the host check, separated by spaces or commas: `nas ryokan.lan *.example.com`. Leave out `http://` and the port. Setting this turns the host check on, even without `RYOKAN_HOST_CHECK`. |
+| `RYOKAN_CUSTOM_SCRIPTS` | on | Set to `0` to turn off [custom scripts](system.md#custom-scripts). Saved ones are kept but not run, and none can be added. |
 | `RYOKAN_RESET_AUTH` | unset | Used to reset a forgotten password. See [Reset auth](#reset-auth). |
 | `RYOKAN_ENCRYPTION_KEY` | unset | A base64-encoded 32-byte key used to encrypt linked account tokens. When unset, Ryokan generates one and stores it in the data folder. Changing the key will force you to link your accounts again. |
 

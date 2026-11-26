@@ -28,6 +28,11 @@
                 <select id="notif-edit-kind-{{ row.id }}" name="kind" data-notif-kind-select>
                     <option value="webhook" {% if row.kind == "webhook" %}selected{% endif %}>Generic webhook</option>
                     <option value="discord" {% if row.kind == "discord" %}selected{% endif %}>Discord</option>
+                    {# Offered while scripts are allowed, and always for a
+                       row that already is one, so its kind still shows. #}
+                    {% if row.kind == "script" || crate::services::notifications::script::enabled() %}
+                    <option value="script" {% if row.kind == "script" %}selected{% endif %}>Custom script</option>
+                    {% endif %}
                 </select>
             </div>
         </div>
@@ -77,6 +82,23 @@
                        autocomplete="new-password"
                        placeholder="{% if row.discord_has_url %}{{ crate::handlers::secret_field::KEEP_PLACEHOLDER }}{% else %}https://discord.com/api/webhooks/...{% endif %}">
                 <span class="form-hint">From Discord: Server Settings → Integrations → Webhooks → Copy Webhook URL. A saved URL is never shown again. Leave the field blank to keep it.</span>
+            </div>
+        </div>
+
+        <div data-notif-field-group="script"{% if row.kind != "script" %} style="display:none"{% endif %}>
+            {% if row.script_turned_off() %}
+            <div class="alert alert-warn">Custom scripts are turned off by the <code>RYOKAN_CUSTOM_SCRIPTS</code> environment variable. This one is kept as it is but does not run, and it can't be saved or tested until the variable is removed or set to <code>1</code>.</div>
+            {% endif %}
+            <div class="form-group">
+                <label for="notif-edit-script-path-{{ row.id }}">Path</label>
+                <input id="notif-edit-script-path-{{ row.id }}" type="text" name="script_path" autocomplete="off" spellcheck="false"
+                       value="{{ row.script_path }}" placeholder="/config/scripts/after-import.sh">
+                <span class="form-hint">The full path to a program Ryokan can run, such as a shell script marked executable. In Docker this is the path inside the container. It is run with no arguments and gets the event as environment variables: <code>ryokan_eventtype</code>, and for an import <code>ryokan_dest_path</code>, <code>ryokan_source_path</code>, <code>ryokan_series_title</code>, <code>ryokan_episode_number</code> and <code>ryokan_quality_tag</code>.</span>
+            </div>
+            <div class="form-group">
+                <label for="notif-edit-script-timeout-{{ row.id }}">Time limit (minutes)</label>
+                <input id="notif-edit-script-timeout-{{ row.id }}" type="number" name="script_timeout_minutes" min="1" max="{{ crate::services::notifications::script::MAX_TIMEOUT_MINUTES }}" step="1" value="{{ row.script_timeout_minutes }}">
+                <span class="form-hint">A script still running after this long is stopped. Scripts run one at a time, so a long one holds up the next. The exit code and the end of what it wrote go to System → Logs. Send test runs the saved script once with <code>ryokan_eventtype=Test</code>.</span>
             </div>
         </div>
 

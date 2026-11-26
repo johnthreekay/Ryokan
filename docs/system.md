@@ -90,6 +90,7 @@ Where Ryokan sends notifications.
 
 - **Discord**: posts to a Discord webhook URL.
 - **Webhook**: posts JSON to any URL, for ntfy, Apprise, n8n or your own receiver.
+- **Custom script**: runs a program on the machine Ryokan runs on, for jobs like re-encoding a file once it is imported. See [Custom scripts](#custom-scripts).
 
 For each one, choose which events it receives: Grabbed, Imported, Import failed, Classifier needs review, Indexer down, Download client unreachable, Re-link required. **Send test** sends a test event.
 
@@ -100,6 +101,55 @@ For each one, choose which events it receives: Grabbed, Imported, Import failed,
     - `X-Ryokan-Signature-V2` is `t=<timestamp>,sha256=<hex>`, computed over `<timestamp>.<body>`. Check this one and reject old timestamps to guard against replays.
 
 The autobrr webhook is something else: it sends releases *to* Ryokan, and is set up under **Settings → Indexers**.
+
+### Custom scripts
+
+A custom script is a program Ryokan runs when an event happens, like Sonarr's Custom Script connection. Enter the full path to it and a time limit. A new script is set to run on **Imported** only; tick other events if you want them.
+
+The script is run with no arguments, from its own folder. The event arrives as environment variables. After an import these are:
+
+| Variable | Value |
+|---|---|
+| `ryokan_eventtype` | `Imported` |
+| `ryokan_dest_path` | The file in your library |
+| `ryokan_source_path` | The file it was imported from, in the download folder |
+| `ryokan_series_title` | The series title |
+| `ryokan_series_id` | Ryokan's id for the series |
+| `ryokan_episode_number` | The episode number |
+| `ryokan_quality_tag` | The quality Ryokan recorded for the episode |
+
+Other events set `ryokan_eventtype` to their own name (`Grabbed`, `ImportFailed` and so on) and one variable per detail, named like the fields of the webhook's JSON with `ryokan_` in front. **Send test** runs the script once with `ryokan_eventtype` set to `Test` and nothing else, and shows its exit code.
+
+```sh
+#!/bin/sh
+# A test run has no file to work on.
+[ "$ryokan_eventtype" = "Imported" ] || exit 0
+echo "Imported: $ryokan_dest_path" >> /config/imports.log
+```
+
+Things to know:
+
+- The file has to be marked executable (`chmod +x`) and, for a script, start with a line such as `#!/bin/sh`.
+- In Docker, the path is the one inside the container, and the script has to be on a volume the container can see.
+- It can't be in a system folder such as `/usr/bin`, and it can't be a downloaded file: nothing in your media library, the recycle bin, a download client's download path, or a release Ryokan grabbed is run.
+- Scripts run in the background, one at a time, so an import never waits for one. A script still running at its time limit is stopped, along with anything it started.
+- Disabling or deleting a script also drops its runs that are still waiting, and a new path applies to them.
+- Each run is recorded in **System → Logs** under Notifications, with its exit code and the end of anything it wrote to stderr.
+- A script made for Sonarr reads Sonarr's variable names, so it will not work as it is. To hand the file to a tool such as sickbeard_mp4_automator, call the tool's manual script from your own with `$ryokan_dest_path`.
+
+!!! note "Docker"
+    The Ryokan image has no Python, ffmpeg or other tools in it. If your script needs them, build your own image on top of Ryokan's:
+
+    ```dockerfile
+    FROM ghcr.io/johnthreekay/ryokan:latest
+    RUN apt-get update \
+        && apt-get install -y --no-install-recommends python3 ffmpeg \
+        && rm -rf /var/lib/apt/lists/*
+    ```
+
+    If your script leaves a job running in the background after it exits, add `init: true` to the Ryokan service in your compose file, so the job is cleaned up when it finishes.
+
+A custom script runs with the same access to your files as Ryokan itself, and anyone who can log in to Ryokan can add one. To turn the feature off for the whole install, set the environment variable `RYOKAN_CUSTOM_SCRIPTS=0`. Saved scripts are kept, but none is run and none can be added.
 
 ## Docs
 

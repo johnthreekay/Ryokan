@@ -25,9 +25,13 @@
                 <div class="notif-card-header">
                     <div class="notif-card-title">
                         <strong class="notif-card-name">{{ p.name }}</strong>
-                        <span class="notif-kind-pill notif-kind-pill-{{ p.kind }}">{% if p.kind == "webhook" %}Webhook{% else if p.kind == "discord" %}Discord{% else %}{{ p.kind }}{% endif %}</span>
+                        <span class="notif-kind-pill notif-kind-pill-{{ p.kind }}">{% if p.kind == "webhook" %}Webhook{% else if p.kind == "discord" %}Discord{% else if p.kind == "script" %}Script{% else %}{{ p.kind }}{% endif %}</span>
                     </div>
-                    {% if p.enabled %}
+                    {# A script while RYOKAN_CUSTOM_SCRIPTS has scripts
+                       off: saved and listed, never run. #}
+                    {% if p.script_turned_off() %}
+                    <span class="notif-status-pill notif-status-pill-disabled">Turned off</span>
+                    {% else if p.enabled %}
                     <span class="notif-status-pill notif-status-pill-ok">Enabled</span>
                     {% else %}
                     <span class="notif-status-pill notif-status-pill-disabled">Disabled</span>
@@ -65,6 +69,17 @@
                         <div class="notif-card-meta-row">
                             <dt>Webhook</dt>
                             <dd><code>(not configured)</code></dd>
+                        </div>
+                        {% endif %}
+                    {% else if p.kind == "script" %}
+                        <div class="notif-card-meta-row">
+                            <dt>Path</dt>
+                            <dd><code>{{ p.script_path }}</code></dd>
+                        </div>
+                        {% if p.script_turned_off() %}
+                        <div class="notif-card-meta-row">
+                            <dt>Off by</dt>
+                            <dd><code>RYOKAN_CUSTOM_SCRIPTS</code></dd>
                         </div>
                         {% endif %}
                     {% endif %}

@@ -697,6 +697,10 @@ async fn main() {
     // from the `notification_providers` table. Empty until the user
     // adds a row in Settings → Notifications; the dispatcher's
     // `is_empty()` early-return makes every hook a no-op until then.
+    // #288: read `RYOKAN_CUSTOM_SCRIPTS` here, so the line it logs (off,
+    // or a value that is not a yes or no) is with the rest of startup
+    // and not at the first save of a script.
+    let _ = services::notifications::script::enabled();
     services::notifications::rebuild_notification_providers_cache(
         &state.notification_providers,
         &db,

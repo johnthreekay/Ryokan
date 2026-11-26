@@ -562,6 +562,16 @@ function bindNotifModalForm(form) {
             form.querySelectorAll('[data-notif-field-group]').forEach(function (g) {
                 g.style.display = (g.dataset.notifFieldGroup === k) ? '' : 'none';
             });
+            // A new custom script starts with Imported alone: one that
+            // re-encodes a file has nothing to do for a grab or a
+            // failure, and would otherwise run for each. The other
+            // kinds get the form's own defaults back. Add form only (no
+            // hidden id); an existing provider keeps what was saved.
+            if (!form.querySelector('input[name="id"]')) {
+                form.querySelectorAll('input[type="checkbox"][name^="event_"]').forEach(function (cb) {
+                    cb.checked = (k === 'script') ? cb.name === 'event_Imported' : cb.defaultChecked;
+                });
+            }
         });
     }
 
@@ -601,7 +611,19 @@ async function notifTestClickHandler() {
             // A wrong or expired webhook URL answers 401 / 404 / 500
             // there, which used to show as a green "OK (500)".
             var receiver = Number(data.status || 200);
-            if (r.ok && receiver >= 200 && receiver < 300) {
+            if (r.ok && typeof data.exit_code === 'number') {
+                // A custom script answers with its exit code and the
+                // end of what it wrote, not a receiver's status.
+                // The end of it: that is where a failing script says why.
+                var wrote = data.output ? ': ' + String(data.output).slice(-200) : '';
+                if (data.exit_code === 0) {
+                    out.textContent = 'OK (exit 0)' + wrote;
+                    out.className += ' ok';
+                } else {
+                    out.textContent = 'The script exited with code ' + data.exit_code + wrote;
+                    out.className += ' err';
+                }
+            } else if (r.ok && receiver >= 200 && receiver < 300) {
                 out.textContent = 'OK (' + receiver + ')';
                 out.className += ' ok';
             } else if (r.ok) {

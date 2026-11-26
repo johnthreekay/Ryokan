@@ -652,7 +652,7 @@
 .notif-status-pill-ok       { background: rgba(var(--green-rgb), 0.18); color: var(--green); }
 .notif-status-pill-disabled { background: rgba(var(--text-dim-rgb), 0.18); color: var(--text-dim); }
 
-/* Kind badge — webhook / discord. Faint background tint so the
+/* Kind badge — webhook / discord / script. Faint background tint so the
    badge reads as "tag" not "alert" — reserved alert colors stay
    for the status pill. */
 .notif-kind-pill {
@@ -663,6 +663,7 @@
 }
 .notif-kind-pill-discord { background: rgba(var(--blue-rgb), 0.18); color: var(--blue); }
 .notif-kind-pill-webhook { background: rgba(var(--accent-rgb), 0.16); color: var(--accent); }
+.notif-kind-pill-script  { background: rgba(var(--orange-rgb), 0.16); color: var(--orange); }
 
 /* Corner × delete action. Test is modal-only; both DC and
    notifications expose connection-test inside the edit modal so

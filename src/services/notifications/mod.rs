@@ -44,6 +44,7 @@ use tokio::sync::RwLock;
 
 pub mod discord;
 pub mod event;
+pub mod script;
 pub mod store;
 pub mod webhook;
 
@@ -221,10 +222,17 @@ async fn fan_out_one(
     let send_fut = provider.send(&event);
     match tokio::time::timeout(PROVIDER_SEND_TIMEOUT, send_fut).await {
         Ok(Ok(())) => {
+            // A script's `send` only queues the run; its own worker
+            // logs how the run ended.
+            let message = if provider.kind() == "script" {
+                "queued"
+            } else {
+                "sent"
+            };
             crate::services::logger::info(
                 &db,
                 LogCategory::Notifications,
-                "sent",
+                message,
                 &format!(
                     "provider={} kind={} event={}",
                     provider.name(),
@@ -674,10 +682,7 @@ pub fn emit_external_sync_relink_required(state: &crate::AppState, provider: &st
 /// at startup (after `migrations::migrate`) and from the Settings
 /// handler that mutates the table.
 ///
-/// Until provider impls land in the per-provider issues, this just
-/// loads the rows and logs an unknown-kind warning for each one
-/// before installing an empty snapshot. The shape is in place so
-/// follow-up PRs only need to add a per-kind constructor arm here.
+/// The per-kind constructors are in [`build_providers`].
 pub async fn rebuild_notification_providers_cache(cache: &NotificationProviders, db: &SqlitePool) {
     // On DB-load failure, keep the existing snapshot live. A
     // transient blip (lock contention, brief WAL checkpoint stall,
@@ -695,61 +700,64 @@ pub async fn rebuild_notification_providers_cache(cache: &NotificationProviders,
             return;
         }
     };
-    // Per-kind constructor dispatch. New `kind` strings land here
-    // alongside their per-impl module — `webhook` is #119, `discord`
-    // is #120. A row with an unrecognized kind is logged and dropped
-    // so a hand-edited DB / pre-provider Settings save surfaces in
-    // System → Logs rather than silently swallowing.
+    let providers = build_providers(rows, db, script::enabled());
+    *cache.write().await = Arc::new(providers);
+}
+
+/// One provider object per row. `scripts_enabled` is
+/// [`script::enabled`], passed in so the "off" behavior is testable
+/// without touching the process environment.
+///
+/// Per-kind constructor dispatch. New `kind` strings land here
+/// alongside their per-impl module: `webhook` is #119, `discord` is
+/// #120, `script` is #288. A row with an unrecognized kind is logged
+/// and dropped so a hand-edited DB surfaces in the console rather than
+/// silently swallowing.
+fn build_providers(
+    rows: Vec<store::ProviderRow>,
+    db: &SqlitePool,
+    scripts_enabled: bool,
+) -> Vec<Arc<dyn NotificationProvider>> {
     let mut providers: Vec<Arc<dyn NotificationProvider>> = Vec::new();
     for row in rows {
-        let built: Option<Arc<dyn NotificationProvider>> = match row.kind.as_str() {
+        let built: Result<Arc<dyn NotificationProvider>, String> = match row.kind.as_str() {
             "webhook" => {
-                match webhook::WebhookProvider::from_row(row.id, row.name.clone(), &row.config_json)
-                {
-                    Ok(p) => Some(Arc::new(p)),
-                    Err(e) => {
-                        tracing::warn!(
-                            "notification_providers: skipping webhook #{} ({}): {}",
-                            row.id,
-                            row.name,
-                            e,
-                        );
-                        None
-                    }
-                }
+                webhook::WebhookProvider::from_row(row.id, row.name.clone(), &row.config_json)
+                    .map(|p| Arc::new(p) as Arc<dyn NotificationProvider>)
             }
-            "discord" => match discord::DiscordProvider::from_row(
+            "discord" => discord::DiscordProvider::from_row(
                 row.id,
                 row.name.clone(),
                 &row.config_json,
                 db.clone(),
-            ) {
-                Ok(p) => Some(Arc::new(p)),
-                Err(e) => {
-                    tracing::warn!(
-                        "notification_providers: skipping discord #{} ({}): {}",
-                        row.id,
-                        row.name,
-                        e,
-                    );
-                    None
-                }
-            },
-            other => {
-                tracing::warn!(
-                    "notification_providers: skipping #{} ({}); unknown kind {:?}",
-                    row.id,
-                    row.name,
-                    other,
-                );
-                None
+            )
+            .map(|p| Arc::new(p) as Arc<dyn NotificationProvider>),
+            // The row stays in the table and on the page, so turning
+            // the switch back on brings it back as it was.
+            "script" if !scripts_enabled => {
+                Err(format!("custom scripts are off ({})", script::SWITCH_VAR))
             }
+            "script" => script::ScriptProvider::from_row(
+                row.id,
+                row.name.clone(),
+                &row.config_json,
+                db.clone(),
+            )
+            .map(|p| Arc::new(p) as Arc<dyn NotificationProvider>),
+            other => Err(format!("unknown kind {other:?}")),
         };
-        if let Some(p) = built {
-            providers.push(p);
+        match built {
+            Ok(p) => providers.push(p),
+            Err(e) => tracing::warn!(
+                "notification_providers: skipping {} #{} ({}): {}",
+                row.kind,
+                row.id,
+                row.name,
+                e,
+            ),
         }
     }
-    *cache.write().await = Arc::new(providers);
+    providers
 }
 
 #[cfg(test)]
@@ -1108,5 +1116,123 @@ mod tests {
             dedup_check(&map, 1),
             "stamp older than HEALTH_DEDUP_WINDOW must re-fire"
         );
+    }
+
+    #[tokio::test]
+    async fn an_import_runs_a_saved_script_and_a_grab_does_not() {
+        // The whole path a real import takes (#288): the saved row, the
+        // cache rebuild, the per-event matrix, the process-wide queue,
+        // the run, and its log row. The row is as the Add form saves a
+        // script: Imported on, everything else off.
+        use std::os::unix::fs::PermissionsExt;
+        let db = in_memory_pool().await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let path = dir.path().join("after-import.sh");
+        std::fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\necho \"$ryokan_eventtype|$ryokan_dest_path\" >> '{}'\n",
+                out.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        sqlx::query(
+            "INSERT INTO notification_providers (id, name, kind, enabled, config_json)
+             VALUES (1, 'encode', 'script', 1, ?)",
+        )
+        .bind(serde_json::json!({"path": path}).to_string())
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO notification_settings (provider_id, event_kind, enabled)
+             VALUES (1, 'Imported', 1), (1, 'Grabbed', 0)",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+
+        let cache = empty_cache();
+        rebuild_notification_providers_cache(&cache, &db).await;
+        assert_eq!(cache.read().await.len(), 1);
+
+        dispatch(&cache, db.clone(), grabbed());
+        dispatch(
+            &cache,
+            db.clone(),
+            NotificationEvent::Imported {
+                series_id: 1,
+                series_title: "Test".into(),
+                episode_number: 7,
+                source_path: "/downloads/Test - 07.mkv".into(),
+                dest_path: "/media/Test/Test - S01E07.mkv".into(),
+                quality_tag: String::new(),
+            },
+        );
+
+        let mut rows: Vec<(String, String, String)> = Vec::new();
+        for _ in 0..500 {
+            rows = sqlx::query_as("SELECT level, message, detail FROM logs ORDER BY id")
+                .fetch_all(&db)
+                .await
+                .unwrap();
+            if rows.iter().any(|r| r.1 == "Script finished") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(
+            std::fs::read_to_string(&out).unwrap(),
+            "Imported|/media/Test/Test - S01E07.mkv\n",
+            "one run, for the import"
+        );
+        let messages: Vec<&str> = rows.iter().map(|r| r.1.as_str()).collect();
+        assert_eq!(messages, vec!["queued", "Script finished"], "{rows:?}");
+        assert!(
+            rows[1]
+                .2
+                .starts_with("provider=encode event=Imported exit=0"),
+            "{}",
+            rows[1].2
+        );
+    }
+
+    fn provider_row(id: i64, kind: &str, config_json: &str) -> store::ProviderRow {
+        store::ProviderRow {
+            id,
+            name: format!("{kind}-{id}"),
+            kind: kind.to_string(),
+            enabled: true,
+            config_json: config_json.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_script_row_is_built_while_scripts_are_allowed() {
+        let db = in_memory_pool().await;
+        let rows = vec![
+            provider_row(1, "webhook", r#"{"url":"https://hooks.lan/x"}"#),
+            provider_row(2, "script", r#"{"path":"/config/scripts/post.sh"}"#),
+        ];
+        let built = build_providers(rows, &db, true);
+        let kinds: Vec<&str> = built.iter().map(|p| p.kind()).collect();
+        assert_eq!(kinds, vec!["webhook", "script"]);
+    }
+
+    #[tokio::test]
+    async fn the_switch_keeps_script_rows_out_of_the_cache_and_nothing_else() {
+        // RYOKAN_CUSTOM_SCRIPTS=0: the row stays in the table, but no
+        // provider object exists to queue a run.
+        let db = in_memory_pool().await;
+        let rows = vec![
+            provider_row(1, "webhook", r#"{"url":"https://hooks.lan/x"}"#),
+            provider_row(2, "script", r#"{"path":"/config/scripts/post.sh"}"#),
+            provider_row(3, "carrier-pigeon", "{}"),
+        ];
+        let built = build_providers(rows, &db, false);
+        let kinds: Vec<&str> = built.iter().map(|p| p.kind()).collect();
+        assert_eq!(kinds, vec!["webhook"]);
     }
 }
