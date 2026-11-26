@@ -172,7 +172,22 @@ pub async fn restore_misgrab(
             "Cannot restore: no download client is configured",
         );
     };
+    // The new row first, then the client (`AheadGrab`). The failed row
+    // being restored is not live, so it does not stand in the way.
+    let ahead = grabbed_torrents::AheadGrab::write(
+        db,
+        grabbed_torrents::GrabAhead {
+            hash: &row.hash,
+            torrent_name: &row.torrent_name,
+            series_id: row.series_id,
+            is_batch: row.is_batch,
+            download_client_id: row.download_client_id,
+            source_url: &url,
+        },
+    )
+    .await;
     if let Err(e) = client.add_torrent_returning_id(&url, &row.hash).await {
+        ahead.refused().await;
         logger::warn(
             db,
             LogCategory::DownloadClient,
@@ -193,15 +208,15 @@ pub async fn restore_misgrab(
     }
 
     // A fresh pending row; the old failed row points at it as replaced.
-    let new_id = match grabbed_torrents::record_grab(
-        db,
-        &row.hash,
-        &row.torrent_name,
-        row.series_id,
-        &row.episode_numbers,
-        row.is_batch,
-    )
-    .await
+    let new_id = match ahead
+        .sent(
+            &row.hash,
+            &row.torrent_name,
+            row.series_id,
+            &row.episode_numbers,
+            row.is_batch,
+        )
+        .await
     {
         Ok(Some(new_id)) => new_id,
         Ok(None) => {

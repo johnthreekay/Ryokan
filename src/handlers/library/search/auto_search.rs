@@ -660,6 +660,26 @@ async fn run_auto_search_targets_with_upgrades(
                 // The episodes this grab was recorded for (filled
                 // below once the grab row is written).
                 let mut queued_episodes: Vec<i32> = Vec::new();
+                // The row first, then the client (`AheadGrab`): a
+                // process that dies between the two leaves a grab that
+                // is found again, not a download nobody knows about.
+                let ahead = match series_id {
+                    Some(sid) => {
+                        crate::models::grabbed_torrents::AheadGrab::write(
+                            &state.db,
+                            crate::models::grabbed_torrents::GrabAhead {
+                                hash: &result.info_hash,
+                                torrent_name: &result.title,
+                                series_id: sid,
+                                is_batch: result.is_batch,
+                                download_client_id: Some(dispatch_client_id),
+                                source_url: &url,
+                            },
+                        )
+                        .await
+                    }
+                    None => crate::models::grabbed_torrents::AheadGrab::none(&state.db),
+                };
                 let selective_outcome: Result<(Option<Vec<usize>>, String), String> =
                     if wants_selective {
                         let detail_clone = detail.clone();
@@ -764,17 +784,17 @@ async fn run_auto_search_targets_with_upgrades(
                             // client at this point, so don't unwind —
                             // skip the seed-rule + attribution stamp
                             // and let the next reconcile pick it up.
-                            let grab_id = crate::models::grabbed_torrents::record_grab(
-                                &state.db,
-                                &effective_hash,
-                                &result.title,
-                                sid,
-                                &ep_nums,
-                                result.is_batch,
-                            )
-                            .await
-                            .ok()
-                            .flatten();
+                            let grab_id = ahead
+                                .sent(
+                                    &effective_hash,
+                                    &result.title,
+                                    sid,
+                                    &ep_nums,
+                                    result.is_batch,
+                                )
+                                .await
+                                .ok()
+                                .flatten();
                             // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
                             if let Some(gid) = grab_id {
                                 let _ = crate::models::grabbed_torrents::set_source_url(
@@ -919,6 +939,7 @@ async fn run_auto_search_targets_with_upgrades(
                         }
                     }
                     Err(e) => {
+                        ahead.refused().await;
                         logger::error(
                             &state.db,
                             LogCategory::DownloadClient,

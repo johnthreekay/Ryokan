@@ -299,6 +299,185 @@ impl crate::services::download_client::DownloadClient for AcceptingClient {
     }
 }
 
+// ── the grab row is written before the client is asked ──
+//
+// The order used to be: send to the client, then write the row. A
+// process that died in between left a download Ryokan had no row for.
+
+/// What the client does with a release, having first noted what the
+/// grab table held when it was asked.
+enum Answer {
+    Accept,
+    Refuse,
+    /// Never answers: the caller is cut off mid-call, which is as close
+    /// as a test gets to the process dying there.
+    Never,
+}
+
+/// `(hash, state, download_client_id)` of every grab row at the moment
+/// a release arrived at the client.
+type Seen = std::sync::Arc<std::sync::Mutex<Vec<(String, String, Option<i64>)>>>;
+
+struct WatchingClient {
+    db: SqlitePool,
+    answer: Answer,
+    seen: Seen,
+}
+
+#[async_trait::async_trait]
+impl crate::services::download_client::DownloadClient for WatchingClient {
+    async fn test(&self) -> Result<String, String> {
+        Ok("ok".into())
+    }
+    async fn add_torrent(
+        &self,
+        _u: &str,
+        _h: &str,
+    ) -> Result<crate::services::download_client::AddOutcome, String> {
+        let rows: Vec<(String, String, Option<i64>)> =
+            sqlx::query_as("SELECT hash, state, download_client_id FROM grabbed_torrents")
+                .fetch_all(&self.db)
+                .await
+                .unwrap();
+        *self.seen.lock().unwrap() = rows;
+        match self.answer {
+            Answer::Accept => Ok(crate::services::download_client::AddOutcome::Added),
+            Answer::Refuse => Err("the client said no".into()),
+            Answer::Never => std::future::pending().await,
+        }
+    }
+    async fn add_torrent_with_file_filter(
+        &self,
+        _u: &str,
+        _h: &str,
+        _p: &mut (dyn for<'a> FnMut(&'a [String]) -> Option<Vec<usize>> + Send),
+    ) -> Result<crate::services::download_client::SelectiveOutcome, String> {
+        Ok(crate::services::download_client::SelectiveOutcome::FullDownload)
+    }
+    async fn list_scoped(
+        &self,
+    ) -> Result<Vec<crate::services::download_client::DownloadItem>, String> {
+        Ok(vec![])
+    }
+    async fn get_files(
+        &self,
+        _h: &str,
+    ) -> Result<Vec<crate::services::download_client::DownloadFile>, String> {
+        Ok(vec![])
+    }
+    async fn pause(&self, _h: &str) -> Result<(), String> {
+        Ok(())
+    }
+    async fn resume(&self, _h: &str) -> Result<(), String> {
+        Ok(())
+    }
+    async fn delete(&self, _h: &str, _df: bool) -> Result<(), String> {
+        Ok(())
+    }
+    async fn set_file_wanted(&self, _h: &str, _f: &[usize], _w: bool) -> Result<(), String> {
+        Ok(())
+    }
+    fn sonarr_impl_name(&self) -> &'static str {
+        "QBittorrent"
+    }
+}
+
+const WATCHED_HASH: &str = "e12fe1c06bba254a9dc9f519b335aa7c1367a88a";
+const WATCHED_PUSH: &str = r#"{"torrent_name": "Test Show - 04 [1080p]", "magnet_uri": "magnet:?xt=urn:btih:E12FE1C06BBA254A9DC9F519B335AA7C1367A88A", "indexer": "Nyaa"}"#;
+
+async fn watched_app(answer: Answer) -> (axum::Router, SqlitePool, Seen) {
+    let db = in_memory_pool().await;
+    seed_autobrr_enabled(&db, KEY).await;
+    seed_indexer(&db, "Nyaa").await;
+    seed_series(&db).await;
+    let seen = Seen::default();
+    let state = build_test_app_state(
+        db.clone(),
+        Some(std::sync::Arc::new(WatchingClient {
+            db: db.clone(),
+            answer,
+            seen: seen.clone(),
+        })),
+    );
+    rebuild_indexer_cache(&state).await;
+    (autobrr_webhook_router(state), db, seen)
+}
+
+async fn grab_rows(db: &SqlitePool) -> Vec<(String, String, String, Option<i64>, String)> {
+    sqlx::query_as(
+        "SELECT hash, state, episode_numbers, download_client_id, source_url \
+         FROM grabbed_torrents ORDER BY id",
+    )
+    .fetch_all(db)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn the_grab_row_is_there_when_the_client_is_asked() {
+    let (app, db, seen) = watched_app(Answer::Accept).await;
+    let (status, body) = post_payload(app, WATCHED_PUSH).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![(WATCHED_HASH.to_string(), "pending".to_string(), Some(1))],
+        "a pending row, naming its client, before the client heard of the release"
+    );
+    let rows = grab_rows(&db).await;
+    assert_eq!(
+        rows.len(),
+        1,
+        "the same row is finished, not a second one written"
+    );
+    assert_eq!(
+        rows[0].2, "[4]",
+        "the episode list is filled in once the client took it"
+    );
+    assert!(rows[0].4.starts_with("magnet:"));
+}
+
+#[tokio::test]
+async fn a_release_the_client_refuses_leaves_no_row() {
+    let (app, db, seen) = watched_app(Answer::Refuse).await;
+    let (status, _) = post_payload(app, WATCHED_PUSH).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        1,
+        "the row was there for the call"
+    );
+    assert!(
+        grab_rows(&db).await.is_empty(),
+        "and is taken back: a failed grab leaves nothing, as before"
+    );
+}
+
+#[tokio::test]
+async fn a_grab_cut_off_while_the_client_answers_can_still_be_found() {
+    // The client has the release, or it does not; the caller never
+    // hears. The row stays, with what the reconcile needs to look for
+    // the download: its hash and the client it was sent to.
+    let (app, db, _) = watched_app(Answer::Never).await;
+    let cut_off = tokio::time::timeout(
+        std::time::Duration::from_millis(300),
+        post_payload(app, WATCHED_PUSH),
+    )
+    .await;
+    assert!(cut_off.is_err(), "the request never finished");
+
+    let rows = grab_rows(&db).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        (rows[0].0.as_str(), rows[0].1.as_str(), rows[0].3),
+        (WATCHED_HASH, "pending", Some(1))
+    );
+    let pending = crate::models::grabbed_torrents::get_all_pending(&db)
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1, "post-processing will look for it");
+}
+
 #[tokio::test]
 async fn a_push_without_a_hash_records_the_torrents_own() {
     // With no hash the grab could only be found in the client by name,

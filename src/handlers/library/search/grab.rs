@@ -114,53 +114,85 @@ pub async fn grab_batch_result(
     // SAB lets you key queue/history ops by — without this capture, SAB grabs
     // got `hash=""` persisted, the episode-progress poller never matched them
     // in `list_scoped`, and after 30s the reconcile loop marked them removed.
-    let (selective_outcome, effective_hash): (Option<Vec<usize>>, String) = if wants_selective {
-        let detail_clone = detail.clone();
-        let mut pick =
-            move |files: &[String]| auto_search::pick_wanted_file_indices(files, &detail_clone);
-        match qbit
-            .add_torrent_with_file_filter(&url, &info_hash, &mut pick)
+    // The row first, then the client (`AheadGrab`): a process that dies
+    // between the two leaves a grab that is found again, not a download
+    // nobody knows about. The client call is wrapped so that every way
+    // it can fail ends in one place, where the row is taken back.
+    let ahead = match series_id {
+        Some(sid) => {
+            crate::models::grabbed_torrents::AheadGrab::write(
+                &state.db,
+                crate::models::grabbed_torrents::GrabAhead {
+                    hash: &info_hash,
+                    torrent_name: &title,
+                    series_id: sid,
+                    is_batch: true,
+                    download_client_id: Some(dispatch_client_id),
+                    source_url: &url,
+                },
+            )
             .await
-        {
-            // Selective branch echoes the precomputed info_hash since
-            // `add_torrent_with_file_filter` doesn't return an id. SAB's
-            // file-filter impl no-ops the filter and returns FullDownload,
-            // so SAB grabs that route through here keep the v1 picker-path
-            // limitation (documented in services/download_client/sabnzbd/mod.rs).
-            // Practically rare — SAB grabs require info_hash to be empty
-            // (NZBs have no infohash), and `wants_selective` requires
-            // info_hash to be non-empty, so this branch shouldn't fire for
-            // SAB in the first place.
-            Ok(crate::services::download_client::SelectiveOutcome::Filtered(kept)) => {
-                (Some(kept), info_hash.clone())
-            }
-            Ok(crate::services::download_client::SelectiveOutcome::FullDownload) => {
-                (None, info_hash.clone())
-            }
-            Err(e) => {
-                logger::warn(
-                    &state.db,
-                    LogCategory::Grab,
-                    &format!(
-                        "Selective batch download failed, falling back to full grab: {}",
-                        title
-                    ),
-                    &e,
-                )
-                .await;
-                let (_, hash) = qbit
-                    .add_torrent_returning_id(&url, &info_hash)
-                    .await
-                    .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
-                (None, hash)
-            }
         }
-    } else {
-        let (_, hash) = qbit
-            .add_torrent_returning_id(&url, &info_hash)
-            .await
-            .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
-        (None, hash)
+        None => crate::models::grabbed_torrents::AheadGrab::none(&state.db),
+    };
+    type Added = (Option<Vec<usize>>, String);
+    let added: Result<Added, (axum::http::StatusCode, String)> = async {
+        Ok(if wants_selective {
+            let detail_clone = detail.clone();
+            let mut pick =
+                move |files: &[String]| auto_search::pick_wanted_file_indices(files, &detail_clone);
+            match qbit
+                .add_torrent_with_file_filter(&url, &info_hash, &mut pick)
+                .await
+            {
+                // Selective branch echoes the precomputed info_hash since
+                // `add_torrent_with_file_filter` doesn't return an id. SAB's
+                // file-filter impl no-ops the filter and returns FullDownload,
+                // so SAB grabs that route through here keep the v1 picker-path
+                // limitation (documented in services/download_client/sabnzbd/mod.rs).
+                // Practically rare — SAB grabs require info_hash to be empty
+                // (NZBs have no infohash), and `wants_selective` requires
+                // info_hash to be non-empty, so this branch shouldn't fire for
+                // SAB in the first place.
+                Ok(crate::services::download_client::SelectiveOutcome::Filtered(kept)) => {
+                    (Some(kept), info_hash.clone())
+                }
+                Ok(crate::services::download_client::SelectiveOutcome::FullDownload) => {
+                    (None, info_hash.clone())
+                }
+                Err(e) => {
+                    logger::warn(
+                        &state.db,
+                        LogCategory::Grab,
+                        &format!(
+                            "Selective batch download failed, falling back to full grab: {}",
+                            title
+                        ),
+                        &e,
+                    )
+                    .await;
+                    let (_, hash) = qbit
+                        .add_torrent_returning_id(&url, &info_hash)
+                        .await
+                        .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
+                    (None, hash)
+                }
+            }
+        } else {
+            let (_, hash) = qbit
+                .add_torrent_returning_id(&url, &info_hash)
+                .await
+                .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
+            (None, hash)
+        })
+    }
+    .await;
+    let (selective_outcome, effective_hash) = match added {
+        Ok(added) => added,
+        Err(e) => {
+            ahead.refused().await;
+            return Err(e);
+        }
     };
 
     // Classify so the log line carries the actual quality tier. Pass the
@@ -216,17 +248,11 @@ pub async fn grab_batch_result(
             GrabFor::Whole,
             !unnumbered,
         );
-        let grab_id = crate::models::grabbed_torrents::record_grab(
-            &state.db,
-            &effective_hash,
-            &title,
-            sid,
-            &ep_nums,
-            true,
-        )
-        .await
-        .ok()
-        .flatten();
+        let grab_id = ahead
+            .sent(&effective_hash, &title, sid, &ep_nums, true)
+            .await
+            .ok()
+            .flatten();
         // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
         if let Some(gid) = grab_id {
             let _ = crate::models::grabbed_torrents::set_source_url(&state.db, gid, &url).await;
@@ -409,44 +435,76 @@ pub async fn grab_interactive_result(
     // See `grab_batch_result` above for why `add_torrent_returning_id`
     // matters. Same SAB-nzo_id capture rationale applies to the
     // single-episode interactive grab path.
-    let (selective_outcome, effective_hash): (Option<Vec<usize>>, String) = if wants_selective {
-        let detail_clone = detail.clone();
-        let mut pick =
-            move |files: &[String]| auto_search::pick_wanted_file_indices(files, &detail_clone);
-        match qbit
-            .add_torrent_with_file_filter(&url, &info_hash, &mut pick)
+    // The row first, then the client (`AheadGrab`): a process that dies
+    // between the two leaves a grab that is found again, not a download
+    // nobody knows about. The client call is wrapped so that every way
+    // it can fail ends in one place, where the row is taken back.
+    let ahead = match series_id {
+        Some(sid) => {
+            crate::models::grabbed_torrents::AheadGrab::write(
+                &state.db,
+                crate::models::grabbed_torrents::GrabAhead {
+                    hash: &info_hash,
+                    torrent_name: &title,
+                    series_id: sid,
+                    is_batch: false,
+                    download_client_id: Some(dispatch_client_id),
+                    source_url: &url,
+                },
+            )
             .await
-        {
-            Ok(crate::services::download_client::SelectiveOutcome::Filtered(kept)) => {
-                (Some(kept), info_hash.clone())
-            }
-            Ok(crate::services::download_client::SelectiveOutcome::FullDownload) => {
-                (None, info_hash.clone())
-            }
-            Err(e) => {
-                logger::warn(
-                    &state.db,
-                    LogCategory::Grab,
-                    &format!(
-                        "Selective download failed, falling back to full grab: {}",
-                        title
-                    ),
-                    &e,
-                )
-                .await;
-                let (_, hash) = qbit
-                    .add_torrent_returning_id(&url, &info_hash)
-                    .await
-                    .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
-                (None, hash)
-            }
         }
-    } else {
-        let (_, hash) = qbit
-            .add_torrent_returning_id(&url, &info_hash)
-            .await
-            .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
-        (None, hash)
+        None => crate::models::grabbed_torrents::AheadGrab::none(&state.db),
+    };
+    type Added = (Option<Vec<usize>>, String);
+    let added: Result<Added, (axum::http::StatusCode, String)> = async {
+        Ok(if wants_selective {
+            let detail_clone = detail.clone();
+            let mut pick =
+                move |files: &[String]| auto_search::pick_wanted_file_indices(files, &detail_clone);
+            match qbit
+                .add_torrent_with_file_filter(&url, &info_hash, &mut pick)
+                .await
+            {
+                Ok(crate::services::download_client::SelectiveOutcome::Filtered(kept)) => {
+                    (Some(kept), info_hash.clone())
+                }
+                Ok(crate::services::download_client::SelectiveOutcome::FullDownload) => {
+                    (None, info_hash.clone())
+                }
+                Err(e) => {
+                    logger::warn(
+                        &state.db,
+                        LogCategory::Grab,
+                        &format!(
+                            "Selective download failed, falling back to full grab: {}",
+                            title
+                        ),
+                        &e,
+                    )
+                    .await;
+                    let (_, hash) = qbit
+                        .add_torrent_returning_id(&url, &info_hash)
+                        .await
+                        .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
+                    (None, hash)
+                }
+            }
+        } else {
+            let (_, hash) = qbit
+                .add_torrent_returning_id(&url, &info_hash)
+                .await
+                .map_err(|e| (axum::http::StatusCode::BAD_GATEWAY, e))?;
+            (None, hash)
+        })
+    }
+    .await;
+    let (selective_outcome, effective_hash) = match added {
+        Ok(added) => added,
+        Err(e) => {
+            ahead.refused().await;
+            return Err(e);
+        }
     };
 
     // Interactive grab: the frontend doesn't currently round-trip the Nyaa
@@ -502,17 +560,11 @@ pub async fn grab_interactive_result(
             GrabFor::Episode(episode_number),
             false,
         );
-        let grab_id = crate::models::grabbed_torrents::record_grab(
-            &state.db,
-            &effective_hash,
-            &title,
-            sid,
-            &held,
-            false,
-        )
-        .await
-        .ok()
-        .flatten();
+        let grab_id = ahead
+            .sent(&effective_hash, &title, sid, &held, false)
+            .await
+            .ok()
+            .flatten();
         // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
         if let Some(gid) = grab_id {
             let _ = crate::models::grabbed_torrents::set_source_url(&state.db, gid, &url).await;

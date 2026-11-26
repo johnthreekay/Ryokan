@@ -590,25 +590,44 @@ pub async fn search_batch_releases(
                 )
                 .await;
             }
-            qbit.add_torrent(&url, &result.info_hash)
-                .await
-                .map_err(|e| {
-                    if let Some(h) = &progress_handle {
-                        let h = h.clone();
-                        let err = e.clone();
-                        tokio::spawn(async move {
-                            h.emit(
-                                "error",
-                                "error",
-                                "qBittorrent rejected the torrent",
-                                Some(err),
-                                true,
-                            )
-                            .await;
-                        });
-                    }
-                    (axum::http::StatusCode::BAD_GATEWAY, e)
-                })?;
+            // The row first, then the client (`AheadGrab`): a process
+            // that dies between the two leaves a grab that is found
+            // again, not a download nobody knows about.
+            let ahead = match series_id_for_grab {
+                Some(sid) => {
+                    crate::models::grabbed_torrents::AheadGrab::write(
+                        &state.db,
+                        crate::models::grabbed_torrents::GrabAhead {
+                            hash: &result.info_hash,
+                            torrent_name: &result.title,
+                            series_id: sid,
+                            is_batch: result.is_batch,
+                            download_client_id: Some(dispatch_client_id),
+                            source_url: &url,
+                        },
+                    )
+                    .await
+                }
+                None => crate::models::grabbed_torrents::AheadGrab::none(&state.db),
+            };
+            if let Err(e) = qbit.add_torrent(&url, &result.info_hash).await {
+                ahead.refused().await;
+                if let Some(h) = &progress_handle {
+                    let h = h.clone();
+                    let err = e.clone();
+                    tokio::spawn(async move {
+                        h.emit(
+                            "error",
+                            "error",
+                            "qBittorrent rejected the torrent",
+                            Some(err),
+                            true,
+                        )
+                        .await;
+                    });
+                }
+                return Err((axum::http::StatusCode::BAD_GATEWAY, e));
+            }
             let classification = crate::services::source::classify_release(
                 &state.db,
                 &result.title,
@@ -661,17 +680,17 @@ pub async fn search_batch_releases(
                     GrabFor::Whole,
                     true,
                 );
-                let grab_id = crate::models::grabbed_torrents::record_grab(
-                    &state.db,
-                    &result.info_hash,
-                    &result.title,
-                    sid,
-                    &ep_nums,
-                    result.is_batch,
-                )
-                .await
-                .ok()
-                .flatten();
+                let grab_id = ahead
+                    .sent(
+                        &result.info_hash,
+                        &result.title,
+                        sid,
+                        &ep_nums,
+                        result.is_batch,
+                    )
+                    .await
+                    .ok()
+                    .flatten();
                 // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
                 if let Some(gid) = grab_id {
                     let _ =

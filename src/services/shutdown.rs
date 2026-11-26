@@ -37,13 +37,14 @@
 //! itself by watching [`requested`].
 //!
 //! Everything else is dropped where it stands, as it always was. The
-//! sync and sweep loops are series of single statements, and a backup
-//! is written under a `.partial` name. One gap is known: a grab made
-//! by a background task (RSS, the upgrade sweep) that is cut between
-//! the download client taking it and its row being written leaves a
-//! download Ryokan does not know about. A grab made from a page is a
-//! request, and requests are finished. The grab code has no single
-//! place to hold from.
+//! sync and sweep loops are series of single statements, a backup is
+//! written under a `.partial` name, a copy into the library under
+//! `.ryokan-tmp` (`post_processing::copy_staged`), and a grab's row is
+//! written before the download client is asked
+//! (`grabbed_torrents::AheadGrab`), so a grab cut at any point leaves
+//! either nothing or a row the next import pass finds. None of these
+//! needs a hold: they are safe against a kill, not only against a
+//! stop.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, LazyLock, Mutex};

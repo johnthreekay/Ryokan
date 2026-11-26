@@ -1744,6 +1744,51 @@ async fn a_stop_starts_no_import_and_leaves_the_grab_for_the_next_start() {
 }
 
 #[tokio::test]
+async fn a_grab_that_died_before_the_client_answered_is_imported_when_the_download_is_there() {
+    // `AheadGrab` writes the row before the client is asked. If the
+    // process dies while the client answers, the row is all there is:
+    // no episode list yet, no tags, nothing after the send. The client
+    // did take the release, so the download completes, and the row has
+    // to be enough to import it.
+    let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
+    let fx = seed_unseen_download("diedmidgrab").await;
+    sqlx::query("DELETE FROM grabbed_torrents")
+        .execute(&fx.db)
+        .await
+        .unwrap();
+    let ahead = grabbed_torrents::AheadGrab::write(
+        &fx.db,
+        grabbed_torrents::GrabAhead {
+            hash: "diedmidgrab",
+            torrent_name: "Show Title - 01",
+            series_id: fx.series_id,
+            is_batch: false,
+            download_client_id: Some(1),
+            source_url: "magnet:?xt=urn:btih:diedmidgrab",
+        },
+    )
+    .await;
+    let grab_id = ahead.id().expect("a row was written ahead");
+    // Neither `sent` nor `refused`: the process is gone.
+    drop(ahead);
+    std::fs::create_dir_all(&fx.source_dir).unwrap();
+    std::fs::write(fx.source_dir.join(UNSEEN_FILE), b"video content").unwrap();
+
+    post_processing::run_once(&fx.state).await;
+
+    assert_eq!(state_and_reason(&fx.db, grab_id).await.0, "imported");
+    let season_dir = fx.media_root.path().join("Show Title").join("Season 01");
+    let landed: Vec<String> = std::fs::read_dir(&season_dir)
+        .expect("season dir exists after the import")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".mkv"))
+        .collect();
+    assert_eq!(landed.len(), 1, "{landed:?}");
+    assert!(landed[0].contains("S01E01"), "{landed:?}");
+}
+
+#[tokio::test]
 async fn run_once_gives_up_on_an_unseen_download_only_after_the_stall_window() {
     let _serializer = POST_PROC_TEST_SERIALIZER.lock().await;
     let fx = seed_unseen_download("unseenstalls").await;

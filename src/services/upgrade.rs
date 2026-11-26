@@ -463,6 +463,19 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                     }
                 };
 
+            // The row first, then the client (`AheadGrab`).
+            let ahead = crate::models::grabbed_torrents::AheadGrab::write(
+                &state.db,
+                crate::models::grabbed_torrents::GrabAhead {
+                    hash: &result.info_hash,
+                    torrent_name: &result.title,
+                    series_id: row.id,
+                    is_batch: result.is_batch,
+                    download_client_id: Some(dispatch_client_id),
+                    source_url: &url,
+                },
+            )
+            .await;
             match client
                 .add_torrent_returning_id(&url, &result.info_hash)
                 .await
@@ -505,17 +518,17 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                         // sides are series-relative episode numbers.
                         covered_by_batch.extend(&ep_nums);
                     }
-                    let grab_id = crate::models::grabbed_torrents::record_grab(
-                        &state.db,
-                        &canonical_id,
-                        &result.title,
-                        row.id,
-                        &ep_nums,
-                        result.is_batch,
-                    )
-                    .await
-                    .ok()
-                    .flatten();
+                    let grab_id = ahead
+                        .sent(
+                            &canonical_id,
+                            &result.title,
+                            row.id,
+                            &ep_nums,
+                            result.is_batch,
+                        )
+                        .await
+                        .ok()
+                        .flatten();
                     // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
                     if let Some(gid) = grab_id {
                         let _ =
@@ -565,6 +578,7 @@ pub async fn run_once(state: &AppState) -> Result<UpgradeSummary, String> {
                     }
                 }
                 Err(err) => {
+                    ahead.refused().await;
                     logger::error(
                         &state.db,
                         LogCategory::DownloadClient,

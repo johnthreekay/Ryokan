@@ -464,12 +464,27 @@ pub async fn webhook_autobrr(
     // hands back from `mode=addurl`. Either way, persist the
     // returned value so post-processing's `list_scoped` matching
     // works for both protocols.
+    // The row first, then the client (`AheadGrab`): a process that dies
+    // between the two leaves a grab that is found again.
+    let ahead = grabbed_torrents::AheadGrab::write(
+        &state.db,
+        grabbed_torrents::GrabAhead {
+            hash: &info_hash_lc,
+            torrent_name: &payload.torrent_name,
+            series_id: series.id,
+            is_batch: ep_nums.len() > 1,
+            download_client_id: Some(dispatch_client_id),
+            source_url: &download_url,
+        },
+    )
+    .await;
     let (add_outcome, canonical_id) = match client
         .add_torrent_returning_id(&download_url, &info_hash_lc)
         .await
     {
         Ok(t) => t,
         Err(e) => {
+            ahead.refused().await;
             logger::error(
                 &state.db,
                 LogCategory::Grab,
@@ -492,17 +507,17 @@ pub async fn webhook_autobrr(
     // we just skip the seed-rule + attribution stamp. The user
     // sees the grab via `client.list_scoped()`; the missing
     // grab row gets caught by the next reconcile pass.
-    let grab_id = grabbed_torrents::record_grab(
-        &state.db,
-        &canonical_id,
-        &payload.torrent_name,
-        series.id,
-        &ep_nums,
-        ep_nums.len() > 1,
-    )
-    .await
-    .ok()
-    .flatten();
+    let grab_id = ahead
+        .sent(
+            &canonical_id,
+            &payload.torrent_name,
+            series.id,
+            &ep_nums,
+            ep_nums.len() > 1,
+        )
+        .await
+        .ok()
+        .flatten();
     // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
     if let Some(gid) = grab_id {
         let _ =

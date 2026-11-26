@@ -1566,6 +1566,21 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
             .await;
             continue;
         }
+        // The row first, then the client (`AheadGrab`): a process that
+        // dies between the two leaves a grab that is found again, not a
+        // download nobody knows about.
+        let ahead = crate::models::grabbed_torrents::AheadGrab::write(
+            &state.db,
+            crate::models::grabbed_torrents::GrabAhead {
+                hash: &info_hash,
+                torrent_name: &cand.item.title,
+                series_id: cand.found.series.id,
+                is_batch: cand.item.is_batch,
+                download_client_id: Some(dispatch_client_id),
+                source_url: &grab_url,
+            },
+        )
+        .await;
         match client.add_torrent_returning_id(&grab_url, &info_hash).await {
             Ok((_outcome, canonical_id)) => {
                 grabbed += 1;
@@ -1608,17 +1623,17 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                 // SAB: nzo_id) so post-processing's match-by-hash
                 // works for both.
                 let ep_list: Vec<i32> = cand.found.resolved_eps.iter().copied().collect();
-                let grab_id = crate::models::grabbed_torrents::record_grab(
-                    &state.db,
-                    &canonical_id,
-                    &cand.item.title,
-                    cand.found.series.id,
-                    &ep_list,
-                    cand.item.is_batch,
-                )
-                .await
-                .ok()
-                .flatten();
+                let grab_id = ahead
+                    .sent(
+                        &canonical_id,
+                        &cand.item.title,
+                        cand.found.series.id,
+                        &ep_list,
+                        cand.item.is_batch,
+                    )
+                    .await
+                    .ok()
+                    .flatten();
                 // Misgrab guardrails: keep the URL so Restore can re-add a removed grab.
                 if let Some(gid) = grab_id {
                     let _ =
@@ -1765,6 +1780,7 @@ async fn sync_once_inner(state: &AppState, trigger: &str) -> Result<SyncSummary,
                 }
             }
             Err(err) => {
+                ahead.refused().await;
                 skipped += 1;
                 let reason = format!(
                     "{} | {}",

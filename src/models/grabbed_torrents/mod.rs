@@ -163,6 +163,173 @@ pub async fn record_grab(
     Ok(reactivated)
 }
 
+/// What is known about a grab before the download client is asked.
+/// The episode list is not part of it: most callers work it out after
+/// the client has answered, and [`AheadGrab::sent`] writes it then.
+pub struct GrabAhead<'a> {
+    pub hash: &'a str,
+    pub torrent_name: &'a str,
+    pub series_id: i64,
+    pub is_batch: bool,
+    /// The client the release is about to be sent to. On the row from
+    /// the start: post-processing looks for the download in the client
+    /// the row names, and an unstamped row is looked for in the default
+    /// one.
+    pub download_client_id: Option<i64>,
+    /// The magnet or .torrent URL, which Restore re-adds from.
+    pub source_url: &'a str,
+}
+
+/// A grab's row, written before its release is sent to the client.
+///
+/// The order used to be the other way round everywhere: send, then
+/// [`record_grab`]. A process that died in between (a power cut, a kill
+/// at the end of a stop's grace period) left a download in the client
+/// that Ryokan had no row for, so it was never imported, and the
+/// episode it was for stayed wanted and was grabbed again. Sonarr has
+/// the same order and survives it by adopting whatever sits in its
+/// category by title; a title alone does not say which season or cour
+/// an anime release belongs to, so Ryokan writes down what it meant to
+/// grab first.
+///
+/// With the row first, the same death leaves one of two things, and the
+/// reconcile in `post_processing::run_once` already handles both: a row
+/// whose download is in the client, which is tracked and imported like
+/// any other, or a row whose download never arrived, which is marked
+/// removed within a minute like a download the user deleted.
+///
+/// Three outcomes, each one call:
+///
+/// * [`AheadGrab::sent`]: the client took it. Writes the final hash,
+///   title and episodes onto the row and returns its id, in the place
+///   and with the meaning `record_grab` had.
+/// * [`AheadGrab::refused`]: the client answered with an error. The row
+///   is deleted, so a failed grab leaves no trace, as before.
+/// * Neither is called (the caller's future was dropped, or it died):
+///   the row stays. Nobody knows whether the client has the release, so
+///   the reconcile decides. There is deliberately no `Drop` that
+///   deletes: a request cancelled while the client was still answering
+///   would then lose a download the client went on to accept.
+///
+/// No row is written ahead, and `sent` falls back to `record_grab`,
+/// when the hash is empty (a usenet release: the id is the client's to
+/// give, so there is nothing to find the download by yet) or when a
+/// live row already has it (`pending`: another flow owns it;
+/// `imported`: a re-grab, which `record_grab` reactivates and which
+/// could not be undone if the client then refused).
+#[must_use = "call sent() once the client takes the release, or refused() when it errors"]
+pub struct AheadGrab {
+    db: SqlitePool,
+    id: Option<i64>,
+}
+
+impl AheadGrab {
+    pub async fn write(db: &SqlitePool, grab: GrabAhead<'_>) -> Self {
+        let id = if grab.hash.is_empty() {
+            None
+        } else {
+            sqlx::query_scalar(
+                "INSERT OR IGNORE INTO grabbed_torrents
+                     (hash, torrent_name, series_id, episode_numbers, state, is_batch,
+                      download_client_id, source_url)
+                 VALUES (?, ?, ?, '[]', 'pending', ?, ?, ?)
+                 RETURNING id",
+            )
+            .bind(grab.hash)
+            .bind(grab.torrent_name)
+            .bind(grab.series_id)
+            .bind(i64::from(grab.is_batch))
+            .bind(grab.download_client_id)
+            .bind(grab.source_url)
+            .fetch_optional(db)
+            .await
+            // A failed write is not a failed grab: the caller goes on
+            // and records the grab after sending, as it always did.
+            .unwrap_or(None)
+        };
+        Self { db: db.clone(), id }
+    }
+
+    /// A grab with no row written ahead, for a caller that has no
+    /// series to write one for. `sent` is then `record_grab`.
+    pub fn none(db: &SqlitePool) -> Self {
+        Self {
+            db: db.clone(),
+            id: None,
+        }
+    }
+
+    /// The id of the row written ahead, when one was.
+    pub fn id(&self) -> Option<i64> {
+        self.id
+    }
+
+    /// The client took the release. Same arguments and return value as
+    /// [`record_grab`]; `hash` is the id the client answered with.
+    pub async fn sent(
+        mut self,
+        hash: &str,
+        torrent_name: &str,
+        series_id: i64,
+        episode_numbers: &[i32],
+        is_batch: bool,
+    ) -> Result<Option<i64>, sqlx::Error> {
+        let Some(id) = self.id.take() else {
+            return record_grab(
+                &self.db,
+                hash,
+                torrent_name,
+                series_id,
+                episode_numbers,
+                is_batch,
+            )
+            .await;
+        };
+        let eps_json = serde_json::to_string(episode_numbers).unwrap_or_else(|_| "[]".to_string());
+        let finished: Option<i64> = sqlx::query_scalar(
+            "UPDATE OR IGNORE grabbed_torrents
+             SET hash = ?, torrent_name = ?, series_id = ?, episode_numbers = ?, is_batch = ?
+             WHERE id = ? AND state = 'pending'
+             RETURNING id",
+        )
+        .bind(hash)
+        .bind(torrent_name)
+        .bind(series_id)
+        .bind(&eps_json)
+        .bind(i64::from(is_batch))
+        .bind(id)
+        .fetch_optional(&self.db)
+        .await?;
+        match finished {
+            Some(id) => Ok(Some(id)),
+            // The row is no longer pending (the client was so slow that
+            // the reconcile gave up on it, or someone removed it). The
+            // release is in the client all the same, so record it.
+            None => {
+                record_grab(
+                    &self.db,
+                    hash,
+                    torrent_name,
+                    series_id,
+                    episode_numbers,
+                    is_batch,
+                )
+                .await
+            }
+        }
+    }
+
+    /// The client answered with an error: nothing was grabbed.
+    pub async fn refused(mut self) {
+        if let Some(id) = self.id.take() {
+            let _ = sqlx::query("DELETE FROM grabbed_torrents WHERE id = ? AND state = 'pending'")
+                .bind(id)
+                .execute(&self.db)
+                .await;
+        }
+    }
+}
+
 /// Per-file routing row for a grabbed torrent. Used to drive
 /// post-processing for multi-series batch releases: when a Phase 2
 /// grab detects sibling series in a megapack, one of these gets

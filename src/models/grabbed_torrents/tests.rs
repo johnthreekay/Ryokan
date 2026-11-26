@@ -1164,3 +1164,169 @@ async fn only_another_series_live_grab_keeps_a_hash_in_use() {
         .unwrap();
     assert!(hash_in_use_elsewhere(&db, &hash.to_uppercase(), a, a_grab).await);
 }
+
+// ── a grab row written ahead of the client call ──
+
+async fn ahead_fixture() -> (SqlitePool, i64) {
+    let db = crate::test_support::in_memory_pool().await;
+    let series_id = crate::test_support::seed_series(&db, 1, "Show").await;
+    (db, series_id)
+}
+
+fn ahead_spec<'a>(hash: &'a str, series_id: i64) -> GrabAhead<'a> {
+    GrabAhead {
+        hash,
+        torrent_name: "[G] Show - 03",
+        series_id,
+        is_batch: false,
+        download_client_id: Some(7),
+        source_url: "magnet:?xt=urn:btih:abc",
+    }
+}
+
+async fn rows(db: &SqlitePool) -> Vec<(i64, String, String, String)> {
+    sqlx::query_as("SELECT id, hash, state, episode_numbers FROM grabbed_torrents ORDER BY id")
+        .fetch_all(db)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_row_exists_before_the_client_is_asked_and_names_its_client() {
+    // What a death between the row and the client's answer leaves: a
+    // pending grab the reconcile can find in the right client.
+    let (db, series_id) = ahead_fixture().await;
+    let ahead = AheadGrab::write(&db, ahead_spec("abc", series_id)).await;
+    let id = ahead.id().expect("a row was written");
+
+    let grab = get_by_id(&db, id).await.unwrap().unwrap();
+    assert_eq!(grab.state, "pending");
+    assert_eq!(grab.hash, "abc");
+    assert_eq!(grab.series_id, series_id);
+    assert_eq!(grab.download_client_id, Some(7));
+    assert_eq!(grab.source_url, "magnet:?xt=urn:btih:abc");
+    assert!(grab.episode_numbers.is_empty(), "filled in once sent");
+    assert_eq!(get_all_pending(&db).await.unwrap().len(), 1);
+    // Neither sent nor refused: the row stays for the reconcile.
+    drop(ahead);
+    assert_eq!(rows(&db).await.len(), 1);
+}
+
+#[tokio::test]
+async fn sent_finishes_the_same_row() {
+    let (db, series_id) = ahead_fixture().await;
+    let ahead = AheadGrab::write(&db, ahead_spec("abc", series_id)).await;
+    let id = ahead.id().unwrap();
+
+    let recorded = ahead
+        .sent("ABC", "[G] Show - 03 (v2)", series_id, &[3], false)
+        .await
+        .unwrap();
+
+    assert_eq!(recorded, Some(id), "one row, not a second one");
+    assert_eq!(
+        rows(&db).await,
+        vec![(
+            id,
+            "ABC".to_string(),
+            "pending".to_string(),
+            "[3]".to_string()
+        )]
+    );
+    let grab = get_by_id(&db, id).await.unwrap().unwrap();
+    assert_eq!(grab.torrent_name, "[G] Show - 03 (v2)");
+    assert_eq!(grab.download_client_id, Some(7), "the stamp survives");
+}
+
+#[tokio::test]
+async fn refused_leaves_no_trace() {
+    let (db, series_id) = ahead_fixture().await;
+    AheadGrab::write(&db, ahead_spec("abc", series_id))
+        .await
+        .refused()
+        .await;
+    assert!(rows(&db).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_usenet_release_gets_no_row_ahead_and_is_recorded_once_sent() {
+    // No info hash: the id is the client's to give, so a row written
+    // now could not be matched to the download.
+    let (db, series_id) = ahead_fixture().await;
+    let ahead = AheadGrab::write(&db, ahead_spec("", series_id)).await;
+    assert_eq!(ahead.id(), None);
+    assert!(rows(&db).await.is_empty());
+
+    let recorded = ahead
+        .sent("SABnzbd_nzo_1", "Show.E03", series_id, &[3], false)
+        .await
+        .unwrap();
+    let all = rows(&db).await;
+    assert_eq!(all.len(), 1);
+    assert_eq!(recorded, Some(all[0].0));
+    assert_eq!(all[0].1, "SABnzbd_nzo_1");
+}
+
+#[tokio::test]
+async fn a_live_row_for_the_hash_is_left_to_record_grab() {
+    let (db, series_id) = ahead_fixture().await;
+
+    // Pending: another flow owns it. Nothing is written, a refusal
+    // deletes nothing, and `sent` reports the dedup as before.
+    let owner = record_grab(&db, "abc", "[G] Show - 03", series_id, &[3], false)
+        .await
+        .unwrap()
+        .unwrap();
+    let ahead = AheadGrab::write(&db, ahead_spec("abc", series_id)).await;
+    assert_eq!(ahead.id(), None);
+    ahead.refused().await;
+    assert_eq!(rows(&db).await.len(), 1, "the owner's row is untouched");
+    let again = AheadGrab::write(&db, ahead_spec("abc", series_id)).await;
+    assert_eq!(
+        again
+            .sent("abc", "[G] Show - 03", series_id, &[3], false)
+            .await
+            .unwrap(),
+        None,
+        "already in flight"
+    );
+
+    // Imported: a re-grab. The row is only reactivated once the client
+    // has taken the release, so a refusal cannot un-import it.
+    sqlx::query("UPDATE grabbed_torrents SET state = 'imported' WHERE id = ?")
+        .bind(owner)
+        .execute(&db)
+        .await
+        .unwrap();
+    let regrab = AheadGrab::write(&db, ahead_spec("abc", series_id)).await;
+    assert_eq!(regrab.id(), None);
+    regrab.refused().await;
+    assert_eq!(rows(&db).await[0].2, "imported");
+    let regrab = AheadGrab::write(&db, ahead_spec("abc", series_id)).await;
+    let reactivated = regrab
+        .sent("abc", "[G] Show - 03", series_id, &[3], false)
+        .await
+        .unwrap();
+    assert_eq!(reactivated, Some(owner));
+    assert_eq!(rows(&db).await[0].2, "pending");
+}
+
+#[tokio::test]
+async fn a_row_the_reconcile_gave_up_on_does_not_lose_the_grab() {
+    // The client took over a minute; the reconcile marked the waiting
+    // row removed. The release is in the client, so it is recorded.
+    let (db, series_id) = ahead_fixture().await;
+    let ahead = AheadGrab::write(&db, ahead_spec("abc", series_id)).await;
+    let first = ahead.id().unwrap();
+    mark_removed(&db, first).await.unwrap();
+
+    let recorded = ahead
+        .sent("abc", "[G] Show - 03", series_id, &[3], false)
+        .await
+        .unwrap()
+        .expect("recorded afresh");
+    assert_ne!(recorded, first);
+    let grab = get_by_id(&db, recorded).await.unwrap().unwrap();
+    assert_eq!(grab.state, "pending");
+    assert_eq!(grab.episode_numbers, vec![3]);
+}

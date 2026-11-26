@@ -342,6 +342,11 @@ pub async fn grab_release(
     } else {
         crate::services::nyaa::extract_hash(&form.url)
     };
+    // Every other grab writes its row before this call
+    // (`grabbed_torrents::AheadGrab`). This one cannot: which series
+    // the release belongs to is only worked out below, and that can add
+    // a series to the library, which must not happen for a release the
+    // client then refuses.
     let (_outcome, canonical_id) = client
         .add_torrent_returning_id(&form.url, &info_hash)
         .await
